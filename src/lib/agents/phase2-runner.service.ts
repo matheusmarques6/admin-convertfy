@@ -72,7 +72,7 @@ import {
   runSchemaChecks,
   type SchemaCheckBlueprintBlock,
 } from "./chains/qa.chain"
-import { getQaMode } from "./chains/qa-mode"
+import { resolveQaMode } from "./chains/qa-mode-loader"
 // ── Cadeia de formatação (split do HTML agent, migration 20261039) ──
 import {
   invokeHeroChain,
@@ -4309,7 +4309,11 @@ export async function runPhase2HtmlQa(
   // sem custo do modelo. O gate determinístico obrigatório já rodou acima;
   // aqui persistimos os warnings restantes para revisão do designer.
   // Claim atomico `rendering -> ready` mantem idempotencia.
-  if (getQaMode() === "off") {
+  // Resolvido UMA vez: a env vence o banco, e o banco é a alavanca que liga
+  // o QA sem deploy (`email_generation_settings.qa_mode`). Ler duas vezes
+  // abriria espaço para a mesma geração usar dois modos.
+  const qaMode = await resolveQaMode(storeId)
+  if (qaMode === "off") {
     // Contrato do bloco: copy estourando `max_len` e campo obrigatório
     // vazio. O check já existia, mas SÓ dentro do agente de QA — com o QA
     // desligado (que é o caso desta loja) ninguém era avisado. Na Luxe
@@ -4481,7 +4485,6 @@ export async function runPhase2HtmlQa(
   // Com o gate ligado, `high` dos checks de conteúdo reprova como o agente
   // reprovaria — é o mesmo threshold (EMAIL_QA_BLOCK_SEVERITY default high).
   const contentReprova = contentIssues.some((i) => i.severity === "high")
-  const qaMode = getQaMode()
   if (qaMode === "enforce" && (!qaResult.passed || contentReprova)) {
     await admin
       .from("email_flow_emails")

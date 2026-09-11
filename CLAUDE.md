@@ -5833,6 +5833,38 @@ amet` chegou ao cliente com o merge em 44/44 — o texto não é slot, é
 exemplo sem endereço nenhum); os "Link Here" do rodapé; e a variante em
 598px que a varredura "Largura 600px na biblioteca" ainda não alcançou.
 
+
+### O QA foi LIGADO, e o interruptor mudou de lugar (11/09)
+
+`enforce` está valendo: issue `high` (do agente ou dos checks por código)
+reprova a peça — `status: failed`, `failure_reason: qa_failed`.
+
+**O gate saiu do ambiente e foi para o banco** (`email_generation_settings
+.qa_mode`, migration 20261141, aplicada). `getQaMode()` lia só
+`process.env`, então ligar exigia um deploy da Vercel e desligar, outro —
+é o mesmo desenho que `montador_mode`, `seletor_mode`, `blueprint_mode` e
+`color_plano_mode` já tinham, e o QA é o mais importante deles.
+**`EMAIL_QA_MODE`/`EMAIL_QA_ENABLED` continuam VENCENDO o banco**: é o
+freio de emergência que não depende do Postgres responder. Falha de
+leitura cai no padrão e loga — errar para o lado de não bloquear é barato;
+reprovar geração por migration pendente, não. `resolveQaMode(storeId)` é
+chamado UMA vez por peça: ler duas vezes abriria espaço para a mesma
+geração usar dois modos.
+
+**Consequência que vale declarar**: a peça de 11/09 teria sido REPROVADA —
+e é o desejado. Mas os hrefs de exemplo (`URL_CTA_PRIMARIO` e afins)
+moram na BIBLIOTECA, não numa geração: enquanto a variante do hero não
+for corrigida, toda peça que a usar reprova em `link_sem_endereco`. O
+caminho é a worklist de biblioteca; o atalho, se a produção travar, é
+`update email_generation_settings set qa_mode = 'shadow'` — sem deploy.
+Sem UI por ora, como os outros quatro gates.
+
+**`copy_fit`: `max_tokens` 8000 → 24000** na linha ativa (o modelo é
+`anthropic/claude-sonnet-5`, que gasta o teto pensando antes de
+responder). O retry por truncamento continua como rede, com teto ABSOLUTO
+de 32.000: dobrar 24.000 daria 48.000, e uma resposta desse tamanho leva
+minutos que a fase 2 não tem.
+
 ---
 
 *Última atualização: Setembro 2026*

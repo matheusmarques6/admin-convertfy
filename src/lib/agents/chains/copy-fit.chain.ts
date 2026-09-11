@@ -93,10 +93,13 @@ const DEFAULT_MAX_TOKENS = 6000
  *
  * Subir sem limite estoura o relógio do step (o modelo gera ~90 tok/s) e
  * infla a reserva de crédito que o OpenRouter faz em voo — que é o outro
- * jeito de este agente morrer.
+ * jeito de este agente morrer. Daí o teto ABSOLUTO: com a config em 24.000
+ * (11/09), dobrar daria 48.000, e uma resposta desse tamanho leva minutos
+ * que a fase 2 não tem.
  */
+const TETO_ABSOLUTO = 32000
 function tetoMaximoDe(configurado: number): number {
-  return Math.max(configurado * 2, 16000)
+  return Math.min(Math.max(configurado * 2, 16000), TETO_ABSOLUTO)
 }
 const REASONING: AgentInvokeConfig["reasoning"] = { effort: "low" }
 
