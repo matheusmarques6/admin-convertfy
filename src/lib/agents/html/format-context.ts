@@ -429,6 +429,28 @@ function validateVars(
   return vars
 }
 
+/**
+ * Os fundos de seção que esta loja pode usar.
+ *
+ * A paleta cadastrada MAIS os papéis que o código deriva dela. Uma loja
+ * preto-e-branco precisa de um cinza para separar seções — o que ela não
+ * precisa é do cinza que veio na variante de outra loja. `accent` fica de
+ * fora: ele marca o que importa em palavra solta e filete, e como banda
+ * inteira vira a peça pintada de acento.
+ */
+export function fundosLegitimos(
+  roles: ColorRoles,
+  brand: StoreBrandIdentity | null,
+): string[] {
+  const paleta = [
+    ...(Array.isArray(brand?.colors_primary) ? brand.colors_primary : []),
+    ...(Array.isArray(brand?.colors_secondary) ? brand.colors_secondary : []),
+  ]
+    .map((c) => (c as { hex?: string }).hex)
+    .filter((h): h is string => typeof h === "string" && h.length > 0)
+  return [...paleta, roles.bg, roles.surface, roles.surface_strong]
+}
+
 function identityVars(ctx: FormatChainContext): Record<string, string> {
   return {
     brand_name: ctx.brandName,
@@ -589,7 +611,7 @@ export const COLOR_FORMAT_VAR_ORIGINS: Record<string, SegmentOrigin> = {
   tones: { cls: "sistema", rotulo: "Tons derivados do tom de voz — deriveToneKeys" },
   color_inventory_json: { cls: "sistema", rotulo: "Inventário de cores do documento — extractColorInventory" },
   faixas_json: { cls: "sistema", rotulo: "Sequência de faixas do documento — extrairFaixas" },
-  tons_json: { cls: "sistema", rotulo: "Tons de fundo distintos, contados por código — R2" },
+  tons_json: { cls: "sistema", rotulo: "Fundos de seção e sua procedência — contados por código" },
   ctas_json: { cls: "sistema", rotulo: "Botões do documento, com a faixa de cada um — extrairCtas" },
   brand_colors: LOJA_BRAND,
   pesquisa_full_text: { cls: "loja", rotulo: "Pesquisa & Diagnóstico — client_stores" },
@@ -771,7 +793,7 @@ export function buildColorFormatVars(
     // faixa não a enxerga: em 11/09 o agente manteve dois cinzas com
     // justificativa boa em cada um e a peça saiu com quatro fundos. A conta
     // vem PRONTA para ele, e é refeita por código depois de aplicar.
-    tons_json: JSON.stringify(tonsDeFundo(faixas)),
+    tons_json: JSON.stringify(tonsDeFundo(faixas, fundosLegitimos(ctx.roles, extras.brand))),
     ctas_json: JSON.stringify(ctas, null, 2),
     email_name: ctx.emailRow?.name || "",
     subject: ctx.emailRow?.subject || "",

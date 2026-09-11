@@ -167,14 +167,29 @@ export const DEFAULT_COLOR_FORMAT_USER_TEMPLATE = `<store>
 {{faixas_json}}
 </faixas>
 
-<tons_de_fundo>
+<fundos_de_secao>
 {{tons_json}}
-Esta conta já foi feita pelo código sobre as faixas acima, e é refeita depois que o teu
-plano é aplicado. Com \`excede: true\` a peça viola a R2 e reduzir os tons é trabalho TEU,
-não lacuna: escolhe qual dos \`excedentes\` some e manda a faixa dele para um tom que já
-está na lista. Decidir faixa a faixa sem olhar esta soma é como a peça de 10/09 saiu com
-quatro fundos — cada decisão defensável sozinha, o conjunto fora da regra.
-</tons_de_fundo>
+Contado pelo código sobre as faixas acima, e refeito depois que o teu plano é aplicado.
+\`da_marca: false\` quer dizer que aquele fundo NÃO pertence à identidade desta loja nem aos
+papéis derivados dela (<bg>, <surface>, <surface_strong>) — é o cinza que veio na variante,
+escrito para outra marca.
+
+A regra da casa, nesta ordem:
+1. O fundo das seções são as CORES PRINCIPAIS da loja. Numa marca de duas cores, o e-mail
+   alterna entre essas duas, e o <surface> derivado entra quando duas seções claras
+   precisam se separar.
+2. Uma cor fora dessa lista entra só com MUITA necessidade, em UM lugar especial — nunca
+   como o fundo de metade da peça.
+3. Fundo de seção NÃO é lugar especial: é a banda que o leitor atravessa inteira. Todo
+   item de \`estranhos\` é desvio, e trocá-lo pelo papel que ele deveria ter é trabalho
+   TEU, não lacuna — manda a faixa para <bg>, <surface> ou <surface_strong>, o que couber
+   no ritmo que decidiste. O lugar especial da terceira cor é o pontual: um card, um selo,
+   um filete.
+
+Medido na peça de 10/09: loja com duas principais (#000000 e #FFFFFF), e os fundos saíram
+#FFFFFF, #E1DEDE e #B1B3B6 — dois cinzas de outra marca, e o preto da identidade sem
+aparecer em seção nenhuma. Passava no teto de três tons e mesmo assim era o e-mail errado.
+</fundos_de_secao>
 
 <ctas>
 {{ctas_json}}

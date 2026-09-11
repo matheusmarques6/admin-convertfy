@@ -170,7 +170,7 @@ describe("extrairCtas", () => {
   })
 })
 
-describe("tonsDeFundo — a R2 medida por código", () => {
+describe("tonsDeFundo — a procedência do fundo", () => {
   const faixa = (bloco: number, fundo: string | null, foto = false) => ({
     ordem: bloco + 1,
     bloco,
@@ -183,58 +183,103 @@ describe("tonsDeFundo — a R2 medida por código", () => {
     decls: [],
   })
 
-  it("o caso real da Hero Boxers: quatro fundos, teto de três", () => {
-    // Medido em 11/09. O agente decidiu `manter` nas duas faixas cinza,
-    // com justificativa boa em cada uma (R3 numa, R5/R6 na outra), e nunca
-    // somou o conjunto.
-    const r = tonsDeFundo([
-      faixa(0, "#000000"),
-      faixa(1, "#FFFFFF"),
-      faixa(2, "#E1DEDE"),
-      faixa(3, "#B1B3B6"),
-      faixa(4, "#FFFFFF"),
-    ])
-    expect(r.tons).toEqual(["#000000", "#FFFFFF", "#E1DEDE", "#B1B3B6"])
-    expect(r.excede).toBe(true)
-    expect(r.excedentes).toEqual(["#B1B3B6"])
+  // A identidade REAL da Hero Boxers, lida do banco: duas principais, zero
+  // secundárias. Mais os papéis que o código deriva delas.
+  // A identidade REAL, lida do banco, mais o que `deriveColorRoles` produz a
+  // partir dela: bg #FFFFFF, surface #F2F2F2, surface_strong #E3E3E3.
+  const HERO_BOXERS = ["#000000", "#ffffff", "#FFFFFF", "#F2F2F2", "#E3E3E3"]
+
+  it("o caso real: passa no teto de três e mesmo assim é o e-mail errado", () => {
+    // Loja preto-e-branco. `#E1DEDE` está a 5 de distância do
+    // surface_strong derivado (#E3E3E3) — é o mesmo cinza, e passa. O que
+    // não passa é `#B1B3B6`, a 50 de distância, cobrindo o bloco de
+    // produtos inteiro. E o preto da identidade não aparece em seção
+    // nenhuma.
+    const r = tonsDeFundo(
+      [faixa(0, "#FFFFFF"), faixa(1, "#FFFFFF"), faixa(2, "#E1DEDE"), faixa(3, "#B1B3B6")],
+      HERO_BOXERS,
+    )
+    expect(r.excede).toBe(false)
+    expect(r.estranhos).toEqual(["#B1B3B6"])
+    expect(r.foraDaIdentidade).toBe(true)
   })
 
-  it("três tons passam; o repetido não conta duas vezes", () => {
-    const r = tonsDeFundo([
-      faixa(0, "#000000"),
-      faixa(1, "#FFFFFF"),
-      faixa(2, "#FFFFFF"),
-      faixa(3, "#F2F2F2"),
-    ])
-    expect(r.tons).toHaveLength(3)
-    expect(r.excede).toBe(false)
-    expect(r.excedentes).toEqual([])
+  it("as duas principais da loja passam limpas", () => {
+    const r = tonsDeFundo([faixa(0, "#000000"), faixa(1, "#FFFFFF")], HERO_BOXERS)
+    expect(r.estranhos).toEqual([])
+    expect(r.foraDaIdentidade).toBe(false)
+    expect(r.tons.every((t) => t.da_marca)).toBe(true)
+  })
+
+  it("UMA cor estranha como FUNDO DE SEÇÃO já é desvio", () => {
+    // A exceção da terceira cor vale para lugar pontual — card, selo,
+    // filete. Uma banda que o leitor atravessa inteira não é isso.
+    const r = tonsDeFundo(
+      [faixa(0, "#000000"), faixa(1, "#FFFFFF"), faixa(2, "#B0C4AB")],
+      HERO_BOXERS,
+    )
+    expect(r.estranhos).toEqual(["#B0C4AB"])
+    expect(r.foraDaIdentidade).toBe(true)
+  })
+
+  it("o cinza DERIVADO da paleta é da marca; o cinza de outra loja não", () => {
+    // É a diferença que o próprio agente escreveu na lacuna dele e não fez:
+    // "#B1B3B6 não é um dos color_roles — deveria virar #E3E3E3".
+    const r = tonsDeFundo([faixa(0, "#E3E3E3"), faixa(1, "#B1B3B6")], HERO_BOXERS)
+    expect(r.tons[0].da_marca).toBe(true)
+    expect(r.tons[1].da_marca).toBe(false)
+  })
+
+  it("loja SEM paleta cadastrada não acusa ninguém", () => {
+    // Sem identidade não há de onde um fundo divergir, e inventar desvio
+    // sobre o que não existe é pior que não medir.
+    const r = tonsDeFundo([faixa(0, "#E1DEDE"), faixa(1, "#B1B3B6")], [])
+    expect(r.estranhos).toEqual([])
+    expect(r.tons.every((t) => t.da_marca)).toBe(true)
+  })
+
+  it("o teto de trás continua valendo mesmo com tudo da marca", () => {
+    const paleta = ["#000000", "#FFFFFF", "#F2F2F2", "#E3E3E3"]
+    const r = tonsDeFundo(
+      [faixa(0, "#000000"), faixa(1, "#FFFFFF"), faixa(2, "#F2F2F2"), faixa(3, "#E3E3E3")],
+      paleta,
+    )
+    expect(r.estranhos).toEqual([])
+    expect(r.excede).toBe(true)
+  })
+
+  it("o mesmo tom em duas faixas conta uma vez, e a repetição fica registrada", () => {
+    const r = tonsDeFundo([faixa(0, "#FFFFFF"), faixa(1, "#FFFFFF")], HERO_BOXERS)
+    expect(r.tons).toHaveLength(1)
+    expect(r.tons[0].faixas).toBe(2)
   })
 
   it("FOTO não gasta um tom", () => {
-    // Quem lê a peça vê a foto, não a cor atrás dela. Contá-la faria a hero
-    // fotográfica queimar um dos três tons sem que ninguém perceba um tom.
-    const r = tonsDeFundo([
-      faixa(0, "#101010", true),
-      faixa(1, "#FFFFFF"),
-      faixa(2, "#E1DEDE"),
-      faixa(3, "#B1B3B6"),
-    ])
-    expect(r.tons).toEqual(["#FFFFFF", "#E1DEDE", "#B1B3B6"])
-    expect(r.excede).toBe(false)
-  })
-
-  it("caixa do hex não duplica o tom", () => {
-    const r = tonsDeFundo([faixa(0, "#ffffff"), faixa(1, "#FFFFFF")])
-    expect(r.tons).toEqual(["#FFFFFF"])
+    const r = tonsDeFundo(
+      [faixa(0, "#101010", true), faixa(1, "#FFFFFF"), faixa(2, "#E1DEDE")],
+      HERO_BOXERS,
+    )
+    expect(r.tons.map((t) => t.hex)).toEqual(["#FFFFFF", "#E1DEDE"])
   })
 
   it("documento sem marcadores não acusa nada", () => {
-    // Sem endereço não há conta a fazer, e acusar aqui seria inventar
-    // defeito sobre o que não foi medido.
-    const r = tonsDeFundo([])
+    const r = tonsDeFundo([], HERO_BOXERS)
     expect(r.tons).toEqual([])
     expect(r.excede).toBe(false)
+    expect(r.foraDaIdentidade).toBe(false)
+  })
+
+  it("#FFFFFF e #FDFDFD são o MESMO tom, e o branco da marca reconhece os dois", () => {
+    // Dois brancos indistinguíveis vindos de variantes diferentes. Exigir o
+    // hex exato contaria dois tons E marcaria um deles como estranho.
+    const r = tonsDeFundo([faixa(0, "#FFFFFF"), faixa(1, "#FDFDFD")], HERO_BOXERS)
+    expect(r.tons).toHaveLength(1)
+    expect(r.tons[0].da_marca).toBe(true)
+  })
+
+  it("mas dois cinzas de verdade continuam sendo dois", () => {
+    const r = tonsDeFundo([faixa(0, "#E1DEDE"), faixa(1, "#B1B3B6")], HERO_BOXERS)
+    expect(r.tons).toHaveLength(2)
   })
 })
 
@@ -283,25 +328,5 @@ describe("CTA que só existe no ramo do Outlook", () => {
     expect(ctas[0].peso).toBe(700)
     expect(ctas[0].padding_v).toBe(14)
     expect(ctas[0].padding_h).toBe(36)
-  })
-})
-
-describe("tolerância de tom", () => {
-  const f = (bloco: number, fundo: string) => ({
-    ordem: bloco + 1, bloco, tipo: "body", fundo, foto: false,
-    luminancia: null, cobre_px: 600, editavel: true, decls: [],
-  })
-
-  it("#FFFFFF e #FDFDFD são o MESMO tom — o caso real da peça", () => {
-    // Dois brancos que ninguém distingue, vindos de variantes diferentes.
-    // Contá-los separados acusaria violação de R2 onde não há.
-    const r = tonsDeFundo([f(0, "#FFFFFF"), f(1, "#FDFDFD"), f(2, "#E1DEDE")])
-    expect(r.tons).toEqual(["#FFFFFF", "#E1DEDE"])
-    expect(r.excede).toBe(false)
-  })
-
-  it("mas dois cinzas de verdade continuam sendo dois", () => {
-    const r = tonsDeFundo([f(0, "#E1DEDE"), f(1, "#B1B3B6")])
-    expect(r.tons).toHaveLength(2)
   })
 })

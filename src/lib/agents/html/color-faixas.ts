@@ -404,62 +404,88 @@ export function extrairCtas(html: string, faixas: Faixa[]): Cta[] {
 }
 
 /**
- * Teto de tons de fundo na peça — a regra 1 do guia de disposição de cores.
+ * Fundo de seção sai da IDENTIDADE da loja — não de quantos tons cabem.
  *
- * "No máximo 3 tons de fundo no e-mail inteiro: base clara, base escura e
- * uma superfície (ou cor de identidade). Um quarto tom não é permitido."
- */
-export const TETO_DE_TONS = 3
-
-export interface TonsDeFundo {
-  /** Hex distintos usados como fundo de seção, na ordem da rolagem. */
-  tons: string[]
-  teto: number
-  excede: boolean
-  /** Do 4º tom em diante — os que fazem a peça passar do teto. */
-  excedentes: string[]
-}
-
-/**
- * Conta os tons de fundo distintos da peça.
+ * A primeira versão desta régua contava até três, que é a letra da R2. A
+ * conta estava no eixo errado, e a peça de 10/09 mostra por quê: a Hero
+ * Boxers tem EXATAMENTE duas cores principais cadastradas — `#000000` e
+ * `#FFFFFF`, zero secundárias — e a peça saiu com fundos `#FFFFFF`,
+ * `#E1DEDE` e `#B1B3B6`. Três tons: passa no teto. E dois deles são cinzas
+ * genéricos herdados de variantes escritas para outras lojas, enquanto o
+ * preto — metade da identidade — não aparece como fundo de seção nenhuma.
+ * Contar quantidade aprova três cinzas estranhos e reprovaria preto, branco
+ * e um acento da marca.
  *
- * Existe porque a regra 1 é **aritmética** e estava sendo confiada ao
- * julgamento do modelo. Medido em 11/09 (Hero Boxers, welcome 1): ele
- * avaliou as duas faixas cinza uma a uma, decidiu `manter` nas duas citando
- * R3, R5 e R6 — cada decisão isolada defensável — e a peça saiu com QUATRO
- * fundos: `#000000` na hero, `#FFFFFF` no corpo, `#E1DEDE` em reviews e
- * `#B1B3B6` em products. Ninguém somou. É o erro que um modelo comete
- * faixa a faixa e que um `for` não comete, e por isso a régua vem para o
- * código — o mesmo princípio de `avaliarHeadline` no Estúdio.
+ * A regra da casa, na ordem: **os fundos são as cores principais da loja**,
+ * e só com MUITA necessidade entra outra — **em lugar especial**. Fundo de
+ * seção não é lugar especial: é a banda que o leitor atravessa por inteiro,
+ * e uma cor estranha ali veste a peça de outra marca. Por isso QUALQUER
+ * fundo fora da identidade conta como desvio, e a exceção da terceira cor
+ * vale para o que é pontual — um card, um selo, um filete —, que esta
+ * função nem enxerga. Daí `estranhos` ser o número que importa e o teto de
+ * tons virar o limite de trás.
+ *
+ * **O que conta como "da marca"** é a paleta cadastrada MAIS os papéis que
+ * o código deriva dela (`bg`, `surface`, `surface_strong` de
+ * `deriveColorRoles`). Uma loja preto-e-branco precisa de um cinza para
+ * separar seções; o que ela não precisa é de um cinza QUALQUER. Foi
+ * exatamente o que o agente escreveu na lacuna dele e depois não fez:
+ * "#B1B3B6 não é um dos color_roles declarados — registrar para decisão da
+ * loja se deve virar #E3E3E3". Aqui isso deixa de ser lacuna e vira conta.
  *
  * **Limite declarado: conta fundo de SEÇÃO, não banda interna.** Medindo a
- * peça de 10/09 no Chromium aparecem quatro fundos, porque a hero tem uma
- * banda preta de 230px no topo (onde mora o logo). Ela não entra aqui: o
- * container do bloco hero é branco, e é ele que uma op alcança. Contar
- * banda interna faria todo card colorido e todo rodapé escuro de dentro de
- * um bloco gastarem um dos três tons, e a régua acusaria quase toda peça —
- * alarme que ninguém consegue atender vira alarme ignorado. A contrapartida
- * honesta é que uma banda grande o bastante para ler como seção passa
- * despercebida por esta conta.
+ * peça no Chromium aparecem quatro fundos, porque a hero tem uma banda
+ * preta de 230px no topo (onde mora o logo). Ela não entra: o container do
+ * bloco hero é branco, e é ele que uma op alcança. Contar banda interna
+ * faria todo card colorido e todo rodapé escuro de dentro de um bloco
+ * gastarem um tom, e a régua acusaria quase toda peça — alarme que ninguém
+ * consegue atender vira alarme ignorado. A contrapartida honesta é que uma
+ * banda grande o bastante para ler como seção passa despercebida.
  *
- * **Foto não é tom.** Faixa cujo fundo é imagem não entra na conta mesmo
- * quando há uma cor declarada atrás dela: quem lê a peça vê a foto, e
- * contá-la faria a hero fotográfica gastar um dos três tons sem que o
- * leitor perceba tom nenhum.
+ * **Foto não é tom.** Faixa cujo fundo é imagem não entra mesmo quando há
+ * cor declarada atrás dela: quem lê vê a foto, e contá-la faria a hero
+ * fotográfica gastar um tom que o leitor não percebe.
  *
- * Puro. Lista vazia (documento sem marcadores) devolve zero tons e
- * `excede: false` — sem endereço não há conta a fazer, e acusar aqui seria
- * inventar defeito sobre o que não foi medido.
+ * Puro. Lista vazia (documento sem marcadores) devolve zero tons e nada
+ * acusado — sem endereço não há conta a fazer, e acusar ali seria inventar
+ * defeito sobre o que não foi medido.
  */
+
+/** Teto de trás: mesmo todos sendo da marca, quatro fundos é ruído (R2). */
+export const TETO_DE_TONS = 3
+
+export interface TomDeFundo {
+  hex: string
+  /** Pertence à paleta da loja ou a um papel derivado dela. */
+  da_marca: boolean
+  /** Em quantas faixas este tom aparece. */
+  faixas: number
+}
+
+export interface TonsDeFundo {
+  tons: TomDeFundo[]
+  teto: number
+  /** Mais tons do que o teto de trás. */
+  excede: boolean
+  /** Os fundos que não vêm da identidade — o número que importa. */
+  estranhos: string[]
+  /** Existe fundo de seção fora da identidade. */
+  foraDaIdentidade: boolean
+}
+
 /**
  * Distância máxima por canal para dois fundos serem o MESMO tom.
  *
  * Medido no documento real: a peça usa `#FFFFFF` e `#FDFDFD`, dois brancos
  * que ninguém distingue, vindos de variantes de origens diferentes.
- * Contá-los como dois tons faria a régua acusar violação de R2 onde não há
- * — e alarme falso é como se aprende a ignorar o alarme verdadeiro. 8 em
- * 255 é ~3%: pega o ruído de arredondamento e não junta `#E1DEDE` com
- * `#B1B3B6` (48 de distância), que são dois cinzas de verdade.
+ * Contá-los como dois tons faria a régua acusar violação onde não há — e
+ * alarme falso é como se aprende a ignorar o alarme verdadeiro. 8 em 255 é
+ * ~3%: pega o ruído de arredondamento e não junta `#E1DEDE` com `#B1B3B6`
+ * (48 de distância), que são dois cinzas de verdade.
+ *
+ * A mesma tolerância decide se um fundo é da marca: exigir o hex exato
+ * reprovaria o branco que a variante escreveu como `#FDFDFD` sendo o mesmo
+ * branco da identidade.
  */
 const TOLERANCIA_DE_TOM = 8
 
@@ -478,17 +504,33 @@ function mesmoTom(a: string, b: string): boolean {
   return x.every((v, i) => Math.abs(v - y[i]) <= TOLERANCIA_DE_TOM)
 }
 
-export function tonsDeFundo(faixas: Faixa[]): TonsDeFundo {
-  const tons: string[] = []
+/**
+ * @param aceitas Cores da identidade MAIS os papéis derivados dela. Lista
+ *   vazia = a loja não tem paleta cadastrada: nada é acusado de estranho,
+ *   porque sem identidade não há de onde um fundo divergir.
+ */
+export function tonsDeFundo(faixas: Faixa[], aceitas: string[] = []): TonsDeFundo {
+  const tons: TomDeFundo[] = []
   for (const f of faixas) {
     if (f.foto || !f.fundo) continue
     const hex = f.fundo.toUpperCase()
-    if (!tons.some((t) => mesmoTom(t, hex))) tons.push(hex)
+    const existente = tons.find((t) => mesmoTom(t.hex, hex))
+    if (existente) {
+      existente.faixas += 1
+      continue
+    }
+    tons.push({
+      hex,
+      da_marca: aceitas.length === 0 || aceitas.some((a) => mesmoTom(a, hex)),
+      faixas: 1,
+    })
   }
+  const estranhos = tons.filter((t) => !t.da_marca).map((t) => t.hex)
   return {
     tons,
     teto: TETO_DE_TONS,
     excede: tons.length > TETO_DE_TONS,
-    excedentes: tons.slice(TETO_DE_TONS),
+    estranhos,
+    foraDaIdentidade: estranhos.length > 0,
   }
 }

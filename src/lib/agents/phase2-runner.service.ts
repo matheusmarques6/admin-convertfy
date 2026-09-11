@@ -118,6 +118,7 @@ import {
   type FormatChainContext,
   type HeroVariantData,
   type HeroVariantSource,
+  fundosLegitimos,
 } from "./html/format-context"
 import {
   copyMergeByExample,
@@ -3946,7 +3947,10 @@ async function runFormattingChain(p: {
               // faixa a faixa e cada decisão pode ser boa com a soma errada
               // — foi assim que a peça de 10/09 saiu com quatro fundos. Só
               // o documento aplicado responde quantos tons sobraram.
-              tons_de_fundo: tonsDeFundo(extrairFaixas(applied.html)),
+              tons_de_fundo: tonsDeFundo(
+                extrairFaixas(applied.html),
+                fmtCtx.roles ? fundosLegitimos(fmtCtx.roles, ctx.brand ?? null) : [],
+              ),
               lacunas: r.plano?.lacunas ?? [],
             },
             // OPS não medem conformidade: 11 ops que trocam 1 ocorrência

@@ -239,6 +239,7 @@ const refSource = vi.hoisted(() => ({ value: "global" as string }))
 const ctxExtra = vi.hoisted(() => ({ value: {} as Record<string, unknown> }))
 
 vi.mock("./html/format-context", () => ({
+  fundosLegitimos: () => [],
   loadFormatChainContext: vi.fn(async () => ({
     referenceHtml: REFERENCE_HTML,
     slotMap: null,
