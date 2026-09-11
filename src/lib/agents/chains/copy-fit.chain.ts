@@ -34,6 +34,7 @@ import {
   contarTracos,
   type MotivoDeAlvo,
   apararNoLimite,
+  socorroPorCodigo,
   type AlvoDeEncurtamento,
   type MotivoDeRecusa,
 } from "@/lib/email-workspace/copy-fit"
@@ -439,6 +440,37 @@ export async function runCopyFit(input: CopyFitInput): Promise<CopyFitResult> {
   let traducoesRecusadas = 0
   const viaCodigo = new Map<string, "travessao_por_codigo" | "aparado_por_codigo">()
 
+  /**
+   * Plano B por CÓDIGO para o que o modelo não corrigiu.
+   *
+   * 09/09 — o corte de 02/09 ("decepa na última frase que cabe") mandou
+   * "Plugs directly into any standard outlet." ao cliente e foi removido.
+   * O que volta é o aparo de excesso PEQUENO (≤ 15%, última fronteira de
+   * palavra, sem reticências) e a troca do travessão.
+   *
+   * 11/09 — passou a rodar também no `catch`. O agente morreu na PRIMEIRA
+   * chamada (8000 dos 8000 tokens no raciocínio) e os oito travessões do
+   * e-mail foram ao cliente, porque o traço que o código sabe tirar
+   * esperava por um modelo que nunca respondeu.
+   */
+  const socorrer = (alvos: readonly AlvoDeEncurtamento[]): void => {
+    for (const a of alvos) {
+      if (aceitas.has(a.id) || a.so_codigo) continue
+      const socorro = socorroPorCodigo(a)
+      if (!socorro) continue
+      const veredicto = aceitarReescrita(a.texto, socorro.texto, {
+        max: a.max,
+        min: a.min,
+        motivos: a.motivos,
+        idiomaEsperado: a.idioma_esperado,
+      })
+      if (!veredicto.ok) continue
+      motivos.delete(a.id)
+      aceitas.set(a.id, { id: a.id, position: a.position, block_id: a.block_id, key: a.key, texto: socorro.texto })
+      viaCodigo.set(a.id, socorro.via)
+    }
+  }
+
   try {
     // 09/09 — o que o CÓDIGO resolve não vai ao modelo:
     //  - `proposta_por_codigo`: travessão trocado e cabe → aceita.
@@ -519,16 +551,7 @@ export async function runCopyFit(input: CopyFitInput): Promise<CopyFitResult> {
     // com idade e cintura sobrevivia com uma palavra a menos em vez de
     // ser descartado inteiro (`ainda_acima_do_limite`, batch 644d86c5).
     // Excesso maior continua como veio do n8n, contado em `mantidos`.
-    for (const a of pendentes) {
-      if (motivos.get(a.id) !== "ainda_acima_do_limite" && !(a.max > 0 && a.texto.length > a.max)) continue
-      const aparado = apararNoLimite(a.texto, a.max)
-      if (!aparado) continue
-      const veredicto = aceitarReescrita(a.texto, aparado, { max: a.max, min: a.min, motivos: ["max_len"], idiomaEsperado: a.idioma_esperado })
-      if (!veredicto.ok) continue
-      motivos.delete(a.id)
-      aceitas.set(a.id, { id: a.id, position: a.position, block_id: a.block_id, key: a.key, texto: aparado })
-      viaCodigo.set(a.id, "aparado_por_codigo")
-    }
+    socorrer(pendentes)
 
     const de_para: DePara[] = input.alvos.map((a) => {
       const ok = aceitas.get(a.id)
@@ -635,6 +658,8 @@ export async function runCopyFit(input: CopyFitInput): Promise<CopyFitResult> {
     return { aceitas: [...aceitas.values()], de_para, rodou: true }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
+    // O modelo caiu: o que o código resolve sozinho não pode cair junto.
+    socorrer(input.alvos)
     // Fail-open: o que já foi ACEITO nas passadas anteriores vale — descartar
     // correção boa por causa de um erro na retentativa seria pior.
     log.warn("copy_fit.failed", {

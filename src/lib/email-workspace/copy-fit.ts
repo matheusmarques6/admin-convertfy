@@ -509,3 +509,50 @@ export function limiteDoCampo(
   if (deriveFieldNature(f) !== "copy") return null
   return f.max_len
 }
+
+/**
+ * Socorro por código para o alvo que o MODELO não corrigiu.
+ *
+ * Incidente 11/09 (Hero Boxers, welcome 1): o `copy_fit` morreu na primeira
+ * chamada — `resposta vazia de 'anthropic/claude-sonnet-5'; 8000 dos 8000
+ * tokens foram para o raciocínio` — e dos 15 alvos só 3 saíram corrigidos,
+ * os que o código já resolvia sozinho. Os outros 12 foram ao cliente como
+ * vieram, com **oito travessões** no texto ("starts from a different place
+ * — a waistband", "These stay put — the waistband"). O `catch` é fail-open
+ * e preserva o que já tinha sido aceito, o que está certo; o que faltava é
+ * que o travessão que o código sabe tirar continuava dependendo de uma
+ * chamada de LLM que nunca voltou.
+ *
+ * A separação entre "resolve por código" e "vai ao modelo" é feita ANTES,
+ * em `alvosDeEncurtamento`: alvo cujo único problema é o traço E que cabe
+ * depois da troca já sai com `proposta_por_codigo`. Quem chega aqui é o
+ * que tinha traço **e** tamanho — e para esse a resposta do código existe
+ * e é a mesma: trocar o traço e, se ainda estourar, aparar no limite.
+ *
+ * O que NÃO se faz aqui: inventar texto. Alvo `ausente` (item de lista que
+ * o gerador pulou) só o modelo cria — sem ele a linha sai do e-mail pelo
+ * merge, que é o desfecho correto.
+ *
+ * Puro (zero I/O) — testável.
+ */
+export function socorroPorCodigo(alvo: AlvoDeEncurtamento): {
+  texto: string
+  via: "travessao_por_codigo" | "aparado_por_codigo"
+} | null {
+  const original = (alvo.texto ?? "").trim()
+  if (!original) return null
+  const { texto: semTraco, removidos } = removerTravessao(original)
+  const max = alvo.max > 0 ? alvo.max : 0
+  if (removidos > 0) {
+    if (!max || semTraco.length <= max) return { texto: semTraco, via: "travessao_por_codigo" }
+    const aparado = apararNoLimite(semTraco, max)
+    // Tirar o traço já é ganho mesmo quando o corte não cabe: o texto
+    // segue longo, e longo ele já estava.
+    return aparado
+      ? { texto: aparado, via: "aparado_por_codigo" }
+      : { texto: semTraco, via: "travessao_por_codigo" }
+  }
+  if (!max || original.length <= max) return null
+  const aparado = apararNoLimite(original, max)
+  return aparado ? { texto: aparado, via: "aparado_por_codigo" } : null
+}

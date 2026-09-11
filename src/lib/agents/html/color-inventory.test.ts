@@ -155,13 +155,18 @@ describe("recolor com escopo (where)", () => {
     '<td bgcolor="#000000">outro fundo</td>',
   ].join("\n")
 
-  it("where:background troca só os fundos e preserva o texto", () => {
+  it("where:background troca os DOIS dialetos de fundo e preserva o texto", () => {
+    // 11/09: este teste afirmava o contrário — que `bgcolor` ficava de
+    // fora — e era isso que fazia o e-mail sair com `bgcolor="#E1DEDE"` ao
+    // lado de `background-color:#F2F2F2` no mesmo tag: o Outlook na cor
+    // velha, o resto na nova. Os dois são a MESMA decisão de fundo escrita
+    // duas vezes; separá-las na escrita é o defeito, não a precisão.
     const r = applyRecolor(DOC_MISTO, "#000000", "#3D2820", "background")
-    expect(r.replaced).toBe(1)
+    expect(r.replaced).toBe(2)
     expect(r.html).toContain('background:#3D2820;')
+    expect(r.html).toContain('bgcolor="#3D2820"')
+    // O texto preto continua preto — é aqui que o escopo ainda vale.
     expect(r.html).toContain('style="color:#000000;">corpo preto')
-    // bgcolor é OUTRO contexto — não entra em where:background.
-    expect(r.html).toContain('bgcolor="#000000"')
   })
 
   it("where:color troca só o texto", () => {

@@ -280,6 +280,30 @@ export function isColorLiteral(s: string): boolean {
  * posição errada do documento. Ninguém percebe em teste com cores de
  * mesmo tamanho; quebra em produção no primeiro `rgb()` → `#hex`.
  */
+/**
+ * Dois papéis, uma decisão: `bgcolor="X"` e `style="background-color:X"`.
+ *
+ * Num e-mail o fundo de um `<td>` é declarado DUAS vezes — o atributo para
+ * o Outlook, a propriedade para todo o resto — e as duas dizem a mesma
+ * coisa. O inventário as separa de propósito (o agente precisa ver onde a
+ * cor aparece), mas na ESCRITA separá-las deixa o documento em dois
+ * estados: quem lê CSS vê a cor nova e o Outlook continua na antiga.
+ *
+ * Foi o que aconteceu em 11/09 (Hero Boxers, welcome 1): o plano pedia
+ * `recolor #E1DEDE → #F2F2F2 where background`, e a linha do botão saiu
+ * `bgcolor="#E1DEDE" style="background-color:#F2F2F2"` — o "fundo
+ * diferente do fundo do e-mail" que o cliente viu. É o mesmo par que o
+ * `set_botao` já trata no `<td>` e no `fillcolor` do `v:roundrect`.
+ *
+ * Só este par se funde. `color`, `border` e `css-var` continuam estritos:
+ * ali a distinção é de papel de verdade, não de dialeto.
+ */
+export function mesmoPapelDeEscrita(pedido: ColorContext, achado: ColorContext): boolean {
+  if (pedido === achado) return true
+  const fundo = (c: ColorContext) => c === "background" || c === "bgcolor"
+  return fundo(pedido) && fundo(achado)
+}
+
 export function applyRecolor(
   html: string,
   from: string,
@@ -340,7 +364,7 @@ export function applyRecolor(
       const start = m.index ?? 0
       // Escopo: o papel é julgado no documento ORIGINAL, igual ao
       // inventário que o agente leu.
-      if (where && contextOf(html, start) !== where) continue
+      if (where && !mesmoPapelDeEscrita(where, contextOf(html, start))) continue
       if (dentroDe && (start < dentroDe.start || start >= dentroDe.end)) continue
       hits.push({ start, end: start + m[0].length, replacement: replacementOf(m) })
     }

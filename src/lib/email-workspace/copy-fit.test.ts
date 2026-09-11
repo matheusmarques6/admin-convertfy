@@ -13,6 +13,8 @@ import {
   temParComparativo,
 } from "./copy-fit"
 import type { BlueprintBlockField } from "@/types/email-generation"
+import { socorroPorCodigo } from "./copy-fit"
+import type { AlvoDeEncurtamento } from "./copy-fit"
 
 function campo(over: Partial<BlueprintBlockField> = {}): BlueprintBlockField {
   return {
@@ -636,5 +638,63 @@ describe("copy_fit por código (09/09): travessão, aparo, coluna comparativa, p
     expect(closing.proposta_por_codigo).toBe("Feito no Brasil, cada peça é única")
     expect(closing.motivos).toEqual(["travessao"])
     expect(rel.travessao_por_codigo).toEqual(["2.closing_copy"])
+  })
+})
+
+describe("socorroPorCodigo", () => {
+  const alvo = (over: Partial<AlvoDeEncurtamento>): AlvoDeEncurtamento => ({
+    id: "1.body",
+    position: 1,
+    block_id: null,
+    type: "body",
+    key: "body",
+    label: "Body",
+    orientacao: "",
+    texto: "",
+    max: 0,
+    min: null,
+    motivos: [],
+    tracos: 0,
+    ...over,
+  })
+
+  it("o caso real: o modelo morreu e o travessão sai por código", () => {
+    // Hero Boxers, welcome 1 (11/09). O copy_fit falhou na primeira
+    // chamada e oito travessões foram ao cliente.
+    const r = socorroPorCodigo(
+      alvo({
+        texto: "Hero Boxers starts from a different place — a waistband that sits flat.",
+        motivos: ["travessao"],
+        tracos: 1,
+      }),
+    )
+    expect(r?.via).toBe("travessao_por_codigo")
+    expect(r?.texto).toBe("Hero Boxers starts from a different place, a waistband that sits flat.")
+  })
+
+  it("traço e tamanho juntos: tira o traço e apara o que sobra", () => {
+    const texto = "These stay put — the waistband holds the line all day long here"
+    const r = socorroPorCodigo(alvo({ texto, motivos: ["travessao", "max_len"], tracos: 1, max: 56 }))
+    expect(r?.via).toBe("aparado_por_codigo")
+    expect(r!.texto.length).toBeLessThanOrEqual(56)
+    expect(r!.texto).not.toMatch(/—/)
+  })
+
+  it("excesso grande demais para aparar: o traço sai mesmo assim", () => {
+    // Tirar o traço é ganho independente do tamanho — longo ele já estava.
+    const texto = "a".repeat(200) + " — " + "b".repeat(200)
+    const r = socorroPorCodigo(alvo({ texto, motivos: ["travessao", "max_len"], tracos: 1, max: 60 }))
+    expect(r?.via).toBe("travessao_por_codigo")
+    expect(r!.texto).not.toMatch(/—/)
+  })
+
+  it("nada a fazer devolve null — não reescreve o que está certo", () => {
+    expect(socorroPorCodigo(alvo({ texto: "Feito para o corpo que você tem.", max: 60 }))).toBeNull()
+  })
+
+  it("alvo AUSENTE não é inventado", () => {
+    // Só o modelo cria o item de lista que o gerador pulou; sem ele a
+    // linha sai do e-mail pelo merge, que é o desfecho correto.
+    expect(socorroPorCodigo(alvo({ texto: "", motivos: ["ausente"], max: 40 }))).toBeNull()
   })
 })
