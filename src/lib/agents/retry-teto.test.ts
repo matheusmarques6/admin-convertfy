@@ -140,3 +140,25 @@ describe("avisoDeContaPerdida", () => {
     expect(t).toContain("não foram contabilizados")
   })
 })
+
+describe("classificarFalha pela MENSAGEM (11/09)", () => {
+  // Quem chama do `catch` não tem o `InvokeResult` — tem a string. As três
+  // assinaturas são nossas, escritas por `llm-invoke` e `motivoDaSaidaVazia`.
+  it("reconhece o truncamento que virou throw", () => {
+    for (const erro of [
+      "resposta vazia de 'anthropic/claude-sonnet-5'; 8000 dos 8000 tokens foram para o raciocínio; finish_reason=length",
+      "Saída vazia do modelo: max_tokens (8000) consumido pelo raciocínio antes da resposta",
+      "resposta truncada no teto de 8192 tokens",
+    ]) {
+      expect(classificarFalha({ erro, maxTokens: 8000 })).toBe("truncado")
+    }
+  })
+
+  it("timeout continua vencendo — subir o teto não conserta relógio", () => {
+    expect(classificarFalha({ erro: "timeout: finish_reason=length", maxTokens: 8000 })).toBe("timeout")
+  })
+
+  it("erro qualquer continua ilegível — não se inventa truncamento", () => {
+    expect(classificarFalha({ erro: "Unexpected token < in JSON", maxTokens: 8000 })).toBe("ilegivel")
+  })
+})

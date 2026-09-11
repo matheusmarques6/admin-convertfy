@@ -253,6 +253,35 @@ describe("runCopyFit", () => {
     expect(dePara).toMatchObject({ aceito: true, via: "travessao_por_codigo" })
   })
 
+  // 11/09: a regra do `retry-teto` (escrita para o Seletor e o
+  // Estruturador) desceu para cá. Truncou no teto → a 2ª passada tem teto
+  // MAIOR; repeti-la com o mesmo teto tem ~0% de chance e cobra de novo.
+  it("truncado no teto sobe o teto da retentativa", async () => {
+    invokeMock
+      .mockRejectedValueOnce(
+        new Error("Saída vazia do modelo: max_tokens (8000) consumido pelo raciocínio antes da resposta"),
+      )
+      .mockResolvedValueOnce(respostaLLM({ "1.body": "Funciona sem risco." }))
+
+    const r = await runCopyFit(
+      entrada([alvo({ id: "1.body", key: "body", texto: "Funciona — e sem risco.", max: 120, motivos: ["travessao"], tracos: 1 })]),
+    )
+
+    expect(invokeMock).toHaveBeenCalledTimes(2)
+    const tetoDa1a = (invokeMock.mock.calls[0][0] as { max_tokens: number }).max_tokens
+    const tetoDa2a = (invokeMock.mock.calls[1][0] as { max_tokens: number }).max_tokens
+    expect(tetoDa2a).toBeGreaterThan(tetoDa1a)
+    expect(r.aceitas[0].texto).toBe("Funciona sem risco.")
+  })
+
+  it("timeout NÃO sobe o teto — a 2ª chamada morreria igual, mais tarde", async () => {
+    invokeMock.mockRejectedValue(new Error("timeout"))
+    const r = await runCopyFit(entrada([alvo({ id: "1.body", key: "body", texto: "Vai — e volta.", max: 120, motivos: ["travessao"], tracos: 1 })]))
+    expect(invokeMock).toHaveBeenCalledTimes(1)
+    // E o socorro por código continua valendo: o traço sai.
+    expect(r.aceitas[0].texto).toBe("Vai, e volta.")
+  })
+
   // O incidente de 11/09 na fronteira exata: o modelo não respondeu NADA
   // (8000 dos 8000 tokens no raciocínio) e o `catch` fail-open devolvia só
   // o que já estivesse aceito — o traço que o código sabe tirar ia junto.

@@ -29,6 +29,7 @@
 
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
+import { classificarFalha, planejarRetentativa } from "../retry-teto"
 import {
   aceitarReescrita,
   contarTracos,
@@ -87,6 +88,16 @@ const DEFAULT_MODEL = "openai/gpt-5.4-mini"
 // 'low' e orçamento com folga — 13 campos precisam de ~800 tokens de
 // resposta. A migration 20261105 sobe a linha ativa para 6000.
 const DEFAULT_MAX_TOKENS = 6000
+/**
+ * Até onde o teto pode subir numa retentativa por truncamento.
+ *
+ * Subir sem limite estoura o relógio do step (o modelo gera ~90 tok/s) e
+ * infla a reserva de crédito que o OpenRouter faz em voo — que é o outro
+ * jeito de este agente morrer.
+ */
+function tetoMaximoDe(configurado: number): number {
+  return Math.max(configurado * 2, 16000)
+}
 const REASONING: AgentInvokeConfig["reasoning"] = { effort: "low" }
 
 const DEFAULT_SYSTEM = `Você corrige copy de email de e-commerce: encurta o que passou do limite da caixa, tira o travessão, reescreve no idioma da loja o campo que voltou na língua errada e cria o item de lista que o gerador pulou.
@@ -493,6 +504,12 @@ export async function runCopyFit(input: CopyFitInput): Promise<CopyFitResult> {
       }
     }
     let pendentes = paraOModelo
+    // O teto da passada, que SOBE quando a falha foi truncamento (11/09).
+    // A regra é a de `retry-teto.ts`, escrita para o Seletor e o
+    // Estruturador e que nunca desceu para cá — e foi aqui que ela fez
+    // falta: `anthropic/claude-sonnet-5` gastou 8000 dos 8000 tokens
+    // pensando, devolveu vazio, e a 2ª passada teria o mesmo teto.
+    let teto = config.max_tokens
     for (let passada = 0; passada < 2 && pendentes.length > 0; passada++) {
       const varsDaPassada =
         passada === 0
@@ -502,13 +519,32 @@ export async function runCopyFit(input: CopyFitInput): Promise<CopyFitResult> {
               contrato_json: contratoDe(pendentes),
               copy_atual_json: copyAtualDe(pendentes),
             }
-      const res = await invokeAgent(config, varsDaPassada)
-      tentativas++
-      tokensInput += res.tokensInput ?? 0
-      tokensOutput += res.tokensOutput ?? 0
-      custoUsd += res.costUsd ?? 0
+      let res: InvokeResult
+      try {
+        res = await invokeAgent({ ...config, max_tokens: teto }, varsDaPassada)
+        tentativas++
+        tokensInput += res.tokensInput ?? 0
+        tokensOutput += res.tokensOutput ?? 0
+        custoUsd += res.costUsd ?? 0
+      } catch (err) {
+        tentativas++
+        const plano = planejarRetentativa({
+          causa: classificarFalha({
+            erro: err instanceof Error ? err.message : String(err),
+            maxTokens: teto,
+          }),
+          tentativa: passada + 1,
+          maxAttempts: 2,
+          tetoAtual: teto,
+          tetoMaximo: tetoMaximoDe(config.max_tokens),
+        })
+        if (!plano.repetir) throw err
+        log.warn("copy_fit.teto", { emailId: input.emailId, de: teto, para: plano.maxTokens, motivo: plano.motivo })
+        teto = plano.maxTokens
+        continue
+      }
       raw = res.raw
-      const campos = parseCampos(res.raw, res, config.max_tokens)
+      const campos = parseCampos(res.raw, res, teto)
 
       const aindaFora: AlvoDeEncurtamento[] = []
       for (const alvo of pendentes) {
