@@ -45,3 +45,18 @@ export function buildFormUrl(token: string, baseUrl?: string): string {
 export function buildBriefingUrl(token: string, baseUrl?: string): string {
   return `${buildFormUrl(token, baseUrl)}/briefing`
 }
+
+/**
+ * `{base}/forms/{slug}` — formulário público do CRM.
+ *
+ * Existe porque o `event_source_url` da Meta não é opcional quando o
+ * evento declara `action_source: "website"`, e nem todo envio tem de onde
+ * tirá-lo: o cadastro embutido em iframe pode chegar sem referrer, e o
+ * botão "testar evento" do admin não tem nenhum. Mandar a URL do próprio
+ * formulário é a resposta CERTA para os dois — é literalmente a página em
+ * que o evento aconteceria.
+ */
+export function buildCrmFormUrl(slug: string, baseUrl?: string): string {
+  const base = baseUrl ? stripTrailingSlash(baseUrl) : resolveAppBaseUrl()
+  return `${base}/forms/${slug}`
+}

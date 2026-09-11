@@ -32,6 +32,7 @@ import {
   qualifiedEventId,
 } from "@/lib/services/conversion-dispatch.service"
 import { metaEventName } from "@/lib/tracking/meta-event-name"
+import { buildCrmFormUrl } from "@/lib/utils/form-url"
 
 const log = logger.child("PublicFormsSubmit")
 
@@ -577,7 +578,12 @@ export async function POST(
         // envia — dois eventos distintos, sem deduplicação, nenhum
         // utilizável para otimizar campanha.
         qualifiedEventName: metaEventName(trackingCfg.qualified_lead.event_name),
-        eventSourceUrl: parsed.event_source_url ?? parsed.referrer ?? null,
+        // Nunca `null`: com `action_source: "website"` a Meta exige a
+        // URL de origem, e o cadastro embutido em iframe chega sem
+        // referrer. Sem o fallback, justamente o formulário embutido
+        // — o caso de uso principal — mandaria payload incompleto.
+        eventSourceUrl:
+          parsed.event_source_url ?? parsed.referrer ?? buildCrmFormUrl(slug),
         meta: {
           pixelId: form.facebook_pixel_id as string,
           capiTokenEnc: form.meta_capi_token as string,
