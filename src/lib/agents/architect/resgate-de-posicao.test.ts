@@ -156,12 +156,51 @@ describe("menosIncompativel — repetição", () => {
   })
 
   // Duas igualmente incompatíveis não podem alternar a cada geração.
-  it("empate desempata por id, para a escolha ser estável", () => {
+  it("empate total desempata por id, para a escolha ser estável", () => {
     const candidatas = [
       { variant_id: "zz", contrato: contrato({ n_itens: 2, tem_preco: true }) },
       { variant_id: "aa", contrato: contrato({ n_itens: 2, tem_preco: true }) },
     ]
     expect(menosIncompativel(candidatas, PRODUCTS_HERO_BOXERS, "products")?.variant_id).toBe("aa")
     expect(menosIncompativel([...candidatas].reverse(), PRODUCTS_HERO_BOXERS, "products")?.variant_id).toBe("aa")
+  })
+})
+
+describe("menosIncompativel — os desempates, com a biblioteca REAL de products", () => {
+  // As 9 variantes ativas de products em 11/09. Só products-4 mostra preço,
+  // e ela não tem campo numerado nenhum (`product_name`, `price_new`).
+  const BIBLIOTECA = [
+    { variant_id: "produtos-8-9prod", contrato: contrato({ n_itens: 9, copy: 20 }) },
+    { variant_id: "produto-8-4prod", contrato: contrato({ n_itens: 4, copy: 10 }) },
+    { variant_id: "produtos-3", contrato: contrato({ n_itens: 4, copy: 5 }) },
+    { variant_id: "produtos-9", contrato: contrato({ n_itens: 4, copy: 13 }) },
+    { variant_id: "produtos-2", contrato: contrato({ n_itens: 3, copy: 5 }) },
+    { variant_id: "produtos-5", contrato: contrato({ n_itens: 3, copy: 17 }) },
+    { variant_id: "produtos-6", contrato: contrato({ n_itens: 2, copy: 8 }) },
+    { variant_id: "produtos-7", contrato: contrato({ n_itens: 2, copy: 8 }) },
+    { variant_id: "produtos-4", contrato: contrato({ n_itens: null, tem_preco: true, copy: 9 }) },
+  ]
+
+  // `n_itens: null` não é "qualquer quantidade": a anatomia sem família
+  // numerada entrega UM. Sem esta leitura, products-4 sairia com custo ZERO
+  // (tem preço, escapa do mínimo) e venceria — entregando um produto onde a
+  // decisão pediu dois, que é justamente o que o Curador recusou.
+  it("produto único não escapa do mínimo por não ter campo numerado", () => {
+    const escolha = menosIncompativel(BIBLIOTECA, PRODUCTS_HERO_BOXERS, "products")
+    expect(escolha?.variant_id).not.toBe("produtos-4")
+  })
+
+  // Quatro empatam em custo (entregam a grade e nenhuma mostra preço).
+  // Desempata a que chega mais perto do mínimo pedido; depois, a anatomia
+  // mais rica. Escolher por UUID entre elas seria sorteio numa peça que vai
+  // ao cliente.
+  it("entre as empatadas vence a mais perto do pedido, depois a mais rica", () => {
+    const escolha = menosIncompativel(BIBLIOTECA, PRODUCTS_HERO_BOXERS, "products")
+    expect(escolha?.variant_id).toBe("produtos-6")
+  })
+
+  it("sem requisito de grade, a distância não desempata nada", () => {
+    const escolha = menosIncompativel(BIBLIOTECA, { cupom: false }, "products")
+    expect(escolha).not.toBeNull()
   })
 })
