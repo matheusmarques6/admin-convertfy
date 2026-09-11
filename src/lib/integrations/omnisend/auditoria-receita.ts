@@ -85,8 +85,17 @@ function arredondar(n: number): number {
 }
 
 export interface ContextoDaAuditoria {
-  /** Fuso gravado em `client_stores.timezone` — o que a janela usou. */
+  /** Fuso gravado em `client_stores.timezone`. */
   fusoDoCadastro: string | null
+  /**
+   * O fuso que REALMENTE cortou a janela.
+   *
+   * Não é o mesmo que o do cadastro: sem `timezone`, o sync cai no mapa
+   * por país. A Blue Wolf (cadastro NULL, país 'US') teve a janela
+   * cortada em America/New_York — comparar o CADASTRO com a conta diria
+   * apenas "não tem fuso", escondendo qual corte de fato aconteceu.
+   */
+  fusoUsadoNaJanela?: string | null
   /** Fuso que a Omnisend informa em `/brands/current` — o do painel. */
   fusoDaBrand: string | null
   /** A receita atribuída veio calibrada pela Reports API? */
@@ -110,22 +119,33 @@ export function causasProvaveis(
   if (!divergencias.some((d) => d.relevante)) return causas
 
   // 1. Fuso. É o que mais explica, porque desloca a janela inteira: o
-  //    painel corta os dias no fuso da brand, e nós cortamos no fuso do
-  //    cadastro. Divergindo, comparamos recortes de tempo diferentes.
-  if (
-    ctx.fusoDaBrand &&
-    ctx.fusoDoCadastro &&
-    ctx.fusoDaBrand.trim() !== ctx.fusoDoCadastro.trim()
-  ) {
+  //    painel corta os dias no fuso da CONTA, e nós cortamos no fuso que
+  //    resolvemos. Divergindo, comparamos recortes de tempo diferentes.
+  //
+  //    A comparação é com o fuso USADO, não com o cadastrado: é o usado
+  //    que define o corte.
+  const usado = (ctx.fusoUsadoNaJanela ?? ctx.fusoDoCadastro ?? "").trim()
+  const daBrand = (ctx.fusoDaBrand ?? "").trim()
+  if (daBrand && usado && daBrand !== usado) {
+    const origem = ctx.fusoDoCadastro
+      ? "O fuso do cadastro"
+      : "A loja não tem fuso cadastrado, então a janela foi cortada num fuso assumido pelo país. Ele"
     causas.push(
-      `O fuso do cadastro (${ctx.fusoDoCadastro}) não é o da conta na Omnisend ` +
-        `(${ctx.fusoDaBrand}). A janela é cortada num fuso e o painel corta noutro. ` +
-        `Corrija em Lojas → editar loja, ou use "Conferir com a plataforma".`,
+      `${origem} (${usado}) não é o da conta na Omnisend (${daBrand}). ` +
+        "A janela é cortada num fuso e o painel corta noutro — os dois recortes não " +
+        'cobrem as mesmas horas. Use "Conferir com a plataforma" para gravar o fuso da conta.',
     )
   } else if (!ctx.fusoDoCadastro) {
+    // Sem cadastro a janela é sempre um palpite, mesmo quando por acaso
+    // coincide com a conta nesta leitura — o palpite vem do país, e o
+    // país muda de significado no dia em que alguém o corrige.
     causas.push(
-      "A loja não tem fuso cadastrado — a janela foi cortada num fuso assumido. " +
-        'Use "Conferir com a plataforma" para trazer o fuso real da conta.',
+      "A loja não tem fuso cadastrado — a janela foi cortada num fuso assumido" +
+        (usado ? ` (${usado})` : "") +
+        ". " +
+        (daBrand
+          ? `A conta na Omnisend informa ${daBrand}. Use "Conferir com a plataforma" para gravá-lo.`
+          : 'Use "Conferir com a plataforma" para trazer o fuso real da conta.'),
     )
   }
 

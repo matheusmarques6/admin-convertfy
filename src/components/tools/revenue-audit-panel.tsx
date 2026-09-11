@@ -129,11 +129,13 @@ export function RevenueAuditPanel({
       <dl className="mt-3 grid grid-cols-1 gap-x-6 gap-y-1 text-[11px] sm:grid-cols-2">
         <Linha
           rotulo="Fuso usado no corte"
-          valor={
-            r.janela.fusoAssumido
-              ? `${r.janela.fusoUsado} (assumido — a loja não tem fuso cadastrado)`
-              : r.janela.fusoUsado
-          }
+          valor={`${r.janela.fusoUsado}${
+            r.janela.procedenciaDoFuso === "cadastro"
+              ? " (da plataforma)"
+              : r.janela.procedenciaDoFuso === "pais"
+                ? " (assumido pelo país — a loja não tem fuso cadastrado)"
+                : " (padrão da casa — sem fuso e sem país conhecido)"
+          }`}
           alerta={r.janela.fusoAssumido}
         />
         <Linha

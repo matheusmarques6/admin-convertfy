@@ -47,7 +47,8 @@ import {
   fetchOmnisendReports,
   fetchOmnisendStatistics,
 } from "@/lib/services/omnisend-sync.service"
-import { fusoDaLoja, omnisendDateRange } from "@/lib/integrations/omnisend/timezone"
+import { resolverFusoDaLoja, omnisendDateRange } from "@/lib/integrations/omnisend/timezone"
+import { COUNTRY_TIMEZONE } from "@/lib/constants/onboarding"
 import {
   causasProvaveis,
   compararMetrica,
@@ -66,7 +67,14 @@ export interface RevenueAuditResult {
   storeName: string
   currency: string | null
   /** A janela EXATA que foi enviada à plataforma, com offset. */
-  janela: { from: string; to: string; fusoUsado: string; fusoAssumido: boolean }
+  janela: {
+    from: string
+    to: string
+    fusoUsado: string
+    fusoAssumido: boolean
+    /** "cadastro" = veio da plataforma; "pais"/"padrao" = adivinhado. */
+    procedenciaDoFuso: "cadastro" | "pais" | "padrao"
+  }
   fuso: { cadastro: string | null; brand: string | null; divergem: boolean }
   moeda: { cadastro: string | null; brand: string | null; divergem: boolean }
   /** O que a plataforma responde agora, por API. */
@@ -118,7 +126,7 @@ export async function POST(request: NextRequest) {
     const admin = createAdminClient()
     const { data: loja } = await admin
       .from("client_stores")
-      .select("id, store_name, org_id, currency, timezone, omnisend_api_key")
+      .select("id, store_name, org_id, currency, timezone, country, omnisend_api_key")
       .eq("id", body.store_id)
       .maybeSingle()
 
@@ -138,7 +146,14 @@ export async function POST(request: NextRequest) {
     // fosse remontada aqui, a auditoria poderia dizer "bate" sobre uma
     // janela que a produção nunca envia — o defeito circular que a
     // auditoria de moeda tinha antes de 08/09.
-    const { tz, assumido } = fusoDaLoja(loja.timezone as string | null)
+    // A MESMA resolução do sync, com o `country` incluído: sem ele a
+    // auditoria mediria uma janela que a produção nunca envia — o
+    // defeito circular que ela existe para não ter.
+    const { tz, assumido, procedencia } = resolverFusoDaLoja({
+      timezone: loja.timezone as string | null,
+      country: loja.country as string | null,
+      mapaDePais: COUNTRY_TIMEZONE,
+    })
     const { from, to } = omnisendDateRange(body.start, body.end, tz)
 
     // Brand primeiro: é ela que diz o fuso em que o painel corta os
@@ -218,6 +233,7 @@ export async function POST(request: NextRequest) {
 
     const causas = causasProvaveis(divergencias, {
       fusoDoCadastro: (loja.timezone as string | null) || null,
+      fusoUsadoNaJanela: tz,
       fusoDaBrand: brand?.timezone ?? null,
       // Sem a Reports API respondendo, o nosso atribuído não pôde ter
       // sido calibrado nesta janela.
@@ -231,7 +247,7 @@ export async function POST(request: NextRequest) {
       storeId: String(loja.id),
       storeName: String(loja.store_name ?? ""),
       currency: (loja.currency as string | null) ?? null,
-      janela: { from, to, fusoUsado: tz, fusoAssumido: assumido },
+      janela: { from, to, fusoUsado: tz, fusoAssumido: assumido, procedenciaDoFuso: procedencia },
       fuso: {
         cadastro: (loja.timezone as string | null) || null,
         brand: fusoBrand,
