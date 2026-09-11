@@ -308,3 +308,56 @@ export function extrairCtas(html: string, faixas: Faixa[]): Cta[] {
 
   return ctas
 }
+
+/**
+ * Teto de tons de fundo na peça — a regra 1 do guia de disposição de cores.
+ *
+ * "No máximo 3 tons de fundo no e-mail inteiro: base clara, base escura e
+ * uma superfície (ou cor de identidade). Um quarto tom não é permitido."
+ */
+export const TETO_DE_TONS = 3
+
+export interface TonsDeFundo {
+  /** Hex distintos usados como fundo de seção, na ordem da rolagem. */
+  tons: string[]
+  teto: number
+  excede: boolean
+  /** Do 4º tom em diante — os que fazem a peça passar do teto. */
+  excedentes: string[]
+}
+
+/**
+ * Conta os tons de fundo distintos da peça.
+ *
+ * Existe porque a regra 1 é **aritmética** e estava sendo confiada ao
+ * julgamento do modelo. Medido em 11/09 (Hero Boxers, welcome 1): ele
+ * avaliou as duas faixas cinza uma a uma, decidiu `manter` nas duas citando
+ * R3, R5 e R6 — cada decisão isolada defensável — e a peça saiu com QUATRO
+ * fundos: `#000000` na hero, `#FFFFFF` no corpo, `#E1DEDE` em reviews e
+ * `#B1B3B6` em products. Ninguém somou. É o erro que um modelo comete
+ * faixa a faixa e que um `for` não comete, e por isso a régua vem para o
+ * código — o mesmo princípio de `avaliarHeadline` no Estúdio.
+ *
+ * **Foto não é tom.** Faixa cujo fundo é imagem não entra na conta mesmo
+ * quando há uma cor declarada atrás dela: quem lê a peça vê a foto, e
+ * contá-la faria a hero fotográfica gastar um dos três tons sem que o
+ * leitor perceba tom nenhum.
+ *
+ * Puro. Lista vazia (documento sem marcadores) devolve zero tons e
+ * `excede: false` — sem endereço não há conta a fazer, e acusar aqui seria
+ * inventar defeito sobre o que não foi medido.
+ */
+export function tonsDeFundo(faixas: Faixa[]): TonsDeFundo {
+  const tons: string[] = []
+  for (const f of faixas) {
+    if (f.foto || !f.fundo) continue
+    const hex = f.fundo.toUpperCase()
+    if (!tons.includes(hex)) tons.push(hex)
+  }
+  return {
+    tons,
+    teto: TETO_DE_TONS,
+    excede: tons.length > TETO_DE_TONS,
+    excedentes: tons.slice(TETO_DE_TONS),
+  }
+}

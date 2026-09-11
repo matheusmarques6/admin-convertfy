@@ -50,7 +50,7 @@ import {
 } from "./contract"
 import { locateBlockRegions } from "./slot-finder"
 import { extractColorInventory } from "./color-inventory"
-import { extrairCtas, extrairFaixas } from "./color-faixas"
+import { extrairCtas, extrairFaixas, tonsDeFundo } from "./color-faixas"
 // A classificação por nome mora num módulo PURO: a tela de tipografia
 // precisa dela, e importar este arquivo no navegador traria o cliente
 // Supabase junto. Reexportada aqui para os call sites antigos não mudarem.
@@ -589,6 +589,7 @@ export const COLOR_FORMAT_VAR_ORIGINS: Record<string, SegmentOrigin> = {
   tones: { cls: "sistema", rotulo: "Tons derivados do tom de voz — deriveToneKeys" },
   color_inventory_json: { cls: "sistema", rotulo: "Inventário de cores do documento — extractColorInventory" },
   faixas_json: { cls: "sistema", rotulo: "Sequência de faixas do documento — extrairFaixas" },
+  tons_json: { cls: "sistema", rotulo: "Tons de fundo distintos, contados por código — R2" },
   ctas_json: { cls: "sistema", rotulo: "Botões do documento, com a faixa de cada um — extrairCtas" },
   brand_colors: LOJA_BRAND,
   pesquisa_full_text: { cls: "loja", rotulo: "Pesquisa & Diagnóstico — client_stores" },
@@ -766,6 +767,11 @@ export function buildColorFormatVars(
     // por valor. Documento sem marcadores devolve `[]`, e o prompt trata o
     // caso: sem a lista ele não decide ritmo, faz só o trabalho de valor.
     faixas_json: JSON.stringify(faixas, null, 2),
+    // A R2 ("no máximo 3 tons de fundo") é aritmética, e decidir faixa a
+    // faixa não a enxerga: em 11/09 o agente manteve dois cinzas com
+    // justificativa boa em cada um e a peça saiu com quatro fundos. A conta
+    // vem PRONTA para ele, e é refeita por código depois de aplicar.
+    tons_json: JSON.stringify(tonsDeFundo(faixas)),
     ctas_json: JSON.stringify(ctas, null, 2),
     email_name: ctx.emailRow?.name || "",
     subject: ctx.emailRow?.subject || "",

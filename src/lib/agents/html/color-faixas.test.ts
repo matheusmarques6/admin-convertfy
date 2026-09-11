@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { extrairCtas, extrairFaixas } from "./color-faixas"
+import { extrairCtas, extrairFaixas, tonsDeFundo } from "./color-faixas"
 
 /** Bloco com os marcadores que a montagem escreve. */
 function bloco(indice: number, tipo: string, miolo: string): string {
@@ -167,5 +167,73 @@ describe("extrairCtas", () => {
       `<td width="600" style="background-color:#F4F4F4;"><a href="https://loja.com" style="color:#111111;">${longo}</a></td>`,
     )}</tr></table>`
     expect(extrairCtas(doc, extrairFaixas(doc))).toEqual([])
+  })
+})
+
+describe("tonsDeFundo — a R2 medida por código", () => {
+  const faixa = (bloco: number, fundo: string | null, foto = false) => ({
+    ordem: bloco + 1,
+    bloco,
+    tipo: "body",
+    fundo,
+    foto,
+    luminancia: null,
+    cobre_px: 600,
+    editavel: fundo != null,
+    decls: [],
+  })
+
+  it("o caso real da Hero Boxers: quatro fundos, teto de três", () => {
+    // Medido em 11/09. O agente decidiu `manter` nas duas faixas cinza,
+    // com justificativa boa em cada uma (R3 numa, R5/R6 na outra), e nunca
+    // somou o conjunto.
+    const r = tonsDeFundo([
+      faixa(0, "#000000"),
+      faixa(1, "#FFFFFF"),
+      faixa(2, "#E1DEDE"),
+      faixa(3, "#B1B3B6"),
+      faixa(4, "#FFFFFF"),
+    ])
+    expect(r.tons).toEqual(["#000000", "#FFFFFF", "#E1DEDE", "#B1B3B6"])
+    expect(r.excede).toBe(true)
+    expect(r.excedentes).toEqual(["#B1B3B6"])
+  })
+
+  it("três tons passam; o repetido não conta duas vezes", () => {
+    const r = tonsDeFundo([
+      faixa(0, "#000000"),
+      faixa(1, "#FFFFFF"),
+      faixa(2, "#FFFFFF"),
+      faixa(3, "#F2F2F2"),
+    ])
+    expect(r.tons).toHaveLength(3)
+    expect(r.excede).toBe(false)
+    expect(r.excedentes).toEqual([])
+  })
+
+  it("FOTO não gasta um tom", () => {
+    // Quem lê a peça vê a foto, não a cor atrás dela. Contá-la faria a hero
+    // fotográfica queimar um dos três tons sem que ninguém perceba um tom.
+    const r = tonsDeFundo([
+      faixa(0, "#101010", true),
+      faixa(1, "#FFFFFF"),
+      faixa(2, "#E1DEDE"),
+      faixa(3, "#B1B3B6"),
+    ])
+    expect(r.tons).toEqual(["#FFFFFF", "#E1DEDE", "#B1B3B6"])
+    expect(r.excede).toBe(false)
+  })
+
+  it("caixa do hex não duplica o tom", () => {
+    const r = tonsDeFundo([faixa(0, "#ffffff"), faixa(1, "#FFFFFF")])
+    expect(r.tons).toEqual(["#FFFFFF"])
+  })
+
+  it("documento sem marcadores não acusa nada", () => {
+    // Sem endereço não há conta a fazer, e acusar aqui seria inventar
+    // defeito sobre o que não foi medido.
+    const r = tonsDeFundo([])
+    expect(r.tons).toEqual([])
+    expect(r.excede).toBe(false)
   })
 })

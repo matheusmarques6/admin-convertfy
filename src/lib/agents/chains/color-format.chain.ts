@@ -167,6 +167,15 @@ export const DEFAULT_COLOR_FORMAT_USER_TEMPLATE = `<store>
 {{faixas_json}}
 </faixas>
 
+<tons_de_fundo>
+{{tons_json}}
+Esta conta já foi feita pelo código sobre as faixas acima, e é refeita depois que o teu
+plano é aplicado. Com \`excede: true\` a peça viola a R2 e reduzir os tons é trabalho TEU,
+não lacuna: escolhe qual dos \`excedentes\` some e manda a faixa dele para um tom que já
+está na lista. Decidir faixa a faixa sem olhar esta soma é como a peça de 10/09 saiu com
+quatro fundos — cada decisão defensável sozinha, o conjunto fora da regra.
+</tons_de_fundo>
+
 <ctas>
 {{ctas_json}}
 </ctas>
