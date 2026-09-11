@@ -4,7 +4,11 @@ import { timingSafeEqual } from "crypto"
 import { mapAsaasStatusToInternal } from "@/lib/integrations/asaas"
 import type { AsaasPaymentStatus } from "@/lib/integrations/types"
 import { handleAsaasRefundWebhook } from "@/lib/services/refund.service"
-import { buildInvoiceRowFromPayment, resolveClientForPayment } from "@/lib/services/asaas-invoice-mirror"
+import {
+  buildInvoiceRowFromPayment,
+  resolveClientForPayment,
+  resolveOrgForPayment,
+} from "@/lib/services/asaas-invoice-mirror"
 import { isMissingClassificationColumn, stripClassification } from "@/lib/services/charge-classification"
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { logger } from "@/lib/logger"
@@ -172,23 +176,35 @@ async function handlePaymentEvent(payload: AsaasWebhookPayload, options?: Handle
   } else {
     // Espelho novo: cliente e linha pelo módulo compartilhado com o sync
     // (externalReference → custom_fields.asaas_customer_id; sem org aqui,
-    // o webhook não tem sessão). Sem cliente, não há onde pendurar.
+    // o webhook não tem sessão).
+    //
+    // Sem cliente a fatura ENTRA assim mesmo, para a triagem do
+    // Financeiro. Antes o `if (clientId)` a descartava — "não há onde
+    // pendurar" — e o pagamento sumia sem deixar rastro, que é o mesmo
+    // buraco dos 167 do cron: a carteira existe para mostrar esse
+    // dinheiro.
     const clientId = await resolveClientForPayment(supabase, null, payment)
-    if (clientId) {
-      const row = buildInvoiceRowFromPayment(
-        { ...payment, status: payment.status as AsaasPaymentStatus, subscription: payment.subscription },
-        clientId,
-      )
-      let { error: insertError } = await supabase.from("invoices").insert(row)
-      if (insertError && isMissingClassificationColumn(insertError)) {
-        ;({ error: insertError } = await supabase.from("invoices").insert(stripClassification(row)))
-      }
-      if (insertError) {
-        // 23505 = o sync/espelho gravou primeiro (índice único 20261119) — nada a fazer.
-        log.error("Error creating invoice:", insertError)
-      } else {
-        log.debug(`New invoice created for client ${clientId}`)
-      }
+    const orgId = await resolveOrgForPayment(supabase, clientId)
+    const row = buildInvoiceRowFromPayment(
+      { ...payment, status: payment.status as AsaasPaymentStatus, subscription: payment.subscription },
+      clientId,
+      null,
+      orgId,
+    )
+    let { error: insertError } = await supabase.from("invoices").insert(row)
+    if (insertError && isMissingClassificationColumn(insertError)) {
+      ;({ error: insertError } = await supabase.from("invoices").insert(stripClassification(row)))
+    }
+    if (insertError) {
+      // 23505 = o sync/espelho gravou primeiro (índice único 20261119) — nada a fazer.
+      log.error("Error creating invoice:", insertError)
+    } else if (clientId) {
+      log.debug(`New invoice created for client ${clientId}`)
+    } else {
+      log.warn("fatura do webhook sem dono — entra para triagem", {
+        asaas_id: payment.id,
+        customer: payment.customer,
+      })
     }
   }
 }

@@ -46,7 +46,14 @@ export async function GET(request: NextRequest) {
     const { data, error } = await admin
       .from("invoices")
       .select("id, asaas_id, asaas_customer_id, amount, due_date, payment_date, status, description")
-      .eq("org_id", orgId)
+      // `org_id IS NULL` entra de propósito: a fatura sem cliente também
+      // pode ficar sem org (webhook com mais de uma integração ativa, ou
+      // linha gravada por um build anterior a esta coluna). Filtrar só
+      // pela org faria justamente a órfã sumir da fila que existe para
+      // ela — o mesmo dinheiro invisível, uma camada acima. Com uma org,
+      // que é o caso aqui, não há ambiguidade; com várias, a linha sem
+      // org aparece para todas até alguém decidir de quem é.
+      .or(`org_id.eq.${orgId},org_id.is.null`)
       .is("client_id", null)
       .order("due_date", { ascending: false })
       .limit(LIMITE)
@@ -86,10 +93,17 @@ export async function PUT(request: NextRequest) {
     // outra decisão e não passa por aqui.
     const { data: fatura } = await admin
       .from("invoices")
-      .select("id, client_id, asaas_customer_id")
+      .select("id, client_id, asaas_customer_id, org_id")
       .eq("id", invoiceId)
-      .eq("org_id", orgId)
-      .maybeSingle<{ id: string; client_id: string | null; asaas_customer_id: string | null }>()
+      // Mesmo motivo do GET: a órfã sem org tem de poder ser resolvida,
+      // senão ela fica visível na fila e imune ao botão que a tiraria de lá.
+      .or(`org_id.eq.${orgId},org_id.is.null`)
+      .maybeSingle<{
+        id: string
+        client_id: string | null
+        asaas_customer_id: string | null
+        org_id: string | null
+      }>()
     if (!fatura) throw new AppError("Fatura não encontrada nesta organização", 404, "not-found")
     if (fatura.client_id) {
       throw new AppError("Esta fatura já tem cliente", 422, "already-linked")
@@ -103,9 +117,11 @@ export async function PUT(request: NextRequest) {
       .maybeSingle<{ id: string; custom_fields: Record<string, unknown> | null }>()
     if (!cliente) throw new AppError("Cliente não encontrado nesta organização", 404, "not-found")
 
+    // O vínculo carimba a org junto: a linha deixa de depender de quem
+    // a criou para ter escopo.
     const { error: upErr } = await admin
       .from("invoices")
-      .update({ client_id: clientId })
+      .update({ client_id: clientId, org_id: fatura.org_id ?? orgId })
       .eq("id", invoiceId)
     if (upErr) throw upErr
 
@@ -134,8 +150,8 @@ export async function PUT(request: NextRequest) {
     if (fatura.asaas_customer_id) {
       const { data: outras } = await admin
         .from("invoices")
-        .update({ client_id: clientId })
-        .eq("org_id", orgId)
+        .update({ client_id: clientId, org_id: fatura.org_id ?? orgId })
+        .or(`org_id.eq.${orgId},org_id.is.null`)
         .is("client_id", null)
         .eq("asaas_customer_id", fatura.asaas_customer_id)
         .select("id")

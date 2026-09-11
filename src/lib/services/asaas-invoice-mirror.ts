@@ -82,6 +82,33 @@ export async function resolveClientForPayment(
 }
 
 /**
+ * A org da fatura, para quem não tem sessão (o webhook do Asaas).
+ *
+ * Com cliente, a org é a dele. Sem cliente — a fatura que vai para a
+ * triagem — não há de onde derivar a não ser da integração que recebe
+ * esses pagamentos: com UMA ativa a resposta é inequívoca; com várias,
+ * escolher seria chutar de quem é o dinheiro, e `org_id` fica nulo (a
+ * triagem lista o nulo de propósito, para a linha nunca sumir).
+ */
+export async function resolveOrgForPayment(
+  db: SupabaseClient,
+  clientId: string | null,
+): Promise<string | null> {
+  if (clientId) {
+    const { data } = await db.from("clients").select("org_id").eq("id", clientId).maybeSingle()
+    if (data?.org_id) return data.org_id as string
+  }
+  const { data: integ } = await db
+    .from("integrations")
+    .select("org_id")
+    .eq("type", "asaas")
+    .eq("is_active", true)
+    .limit(2)
+  if (integ?.length === 1) return integ[0].org_id as string
+  return null
+}
+
+/**
  * Linha de `invoices` para o payment. `currentChargeType` = classificação
  * já gravada (update): assinatura de origem só classifica como
  * `subscription` quando não há classificação manual.
