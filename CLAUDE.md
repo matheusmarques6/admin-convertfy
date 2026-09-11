@@ -5634,7 +5634,7 @@ congelado em `snapshot.janela` — `source: "pais"` ou `"padrao"` é fuso
 adivinhado, e quem compara o relatório com o painel meses depois precisa
 saber disso pelo mesmo motivo de `period_notes`.
 
-## LeadQualificado não chegava na Meta: o remédio matou o paciente (set/2026, migration 20261141)
+## LeadQualificado não chegava na Meta: o remédio matou o paciente (set/2026, migration 20261142)
 
 Sintoma relatado: o evento **não chega** no Gerenciador de Eventos, nem
 pelo botão "testar evento". Medido nos dois lados antes de escrever
@@ -5676,7 +5676,7 @@ linha**, tolerando 23505 e nada mais. Sem `ON CONFLICT`, o formato do
 índice deixa de importar; uma linha que falha não leva a outra junto; e
 o log carrega o **código do Postgres** — foi a ausência dele que fez
 este diagnóstico custar um mês. `erro-de-fila.ts` (puro, 8 testes) é
-quem classifica. A migration 20261141 desparcializa o índice mesmo
+quem classifica. A migration 20261142 desparcializa o índice mesmo
 assim: o predicado não impedia nada (NULL já é distinto em índice único
 btree) e só quebrava `ON CONFLICT` — a armadilha sai do banco em vez de
 esperar o próximo.
