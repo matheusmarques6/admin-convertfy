@@ -108,6 +108,8 @@ import {
 } from "../shared/component-dimensions"
 import { variantIsFillable as coherenceVariantIsFillable } from "@/lib/email-workspace/schema-example-coherence"
 import { assembleDocument, coberturaSuficiente, validateBlockMarkers } from "./assemble-document"
+import { normalizarSecao } from "./repeticao"
+import { menosIncompativel } from "./resgate-de-posicao"
 import type { OutlineSection } from "./outline-sections"
 import {
   interpolateSystem,
@@ -1064,9 +1066,10 @@ export async function assembleStoreReference(
   // (09/09): a lista vai aos dois Curadores, à telemetria e ao medidor.
   // Zero código veta a escolha — o prompt proíbe e o medidor registra
   // `requisito_violado`; quem fecha a porta é o Blueprint (`omitir`).
+  const requisitosPorPosicao = requisitosDaDecisao(input.estruturadorDecisao)
   const eliminadasPorRequisito = eliminarPorRequisitos(
     sections,
-    requisitosDaDecisao(input.estruturadorDecisao),
+    requisitosPorPosicao,
     catalog.sections,
   )
   const intencoesHumanas = input.structure.filter((s) => (s.intencao ?? "").trim()).length
@@ -1944,11 +1947,38 @@ export async function assembleStoreReference(
     })
   }
 
+  // ── Resgate da posição vazia ────────────────────────────────────────
+  // Posição sem variante SOME do e-mail: `assembleDocument` a pula e nada é
+  // puxado do template curado para a lacuna. O Curador não sabe disso — em
+  // 11/09 ele deixou `products` vazia escrevendo "a posição fica na peça e
+  // cai no template global", e o cliente perguntou onde estava o feed. A
+  // partir daqui, antes de desistir da posição, entra a menos incompatível
+  // da MESMA seção (`menosIncompativel`), com o motivo registrado.
+  const variantesDaSecao = new Map(
+    catalog.sections.map((c) => [normalizarSecao(c.section), c.variantes]),
+  )
+  const jaUsadas = new Set<string>()
+  const resgatadas: Array<{ block_index: number; section: string; variant_id: string; motivo: string; custo: number }> = []
+
   const slots: AssemblySlot[] = sections.map((section, i) => {
     const label = input.structure[i]?.label ?? section
     const id = chosenById.get(i)
-    const variant = id ? byId.get(id) : undefined
+    let variant = id ? byId.get(id) : undefined
+    if (!variant) {
+      const resgate = menosIncompativel(
+        variantesDaSecao.get(normalizarSecao(section)) ?? [],
+        requisitosPorPosicao[i],
+        section,
+        jaUsadas,
+      )
+      const candidata = resgate ? byId.get(resgate.variant_id) : undefined
+      if (resgate && candidata) {
+        variant = candidata
+        resgatadas.push({ block_index: i, section, variant_id: resgate.variant_id, motivo: resgate.motivo, custo: resgate.custo })
+      }
+    }
     if (!variant) return { kind: "missing", section, label }
+    jaUsadas.add(variant.id)
     // A seção sai da VARIANTE, não do outline. O outline e o Estruturador
     // propõem a forma; quem decide é o Curador, e a posição adota a forma
     // escolhida. Manter a seção proposta faria o marcador do documento
@@ -1958,6 +1988,15 @@ export async function assembleStoreReference(
     // diferentes.
     return { kind: "variant", variant, section: variant.block_type, label }
   })
+
+  if (resgatadas.length > 0) {
+    log.warn("assembler.posicao_resgatada", {
+      storeId: input.storeId,
+      flowType: input.flowType,
+      emailNumber: input.emailNumber,
+      resgatadas,
+    })
+  }
 
   const chosen = slots.flatMap((s) => (s.kind === "variant" ? [s.variant] : []))
 
@@ -2152,6 +2191,11 @@ export async function assembleStoreReference(
       // "seções puladas" nos logs.
       blocks_assembled: assembled.stats.blocks,
       blocks_skipped: assembled.stats.skipped,
+      // Posições que o Curador deixou vazias e o código preencheu com a
+      // menos incompatível da seção. Cada linha aqui é uma LACUNA de
+      // biblioteca cobrada: o e-mail saiu inteiro, mas a curadoria deve
+      // uma variante que realize o papel sem concessão.
+      posicoes_resgatadas: resgatadas,
       wrapped_unknown: assembled.stats.wrappedUnknown,
       // Variantes cadastradas como documento completo: a casca foi removida
       // antes do encaixe. Sem isto a montagem embrulhava o documento inteiro

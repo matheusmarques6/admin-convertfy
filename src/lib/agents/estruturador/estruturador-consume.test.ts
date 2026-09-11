@@ -203,6 +203,34 @@ describe("arbitrarCampos + requisitos no blueprint (09/09)", () => {
     expect(r[1].omitir_motivo).toContain("cupom negado")
   })
 
+  // O schema REAL da products-4 (a única variante de products com preço da
+  // biblioteca, 11/09): `price_old` riscado e `badge_deadline` só existem
+  // para sustentar uma promoção. A posição pedia `preco: true` E
+  // `cupom: false` — mostrar o preço, sem oferta. Sem esta arbitragem,
+  // aceitar a variante entregaria um "de/por" e um prazo INVENTADOS, que é
+  // pior que a seção faltando.
+  it("sem oferta: preço riscado e prazo saem; o preço vigente fica", () => {
+    const fields = [
+      f("product_name"),
+      f("price_old"),
+      f("price_new"),
+      f("badge_deadline"),
+      f("cta_label"),
+    ]
+    const r = arbitrarCampos(fields, { cupom: false, cta: true, n_itens: null, preco: true, avaliacao: null, campos: [], imagem: null, exige: [] })
+    expect(r.filter((x) => x.omitir).map((x) => x.key)).toEqual(["price_old", "badge_deadline"])
+    expect(r.find((x) => x.key === "price_new")?.omitir ?? false).toBe(false)
+    expect(r.find((x) => x.key === "price_old")?.omitir_motivo).toContain("preço anterior riscado")
+  })
+
+  // `cupom` é o sinal de "sem oferta" por posição. Com oferta declarada, o
+  // "de/por" e o prazo são legítimos e não podem ser apagados.
+  it("com oferta, preço riscado e prazo ficam", () => {
+    const fields = [f("price_old"), f("badge_deadline")]
+    const r = arbitrarCampos(fields, { cupom: true, cta: null, n_itens: null, preco: true, avaliacao: null, campos: [], imagem: null, exige: [] })
+    expect(r.filter((x) => x.omitir)).toEqual([])
+  })
+
   it("item além do máximo é omitido; required omitido declara incompatibilidade dura; sem requisito nada muda", () => {
     const fields = [f("product_1_name"), f("product_2_name"), f("product_3_name", { required: true }), f("product_cta_label_3")]
     const r = arbitrarCampos(fields, { cupom: null, cta: null, n_itens: { min: 2, max: 2 }, preco: null, avaliacao: null, campos: [], imagem: null, exige: [] })
