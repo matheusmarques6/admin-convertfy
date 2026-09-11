@@ -311,11 +311,20 @@ export function PesquisaSection({ storeId, initialData, editor }: PesquisaSectio
 
   // Regenera APENAS as objeções via IA in-process (Anthropic direto).
   // Atualiza o estado local com o retorno; cai pro reload se o payload vier vazio.
+  //
+  // O relógio é do CLIENTE e existe porque `fetch` sem teto espera para
+  // sempre: quando o gateway matava a função, o botão ficava girando sem
+  // desfecho e a única saída era recarregar a página. O teto é maior que o
+  // `maxDuration` da rota (300s) de propósito — quem tem de cortar primeiro
+  // é o servidor, que sabe o motivo; aqui é só a rede de segurança.
   const regenerateObjections = async () => {
     setRegeneratingObjections(true)
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), 320_000)
     try {
       const res = await fetch(`/api/admin/stores/${storeId}/regenerate-objections`, {
         method: "POST",
+        signal: ctrl.signal,
       })
       if (res.ok) {
         const j = await res.json().catch(() => ({}))
@@ -344,8 +353,18 @@ export function PesquisaSection({ storeId, initialData, editor }: PesquisaSectio
         toast({ variant: "destructive", title: "Erro ao regerar objeções", description: String(msg) })
       }
     } catch (e) {
-      toast({ variant: "destructive", title: "Erro de rede", description: (e as Error).message })
+      // AbortError é o nosso relógio, não a rede: dizer "Erro de rede" aqui
+      // manda investigar a conexão quando o que houve foi demora.
+      const abortado = (e as Error)?.name === "AbortError"
+      toast({
+        variant: "destructive",
+        title: abortado ? "O Catalogador demorou demais" : "Erro de rede",
+        description: abortado
+          ? "A geração passou de 5 minutos e foi interrompida aqui. Veja a run no Estúdio para o motivo registrado."
+          : (e as Error).message,
+      })
     } finally {
+      clearTimeout(timer)
       setRegeneratingObjections(false)
     }
   }

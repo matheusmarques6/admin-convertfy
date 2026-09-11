@@ -193,3 +193,34 @@ export function restanteDoOrcamento(agoraMs?: number): number | null {
 export function relogioParaChamada(tetoMs: number): RelogioDaChamada {
   return relogioDaChamada({ tetoMs, restanteMs: restanteDoOrcamento() })
 }
+
+/**
+ * Latência que não é geração: handshake, fila do provedor e o tempo até o
+ * primeiro token. `msParaGerar` mede só a saída, e uma chamada cujo relógio
+ * seja exatamente a conta da saída é cortada antes de escrever a última
+ * linha.
+ */
+export const LATENCIA_BASE_MS = 15_000
+
+/**
+ * O relógio de um agente cujo teto de tokens mora no BANCO.
+ *
+ * `TETO_DE_RELOGIO_MS` resolve os agentes cujo teto é constante no código.
+ * Não serve para o Catalogador: o `max_tokens` dele vem de
+ * `email_agent_configs` e muda sem deploy — foi assim que ele passou de
+ * 8.192 para 12.288 em 04/09 e deixou de caber no `maxDuration` da rota,
+ * sem que uma linha do repositório mudasse. Constante aqui envelheceria na
+ * primeira troca pela tela.
+ *
+ * Derivar o relógio do teto mantém os dois números andando juntos por
+ * construção, que é a regra que `AgentInvokeConfig.timeoutMs` documenta:
+ * teto de token que o relógio nunca deixa atingir não é generosidade — o
+ * OpenRouter RESERVA `prompt + max_tokens` em crédito enquanto a chamada
+ * está em voo.
+ *
+ * Continua sendo só o TETO desta chamada: quem corta de verdade é
+ * `relogioDaChamada`, pelo que resta da janela.
+ */
+export function relogioParaTeto(maxTokens: number): number {
+  return Math.max(PISO_DE_RELOGIO_MS, msParaGerar(maxTokens) + LATENCIA_BASE_MS)
+}

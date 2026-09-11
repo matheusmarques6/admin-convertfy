@@ -8,6 +8,8 @@ import {
   cabeNaJanela,
   comOrcamentoDeFase1,
   restanteDoOrcamento,
+  relogioParaTeto,
+  LATENCIA_BASE_MS,
 } from "./fase1-orcamento"
 
 describe("msParaGerar", () => {
@@ -134,6 +136,42 @@ describe("a janela propagada", () => {
         expect(restanteDoOrcamento()!).toBeLessThanOrEqual(50_000)
       })
       expect(restanteDoOrcamento()!).toBeGreaterThan(500_000)
+    })
+  })
+})
+
+describe("relogioParaTeto", () => {
+  // O caso que motivou a função: o `max_tokens` do Catalogador foi de 8.192
+  // para 12.288 por uma troca no banco, e o relógio (240s fixo) não soube.
+  // Derivado, ele acompanha.
+  it("acompanha o teto de tokens quando ele muda no banco", () => {
+    const antes = relogioParaTeto(8_192)
+    const depois = relogioParaTeto(12_288)
+    expect(depois).toBeGreaterThan(antes)
+    expect(depois).toBe(msParaGerar(12_288) + LATENCIA_BASE_MS)
+  })
+
+  // A conta de `msParaGerar` mede só a saída. Uma chamada cujo relógio fosse
+  // exatamente ela seria cortada antes da última linha, porque handshake,
+  // fila do provedor e tempo até o primeiro token não geram token nenhum.
+  it("soma a latência que não é geração", () => {
+    expect(relogioParaTeto(12_288)).toBeGreaterThan(msParaGerar(12_288))
+  })
+
+  // Teto ausente ou absurdo não pode virar relógio zero: `relogioDesteInvoke`
+  // trata zero como "não comece" e o agente nunca rodaria.
+  it("nunca desce abaixo do piso", () => {
+    expect(relogioParaTeto(0)).toBe(PISO_DE_RELOGIO_MS)
+    expect(relogioParaTeto(Number.NaN)).toBe(PISO_DE_RELOGIO_MS)
+    expect(relogioParaTeto(100)).toBe(PISO_DE_RELOGIO_MS)
+  })
+
+  // É só o TETO: quem corta de verdade continua sendo a janela.
+  it("continua subordinado ao que resta da janela", () => {
+    const teto = relogioParaTeto(12_288)
+    expect(relogioDaChamada({ tetoMs: teto, restanteMs: 60_000 })).toEqual({
+      ms: 60_000,
+      origem: "janela",
     })
   })
 })
