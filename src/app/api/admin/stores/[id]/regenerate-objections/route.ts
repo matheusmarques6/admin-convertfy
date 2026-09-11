@@ -21,12 +21,35 @@ import { NextRequest } from "next/server"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse, AppError } from "@/lib/api/errors"
 import { runCatalogador } from "@/lib/agents/objecoes/catalogador.service"
+import { comOrcamentoDeFase1 } from "@/lib/agents/fase1-orcamento"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("RegenerateObjections")
 
 export const dynamic = "force-dynamic"
-export const maxDuration = 120
+
+/**
+ * O Catalogador é UMA chamada ao modelo com teto alto (12.288 tokens de
+ * saída em 11/09) e até uma segunda quando o validador reprova. A 90 tok/s
+ * medidos, cada uma pede ~150s: os 120s que esta rota declarava não cobriam
+ * nem a primeira, e o relógio do invoke (240s) era o DOBRO do orçamento da
+ * função inteira — nenhuma das duas pontas sabia da outra.
+ *
+ * O desfecho era sempre o mesmo: o gateway matava a função no meio, o
+ * `finishGenerationRun` nunca rodava e a run ficava `running` órfã até o
+ * watchdog. Na tela, "Erro de rede" depois de dois minutos de espera; três
+ * tentativas seguidas na Innova Bay (11/09, 03:23/03:26/03:28), todas
+ * cobradas do provedor e todas perdidas.
+ */
+export const maxDuration = 300
+
+/**
+ * O que sobra da função para gravar o catálogo, fechar a run e responder.
+ * A janela é o resto — é dela que sai o relógio de cada chamada ao modelo
+ * (`relogioDaChamada`), então nenhuma pode prometer tempo que a request
+ * não tem.
+ */
+const RESERVA_MS = 25_000
 
 export async function POST(
   request: NextRequest,
@@ -37,7 +60,9 @@ export async function POST(
     const sb = await createClient()
     const user = await requireAuth(sb)
 
-    const r = await runCatalogador({ storeId, triggeredBy: user.id })
+    const r = await comOrcamentoDeFase1(maxDuration * 1000 - RESERVA_MS, () =>
+      runCatalogador({ storeId, triggeredBy: user.id }),
+    )
     if (r.status === "sem_contexto") {
       throw new AppError(
         "Defina a Pesquisa & Diagnóstico (marca ou persona) antes de catalogar as objeções.",
@@ -45,8 +70,11 @@ export async function POST(
       )
     }
     if (r.status === "falhou" || !r.catalogo) {
+      // `r.motivo` já vem traduzido pelo serviço (`catalogador-erros`): o cru
+      // deste caminho é a palavra "timeout", que na tela não diz o que houve
+      // nem o que fazer.
       throw new AppError(
-        `O Catalogador não devolveu um catálogo válido: ${(r.erros ?? []).slice(0, 3).join("; ") || "tente novamente"}`,
+        r.motivo ?? `O Catalogador não devolveu um catálogo válido: ${(r.erros ?? []).slice(0, 3).join("; ") || "tente novamente"}`,
         502,
       )
     }

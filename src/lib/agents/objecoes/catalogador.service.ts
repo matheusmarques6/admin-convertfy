@@ -45,6 +45,8 @@ import {
 } from "./catalogador-prompt"
 import { normalizarCatalogo, projetarObjecoes, validarCatalogo } from "./catalogo-regras"
 import { aplicarFichaAoCatalogo, fichaParaPrompt, normalizarFicha } from "@/lib/stores/ficha-operacional"
+import { cabeNaJanela, relogioParaTeto, restanteDoOrcamento } from "../fase1-orcamento"
+import { motivoDaFalha } from "./catalogador-erros"
 import type { CatalogoDeObjecoes } from "./vocabulario"
 
 const log = logger.child("Catalogador")
@@ -65,6 +67,8 @@ export interface RunCatalogadorResult {
   objections: Array<{ objection: string; treatment: string }>
   runId: string | null
   erros?: string[]
+  /** A causa em texto de gente — é o que a rota mostra na tela. */
+  motivo?: string
 }
 
 /** sha8 do catálogo — o alvo do Seletor guarda isto para saber se ficou velho. */
@@ -104,10 +108,16 @@ export async function runCatalogador(input: RunCatalogadorInput): Promise<RunCat
     : []
 
   const cfgRow = await loadActiveAgentConfig("catalogador")
+  const maxTokens = cfgRow?.max_tokens ?? 8192
   const config: AgentInvokeConfig = {
     model: cfgRow?.model || DEFAULT_MODEL,
     temperature: cfgRow?.temperature ?? 0.3,
-    max_tokens: cfgRow?.max_tokens ?? 8192,
+    max_tokens: maxTokens,
+    // O relógio sai do teto de tokens, que mora no BANCO e muda sem deploy.
+    // Uma constante aqui envelheceria na primeira troca pela tela — foi
+    // exatamente o que aconteceu: 8.192 virou 12.288 em 04/09 e o relógio
+    // global (240s) seguiu o mesmo, com a rota declarando 120s de função.
+    timeoutMs: relogioParaTeto(maxTokens),
     system_prompt: cfgRow?.system_prompt?.trim() || DEFAULT_CATALOGADOR_SYSTEM,
     user_template: cfgRow?.user_template?.trim() || DEFAULT_CATALOGADOR_USER,
   }
@@ -167,6 +177,24 @@ export async function runCatalogador(input: RunCatalogadorInput): Promise<RunCat
   let segmentsFinal = segBase.segments
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    // A segunda tentativa é uma chamada inteira ao modelo: começar sem
+    // janela para ela é comprar o 504 — a função morre no meio e a run fica
+    // `running` órfã, que é o desfecho que esconde a causa. Parar aqui
+    // fecha a run com o motivo.
+    if (attempt > 1) {
+      const cabe = cabeNaJanela({
+        custoMs: config.timeoutMs ?? 0,
+        restanteMs: restanteDoOrcamento(),
+      })
+      if (!cabe.cabe) {
+        errosAnteriores = [`sem orçamento para a 2ª tentativa — ${cabe.motivo}`]
+        log.warn("catalogador.sem_orcamento_para_retry", {
+          storeId: input.storeId,
+          motivo: cabe.motivo,
+        })
+        break
+      }
+    }
     const vars =
       errosAnteriores.length > 0
         ? {
@@ -265,6 +293,15 @@ export async function runCatalogador(input: RunCatalogadorInput): Promise<RunCat
     }
   }
 
+  // A causa que explica o desfecho, traduzida uma vez e usada nos três
+  // lugares que a leem: a run, o log de custo e a resposta da rota. Sem
+  // isto, a run grava "timeout" e a telemetria não distingue modelo lento
+  // de catálogo reprovado.
+  const motivo = motivoDaFalha(errosAnteriores, {
+    relogioMs: config.timeoutMs ?? 0,
+    maxTokens: config.max_tokens,
+  })
+
   await finishGenerationRun(runId, {
     storeId: input.storeId,
     batchId,
@@ -273,12 +310,12 @@ export async function runCatalogador(input: RunCatalogadorInput): Promise<RunCat
     agentConfigId: cfgRow?.id,
     status: "error",
     model: config.model,
-    errorMessage: errosAnteriores.join("; ").slice(0, 2000) || "catalogador_failed",
+    errorMessage: `[${motivo.codigo}] ${motivo.mensagem} · cru: ${errosAnteriores.join("; ")}`.slice(0, 2000),
     renderedPrompt: promptFinal || undefined,
     promptSegments: segmentsFinal,
     inputSummary,
     rawOutput: raw.slice(0, 16000) || undefined,
-    parsedOutput: { erros: errosAnteriores },
+    parsedOutput: { erros: errosAnteriores, motivo: motivo.codigo, relogio_ms: config.timeoutMs ?? null },
     tokensInput: tokensIn,
     tokensOutput: tokensOut,
     costCents: resolveCostCents({ model: config.model, tokensInput: tokensIn, tokensOutput: tokensOut, costUsd }),
@@ -296,7 +333,7 @@ export async function runCatalogador(input: RunCatalogadorInput): Promise<RunCat
     storeId: input.storeId,
     errorMessage: errosAnteriores.join("; ").slice(0, 500),
   })
-  return { status: "falhou", catalogo: null, objections: [], runId, erros: errosAnteriores }
+  return { status: "falhou", catalogo: null, objections: [], runId, erros: errosAnteriores, motivo: motivo.mensagem }
 }
 
 class ValidacaoError extends Error {

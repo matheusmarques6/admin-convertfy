@@ -30,6 +30,7 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { requireWebhookSecret } from "@/lib/api/n8n-auth"
 import { enqueueDispatchJob } from "@/lib/services/email-dispatch-queue.service"
 import { runCatalogador } from "@/lib/agents/objecoes/catalogador.service"
+import { comOrcamentoDeFase1 } from "@/lib/agents/fase1-orcamento"
 import {
   errorResponse,
   successResponse,
@@ -40,6 +41,12 @@ import { logger } from "@/lib/logger"
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 300
+
+/**
+ * Guardado para o `enqueueDispatchJob` depois do Catalogador. São escritas
+ * de banco (poucos segundos), mas perdê-las custa a geração inteira da loja.
+ */
+const RESERVA_POS_CATALOGADOR_MS = 40_000
 
 const schema = z.object({
   store_id: z.string().uuid(),
@@ -74,10 +81,18 @@ export async function POST(request: NextRequest) {
       // regravar `icp_objections` sem tipagem, e sem esta passada a projeção
       // divergiria do catálogo antigo (a pesquisa nova sem catálogo novo).
       try {
-        const cat = await runCatalogador({
-          storeId: body.store_id,
-          triggeredBy: body.regeneration ? "pesquisa_regenerada" : "pesquisa_completa",
-        })
+        // Janela com reserva para o `enqueueDispatchJob` logo abaixo. O
+        // Catalogador delibera e pode gastar ~150s por chamada, duas com o
+        // retry do validador: sem janela ele come os 300s da função e o
+        // enqueue — que é a geração inteira dos e-mails — nunca acontece.
+        // Em `after()` isso some sem deixar rastro, porque a resposta 200 já
+        // foi enviada ao n8n.
+        const cat = await comOrcamentoDeFase1(maxDuration * 1000 - RESERVA_POS_CATALOGADOR_MS, () =>
+          runCatalogador({
+            storeId: body.store_id,
+            triggeredBy: body.regeneration ? "pesquisa_regenerada" : "pesquisa_completa",
+          }),
+        )
         logger.info("[n8n:pesquisa-completa] catalogador", {
           store_id: body.store_id,
           regeneration: body.regeneration,
