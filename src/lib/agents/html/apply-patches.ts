@@ -74,6 +74,11 @@ export type FormatOp =
       fundo: string
       corLabel: string
       radiusPx?: number
+      /** Escala da peça — ver `escala-do-botao.ts`. Ausente = padrão da casa. */
+      fontSizePx?: number
+      peso?: number
+      paddingV?: number
+      paddingH?: number
       fontFamily?: string
     }
 

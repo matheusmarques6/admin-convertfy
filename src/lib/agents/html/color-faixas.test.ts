@@ -237,3 +237,71 @@ describe("tonsDeFundo — a R2 medida por código", () => {
     expect(r.excede).toBe(false)
   })
 })
+
+describe("CTA que só existe no ramo do Outlook", () => {
+  // Markup REAL da Hero Boxers (11/09): o roundrect carrega o texto de
+  // exemplo de outra peça e o ramo `<!--[if !mso]>` ao lado está vazio.
+  const bloco = (miolo: string) =>
+    `<!-- cfy:block:0:body:start --><table width="600" style="width:600px"><tr><td align="center" bgcolor="#FFFFFF" style="background-color:#FFFFFF">${miolo}</td></tr></table><!-- cfy:block:0:body:end -->`
+
+  const VML_ORFAO = `<!--[if mso]>
+    <v:roundrect href="https://heroboxers.com" style="height:61px;width:354px;" arcsize="13%" fillcolor="#000000">
+      <center style="color:#FFFFFF;font-size:32px;">DIGITAL GIFT CARD</center>
+    </v:roundrect>
+  <![endif]--> <!--[if !mso]><!-- --> <!--<![endif]-->`
+
+  it("o roundrect órfão é ENCONTRADO e marcado", () => {
+    const html = bloco(VML_ORFAO)
+    const ctas = extrairCtas(html, extrairFaixas(html))
+    expect(ctas).toHaveLength(1)
+    expect(ctas[0].texto).toBe("DIGITAL GIFT CARD")
+    expect(ctas[0].somente_outlook).toBe(true)
+    expect(ctas[0].href).toBe("https://heroboxers.com")
+    expect(ctas[0].fundo).toBe("#000000")
+  })
+
+  it("o par NORMAL (VML + <a>) continua contando UMA vez", () => {
+    // É o padrão da casa, e contá-lo duas vezes faria o agente recolorir o
+    // mesmo botão por dois caminhos.
+    const html = bloco(
+      `<!--[if mso]><v:roundrect href="#" fillcolor="#000000"><center>Comprar</center></v:roundrect><![endif]-->` +
+        `<table><tr><td bgcolor="#000000" style="background-color:#000000;border-radius:4px"><a href="#" style="display:inline-block;padding:14px 36px;font-size:15px;color:#FFFFFF">Comprar</a></td></tr></table>`,
+    )
+    const ctas = extrairCtas(html, extrairFaixas(html))
+    expect(ctas).toHaveLength(1)
+    expect(ctas[0].vml).toBe(true)
+    expect(ctas[0].somente_outlook).toBe(false)
+  })
+
+  it("botão comum não é marcado como só-Outlook", () => {
+    const html = bloco(
+      `<table><tr><td bgcolor="#000000" style="background-color:#000000"><a href="#" style="display:inline-block;padding:14px 36px;font-size:24px;font-weight:700;color:#FFFFFF">Ver tudo</a></td></tr></table>`,
+    )
+    const ctas = extrairCtas(html, extrairFaixas(html))
+    expect(ctas[0].somente_outlook).toBe(false)
+    expect(ctas[0].font_size_px).toBe(24)
+    expect(ctas[0].peso).toBe(700)
+    expect(ctas[0].padding_v).toBe(14)
+    expect(ctas[0].padding_h).toBe(36)
+  })
+})
+
+describe("tolerância de tom", () => {
+  const f = (bloco: number, fundo: string) => ({
+    ordem: bloco + 1, bloco, tipo: "body", fundo, foto: false,
+    luminancia: null, cobre_px: 600, editavel: true, decls: [],
+  })
+
+  it("#FFFFFF e #FDFDFD são o MESMO tom — o caso real da peça", () => {
+    // Dois brancos que ninguém distingue, vindos de variantes diferentes.
+    // Contá-los separados acusaria violação de R2 onde não há.
+    const r = tonsDeFundo([f(0, "#FFFFFF"), f(1, "#FDFDFD"), f(2, "#E1DEDE")])
+    expect(r.tons).toEqual(["#FFFFFF", "#E1DEDE"])
+    expect(r.excede).toBe(false)
+  })
+
+  it("mas dois cinzas de verdade continuam sendo dois", () => {
+    const r = tonsDeFundo([f(0, "#E1DEDE"), f(1, "#B1B3B6")])
+    expect(r.tons).toHaveLength(2)
+  })
+})
