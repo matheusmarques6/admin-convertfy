@@ -21,7 +21,7 @@ import type { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 import { resolveAndHealInstagramChannel } from "./instagram-activity.service"
 import type { InstagramChannelConfig } from "./instagram-graph.service"
-import { colunasDeInsight, type InsightsDaApi } from "@/lib/conteudo/metricas/sinais"
+import { colunasDeInsight, conjuntosDeInsight, type InsightsDaApi } from "@/lib/conteudo/metricas/sinais"
 
 const log = logger.child("ConteudoIgSync")
 
@@ -200,24 +200,11 @@ export type MediaInsights = InsightsDaApi
  * impossível responder "Reels trazem seguidor?". `ig_reels_avg_watch_time`
  * é o sinal nº 1 de ranking em 2026 e nunca foi pedido.
  *
- * Acrescentar campo ao primeiro conjunto é seguro POR CONSTRUÇÃO: se a
- * Meta recusar, a cascata entrega o conjunto de baixo. O custo de tentar
- * é uma chamada; o de não tentar é a métrica que decide o formato
- * principal do perfil.
+ * "Acrescentar campo ao primeiro conjunto é seguro POR CONSTRUÇÃO"
+ * estava aqui e era FALSO: seguro contra quebrar, não contra nunca
+ * coletar. As escadas vivem em `metricas/sinais.ts` com a medição que
+ * as decidiu.
  */
-const SETS_FEED = [
-  ["reach", "saved", "shares", "total_interactions", "follows", "profile_visits"],
-  ["reach", "saved", "shares", "total_interactions"],
-  ["reach", "saved"],
-]
-const SETS_VIDEO = [
-  ["reach", "saved", "shares", "total_interactions", "views", "follows", "profile_visits", "ig_reels_avg_watch_time"],
-  ["reach", "saved", "shares", "total_interactions", "views", "follows"],
-  ["reach", "saved", "shares", "total_interactions", "views"],
-  ["reach", "saved", "shares"],
-  ["reach", "saved"],
-]
-
 interface RawInsight {
   name: string
   values?: Array<{ value?: number | Record<string, number>; end_time?: string }>
@@ -232,10 +219,19 @@ function valorInsight(i: RawInsight): number | null {
 }
 
 /** Insights de uma mídia, do conjunto mais rico ao mais básico. */
-export async function fetchMediaInsights(config: InstagramChannelConfig, mediaId: string, mediaType: string | null): Promise<Res<MediaInsights>> {
-  const sets = mediaType === "VIDEO" ? SETS_VIDEO : SETS_FEED
+export async function fetchMediaInsights(
+  config: InstagramChannelConfig,
+  mediaId: string,
+  mediaType: string | null,
+  productType?: string | null,
+  /** Degrau que respondeu (0 = o mais rico) — sem isto, "watch time: 0" não
+   *  distingue "a Meta recusou" de "não há reel", e foi assim que a métrica
+   *  ficou um deploy inteiro sem ser coletada. */
+  onDegrau?: (degrau: number, metricas: readonly string[]) => void,
+): Promise<Res<MediaInsights>> {
+  const sets = conjuntosDeInsight(mediaType, productType)
   let ultimo: IgErro | null = null
-  for (const set of sets) {
+  for (const [degrau, set] of sets.entries()) {
     const res = await graph<{ data?: RawInsight[] }>(config, `/${mediaId}/insights?metric=${set.join(",")}`)
     if (res.ok) {
       const out: MediaInsights = {
@@ -245,6 +241,7 @@ export async function fetchMediaInsights(config: InstagramChannelConfig, mediaId
       for (const i of res.data.data ?? []) {
         if (i.name in out) (out as unknown as Record<string, number | null>)[i.name] = valorInsight(i)
       }
+      onDegrau?.(degrau, set)
       return { ok: true, data: out }
     }
     ultimo = res.error
@@ -320,6 +317,10 @@ export interface SyncResultado {
   ok: boolean
   midias: number
   insights_atualizados: number
+  /** Quantas mídias responderam num degrau ABAIXO do mais rico. Alto e
+   *  constante = a escada está pedindo o que a Meta não serve, e alguma
+   *  métrica está sumindo em silêncio. */
+  insights_degradados: number
   dias: number
   /** Estado do backfill do histórico neste canal. */
   backfill: { completo: boolean; paginas: number; restante: boolean }
@@ -329,6 +330,7 @@ export interface SyncResultado {
 interface MediaLinha {
   media_id: string
   media_type: string | null
+  media_product_type: string | null
   published_at: string | null
   insights_at: string | null
 }
@@ -378,6 +380,7 @@ export async function syncChannelConteudo(
     ok: true,
     midias: 0,
     insights_atualizados: 0,
+    insights_degradados: 0,
     dias: 0,
     backfill: { completo: false, paginas: 0, restante: false },
   }
@@ -437,7 +440,7 @@ export async function syncChannelConteudo(
   // inteiro pode levar várias rodadas — o cron continua de onde parou.
   const { data: pendentes } = await admin
     .from("conteudo_ig_media")
-    .select("media_id, media_type, published_at, insights_at")
+    .select("media_id, media_type, media_product_type, published_at, insights_at")
     .eq("channel_id", channel.id)
     .order("insights_at", { ascending: true, nullsFirst: true })
     .order("published_at", { ascending: false })
@@ -449,7 +452,11 @@ export async function syncChannelConteudo(
     const idade = m.published_at ? agora.getTime() - Date.parse(m.published_at) : Infinity
     const ttl = idade <= 30 * DIA_MS ? INSIGHTS_TTL_RECENTE_MS : INSIGHTS_TTL_ANTIGO_MS
     if (m.insights_at && agora.getTime() - Date.parse(m.insights_at) < ttl) continue
-    const ins = await fetchMediaInsights(config, m.media_id, m.media_type)
+    let degrauUsado: number | null = null
+    const ins = await fetchMediaInsights(config, m.media_id, m.media_type, m.media_product_type, (d) => {
+      degrauUsado = d
+    })
+    if (degrauUsado !== null && degrauUsado > 0) resultado.insights_degradados++
     // `colunasDeInsight` traduz o nome da API para o da coluna — é onde
     // `ig_reels_avg_watch_time` vira `avg_watch_time_ms`. Espalhar essa
     // tradução pelo serviço é como a métrica some na fronteira.

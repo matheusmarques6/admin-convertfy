@@ -5995,6 +5995,58 @@ select do dashboard tem retry sem a coluna e o patch do sync a remove
 quando o Postgres reclama dela — a migration deste repo é aplicada à mão e
 escorrega.
 
+### O watch time nunca teria sido coletado (11/09, medido na Graph API)
+
+A migration, a coluna, o KPI e os 19 testes estavam certos — e o número
+ficaria em "—" para sempre. Chamando a API **de dentro do Postgres** com
+`pg_net` (a credencial não sai do banco), o primeiro conjunto de
+`SETS_VIDEO` devolveu **400**:
+
+> (#100) The Media Insights API does not support the **follows,
+> profile_visits** metric for this media product type.
+
+Não é o watch time que a Meta recusa — é `follows`/`profile_visits` para
+REELS, e pedir `follows` SOZINHO também dá 400, o que descarta "é a
+combinação". Como `ig_reels_avg_watch_time` morava só no degrau de cima,
+a escada caía dois degraus e a métrica nunca era pedida.
+
+**A base já provava isso e ninguém tinha olhado**: dos 69 reels, **ZERO**
+têm `follows` e ZERO têm `profile_visits`; dos 19 do feed, **19/19** têm
+os dois. Um defeito PRÉ-EXISTENTE — a coluna "Seguidores" mostra "—" em
+78% das linhas — que a medição do watch time expôs.
+
+**A regra derivada**: *métrica que só existe no degrau mais alto é
+métrica que pode nunca ser coletada.* O watch time anda em DOIS degraus
+(`SETS_REELS`, em `metricas/sinais.ts` com a medição ao lado), e reels
+não pedem o que a Meta declara não servir — gastar a chamada ali é
+garantir a queda. O comentário que estava no serviço, *"acrescentar campo
+ao primeiro conjunto é seguro POR CONSTRUÇÃO"*, era falso e foi
+reescrito: seguro contra QUEBRAR, não contra nunca coletar.
+
+`conjuntosDeInsight(mediaType, productType)` decide pelo **product type
+primeiro** (o erro da Meta fala em "media product type"), e
+`fetchMediaInsights` devolve o **degrau que respondeu** →
+`SyncResultado.insights_degradados`. Sem esse contador, "watch time: 0"
+não distingue "a Meta recusou" de "não há reel" — que é exatamente como
+a métrica passaria um deploy inteiro sem ser coletada.
+
+**A unidade não é inferida**: a própria API intitula a métrica *"Tempo
+médio de visualização de reels (milissegundos)"*. Valor medido 13.212 =
+13,2 s num reel curto.
+
+**Backfill feito na hora, pelo mesmo caminho**: 69 disparos, **69
+respostas 200**, 69 linhas gravadas. Faixa 4,2 s – 44,4 s, média 10,0 s,
+nenhum valor ≤ 0 nem absurdo. O card dos últimos 30 dias mostra
+**0,18% de sends ÷ alcance** ("6 posts com alcance") e **9,7 s** ("média
+de 5 reels") — conferido do SQL até a string formatada.
+
+**Limitação declarada na tela**: `motivoDaAusencia` explica no `title` da
+tabela e numa linha do drawer que a Meta não informa seguidores por
+reel. Sem a frase, "—" se lê como "este reel não trouxe ninguém", que é o
+contrário do que acontece. Fica em aberto
+`ig_reels_video_view_total_time` (também aceito, 4.637.596 ms na peça
+medida) — tempo TOTAL assistido, que hoje não coletamos.
+
 ---
 
 *Última atualização: Setembro 2026*

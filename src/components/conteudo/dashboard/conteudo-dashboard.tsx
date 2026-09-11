@@ -24,6 +24,7 @@ import { PILARES } from "@/lib/conteudo/config"
 import { classificarPosts, getDashboard, sincronizarInstagram } from "@/lib/conteudo/data"
 import { PERFIL_CONSOLIDADO, type DashboardData, type Kpi, type MoldeKey, type PerfilFiltro, type Pilar, type Post } from "@/lib/conteudo/types"
 import { ROUTES } from "@/lib/routes"
+import { motivoDaAusencia } from "@/lib/conteudo/metricas/sinais"
 import { CtAvatar, CtAvatarComCanal, CtBadge, CtBtn, CtEmpty, CtFmt, CtSeg, CtSkel, CtThumbPost, CtTile, TNUM, fmtDec, fmtNum, inputCls, selectCls } from "../ui"
 import { FunilConteudo } from "./funil-conteudo"
 import { PerfilPicker } from "./perfil-picker"
@@ -602,7 +603,7 @@ export function ConteudoDashboard({ userName, saudacao = "Olá" }: { userName: s
                                   )}
                                 </Td>
                                 <Td right last={last} className={cn("font-semibold", p.seg != null && p.seg > 0 ? "text-[var(--ops-pos)]" : "text-[var(--ops-title)]")}>
-                                  {p.seg == null ? "—" : `+${fmtNum(p.seg)}`}
+                                  {p.seg == null ? <span title={motivoDaAusencia("seg", p.fmt === "Reels") ?? undefined}>—</span> : `+${fmtNum(p.seg)}`}
                                 </Td>
                                 <Td right last={last}>
                                   {p.com}

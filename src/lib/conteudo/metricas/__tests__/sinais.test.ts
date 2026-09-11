@@ -8,6 +8,11 @@ import {
   segundosDeWatchTime,
   sinaisDoPeriodo,
   taxaDeEngajamento,
+  SETS_REELS,
+  SETS_VIDEO_FEED,
+  SETS_FEED,
+  conjuntosDeInsight,
+  escadaPede,
 } from "../sinais"
 
 describe("porAlcance — os três sinais de ranking", () => {
@@ -148,5 +153,60 @@ describe("sinaisDoPeriodo", () => {
       postsComWatchTime: 0,
       postsComAlcance: 0,
     })
+  })
+})
+
+describe("escada de insights (medida na Graph API em 11/09)", () => {
+  it("reel NUNCA pede follows nem profile_visits — a Meta recusa o conjunto inteiro", () => {
+    // (#100) "does not support the follows metric for this media product
+    // type", inclusive pedindo follows sozinho. Um degrau que os inclui é
+    // um degrau que sempre cai.
+    for (const set of SETS_REELS) {
+      expect(set).not.toContain("follows")
+      expect(set).not.toContain("profile_visits")
+    }
+  })
+
+  it("watch time anda em DOIS degraus — no topo só, ele nunca seria coletado", () => {
+    const comWatch = SETS_REELS.filter((s) => s.includes("ig_reels_avg_watch_time"))
+    expect(comWatch.length).toBeGreaterThanOrEqual(2)
+    // e os dois primeiros, para sobreviver a uma queda de um degrau
+    expect(SETS_REELS[0]).toContain("ig_reels_avg_watch_time")
+    expect(SETS_REELS[1]).toContain("ig_reels_avg_watch_time")
+  })
+
+  it("toda escada termina num degrau mínimo que a Meta sempre serve", () => {
+    for (const escada of [SETS_REELS, SETS_VIDEO_FEED, SETS_FEED]) {
+      expect(escada[escada.length - 1]).toEqual(["reach", "saved"])
+    }
+  })
+
+  it("degrau nunca cresce ao descer a escada", () => {
+    for (const escada of [SETS_REELS, SETS_VIDEO_FEED, SETS_FEED]) {
+      for (let i = 1; i < escada.length; i++) {
+        expect(escada[i].length).toBeLessThanOrEqual(escada[i - 1].length)
+      }
+    }
+  })
+
+  it("o product type decide antes do media type", () => {
+    expect(conjuntosDeInsight("VIDEO", "REELS")).toBe(SETS_REELS)
+    expect(conjuntosDeInsight("VIDEO", "FEED")).toBe(SETS_VIDEO_FEED)
+    expect(conjuntosDeInsight("IMAGE", null)).toBe(SETS_FEED)
+    expect(conjuntosDeInsight("CAROUSEL_ALBUM", "FEED")).toBe(SETS_FEED)
+    // vídeo sem product type: hoje todo vídeo da base é reel, e pedir
+    // follows garantiria a queda do degrau que carrega o watch time.
+    expect(conjuntosDeInsight("VIDEO", null)).toBe(SETS_REELS)
+  })
+
+  it("watch time é pedido para reel e NÃO para imagem", () => {
+    expect(escadaPede(conjuntosDeInsight("VIDEO", "REELS"), "ig_reels_avg_watch_time")).toBe(true)
+    expect(escadaPede(conjuntosDeInsight("IMAGE", "FEED"), "ig_reels_avg_watch_time")).toBe(false)
+  })
+
+  it("a unidade que a própria Meta declara é milissegundo", () => {
+    // Título devolvido pela API: "Tempo médio de visualização de reels
+    // (milissegundos)"; valor medido 13212 = 13,2 s num reel curto.
+    expect(segundosDeWatchTime(13212)).toBeCloseTo(13.212, 3)
   })
 })

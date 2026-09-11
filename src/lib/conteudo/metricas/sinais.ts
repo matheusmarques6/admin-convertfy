@@ -209,3 +209,80 @@ export function sinaisDoPeriodo(posts: readonly PostParaSinais[]): SinaisDoPerio
     postsComAlcance: comAlcance,
   }
 }
+
+// ── Que métricas pedir à Meta, por tipo de mídia ────────────────────────
+
+/**
+ * A escada de conjuntos de insight, do mais rico ao mais básico.
+ *
+ * **Medido em produção (11/09), não suposto.** A Media Insights API
+ * RECUSA `follows` e `profile_visits` para reels — inclusive pedindo
+ * `follows` sozinho, o que descarta "é problema de combinação":
+ *
+ * > (#100) The Media Insights API does not support the follows metric
+ * > for this media product type.
+ *
+ * Consequência que a base confirma: dos 69 reels da org, ZERO têm
+ * `follows`; dos 19 do feed, 19/19 têm. A escada de vídeo sempre caiu
+ * dois degraus para reels — e `ig_reels_avg_watch_time` morava só no
+ * degrau de cima, então **nunca teria sido coletado**, com a coluna, o
+ * KPI e os testes todos corretos e o número em "—" para sempre.
+ *
+ * Daí a regra: **métrica que só existe no degrau mais alto é métrica
+ * que pode nunca ser coletada.** O watch time anda em DOIS degraus, e
+ * pedir para reels o que a Meta declara não servir é gastar a chamada
+ * para garantir a queda.
+ */
+export const SETS_REELS: readonly (readonly string[])[] = [
+  ["reach", "saved", "shares", "total_interactions", "views", "ig_reels_avg_watch_time"],
+  ["reach", "saved", "shares", "views", "ig_reels_avg_watch_time"],
+  ["reach", "saved", "shares", "total_interactions", "views"],
+  ["reach", "saved", "shares"],
+  ["reach", "saved"],
+]
+
+/** Vídeo que NÃO é reel (feed/IGTV): aceita follows, e watch time é de reel. */
+export const SETS_VIDEO_FEED: readonly (readonly string[])[] = [
+  ["reach", "saved", "shares", "total_interactions", "views", "follows", "profile_visits"],
+  ["reach", "saved", "shares", "total_interactions", "views"],
+  ["reach", "saved", "shares"],
+  ["reach", "saved"],
+]
+
+/** Imagem e carrossel — medido: 19/19 respondem ao conjunto cheio. */
+export const SETS_FEED: readonly (readonly string[])[] = [
+  ["reach", "saved", "shares", "total_interactions", "follows", "profile_visits"],
+  ["reach", "saved", "shares", "total_interactions"],
+  ["reach", "saved"],
+]
+
+/**
+ * `productType` decide antes de `mediaType`: o erro da Meta fala em
+ * "media product type", e é REELS que recusa follows. Product type
+ * desconhecido com mídia de vídeo cai na escada de reels — hoje todo
+ * vídeo da base é reel, e pedir follows garantiria a queda do degrau.
+ */
+export function conjuntosDeInsight(mediaType: string | null, productType?: string | null): readonly (readonly string[])[] {
+  if (productType === "REELS") return SETS_REELS
+  if (mediaType !== "VIDEO") return SETS_FEED
+  return productType ? SETS_VIDEO_FEED : SETS_REELS
+}
+
+/** A métrica é pedida em ALGUM degrau desta escada? */
+export function escadaPede(escada: readonly (readonly string[])[], metrica: string): boolean {
+  return escada.some((s) => s.includes(metrica))
+}
+
+/**
+ * Por que este campo está vazio neste post.
+ *
+ * A Media Insights API recusa `follows` e `profile_visits` para reels —
+ * medido em 11/09, pedindo cada um sozinho. Como 78% da base é reel, a
+ * coluna "Seguidores" mostra "—" na maioria das linhas: sem esta frase o
+ * operador lê como "este reel não trouxe ninguém", que é o contrário de
+ * "a Meta não conta isso por reel".
+ */
+export function motivoDaAusencia(campo: "seg" | "visitasPerfil" | "watchTimeS", ehReel: boolean): string | null {
+  if (campo === "watchTimeS") return ehReel ? null : "watch time só existe em reel"
+  return ehReel ? "a Meta não informa esta métrica por reel" : null
+}

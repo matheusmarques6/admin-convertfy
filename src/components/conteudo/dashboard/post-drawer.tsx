@@ -10,6 +10,7 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { Briefcase, ExternalLink, Inbox, X } from "lucide-react"
+import { motivoDaAusencia } from "@/lib/conteudo/metricas/sinais"
 import { cn } from "@/lib/utils"
 import { Icon } from "@/components/ui/icon"
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
@@ -135,6 +136,9 @@ function DrawerBody({ post, perfil, onClose, onClassificado }: { post: Post; per
             </span>
           ))}
         </div>
+      )}
+      {post.seg == null && post.alc != null && (
+        <div className="mt-1.5 text-[10.5px] text-[var(--ops-mut)]">{motivoDaAusencia("seg", post.fmt === "Reels") ?? "Seguidores por post não vieram nesta leitura."}</div>
       )}
       {post.alc == null && <div className="mt-1.5 text-[10.5px] text-[var(--ops-mut)]">Insights desta mídia ainda não foram lidos (ou a Meta não os expõe para este tipo de post).</div>}
 
