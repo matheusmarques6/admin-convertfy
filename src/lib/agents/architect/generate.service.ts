@@ -139,7 +139,7 @@ export async function generateBlueprintAndReference(
   //
   // Sem execução manual viva o contexto é `producao` e todo gate abaixo é
   // neutro: ligar a feature não muda o caminho de produção.
-  const execucao = await contextoDaExecucao(emailId)
+  const execucao = await contextoDaExecucao(emailId, input.batchId)
   const gate = (node: string) => gateFor(node, execucao.overrides, execucao.mode)
 
   // Fase 1 PINADA = "a referência gravada serve".
@@ -151,6 +151,33 @@ export async function generateBlueprintAndReference(
   // mais específico do que o botão. A rota que cria a execução já conferiu
   // que a referência e o blueprint existem (`verificarPins`), então isto
   // não é aposta.
+  /**
+   * A fase 1 não rodou, e a tela precisa DIZER isso.
+   *
+   * 11/09: uma execução manual abandonada foi adotada por uma geração nova e
+   * pinou a fase 1. Estruturador e Curador não rodaram e, sem run nenhuma,
+   * simplesmente NÃO APARECERAM na aba Execuções — nem como pulados. É a
+   * mesma regra que o Seletor e o Montador já seguem: agente que não roda
+   * grava `skipped` com o motivo, senão a linha fica "aguardando" para sempre
+   * e ninguém sabe se travou ou se foi decisão.
+   */
+  const registrarFase1Pulada = async (motivo: string, detalhe: string) => {
+    for (const agent of ["estruturador", "assembler_chooser", "blueprint"] as const) {
+      await logGenerationRun({
+        storeId: input.storeId,
+        flowId: flowId ?? undefined,
+        emailId: emailId ?? undefined,
+        triggeredBy: input.triggeredBy,
+        batchId: input.batchId,
+        agent,
+        status: "skipped",
+        model: "reuso",
+        inputSummary: [{ rotulo: "Por que não rodou", cls: "sistema", valor: detalhe }],
+        parsedOutput: { skip_reason: motivo, detalhe },
+      }).catch(() => undefined)
+    }
+  }
+
   if (gate("assembler_chooser").pinned && gate("blueprint").pinned) {
     log.info("architect.fase1_pinada", {
       storeId: input.storeId,
@@ -158,6 +185,10 @@ export async function generateBlueprintAndReference(
       emailNumber: input.emailNumber,
       executionId: execucao.executionId,
     })
+    await registrarFase1Pulada(
+      "fase1_pinada",
+      "Execução manual com Curador e Blueprint pinados — a arquitetura gravada foi reusada.",
+    )
     return { referenceSource: "store" }
   }
 
@@ -264,6 +295,10 @@ export async function generateBlueprintAndReference(
         flowType: input.flowType,
         emailNumber: input.emailNumber,
       })
+      await registrarFase1Pulada(
+        "reuso_existente",
+        "Arquitetura já persistida para esta loja × flow × e-mail. Regerar exige force (botão Regenerar) ou estruturador_mode='on'.",
+      )
       return { referenceSource: "store" }
     }
   }

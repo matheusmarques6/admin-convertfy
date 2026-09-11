@@ -23,6 +23,7 @@
  */
 
 import { createAdminClient } from "@/lib/supabase/server"
+import { decidirAdocao } from "./adocao"
 import { logger } from "@/lib/logger"
 import {
   resumirOverrides,
@@ -106,12 +107,55 @@ export async function carregarExecucaoManualViva(
   }
 }
 
-/** Contexto do runner: execução manual viva ou produção. */
+/**
+ * Contexto do runner: execução manual viva ou produção.
+ *
+ * O `batchId` é o que separa "a execução desta geração" de "uma execução
+ * abandonada deste e-mail" — ver `adocao.ts` para o caso que obrigou a
+ * distinção. Omiti-lo mantém o comportamento antigo APENAS para execução já
+ * carimbada com o mesmo batch; sem batch não há o que carimbar e vale
+ * produção, que é o lado seguro do erro.
+ */
 export async function contextoDaExecucao(
   emailId: string | null | undefined,
+  batchId?: string | null,
 ): Promise<ContextoDeExecucao> {
   const viva = await carregarExecucaoManualViva(emailId)
   if (!viva) return CONTEXTO_PRODUCAO
+
+  const decisao = decidirAdocao({
+    batchDaExecucao: viva.batchId,
+    batchAtual: batchId ?? null,
+    startedAt: viva.startedAt,
+  })
+  if (!decisao.adota) {
+    log.info("execucao.nao_adotada", {
+      emailId,
+      executionId: viva.id,
+      batchAtual: batchId ?? null,
+      motivo: decisao.motivo,
+    })
+    return CONTEXTO_PRODUCAO
+  }
+
+  // Primeira adoção: a execução passa a pertencer a esta geração. O
+  // `batch_id is null` no WHERE faz o carimbo ser idempotente e imune a
+  // corrida — duas invocações não brigam pela mesma linha.
+  if (decisao.carimba && batchId) {
+    const { error } = await createAdminClient()
+      .from("email_generation_executions")
+      .update({ batch_id: batchId })
+      .eq("id", viva.id)
+      .is("batch_id", null)
+    if (error) {
+      // Carimbar é o que impede a execução de vazar para a PRÓXIMA geração.
+      // Falhou: não adota, em vez de rodar sob overrides que ninguém mais
+      // conseguirá delimitar depois.
+      log.warn("execucao.carimbo_falhou", { emailId, executionId: viva.id, error })
+      return CONTEXTO_PRODUCAO
+    }
+  }
+
   return {
     executionId: viva.id,
     mode: "manual",

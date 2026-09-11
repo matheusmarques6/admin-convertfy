@@ -2445,7 +2445,7 @@ async function runFormattingChain(p: {
   // Execução MANUAL viva deste e-mail, se houver. Sem ela o contexto é
   // `producao` e todo gate abaixo é neutro — ligar overrides não muda
   // nada no caminho de produção, por construção.
-  const execucao = await contextoDaExecucao(emailId)
+  const execucao = await contextoDaExecucao(emailId, batchId)
   const ids = {
     storeId,
     flowId,
