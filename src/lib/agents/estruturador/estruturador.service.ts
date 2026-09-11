@@ -30,6 +30,8 @@
 
 import crypto from "crypto"
 import { createAdminClient } from "@/lib/supabase/server"
+import { RESERVA_POS_ESTRUTURADOR_MS, restanteDoOrcamento } from "../fase1-orcamento"
+import { decidirPelaJanela } from "./reuso-da-decisao"
 import { logger } from "@/lib/logger"
 import { classificarFalha, planejarRetentativa, avisoDeContaPerdida } from "../retry-teto"
 import { tetoDeRelogioDoAgente } from "../fase1-orcamento"
@@ -296,6 +298,38 @@ export function sequenciaDaRun(parsedOutput: unknown): string[] {
  * ou oscilando a cada geração?" é a pergunta que sobra, e respondê-la exigia
  * comparar runs à mão. Vira flag no `_validador`.
  */
+/**
+ * A DECISÃO vigente deste e-mail, inteira — não só a sequência.
+ *
+ * `loadEstruturaVigenteDesteEmail` existe para outra coisa (proibir que o
+ * agente repita a si mesmo) e devolve só os nomes das seções. O reuso da
+ * janela precisa do `parsed_output` completo: papel e requisitos por
+ * posição, fio narrativo, diagnóstico, `text_only`. Tudo isso já está
+ * gravado — a run bem-sucedida é o artefato.
+ */
+async function loadDecisaoVigenteDesteEmail(
+  emailId: string | null,
+): Promise<{ output: EstruturadorOutput; runId: string; quando: string } | null> {
+  if (!emailId) return null
+  const admin = createAdminClient()
+  const { data } = await admin
+    .from("email_generation_runs")
+    .select("id, parsed_output, created_at")
+    .eq("agent", "estruturador")
+    .eq("email_id", emailId)
+    .eq("status", "success")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (!data) return null
+  const row = data as { id: string; parsed_output: unknown; created_at: string }
+  const out = normalizarOutput(row.parsed_output)
+  // `normalizarOutput` é tolerante: garante a FORMA, não que haja conteúdo.
+  // Decisão sem posição nenhuma não serve para reusar.
+  if (!out.estrutura || out.estrutura.length === 0) return null
+  return { output: out, runId: row.id, quando: row.created_at }
+}
+
 async function loadEstruturaVigenteDesteEmail(
   emailId: string | null,
 ): Promise<string[] | null> {
@@ -400,10 +434,11 @@ export async function runEstruturador(
     return { output: null, runId: null, status: "sem_material" }
   }
 
-  const [capacidade, irmas, minhaAnterior] = await Promise.all([
+  const [capacidade, irmas, minhaAnterior, vigente] = await Promise.all([
     loadCapacidade(input.topProducts.length),
     loadEstruturasDosOutrosEmails(input.flowId ?? null, input.emailId ?? null),
     loadEstruturaVigenteDesteEmail(input.emailId ?? null),
+    loadDecisaoVigenteDesteEmail(input.emailId ?? null),
   ])
 
   const cfgRow = await loadActiveAgentConfig("estruturador")
@@ -523,6 +558,51 @@ export async function runEstruturador(
   // reconstruídos no loop; aqui é o que a live view mostra enquanto roda.
   const segUserBase = buildSegmentedPrompt(config.user_template, userVars, USER_ORIGINS, { parte: "user" })
   const basePromptSegments = concatSegments(systemSegments, segUserBase.segments)
+
+  // ── A janela não comporta os três ────────────────────────────────────
+  // Medido em 11/09 (batch 1ea00ba9, tudo em sonnet-5 com raciocínio):
+  // Seletor 65s + Estruturador 260s + Curador 442s = 767s numa janela de
+  // 770, com a escolha do Curador CORTADA no fim. Quem cede é este agente,
+  // porque o Curador não tem substituto e a decisão daqui já está gravada.
+  // Ver `reuso-da-decisao.ts`.
+  const janela = decidirPelaJanela({
+    maxTokens: config.max_tokens,
+    restanteMs: restanteDoOrcamento(),
+    reservaMs: RESERVA_POS_ESTRUTURADOR_MS,
+    temVigente: vigente != null,
+  })
+  if (janela.acao === "reusar" && vigente) {
+    const motivo = `decisão de ${new Date(vigente.quando).toISOString()} reusada: ${janela.motivo}`
+    log.info("estruturador.reuso_por_janela", {
+      emailId: input.emailId, storeId: input.storeId, runReusada: vigente.runId,
+    })
+    const runIdSkip = await startGenerationRun({
+      storeId: input.storeId,
+      flowId: input.flowId ?? undefined,
+      emailId: input.emailId ?? undefined,
+      triggeredBy: input.triggeredBy,
+      batchId: input.batchId,
+      agent: "estruturador",
+      agentConfigId: cfgRow?.id,
+      model: "reuso",
+      inputVars: { modo: input.mode, motivo, run_reusada: vigente.runId },
+    })
+    await finishGenerationRun(runIdSkip, {
+      storeId: input.storeId,
+      flowId: input.flowId ?? undefined,
+      emailId: input.emailId ?? undefined,
+      triggeredBy: input.triggeredBy,
+      batchId: input.batchId,
+      agent: "estruturador",
+      agentConfigId: cfgRow?.id,
+      status: "skipped",
+      model: "reuso",
+      inputVars: { modo: input.mode, motivo, run_reusada: vigente.runId },
+      parsedOutput: { ...vigente.output, _reuso: { motivo, run_reusada: vigente.runId } },
+      durationMs: Date.now() - t0,
+    }).catch(() => {})
+    return { output: vigente.output, runId: runIdSkip, status: "ok" }
+  }
 
   const runId = await startGenerationRun({
     storeId: input.storeId,

@@ -117,16 +117,54 @@ export function cabeNaJanela(input: {
 }
 
 /**
- * Reserva para o que vem DEPOIS do Estruturador, medido em produção:
- * Curador 116-164s + Blueprint 11s + Subject ~15s, com folga para o
- * dispatch e a resposta. O Curador NÃO é pulável — sem variante nenhuma,
- * `coberturaSuficiente` recusa a montagem e a fase 2 morre em
- * `hero_failed`, que é pior que um 504 porque parece sucesso.
+ * Reserva para o que vem DEPOIS do Estruturador. O Curador NÃO é pulável —
+ * sem variante nenhuma, `coberturaSuficiente` recusa a montagem e a fase 2
+ * morre em `hero_failed`, que é pior que um 504 porque parece sucesso.
+ *
+ * ── O número é do MODELO vigente, e foi isso que quebrou ─────────────
+ *
+ * 490s vieram do Curador levando 442s, medido em `anthropic/claude-sonnet-5`
+ * com raciocínio (11/09, batch 1ea00ba9). Os agentes voltaram para o
+ * `sonnet-4.6` no mesmo dia e ninguém remediu — o comentário aqui embaixo
+ * pedia exatamente isso e foi ignorado.
+ *
+ * O Curador no 4.6, medido em produção em 11/09: 69s, 88s e 97s (a run que
+ * concluiu). Ou seja, a reserva ficou CINCO vezes maior que a necessidade.
+ *
+ * O efeito não foi "o Estruturador cede às vezes": foi ele nunca mais
+ * rodar. A conta não tinha solução — 742s de janela menos 490s de reserva
+ * deixam 252s, e ele pede 371s (derivados do teto de 32.000 tokens). Toda
+ * geração desde 05:21 reusou a decisão das 04:39, e a tela dizia só
+ * "pulado". O Estruturador foi desligado de fato sem ninguém desligá-lo.
+ *
+ * 150s = 97s do Curador (o pior caso medido no 4.6) + ~11s de Blueprint +
+ * ~15s de Subject + ~27s de folga. Com isso sobram 592s para o
+ * Estruturador, que usa 240s de mediana e 264s no pior caso medido.
+ *
+ * **Trocar o modelo do Curador OBRIGA a remedir este número** — voltar ao
+ * sonnet-5 traz os 442s de volta e a conta inverte: quem seria cortado
+ * passa a ser o Curador. É a armadilha que já disparou uma vez, e a única
+ * defesa hoje é este parágrafo. A saída definitiva é não ter reserva
+ * nenhuma: com cada agente num passo durável, ninguém divide janela com
+ * ninguém.
  */
-export const RESERVA_POS_ESTRUTURADOR_MS = 200_000
+export const RESERVA_POS_ESTRUTURADOR_MS = 150_000
 
-/** Reserva para tudo que vem depois do Seletor (Estruturador incluído). */
-export const RESERVA_POS_SELETOR_MS = 380_000
+/**
+ * NÃO existe reserva pós-Seletor, e isso é decisão medida — não esquecimento.
+ *
+ * Havia uma constante aqui (380s, depois 490s) que nenhum caller lia: a
+ * mesma armadilha de `cabeNaJanela`, escrita e testada sem estar ligada ao
+ * fluxo. Ligá-la seria PIOR que deixá-la morta. A conta, com os números de
+ * 11/09: o teto do Seletor é 24.000 tokens, que a 90 tok/s mais a latência
+ * base pedem 282s; reservar 490s dos 770 da janela deixa 280s disponíveis.
+ * O Seletor seria pulado em TODA geração por 2 segundos de margem — e sem
+ * ele a peça vai sem alvo do toque, que é o pior desfecho dos três.
+ *
+ * O Seletor custa 65s medidos (6.129 tokens de saída), não é ele que aperta
+ * a janela. Quem cede é o Estruturador, e por `reuso-da-decisao.ts`: a
+ * decisão dele já está gravada e o Curador não tem substituto.
+ */
 
 /**
  * Teto de relógio por agente da fase 1, em ms.

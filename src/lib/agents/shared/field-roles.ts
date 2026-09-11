@@ -29,6 +29,16 @@ export interface PapelDoCampo {
   cupom: boolean
   cta: boolean
   preco: boolean
+  /**
+   * Preço ANTERIOR riscado (`price_old`, `compare_at_price`). É a metade
+   * "de" do "de/por": só existe se houver desconto. Separado de `preco`
+   * porque a decisão que pede preço VISÍVEL não pede preço riscado — e
+   * confundir os dois foi o que fez a única variante de products com preço
+   * ser descartada por inteiro (Hero Boxers, 11/09).
+   */
+  preco_antigo: boolean
+  /** Prazo/validade da oferta (`badge_deadline`, `expires_at`). */
+  prazo: boolean
   avaliacao: boolean
   /** Credencial do depoente (cargo, idade, contexto) — reviews. */
   credencial: boolean
@@ -39,6 +49,11 @@ export interface PapelDoCampo {
 const RE_CUPOM = /(^|_)(coupon|cupom|code|codigo)(_|$)/i
 const RE_CTA = /(^|_)(cta|button|btn)(_|$)/i
 const RE_PRECO = /(^|_)(price|preco|preço)(_|$)/i
+// `price_old`, `old_price`, `preco_antigo`, `compare_at_price`, `price_was`.
+// `price_new` NÃO casa: é o preço vigente, que é exatamente o que uma
+// decisão com `preco: true` está pedindo.
+const RE_PRECO_ANTIGO = /(^|_)(old|antigo|was|compare_at|regular|list)(_|$)/i
+const RE_PRAZO = /(^|_)(deadline|prazo|expires?|expiry|until|countdown|valid_until)(_|$)/i
 const RE_AVALIACAO = /(^|_)(rating|stars?|avaliacao|verified)(_|$)/i
 const RE_CREDENCIAL = /(^|_)(credential|role|initial|context)(_|$)/i
 const RE_NOME = /(^|_)(name|author)$/i
@@ -74,6 +89,8 @@ export function papelDoCampo(key: string): PapelDoCampo {
     cupom: RE_CUPOM.test(k),
     cta: RE_CTA.test(k),
     preco: RE_PRECO.test(k),
+    preco_antigo: RE_PRECO.test(k) && RE_PRECO_ANTIGO.test(k),
+    prazo: RE_PRAZO.test(k),
     avaliacao: RE_AVALIACAO.test(k),
     credencial: familia === "review" && RE_CREDENCIAL.test(k),
     nome: familia === "review" && RE_NOME.test(k),
