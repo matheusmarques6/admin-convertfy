@@ -32,6 +32,7 @@ export type AiUsageFeature =
   | "ai_generate_ad_copy"
   | "briefing_generation"
   | "convertia"
+  | "gerar_anatomia"
 
 export type AiProvider = "anthropic" | "openrouter" | "openai"
 

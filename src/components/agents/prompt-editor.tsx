@@ -296,6 +296,18 @@ const PLACEHOLDERS_BY_AGENT: Record<AgentType, Array<{ key: string; desc: string
     { key: "vocabulario_da_cliente", desc: "Quotes literais da cliente (icp_vocabulary)" },
     { key: "correcoes", desc: "Erros do validador na tentativa anterior (retry)" },
   ],
+  gerador_anatomia: [
+    { key: "dispositivo", desc: "Dispositivo pedido (vocabulário fechado de 22)" },
+    { key: "descricao_do_dispositivo", desc: "Uma linha do vocabulário" },
+    { key: "variante", desc: "Letra da variante (a, b, c…)" },
+    { key: "densidade", desc: "minimal | balanced | rich" },
+    { key: "idioma", desc: "Idioma dos exemplos" },
+    { key: "requisitos", desc: "Contrato do dispositivo — a régua do validador" },
+    { key: "convencoes", desc: "Convenções da biblioteca (600px, tokens {{COR_*}}, MSO)" },
+    { key: "referencias", desc: "1–2 anatomias da mesma seção (HTML)" },
+    { key: "notas", desc: "Notas do curador" },
+    { key: "correcoes", desc: "Relatório do validador na retentativa" },
+  ],
   seletor: [
     { key: "brand_name", desc: "Nome da loja" },
     { key: "flow_type", desc: "Flow do email" },

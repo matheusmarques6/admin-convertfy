@@ -149,6 +149,9 @@ export type AgentType =
   // alvo do toque). Plano: docs/email-generation/plano-objecoes-macro-micro.md.
   | "catalogador"
   | "seletor"
+  // gerador_anatomia (Trilha B4): escreve uma variante nova da biblioteca
+  // (offline; nasce is_active=false, source='gerada').
+  | "gerador_anatomia"
   | "copy"
   | "image"
   | "html"

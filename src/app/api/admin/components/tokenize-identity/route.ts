@@ -20,8 +20,8 @@ import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
 import { assertCanManagePrompts } from "@/lib/services/prompt-management.service"
 import { sourceSha } from "@/lib/agents/shared/rendered-reference"
 import { tokenizarIdentidade, type MapaDeToken, type NaoInferido } from "@/lib/agents/html/identity-tokenize"
-import { tokensDaLoja } from "@/lib/agents/html/apply-identity-tokens"
-import { VALOR_PADRAO, type TokenDeIdentidade, type ValoresDeTokens } from "@/lib/agents/html/identity-tokens"
+import { paletasDeProva } from "@/lib/agents/html/paletas-de-prova"
+import type { TokenDeIdentidade } from "@/lib/agents/html/identity-tokens"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("ComponentsTokenizeIdentity")
@@ -55,12 +55,6 @@ export interface TokenizeItem {
   tagged_changed: boolean
   /** HTML depois da tokenização — a tela aplica as paletas de prova nele. */
   html_tokenizado: string
-}
-
-export interface PaletaDeProva {
-  nome: string
-  origem: "loja" | "padrao"
-  tokens: ValoresDeTokens
 }
 
 function planFor(row: VariantRow): TokenizeItem {
@@ -97,53 +91,6 @@ async function loadRows(
   const { data, error } = await q
   if (error) throw error
   return (data ?? []) as VariantRow[]
-}
-
-/** Paletas de prova: as duas lojas de teste do plano, senão duas fixas. */
-async function paletasDeProva(admin: ReturnType<typeof createAdminClient>): Promise<PaletaDeProva[]> {
-  const alvos: Array<{ nome: string; padrao: ValoresDeTokens }> = [
-    {
-      nome: "Luxe Lift",
-      padrao: { ...VALOR_PADRAO, COR_PRINCIPAL: "#3D2820", COR_FUNDO: "#FAF5F3", COR_TEXTO: "#1F1F1F", COR_SUPERFICIE: "#F0E8E4", COR_DESTAQUE: "#6B4A3E", FONTE_TITULO: "'Playfair Display',Georgia,'Times New Roman',serif", FONTE_CORPO: "Lato,Arial,Helvetica,sans-serif" },
-    },
-    {
-      nome: "Innova Bay",
-      padrao: { ...VALOR_PADRAO, COR_PRINCIPAL: "#034326", COR_FUNDO: "#FFFFFF", COR_TEXTO: "#1F1F1F", COR_SUPERFICIE: "#F2F2F2", COR_DESTAQUE: "#2E7D4F", FONTE_TITULO: "Poppins,Arial,Helvetica,sans-serif", FONTE_CORPO: "Poppins,Arial,Helvetica,sans-serif" },
-    },
-  ]
-  const out: PaletaDeProva[] = []
-  for (const alvo of alvos) {
-    try {
-      const { data: store } = await admin
-        .from("client_stores")
-        .select("id, store_name")
-        .ilike("store_name", `${alvo.nome}%`)
-        .eq("is_active", true)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle()
-      if (!store?.id) {
-        out.push({ nome: alvo.nome, origem: "padrao", tokens: alvo.padrao })
-        continue
-      }
-      const { data: brand } = await admin
-        .from("store_brand_identity")
-        .select("colors_primary, colors_secondary, font_heading, font_body, font_heading_weight, font_body_weight")
-        .eq("store_id", store.id)
-        .order("version", { ascending: false })
-        .limit(1)
-        .maybeSingle()
-      out.push({
-        nome: (store.store_name as string) || alvo.nome,
-        origem: brand ? "loja" : "padrao",
-        tokens: brand ? tokensDaLoja(brand) : alvo.padrao,
-      })
-    } catch (err) {
-      log.warn("components.tokenize_identity.paleta_fallback", { nome: alvo.nome, error: err instanceof Error ? err.message : String(err) })
-      out.push({ nome: alvo.nome, origem: "padrao", tokens: alvo.padrao })
-    }
-  }
-  return out
 }
 
 export async function GET(request: NextRequest) {

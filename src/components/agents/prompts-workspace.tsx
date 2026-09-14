@@ -23,6 +23,7 @@ import {
   Palette,
   Scissors,
   Tags,
+  Layers,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { C, F } from "@/components/email-generation/ui/eg-theme"
@@ -35,6 +36,7 @@ import { PromptHistory } from "@/components/agents/prompt-history"
 const AGENT_LABELS: Record<AgentType, string> = {
   catalogador: "Catalogador",
   seletor: "Seletor",
+  gerador_anatomia: "Gerador de Anatomias",
   estruturador: "Estruturador",
   copy: "Copy",
   image: "Imagens",
@@ -62,6 +64,7 @@ const AGENT_LABELS: Record<AgentType, string> = {
 const AGENT_ICONS: Record<AgentType, LucideIcon> = {
   catalogador: Tags,
   seletor: Compass,
+  gerador_anatomia: Layers,
   estruturador: Bot,
   copy: Bot,
   image: ImageIcon,
