@@ -489,6 +489,7 @@ export async function generateBlueprintAndReference(
     estruturadorMode === "on" ? "falhou" : "desligado"
   const estruturadorDesligado =
     estruturadorMode === "off" || gate("estruturador").disabled
+  let estruturadorIncoerente: string | null = null
   if (estruturadorDesligado) {
     // Run 'skipped' em vez de silêncio. O Estruturador é passo do pipeline
     // nas telas (mapa e aba Teste): sem run nenhuma, a linha dele fica
@@ -533,8 +534,17 @@ export async function generateBlueprintAndReference(
         topProducts,
         revisoes,
         alvo,
+        // Decisão de incentivo do toque (14/09): a auditoria confere
+        // `requisitos.cupom` contra ela.
+        incentivo,
       })
-      if (estruturadorMode === "on") {
+      if (r.status === "falhou" && r.motivo === "incoerente") {
+        // Auditoria dos requisitos reprovou nas duas tentativas com o gate
+        // `on`. Seguir com o outline aqui montaria a peça sobre a decisão
+        // que o código acabou de recusar — e o e-mail sairia igual ao do
+        // batch 6249aef2. O throw sai do try/catch abaixo de propósito.
+        estruturadorIncoerente = r.detalhe ?? "requisitos incoerentes"
+      } else if (estruturadorMode === "on") {
         if (r.status === "ok" && r.output && r.output.text_only) {
           // text_only decidido pelo agente ainda não tem caminho de consumo
           // (o pipeline text_only é flag GLOBAL de email_blueprints) — v1
@@ -567,6 +577,11 @@ export async function generateBlueprintAndReference(
         error: err instanceof Error ? err.message : String(err),
       })
     }
+  }
+  if (estruturadorIncoerente) {
+    // Nomeado para a fila de dispatch (que conta tentativas e cai para o
+    // template global só depois de esgotá-las) e para a aba Teste.
+    throw new Error(`estruturador_incoerente: ${estruturadorIncoerente}`)
   }
 
   // Passo 1 — Montador: gera o HTML seguindo a estrutura decidida pelo

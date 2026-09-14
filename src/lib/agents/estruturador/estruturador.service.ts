@@ -60,14 +60,24 @@ import { ALVO_AUSENTE_ESTRUTURADOR, renderAlvo, renderObjecoesJaAtacadas } from 
 import type { AlvoDoEmail } from "../objecoes/vocabulario"
 import { capacidadePorSecao, renderCapacidade, type CapacidadeDaSecao } from "../shared/field-roles"
 import {
+  AUDITORIA_VAZIA,
   buildSystemVars,
   DEFAULT_ESTRUTURADOR_SYSTEM,
   DEFAULT_ESTRUTURADOR_USER,
   intencaoParaOPrompt,
   normalizarOutput,
+  normalizarOutputDetalhado,
   type EstruturadorOutput,
   type MaterialDoFlow,
 } from "./estruturador-prompt"
+import {
+  auditarRequisitos,
+  renderAuditoria,
+  resumoDasDuras,
+  type AuditoriaDosRequisitos,
+} from "./auditoria-requisitos"
+import type { DecisaoDeIncentivo } from "../objecoes/incentivo"
+import { bloqueia, loadContratoModes, roda, type ContratoMode } from "../shared/contrato-mode"
 import {
   aplicaveis,
   montarBlocoOrientacoes,
@@ -83,9 +93,23 @@ import {
 const log = logger.child("Estruturador")
 
 const DEFAULT_MODEL = "anthropic/claude-sonnet-4.6"
-// 2ª tentativa só para JSON ilegível/truncado (o erro de parse volta ao
-// modelo). Não há mais reprovação de conteúdo.
+// 2ª tentativa para JSON ilegível/truncado (o erro de parse volta ao
+// modelo) e, desde 14/09, para a AUDITORIA dos requisitos reprovada em modo
+// `on` (a lista de incoerências volta em <auditoria_anterior>). Conteúdo
+// editorial continua sem validador — o que ele decidir de estrutura vale.
 const MAX_ATTEMPTS = 2
+
+/**
+ * A auditoria reprovou em modo `on`: a saída existe (a forma é válida) mas o
+ * filtro receberia requisitos incoerentes. Vira retentativa como causa
+ * `validacao`; esgotada, `estruturador_incoerente`.
+ */
+class AuditoriaReprovadaError extends Error {
+  constructor(readonly auditoria: AuditoriaDosRequisitos, readonly saida: EstruturadorOutput) {
+    super(`auditoria dos requisitos reprovou: ${resumoDasDuras(auditoria)}`)
+    this.name = "AuditoriaReprovadaError"
+  }
+}
 /** Teto que o relógio deste agente comporta (360s a ~90 tok/s). */
 const TETO_MAXIMO_ESTRUTURADOR = 32000
 
@@ -147,6 +171,12 @@ export const USER_ORIGINS: Record<string, SegmentOrigin> = {
     cls: "curadoria",
     rotulo: "Revisão humana da estrutura — email_structure_reviews",
   },
+  // Retentativa por auditoria (14/09): o que o CÓDIGO achou de incoerente
+  // na resposta anterior deste mesmo email. Vazio na 1ª tentativa.
+  auditoria_anterior: {
+    cls: "sistema",
+    rotulo: "Auditoria dos requisitos da tentativa anterior — auditoria-requisitos.ts (código)",
+  },
 }
 
 function resumo(v: string | null | undefined, max = 240): string {
@@ -181,6 +211,11 @@ export interface RunEstruturadorInput {
    * o agente diagnostica sozinho (fallback declarado no prompt).
    */
   alvo?: AlvoDoEmail | null
+  /**
+   * Decisão de incentivo do toque (14/09, `incentivoDoOutline`) — o que a
+   * auditoria confere contra `requisitos.cupom`. Null = não conferir.
+   */
+  incentivo?: DecisaoDeIncentivo | null
 }
 
 export interface RunEstruturadorResult {
@@ -188,6 +223,15 @@ export interface RunEstruturadorResult {
   runId: string | null
   /** 'ok' | 'sem_material' | 'falhou' — o caller loga; nunca lança. */
   status: "ok" | "sem_material" | "falhou"
+  /**
+   * Só em `falhou`: `incoerente` = a auditoria dos requisitos reprovou em
+   * modo `on` nas duas tentativas. O caller derruba a geração com esse
+   * nome — seguir com o outline aqui seria montar a peça sobre a decisão
+   * que o próprio código acabou de recusar.
+   */
+  motivo?: "incoerente"
+  /** Resumo legível das duras (só com `motivo`). */
+  detalhe?: string
 }
 
 // ── Cargas ──────────────────────────────────────────────────────────────
@@ -434,12 +478,16 @@ export async function runEstruturador(
     return { output: null, runId: null, status: "sem_material" }
   }
 
-  const [capacidade, irmas, minhaAnterior, vigente] = await Promise.all([
+  const [capacidade, irmas, minhaAnterior, vigente, modos] = await Promise.all([
     loadCapacidade(input.topProducts.length),
     loadEstruturasDosOutrosEmails(input.flowId ?? null, input.emailId ?? null),
     loadEstruturaVigenteDesteEmail(input.emailId ?? null),
     loadDecisaoVigenteDesteEmail(input.emailId ?? null),
+    loadContratoModes(input.storeId),
   ])
+  // Gate da auditoria dos requisitos (migration 20261145). `off` não audita;
+  // `shadow` audita e grava; `on` bloqueia (retentativa → incoerente).
+  const auditoriaModo: ContratoMode = modos.auditoria
 
   const cfgRow = await loadActiveAgentConfig("estruturador")
   const config: AgentInvokeConfig = {
@@ -511,6 +559,7 @@ export async function runEstruturador(
       aplicaveis(orientacoes, input.flowType, input.emailNumber),
     ),
     revisao_humana: montarBlocoRevisao(input.revisoes ?? [], "estruturador"),
+    auditoria_anterior: AUDITORIA_VAZIA,
   }
 
   // Entrada estruturada (aba Entrada do Estúdio) — o que o agente recebeu,
@@ -624,6 +673,8 @@ export async function runEstruturador(
       capacidade: capacidade.porCategoria,
       produtos_da_loja: capacidade.produtosDaLoja,
       outros_emails_count: irmas.length,
+      auditoria_modo: auditoriaModo,
+      incentivo: input.incentivo ?? null,
     },
     renderedPrompt: segUserBase.segments
       ? segUserBase.prompt
@@ -647,14 +698,28 @@ export async function runEstruturador(
   let ultimoOut: number | null = null
   let motivoDaDesistencia: string | null = null
   const tetosTentados: number[] = []
+  // Auditoria da última tentativa (a que reprovou, ou a que passou) e a
+  // saída que ela avaliou — no esgotamento, a run grava as duas.
+  let ultimaAuditoria: AuditoriaDosRequisitos | null = null
+  let ultimaSaida: EstruturadorOutput | null = null
+  let ultimaFoiAuditoria = false
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
-      // No retry (só parse ilegível/truncado), o erro volta para o modelo —
-      // mesmo padrão dos demais agentes (falha explicada converge melhor).
-      const vars = ultimoErro
-        ? { ...userVars, estruturas_dos_outros_emails: `${userVars.estruturas_dos_outros_emails}\n\nSEU OUTPUT ANTERIOR NÃO PÔDE SER LIDO: ${ultimoErro}` }
-        : userVars
+      // No retry, o motivo volta para o modelo — mesmo padrão dos demais
+      // agentes (falha explicada converge melhor). Parse ilegível vai em
+      // <estruturas_dos_outros_emails> (como sempre); auditoria reprovada
+      // vai no bloco próprio <auditoria_anterior>, e se o template do banco
+      // não tiver a var, cai no mesmo lugar do parse (nunca some).
+      const auditoriaTexto = ultimaFoiAuditoria && ultimaAuditoria ? renderAuditoria(ultimaAuditoria) : null
+      const templateTemAuditoria = config.user_template.includes("{{auditoria_anterior}}")
+      const vars = auditoriaTexto
+        ? templateTemAuditoria
+          ? { ...userVars, auditoria_anterior: auditoriaTexto }
+          : { ...userVars, estruturas_dos_outros_emails: `${userVars.estruturas_dos_outros_emails}\n\n<auditoria_anterior>\n${auditoriaTexto}\n</auditoria_anterior>` }
+        : ultimoErro
+          ? { ...userVars, estruturas_dos_outros_emails: `${userVars.estruturas_dos_outros_emails}\n\nSEU OUTPUT ANTERIOR NÃO PÔDE SER LIDO: ${ultimoErro}` }
+          : userVars
       tetosTentados.push(tetoDaVez)
       const res = await invokeAgent({ ...config, max_tokens: tetoDaVez }, vars, systemVars)
       ultimoFinish = res.finishReason ?? null
@@ -691,8 +756,35 @@ export async function runEstruturador(
         )
       }
       // Só a FORMA (estrutura[] com section+papel). Sem validador de
-      // conteúdo: o que ele devolver é o que vale (02/09).
-      const saida = normalizarOutput(parsed)
+      // conteúdo editorial: a sequência que ele devolver é o que vale (02/09).
+      const { saida, descartados } = normalizarOutputDetalhado(parsed)
+      ultimaSaida = saida
+
+      // A auditoria dos REQUISITOS (14/09) não julga a estrutura: confere se
+      // o que o filtro do Curador vai ler é coerente com o que o agente
+      // recebeu (incentivo, capacidade, seções) e com o que ele mesmo
+      // escreveu em prosa. Em `on`, dura = retentativa; esgotada, incoerente.
+      const auditoria = roda(auditoriaModo)
+        ? auditarRequisitos({
+            saida,
+            alvo: input.alvo ?? null,
+            incentivo: input.incentivo ?? null,
+            capacidade: capacidade.resumo,
+            secoesDisponiveis,
+            descartados,
+          })
+        : null
+      ultimaAuditoria = auditoria
+      if (auditoria && !auditoria.ok) {
+        log.warn("estruturador.auditoria_reprovou", {
+          storeId: input.storeId, flowType: input.flowType, emailNumber: input.emailNumber,
+          attempt, modo: auditoriaModo, duras: auditoria.duras.map((d) => d.regra), avisos: auditoria.avisos.length,
+        })
+        if (bloqueia(auditoriaModo)) throw new AuditoriaReprovadaError(auditoria, saida)
+      }
+      const auditoriaTelemetria = auditoria
+        ? { modo: auditoriaModo, ...auditoria, tentativa: attempt }
+        : { modo: auditoriaModo, ok: null, duras: [], avisos: [], descartados, posicoes: saida.estrutura.length, com_requisito: saida.estrutura.filter((p) => p.requisitos).length, tentativa: attempt }
 
       await finishGenerationRun(runId, {
         storeId: input.storeId,
@@ -714,8 +806,10 @@ export async function runEstruturador(
           produtos_da_loja: capacidade.produtosDaLoja,
           outros_emails_count: irmas.length,
           system_sha8: systemSha8,
-      tetos_tentados: tetosTentados,
-      motivo_da_desistencia: motivoDaDesistencia,
+          tetos_tentados: tetosTentados,
+          motivo_da_desistencia: motivoDaDesistencia,
+          auditoria_modo: auditoriaModo,
+          incentivo: input.incentivo ?? null,
         },
         renderedPrompt: userPromptFinal,
         promptSegments: promptSegmentsFinal,
@@ -723,6 +817,9 @@ export async function runEstruturador(
         rawOutput: raw.slice(0, 16000),
         parsedOutput: {
           ...saida,
+          // Sempre presente (mesmo em `off`, com ok:null): é o que diz se o
+          // filtro do Curador recebeu requisitos conferidos ou não.
+          auditoria_requisitos: auditoriaTelemetria,
           // Informativo (sem validador de conteúdo desde 02/09): o que a
           // tela usa para dizer se foi consumido, se houve retry de parse,
           // se a revisão humana foi seguida e se convergiu com a anterior.
@@ -775,12 +872,14 @@ export async function runEstruturador(
       return { output: saida, runId, status: "ok" }
     } catch (err) {
       ultimoErro = err instanceof Error ? err.message : String(err)
+      ultimaFoiAuditoria = err instanceof AuditoriaReprovadaError
     }
     const causa = classificarFalha({
       finishReason: ultimoFinish,
       tokensOutput: ultimoOut,
       maxTokens: tetoDaVez,
       erro: ultimoErro,
+      ehValidacao: ultimaFoiAuditoria,
     })
     const plano = planejarRetentativa({
       causa, tentativa: attempt, maxAttempts: MAX_ATTEMPTS,
@@ -798,7 +897,12 @@ export async function runEstruturador(
     tetoDaVez = plano.maxTokens
   }
 
-  // 2 falhas de parse → run error; o caller segue sem Estruturador (fallback documentado).
+  // 2 falhas de parse → run error; o caller segue sem Estruturador (fallback
+  // documentado). 2 auditorias reprovadas em `on` → `estruturador_incoerente`,
+  // e o caller DERRUBA a geração: a run grava a última saída com a auditoria,
+  // para a tela mostrar o que foi recusado e por quê.
+  const incoerente = ultimaFoiAuditoria && ultimaAuditoria != null && !ultimaAuditoria.ok
+  const detalheIncoerente = incoerente && ultimaAuditoria ? resumoDasDuras(ultimaAuditoria) : null
   await finishGenerationRun(runId, {
     storeId: input.storeId,
     flowId: input.flowId ?? undefined,
@@ -809,13 +913,30 @@ export async function runEstruturador(
     agentConfigId: cfgRow?.id,
     status: "error",
     model: config.model,
-    errorMessage: (motivoDaDesistencia ? `${motivoDaDesistencia} · ${ultimoErro ?? ""}` : ultimoErro) ?? "estruturador_failed",
+    errorMessage: incoerente
+      ? `estruturador_incoerente: ${detalheIncoerente} · ${ultimaAuditoria?.duras.map((d) => d.detalhe).join(" | ") ?? ""}`.slice(0, 2000)
+      : (motivoDaDesistencia ? `${motivoDaDesistencia} · ${ultimoErro ?? ""}` : ultimoErro) ?? "estruturador_failed",
     inputVars: {
       modo: input.mode,
       refs_servidas: carga.refsServidas,
       vault_commit_sha: carga.vaultCommitSha,
       system_sha8: systemSha8,
+      auditoria_modo: auditoriaModo,
+      incentivo: input.incentivo ?? null,
+      tetos_tentados: tetosTentados,
+      motivo_da_desistencia: motivoDaDesistencia,
     },
+    ...(ultimaSaida
+      ? {
+          parsedOutput: {
+            ...ultimaSaida,
+            auditoria_requisitos: ultimaAuditoria
+              ? { modo: auditoriaModo, ...ultimaAuditoria, tentativa: tetosTentados.length }
+              : null,
+            _validador: { retry_count: MAX_ATTEMPTS - 1, shadow: input.mode !== "on", recusada: incoerente },
+          },
+        }
+      : {}),
     renderedPrompt: userPromptFinal || undefined,
     promptSegments: promptSegmentsFinal,
     inputSummary,
@@ -828,5 +949,12 @@ export async function runEstruturador(
     durationMs: Date.now() - t0,
     retryCount: MAX_ATTEMPTS - 1,
   })
+  if (incoerente) {
+    log.error("estruturador.incoerente", {
+      storeId: input.storeId, flowType: input.flowType, emailNumber: input.emailNumber,
+      duras: ultimaAuditoria?.duras.map((d) => d.regra),
+    })
+    return { output: null, runId, status: "falhou", motivo: "incoerente", detalhe: detalheIncoerente ?? undefined }
+  }
   return { output: null, runId, status: "falhou" }
 }

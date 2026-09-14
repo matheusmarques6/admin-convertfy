@@ -99,8 +99,52 @@ const intOuNull = (v: unknown): number | null =>
  * Estruturador de antes. Devolve `null` quando nada foi declarado.
  */
 export function normalizarRequisitos(raw: unknown): RequisitosDaPosicao | null {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null
+  return normalizarRequisitosComDescartes(raw).requisitos
+}
+
+/**
+ * Um valor que o modelo ESCREVEU e a normalização jogou fora — `"cupom":
+ * "false"` (string), `"n_itens": "2-3"`, `"campos": ["price"]`. Até 14/09 o
+ * descarte era silencioso: `cupom: "false"` virava `null` (indiferente) e
+ * o filtro do Curador deixava passar a variante com cupom exatamente no
+ * toque em que o Estruturador tinha tentado negá-lo. A auditoria
+ * (`auditoria-requisitos.ts`) transforma isto em achado.
+ */
+export interface ValorDescartado {
+  campo: string
+  valor_cru: unknown
+}
+
+export interface RequisitosNormalizados {
+  requisitos: RequisitosDaPosicao | null
+  descartados: ValorDescartado[]
+}
+
+const definido = (v: unknown) => v !== undefined && v !== null
+
+/**
+ * Normaliza `requisitos` de uma posição E devolve o que foi descartado.
+ * FAIL-OPEN na forma (valor inválido vira `null`/vazio, nunca reprova); o
+ * descarte deixa de ser mudo.
+ */
+export function normalizarRequisitosComDescartes(raw: unknown): RequisitosNormalizados {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return {
+      requisitos: null,
+      descartados: definido(raw) ? [{ campo: "requisitos", valor_cru: raw }] : [],
+    }
+  }
   const r = raw as Record<string, unknown>
+  const descartados: ValorDescartado[] = []
+  const bool = (campo: "cupom" | "cta" | "preco" | "avaliacao"): boolean | null => {
+    const v = boolOuNull(r[campo])
+    if (v == null && definido(r[campo])) descartados.push({ campo, valor_cru: r[campo] })
+    return v
+  }
+  // Na ordem do contrato (cupom, cta, n_itens, preco, avaliacao, campos…):
+  // a lista de descartes é lida por gente, e ordem estável facilita o diff.
+  const cupom = bool("cupom")
+  const cta = bool("cta")
   let n_itens: RequisitosDaPosicao["n_itens"] = null
   if (r.n_itens && typeof r.n_itens === "object") {
     const o = r.n_itens as Record<string, unknown>
@@ -110,31 +154,55 @@ export function normalizarRequisitos(raw: unknown): RequisitosDaPosicao | null {
       const lo = min ?? max ?? 0
       const hi = max ?? min ?? lo
       n_itens = { min: Math.min(lo, hi), max: Math.max(lo, hi) }
+    } else {
+      descartados.push({ campo: "n_itens", valor_cru: r.n_itens })
     }
   } else if (typeof r.n_itens === "number") {
     const n = intOuNull(r.n_itens)
     if (n != null) n_itens = { min: n, max: n }
+    else descartados.push({ campo: "n_itens", valor_cru: r.n_itens })
+  } else if (definido(r.n_itens)) {
+    descartados.push({ campo: "n_itens", valor_cru: r.n_itens })
   }
-  const campos = Array.isArray(r.campos)
-    ? r.campos.filter((c): c is CampoExigido => typeof c === "string" && (CAMPOS_EXIGIDOS as readonly string[]).includes(c))
-    : []
-  const exige = Array.isArray(r.exige)
-    ? r.exige.filter((x): x is string => typeof x === "string" && x.trim().length > 0).map((x) => x.trim()).slice(0, 6)
-    : []
+  const preco = bool("preco")
+  const avaliacao = bool("avaliacao")
+  const campos: CampoExigido[] = []
+  if (Array.isArray(r.campos)) {
+    for (const c of r.campos) {
+      if (typeof c === "string" && (CAMPOS_EXIGIDOS as readonly string[]).includes(c)) campos.push(c as CampoExigido)
+      else descartados.push({ campo: "campos", valor_cru: c })
+    }
+  } else if (definido(r.campos)) {
+    descartados.push({ campo: "campos", valor_cru: r.campos })
+  }
+  let exige: string[] = []
+  if (Array.isArray(r.exige)) {
+    exige = r.exige
+      .filter((x): x is string => typeof x === "string" && x.trim().length > 0)
+      .map((x) => x.trim())
+    if (exige.length > 6) descartados.push({ campo: "exige", valor_cru: exige.slice(6) })
+    exige = exige.slice(0, 6)
+  } else if (definido(r.exige)) {
+    descartados.push({ campo: "exige", valor_cru: r.exige })
+  }
+  const imagem = typeof r.imagem === "string" && r.imagem.trim() ? r.imagem.trim() : null
+  if (imagem == null && definido(r.imagem) && r.imagem !== "") {
+    descartados.push({ campo: "imagem", valor_cru: r.imagem })
+  }
   const out: RequisitosDaPosicao = {
-    cupom: boolOuNull(r.cupom),
-    cta: boolOuNull(r.cta),
+    cupom,
+    cta,
     n_itens,
-    preco: boolOuNull(r.preco),
-    avaliacao: boolOuNull(r.avaliacao),
+    preco,
+    avaliacao,
     campos: Array.from(new Set(campos)),
-    imagem: typeof r.imagem === "string" && r.imagem.trim() ? r.imagem.trim() : null,
+    imagem,
     exige,
   }
   const vazio =
     out.cupom == null && out.cta == null && !out.n_itens && out.preco == null && out.avaliacao == null &&
     out.campos.length === 0 && !out.imagem && out.exige.length === 0
-  return vazio ? null : out
+  return { requisitos: vazio ? null : out, descartados }
 }
 
 export interface EstruturadorDescarte {
@@ -184,11 +252,32 @@ export function wrapDocs(tag: "referencia" | "aprendizado", docs: MaterialDoc[])
  * do parse.
  */
 export function normalizarOutput(parsed: unknown): EstruturadorOutput {
+  return normalizarOutputDetalhado(parsed).saida
+}
+
+/** Valor descartado de `requisitos`, com a posição (índice da estrutura FINAL). */
+export interface DescarteDePosicao extends ValorDescartado {
+  block_index: number
+  section: string
+}
+
+export interface OutputNormalizado {
+  saida: EstruturadorOutput
+  /** O que o modelo escreveu em `requisitos` e a normalização não aceitou. */
+  descartados: DescarteDePosicao[]
+}
+
+/**
+ * `normalizarOutput` + a lista do que foi descartado por posição — insumo da
+ * auditoria. A forma continua fail-open: nada aqui reprova.
+ */
+export function normalizarOutputDetalhado(parsed: unknown): OutputNormalizado {
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error("resposta não é um objeto JSON")
   }
   const o = parsed as Record<string, unknown>
   const cru = Array.isArray(o.estrutura) ? o.estrutura : []
+  const descartados: DescarteDePosicao[] = []
   const estrutura: EstruturadorPosicao[] = cru
     .filter(
       (p): p is Record<string, unknown> =>
@@ -202,12 +291,20 @@ export function normalizarOutput(parsed: unknown): EstruturadorOutput {
         ? { adaptacao: p.adaptacao.trim() }
         : {}),
       porque: typeof p.porque === "string" ? p.porque.trim() : "",
-      ...((): { requisitos?: RequisitosDaPosicao } => {
-        const req = normalizarRequisitos(p.requisitos)
-        return req ? { requisitos: req } : {}
+      ...((): { requisitos?: RequisitosDaPosicao; _descartados?: ValorDescartado[] } => {
+        const norm = normalizarRequisitosComDescartes(p.requisitos)
+        return {
+          ...(norm.requisitos ? { requisitos: norm.requisitos } : {}),
+          ...(norm.descartados.length ? { _descartados: norm.descartados } : {}),
+        }
       })(),
     }))
     .filter((p) => p.section.length > 0 && p.papel.length > 0)
+    .map((p, i) => {
+      const { _descartados, ...pos } = p as EstruturadorPosicao & { _descartados?: ValorDescartado[] }
+      for (const d of _descartados ?? []) descartados.push({ ...d, block_index: i, section: pos.section })
+      return pos
+    })
   if (estrutura.length === 0) {
     throw new Error('output sem "estrutura" com posições válidas (cada uma precisa de "section" e "papel")')
   }
@@ -220,7 +317,7 @@ export function normalizarOutput(parsed: unknown): EstruturadorOutput {
           .map(map)
           .filter((x): x is T => x !== null)
       : []
-  return {
+  const saida: EstruturadorOutput = {
     diagnostico: {
       ...(str(diag.alvo_id) ? { alvo_id: str(diag.alvo_id) } : {}),
       ...(str(diag.objecao_dominante) ? { objecao_dominante: str(diag.objecao_dominante) } : {}),
@@ -243,6 +340,7 @@ export function normalizarOutput(parsed: unknown): EstruturadorOutput {
       origem: d.origem === "validador" ? "validador" : "modelo",
     })),
   }
+  return { saida, descartados }
 }
 
 export function buildSystemVars(material: MaterialDoFlow): Record<string, string> {
@@ -299,6 +397,10 @@ REQUISITOS por posição (o que a decisão EXIGE ou NEGA, legível por máquina)
 - "campos" usa vocabulário fechado: preco, avaliacao, nome, idade, contexto, selo_nomeado, categoria, mecanismo, garantia.
 - "imagem": a cena que a foto desta posição precisa mostrar (ex.: "uso real em corpo adulto, não estúdio"). É a instrução de maior peso do agente de imagem.
 - <secoes_disponiveis> diz, por seção, o que a biblioteca TEM (quantas variantes, faixa de itens, quantas mostram preço/avaliação/cupom/CTA). Não exija o que não existe: se exigir, a posição pode ficar sem candidata — prefira ajustar o papel e registrar em "exige" o que faltou.
+- TODA posição leva "requisitos" (mesmo que só com "exige"). Os valores são JSON tipado, nunca texto: true/false/null, números em "n_itens", e "campos" só com o vocabulário fechado — "cupom": "false" (string) é descartado e vira indiferente, o oposto do que você quis.
+- O incentivo deste toque está DECIDIDO em <decisao_de_objecao> (existe/código/valor): se ele existe e o toque o entrega, ALGUMA posição declara "cupom": true; se não existe, NENHUMA posição pode declarar "cupom": true.
+- Exemplo de requisitos preenchidos num toque COM incentivo: hero → {"cupom":true,"cta":true,"n_itens":null,"preco":null,"avaliacao":null,"campos":[],"imagem":"uso real em corpo adulto, luz natural","exige":["código visível","sem prazo"]}; products → {"cupom":false,"cta":true,"n_itens":{"min":2,"max":3},"preco":true,"avaliacao":null,"campos":["preco","nome"],"imagem":null,"exige":["preço em texto real"]}.
+- <auditoria_anterior>, quando vier preenchida, é a lista de incoerências que o código encontrou na sua ÚLTIMA resposta para este mesmo email. Corrija cada item nomeado — a estrutura pode ser mantida; o que precisa mudar são os requisitos e o que os contradiz.
 
 Restrições de construção:
 - Use SOMENTE seções listadas em <secoes_disponiveis>. NUNCA emita "header" nem "cta": o papel do header vai para a PRIMEIRA posição da sua sequência (seja ela qual for); o papel de um cta isolado vai para a posição ANTERIOR a ele.
@@ -385,4 +487,11 @@ Top 5 produtos (nome — preço — link):
 {{revisao_humana}}
 </revisao_humana>
 
+<auditoria_anterior>
+{{auditoria_anterior}}
+</auditoria_anterior>
+
 Monte a estrutura deste email para esta loja. Responda APENAS o JSON.`
+
+/** O que vai em `{{auditoria_anterior}}` na 1ª tentativa (o bloco nunca some do prompt). */
+export const AUDITORIA_VAZIA = "(primeira tentativa — nada a corrigir)"

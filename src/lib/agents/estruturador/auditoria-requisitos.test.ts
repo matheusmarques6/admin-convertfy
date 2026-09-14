@@ -1,0 +1,237 @@
+import { describe, it, expect } from "vitest"
+import { auditarRequisitos, renderAuditoria, resumoDasDuras } from "./auditoria-requisitos"
+import { normalizarOutputDetalhado } from "./estruturador-prompt"
+import type { CapacidadeDaSecao } from "../shared/field-roles"
+import type { DecisaoDeIncentivo } from "../objecoes/incentivo"
+import { ALVO_HERO_BOXERS_W1, ESTRUTURADOR_HERO_BOXERS_W1 } from "../shared/fixtures/hero-boxers-welcome-1"
+
+/** Capacidade da biblioteca como estava em 14/09 (o que o Estruturador recebeu). */
+const CAP: Record<string, CapacidadeDaSecao> = {
+  hero: { variantes: 9, itens: null, com_preco: 0, com_avaliacao: 0, com_cupom: 3, com_cta: 9, com_credencial: 0 },
+  body: { variantes: 10, itens: { min: 2, max: 4 }, com_preco: 0, com_avaliacao: 0, com_cupom: 0, com_cta: 6, com_credencial: 0 },
+  reviews: { variantes: 5, itens: { min: 1, max: 3 }, com_preco: 0, com_avaliacao: 4, com_cupom: 0, com_cta: 2, com_credencial: 2 },
+  products: { variantes: 9, itens: { min: 1, max: 9 }, com_preco: 1, com_avaliacao: 0, com_cupom: 0, com_cta: 9, com_credencial: 0 },
+  footer: { variantes: 3, itens: null, com_preco: 0, com_avaliacao: 0, com_cupom: 0, com_cta: 0, com_credencial: 0 },
+}
+const SECOES = Object.keys(CAP)
+
+const COM_CUPOM: DecisaoDeIncentivo = {
+  existe: true, codigo: "WELCOME10", valor: "10%", origem: "outline_traduzido", traducao_faltante: false,
+}
+const SEM_CUPOM: DecisaoDeIncentivo = {
+  existe: false, codigo: null, valor: null, origem: "sem_incentivo", traducao_faltante: false,
+}
+
+const base = (over: Partial<Parameters<typeof auditarRequisitos>[0]> = {}) =>
+  auditarRequisitos({
+    saida: ESTRUTURADOR_HERO_BOXERS_W1,
+    alvo: ALVO_HERO_BOXERS_W1,
+    incentivo: SEM_CUPOM,
+    capacidade: CAP,
+    secoesDisponiveis: SECOES,
+    descartados: [],
+    ...over,
+  })
+
+describe("auditarRequisitos — a fixture real do batch 6249aef2", () => {
+  it("com o incentivo que o Catalogador zerou (existe:false), a decisão de 11/09 passa", () => {
+    const a = base()
+    expect(a.duras).toEqual([])
+    expect(a.ok).toBe(true)
+    expect(a.posicoes).toBe(6)
+    expect(a.com_requisito).toBe(6)
+  })
+
+  it("com o incentivo do outline (existe:true) e o alvo pedindo ENTREGA, seis posições cupom:false é dura", () => {
+    const a = base({ incentivo: COM_CUPOM })
+    expect(a.ok).toBe(false)
+    expect(a.duras.map((d) => d.regra)).toEqual(["incentivo_sem_lugar"])
+    expect(a.duras[0].detalhe).toContain("WELCOME10")
+    expect(a.duras[0].detalhe).toContain("ENTREGA")
+  })
+
+  it("sem alvo, o toque com incentivo e nenhum cupom é só aviso (o e-mail pode não entregá-lo)", () => {
+    const a = base({ incentivo: COM_CUPOM, alvo: null })
+    expect(a.duras).toEqual([])
+    expect(a.avisos.map((v) => v.regra)).toContain("incentivo_sem_lugar")
+  })
+
+  it("o incentivo ausente (null) não gera achado nenhum sobre cupom", () => {
+    const a = base({ incentivo: null })
+    expect([...a.duras, ...a.avisos].filter((x) => x.regra.includes("incentivo") || x.regra.includes("cupom"))).toEqual([])
+  })
+})
+
+describe("auditarRequisitos — regras sintéticas", () => {
+  const saidaCom = (patch: (s: typeof ESTRUTURADOR_HERO_BOXERS_W1) => typeof ESTRUTURADOR_HERO_BOXERS_W1) =>
+    patch(JSON.parse(JSON.stringify(ESTRUTURADOR_HERO_BOXERS_W1)))
+
+  it("cupom:true num toque SEM incentivo é dura, posição a posição", () => {
+    const saida = saidaCom((s) => {
+      s.estrutura[0].requisitos!.cupom = true
+      return s
+    })
+    const a = base({ saida, incentivo: SEM_CUPOM })
+    expect(a.duras).toHaveLength(1)
+    expect(a.duras[0]).toMatchObject({ regra: "cupom_contradiz_incentivo", block_index: 0, section: "hero" })
+  })
+
+  it("cupom:true com incentivo, na hero, satisfaz a entrega — zero duras", () => {
+    const saida = saidaCom((s) => {
+      s.estrutura[0].requisitos!.cupom = true
+      return s
+    })
+    expect(base({ saida, incentivo: COM_CUPOM }).duras).toEqual([])
+  })
+
+  it("nenhuma posição com requisitos é dura; algumas sem é aviso", () => {
+    const todas = saidaCom((s) => {
+      for (const p of s.estrutura) delete p.requisitos
+      return s
+    })
+    expect(base({ saida: todas }).duras.map((d) => d.regra)).toEqual(["sem_requisitos"])
+    const uma = saidaCom((s) => {
+      delete s.estrutura[5].requisitos
+      return s
+    })
+    const a = base({ saida: uma })
+    expect(a.duras).toEqual([])
+    expect(a.avisos.filter((v) => v.regra === "sem_requisitos")).toHaveLength(1)
+    expect(a.com_requisito).toBe(5)
+  })
+
+  it("valor descartado em campo de FILTRO é dura; em campo de copy é aviso", () => {
+    const a = base({
+      descartados: [
+        { block_index: 0, section: "hero", campo: "cupom", valor_cru: "false" },
+        { block_index: 1, section: "body", campo: "campos", valor_cru: "price" },
+      ],
+    })
+    expect(a.duras.map((d) => d.regra)).toEqual(["valor_descartado"])
+    expect(a.duras[0].detalhe).toContain('"cupom" = "false"')
+    expect(a.avisos.filter((v) => v.regra === "valor_descartado")).toHaveLength(1)
+  })
+
+  it("exigir o que a seção não tem é dura: preço em body, avaliação em products, itens fora da faixa", () => {
+    const saida = saidaCom((s) => {
+      s.estrutura[1].requisitos!.preco = true // body: com_preco 0
+      s.estrutura[4].requisitos!.avaliacao = true // products: com_avaliacao 0
+      s.estrutura[3].requisitos!.n_itens = { min: 5, max: 6 } // reviews: 1–3
+      return s
+    })
+    const a = base({ saida })
+    const fora = a.duras.filter((d) => d.regra === "exige_fora_da_capacidade")
+    expect(fora.map((d) => d.section)).toEqual(["body", "reviews", "products"])
+    expect(fora[1].detalhe).toContain("5–6 itens")
+  })
+
+  it("seção fora da lista e header/cta são duras", () => {
+    const saida = saidaCom((s) => {
+      s.estrutura[0].section = "header"
+      s.estrutura[2].section = "comparison"
+      return s
+    })
+    const a = base({ saida })
+    const fora = a.duras.filter((d) => d.regra === "secao_fora_da_lista")
+    expect(fora.map((d) => d.section)).toEqual(["header", "comparison"])
+  })
+
+  it("lista de seções vazia (capacidade não carregou) não acusa seção nenhuma — fail-open", () => {
+    expect(base({ secoesDisponiveis: [], capacidade: {} }).duras).toEqual([])
+  })
+
+  it("papel que nega em prosa o que o requisito deixou indiferente é aviso (pt e en)", () => {
+    const saida = saidaCom((s) => {
+      s.estrutura[0].requisitos!.cupom = null
+      s.estrutura[0].papel = "Entrega da promessa SEM incentivo, sem código"
+      s.estrutura[1].requisitos!.cta = null
+      s.estrutura[1].requisitos!.exige = ["no button here"]
+      return s
+    })
+    const a = base({ saida, incentivo: null })
+    const av = a.avisos.filter((v) => v.regra === "papel_diz_requisito_nao" && v.block_index! < 2)
+    expect(av.map((v) => [v.section, v.detalhe.includes("cupom"), v.detalhe.includes("cta")])).toEqual([
+      ["hero", true, false],
+      ["body", false, true],
+    ])
+  })
+
+  it("a fixture real já carrega esse aviso: products diz 'sem avaliação' e deixou avaliacao null", () => {
+    const av = base().avisos.filter((v) => v.regra === "papel_diz_requisito_nao")
+    expect(av.map((v) => v.section)).toEqual(["products"])
+    expect(av[0].detalhe).toContain("avaliacao")
+  })
+
+  it("descarte sem porquê, ou sem seção e sem papel, é aviso", () => {
+    const saida = saidaCom((s) => {
+      s.descartes[0].porque = ""
+      s.descartes[1].section = null
+      s.descartes[1].papel_na_referencia = null
+      return s
+    })
+    const a = base({ saida })
+    expect(a.avisos.filter((v) => v.regra === "descarte_sem_dispositivo")).toHaveLength(2)
+  })
+})
+
+describe("normalizarOutputDetalhado alimenta a auditoria", () => {
+  it('"cupom": "false" (string) é descartado COM registro e a auditoria o acusa como dura', () => {
+    const { saida, descartados } = normalizarOutputDetalhado({
+      estrutura: [
+        { section: "hero", papel: "abre", referencia: "r", porque: "p", requisitos: { cupom: "false", cta: true, campos: ["price", "preco"], n_itens: "2-3" } },
+        { section: "body", papel: "corpo", referencia: "r", porque: "p" },
+      ],
+    })
+    expect(saida.estrutura[0].requisitos).toMatchObject({ cupom: null, cta: true, campos: ["preco"], n_itens: null })
+    expect(descartados.map((d) => `${d.block_index}:${d.campo}`)).toEqual(["0:cupom", "0:n_itens", "0:campos"])
+    const a = auditarRequisitos({
+      saida, alvo: null, incentivo: null, capacidade: CAP, secoesDisponiveis: SECOES, descartados,
+    })
+    expect(a.duras.map((d) => d.regra)).toEqual(["valor_descartado", "valor_descartado"])
+  })
+
+  it("posição descartada por falta de papel não desloca o índice dos descartes", () => {
+    const { descartados } = normalizarOutputDetalhado({
+      estrutura: [
+        { section: "hero" }, // cai fora
+        { section: "body", papel: "corpo", referencia: "r", porque: "p", requisitos: { preco: "sim" } },
+      ],
+    })
+    expect(descartados).toEqual([{ block_index: 0, section: "body", campo: "preco", valor_cru: "sim" }])
+  })
+})
+
+describe("renderAuditoria / resumoDasDuras", () => {
+  it("sem duras devolve o texto da primeira tentativa; com duras, lista numerada", () => {
+    expect(renderAuditoria(base())).toContain("primeira tentativa")
+    const a = base({ incentivo: COM_CUPOM })
+    const txt = renderAuditoria(a)
+    expect(txt).toContain("1. [incentivo_sem_lugar]")
+    expect(txt).toContain("mantendo o que não foi apontado")
+    expect(resumoDasDuras(a)).toBe("incentivo_sem_lugar")
+  })
+
+  it("o resumo agrupa por regra", () => {
+    const a = base({
+      descartados: [
+        { block_index: 0, section: "hero", campo: "cupom", valor_cru: "x" },
+        { block_index: 1, section: "body", campo: "cta", valor_cru: "y" },
+      ],
+    })
+    expect(resumoDasDuras(a)).toBe("valor_descartado×2")
+  })
+})
+
+describe("custódia: os requisitos auditados são os que chegam ao Curador", () => {
+  it("parsed_output → decisaoCompletaParaCurador → requisitosDaDecisao preserva posição a posição", async () => {
+    const { decisaoCompletaParaCurador, requisitosDaDecisao } = await import("./estruturador-consume")
+    const auditada = base({ incentivo: COM_CUPOM })
+    const json = decisaoCompletaParaCurador(ESTRUTURADOR_HERO_BOXERS_W1)
+    const noCurador = requisitosDaDecisao(json)
+    expect(noCurador).toHaveLength(auditada.posicoes)
+    expect(noCurador.filter((r) => r != null)).toHaveLength(auditada.com_requisito)
+    // O campo que a auditoria confere é o MESMO que o filtro lê.
+    expect(noCurador.map((r) => r?.cupom)).toEqual(ESTRUTURADOR_HERO_BOXERS_W1.estrutura.map((p) => p.requisitos?.cupom))
+    expect(noCurador[4]).toMatchObject({ preco: true, n_itens: { min: 2, max: 2 } })
+  })
+})
