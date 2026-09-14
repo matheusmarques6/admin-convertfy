@@ -9,6 +9,9 @@ import {
   type AvatarMimeType,
   validateMagicBytes,
   getAvatarExtension as getExtension,
+  avatarPath,
+  avatarPathsToClean,
+  avatarPathsAll,
 } from "@/lib/avatar-validation"
 
 const log = logger.child("AvatarUpload")
@@ -43,20 +46,9 @@ export async function POST(request: NextRequest) {
       throw new AppError("Conteúdo do arquivo não corresponde ao tipo declarado", 400)
     }
 
-    // Clean up old avatars with different extensions
-    const ext = getExtension(file.type)
-    const otherExts = ["jpg", "png", "webp"].filter((e) => e !== ext)
-    const filesToRemove = otherExts.map((e) => `${user.id}/avatar.${e}`)
-
-    if (filesToRemove.length > 0) {
-      const { error: removeError } = await supabase.storage.from(BUCKET).remove(filesToRemove)
-      if (removeError) {
-        log.warn("Failed to remove old avatar files:", removeError)
-      }
-    }
-
     // Upload (upsert overwrites previous same-extension file)
-    const path = `${user.id}/avatar.${ext}`
+    const ext = getExtension(file.type)
+    const path = avatarPath(user.id, ext)
 
     const { error: uploadError } = await supabase.storage
       .from(BUCKET)
@@ -86,6 +78,18 @@ export async function POST(request: NextRequest) {
       throw new AppError("Erro ao atualizar perfil", 500)
     }
 
+    // Só AGORA as extensões antigas saem. A ordem importa: enquanto a
+    // limpeza vinha PRIMEIRO, qualquer falha entre ela e o update deixava
+    // `profiles.avatar_url` apontando para o arquivo recém-apagado — o
+    // Storage responde 400 e o avatar some sem ninguém saber por quê.
+    // Arquivo velho sobrando é lixo tolerável; ponteiro para o vazio, não.
+    const { error: removeError } = await supabase.storage
+      .from(BUCKET)
+      .remove(avatarPathsToClean(user.id, ext))
+    if (removeError) {
+      log.warn("Failed to remove old avatar files:", removeError)
+    }
+
     // Return URL with cache-bust param for immediate client refresh
     return successResponse(request, { avatar_url: `${publicUrl}?t=${Date.now()}` })
   } catch (error) {
@@ -103,11 +107,9 @@ export async function DELETE(request: NextRequest) {
     const user = await requireAuth(supabase)
 
     // Remove all possible avatar files
-    const filesToRemove = ["jpg", "png", "webp"].map(
-      (ext) => `${user.id}/avatar.${ext}`
-    )
-
-    const { error: removeError } = await supabase.storage.from(BUCKET).remove(filesToRemove)
+    const { error: removeError } = await supabase.storage
+      .from(BUCKET)
+      .remove(avatarPathsAll(user.id))
     if (removeError) {
       log.warn("Failed to remove avatar files from storage:", removeError)
     }

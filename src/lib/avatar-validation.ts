@@ -48,3 +48,49 @@ export function getAvatarExtension(mimeType: string): string {
     default: return "jpg"
   }
 }
+
+/**
+ * Caminhos no bucket `avatars`.
+ *
+ * O PRIMEIRO segmento tem de ser o `auth.uid()` — é o que as policies de
+ * Storage exigem (`(storage.foldername(name))[1] = auth.uid()::text` em
+ * INSERT/UPDATE/DELETE). Por isso a separação entre admin e portal é um
+ * subdiretório DEPOIS do id, nunca um prefixo antes dele.
+ *
+ * Separar importa porque as duas rotas compartilham o bucket e escrevem em
+ * TABELAS diferentes (`profiles.avatar_url` × `client_portal_users
+ * .avatar_url`): com o mesmo caminho, a limpeza de extensões de uma
+ * invalidava silenciosamente a URL gravada pela outra, e nenhuma das duas
+ * tinha como saber. URLs já gravadas continuam servindo — a URL mora no
+ * banco; os uploads seguintes é que migram.
+ */
+export const AVATAR_EXTENSIONS = ["jpg", "png", "webp"] as const
+
+export function avatarPath(
+  userId: string,
+  ext: string,
+  scope: "admin" | "portal" = "admin",
+): string {
+  return scope === "portal"
+    ? `${userId}/portal/avatar.${ext}`
+    : `${userId}/avatar.${ext}`
+}
+
+/** As outras extensões do MESMO escopo — o que sobra depois de um upload. */
+export function avatarPathsToClean(
+  userId: string,
+  keepExt: string,
+  scope: "admin" | "portal" = "admin",
+): string[] {
+  return AVATAR_EXTENSIONS.filter((e) => e !== keepExt).map((e) =>
+    avatarPath(userId, e, scope),
+  )
+}
+
+/** Todas as extensões do escopo — o que o DELETE apaga. */
+export function avatarPathsAll(
+  userId: string,
+  scope: "admin" | "portal" = "admin",
+): string[] {
+  return AVATAR_EXTENSIONS.map((e) => avatarPath(userId, e, scope))
+}
