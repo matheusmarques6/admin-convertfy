@@ -58,6 +58,7 @@ export const TELEMETRY_CONTRACT: Record<
     marker_selfcheck: "self-check dos marcadores emitidos pelo código; diferente de ok é bug nosso",
     image_tags_dropped: "self-check das tags de imagem; diferente de vazio é bug nosso",
     reference_source: "de onde saiu o reference que o consumidor vai usar",
+    _contrato: "validador estrutural (14/09): modo do gate, violações da escolha/resgate contra a decisão e as substituições por código — sem ele o painel não sabe se o validador rodou",
   },
   blueprint: {
     blocks: "quantos blocos o blueprint tem — a contagem que o dispatch vai pedir ao n8n",
@@ -65,6 +66,7 @@ export const TELEMETRY_CONTRACT: Record<
     blueprint_path: "determinístico ou LLM fallback — a rota decide o custo e a confiabilidade do resultado",
     estruturador_consumido: "se os papéis do Estruturador entraram no purpose dos blocos",
     schema_anchor_issue_count: "campos cujo example/token não é encontrável no HTML da variante — erro de CADASTRO da biblioteca, não do run",
+    _contrato: "validador do blueprint (14/09): campos de oferta omitidos por código numa peça sem incentivo e o que ainda viola a decisão",
   },
   hero_section: {
     hero_source: "library (região é a variante enxertada) ou montador (fallback legado) — decide quanta liberdade o agente teve",

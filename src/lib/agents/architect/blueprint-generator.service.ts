@@ -45,6 +45,9 @@ import {
 import type { AssemblySlot } from "./component-assembler.service"
 import type { RequisitosDaPosicao } from "../estruturador/estruturador-prompt"
 import { aplicarEstruturadorNoBlueprint } from "../estruturador/estruturador-consume"
+import { bloqueia, loadContratoModes, roda, type ContratoMode } from "../shared/contrato-mode"
+import { validarBlueprint } from "../shared/validadores/blueprint"
+import type { Violacao } from "../shared/validadores/tipos"
 import { doctrinePromptSegment, withDoctrine } from "../shared/doctrine-packets"
 
 /**
@@ -52,6 +55,47 @@ import { doctrinePromptSegment, withDoctrine } from "../shared/doctrine-packets"
  * `desconhecido` cobre blueprint gerado por rota que não informa (regen
  * manual antiga) — nunca é usado para afirmar que rodou.
  */
+/** Telemetria do validador do blueprint (14/09) — chave `_contrato` da run. */
+interface ContratoDoBlueprint {
+  modo: ContratoMode
+  decisao_presente: boolean
+  violacoes: Violacao[]
+  omitidos: Array<{ block_index: number; key: string; motivo: string }>
+  regra_pendente: string[]
+}
+
+/**
+ * Validador do blueprint × decisão, nas duas rotas, DEPOIS de
+ * `aplicarEstruturadorNoBlueprint` (que só omite por requisito da posição).
+ * Aqui a decisão inteira vale: sem incentivo, campo de oferta é omitido
+ * por código em `on`; em `shadow` só acusa. Sem decisão, `modo: off`.
+ */
+async function aplicarContratoNoBlueprint<
+  B extends { purpose?: string; variant_id?: string | null; fields?: Array<{ key: string; nature?: string; type?: string; omitir?: boolean; omitir_motivo?: string }> },
+  T extends { blocks: B[] },
+>(input: GenerateBlueprintInput, blueprint: T): Promise<{ blueprint: T; _contrato: ContratoDoBlueprint }> {
+  const decisao = input.decisao ?? null
+  const modo: ContratoMode = decisao ? (await loadContratoModes(input.storeId)).estrutural : "off"
+  if (!decisao || !roda(modo)) {
+    return { blueprint, _contrato: { modo, decisao_presente: decisao != null, violacoes: [], omitidos: [], regra_pendente: ["dispositivo"] } }
+  }
+  const r = validarBlueprint(decisao, blueprint.blocks, { corrigir: bloqueia(modo) })
+  if (r.violacoes.length > 0) {
+    log.warn("blueprint.contrato_violado", {
+      storeId: input.storeId,
+      flowType: input.flowType,
+      emailNumber: input.emailNumber,
+      modo,
+      violacoes: r.violacoes.map((v) => `${v.block_index}:${v.tipo}`),
+      omitidos: r.omitidos.length,
+    })
+  }
+  return {
+    blueprint: { ...blueprint, blocks: r.blocks },
+    _contrato: { modo, decisao_presente: true, violacoes: r.violacoes, omitidos: r.omitidos, regra_pendente: r.regra_pendente },
+  }
+}
+
 export type EstruturadorStatus =
   | "consumido"
   | "desligado"
@@ -790,6 +834,8 @@ async function generateDeterministicBlueprint(
       input.requisitosPorPosicao ?? null,
     )
   }
+  const contratoA = await aplicarContratoNoBlueprint(input, blueprint)
+  blueprint = contratoA.blueprint
 
   await upsertStoreBlueprint(input, blueprint, "ai", "deterministic")
 
@@ -832,6 +878,7 @@ async function generateDeterministicBlueprint(
       // erro de CADASTRO da biblioteca, não do run. Lista vazia = alinhado.
       schema_anchor_issues: anchorIssues,
       schema_anchor_issue_count: anchorIssues.length,
+      _contrato: contratoA._contrato,
     },
     costCents: 0,
     durationMs: Date.now() - t0,
@@ -1020,6 +1067,8 @@ async function generateLlmBlueprint(
       input.requisitosPorPosicao ?? null,
     )
   }
+  const contratoB = await aplicarContratoNoBlueprint(input, blueprint)
+  blueprint = contratoB.blueprint
 
   // Mesma auditoria da rota A — o empacotador é o mesmo, o contrato também.
   const anchorIssues = collectSchemaAnchorIssues(null)
@@ -1084,6 +1133,7 @@ async function generateLlmBlueprint(
       // Campos de schema sem {{UPPER(key)}} no HTML da variante (ver rota A).
       schema_anchor_issues: anchorIssues,
       schema_anchor_issue_count: anchorIssues.length,
+      _contrato: contratoB._contrato,
     },
     tokensInput,
     tokensOutput,

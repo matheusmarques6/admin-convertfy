@@ -46,6 +46,10 @@ const h = vi.hoisted(() => {
         filters.push((r) => r[c] === v)
         return api
       },
+      not: (c: string, _op: string, v: unknown) => {
+        filters.push((r) => r[c] !== v)
+        return api
+      },
       order: () => api,
       limit: () => api,
       maybeSingle: () =>

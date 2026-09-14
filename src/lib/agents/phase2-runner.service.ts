@@ -684,18 +684,26 @@ async function loadMinimalContext(storeId: string, emailId: string) {
   let briefing: StoreBriefing | null = (briefingRes.data as StoreBriefing | null) ?? null
   let briefingOrigem: "store_briefings" | "onboardings" | "nenhum" = briefing ? "store_briefings" : "nenhum"
   if (!briefing) {
-    const { data: onb } = await admin
-      .from("onboardings")
-      .select("briefing")
-      .eq("store_id", storeId)
-      .not("briefing", "is", null)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle()
-    const b = (onb as { briefing?: unknown } | null)?.briefing
-    if (b && typeof b === "object") {
-      briefing = b as StoreBriefing
-      briefingOrigem = "onboardings"
+    // Fallback fail-open: o briefing é insumo do QA, e o QA sem briefing
+    // já existia — uma leitura que falha aqui não pode derrubar a fase 2.
+    try {
+      const { data: onb } = await admin
+        .from("onboardings")
+        .select("briefing")
+        .eq("store_id", storeId)
+        .not("briefing", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      const b = (onb as { briefing?: unknown } | null)?.briefing
+      if (b && typeof b === "object") {
+        briefing = b as StoreBriefing
+        briefingOrigem = "onboardings"
+      }
+    } catch (err) {
+      log.warn("phase2.briefing_onboarding_fallback_failed", {
+        storeId, error: err instanceof Error ? err.message : String(err),
+      })
     }
   }
 

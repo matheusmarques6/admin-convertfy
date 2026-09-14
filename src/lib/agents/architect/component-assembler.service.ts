@@ -112,6 +112,10 @@ import { assembleDocument, coberturaSuficiente, validateBlockMarkers } from "./a
 import { normalizarSecao } from "./repeticao"
 import { menosIncompativel } from "./resgate-de-posicao"
 import type { DecisaoDoEmail } from "../shared/decisao-do-email"
+import { bloqueia, loadContratoModes, roda } from "../shared/contrato-mode"
+import { validarEscolhas, violacoesDaEscolha } from "../shared/validadores/escolhas"
+import { validarResgate } from "../shared/validadores/resgate"
+import type { Violacao } from "../shared/validadores/tipos"
 import type { OutlineSection } from "./outline-sections"
 import {
   interpolateSystem,
@@ -1080,6 +1084,14 @@ export async function assembleStoreReference(
   // shortlist do Curador chama o modelo (≤ 3 elegíveis = por código),
   // restringem as finalistas e são o pool do resgate.
   const elegiveisDaPosicao = elegiveisPorPosicao(sections, requisitosPorPosicao, catalog.sections)
+  // Contrato de decisão (14/09): o que os validadores estruturais comparam.
+  // Sem `decisao` (Estruturador desligado/falhou) não há o que validar —
+  // `_contrato` diz isso em vez de fingir "zero violações".
+  const decisao: DecisaoDoEmail | null = input.decisao ?? null
+  const contratoModo = decisao ? (await loadContratoModes(input.storeId)).estrutural : "off"
+  const contratoPorId = new Map(
+    catalog.sections.flatMap((c) => c.variantes.map((v) => [v.variant_id, v.contrato] as const)),
+  )
   const intencoesHumanas = input.structure.filter((s) => (s.intencao ?? "").trim()).length
   const curatedReference = input.referenceTemplateHtml.trim()
   const t0 = Date.now()
@@ -1957,6 +1969,57 @@ export async function assembleStoreReference(
     })
   }
 
+  // ── Validador das escolhas × decisão (14/09, gate contrato_estrutural) ──
+  // A escolha final é conferida contra o contrato da variante, os
+  // requisitos da posição e o incentivo do toque. Em `on`, a posição que
+  // viola `high` é TROCADA por código pela próxima finalista do ranking
+  // que não viola; sem finalista limpa, a posição cai para o resgate (cujo
+  // pool já é o das elegíveis). É correção determinística — repetir o
+  // Curador com a mesma shortlist devolveria a mesma escolha, e desde o
+  // Passo 3 a shortlist já é a interseção com as elegíveis.
+  const substituicoes: Array<{ block_index: number; de: string; para: string | null; violacao: string }> = []
+  let violacoesDasEscolhas: Violacao[] = []
+  if (decisao && roda(contratoModo)) {
+    const val = validarEscolhas(
+      decisao,
+      Array.from(chosenById.entries()).map(([block_index, variant_id]) => ({ block_index, variant_id })),
+      contratoPorId,
+    )
+    violacoesDasEscolhas = val.violacoes
+    if (!val.ok) {
+      log.warn("assembler.contrato_violado", {
+        storeId: input.storeId,
+        flowType: input.flowType,
+        emailNumber: input.emailNumber,
+        modo: contratoModo,
+        violacoes: val.violacoes.filter((v) => v.severidade === "high").map((v) => `${v.block_index}:${v.tipo}`),
+      })
+    }
+    if (!val.ok && bloqueia(contratoModo)) {
+      const usadas = new Set(chosenById.values())
+      for (const v of val.violacoes) {
+        if (v.severidade !== "high") continue
+        const atual = chosenById.get(v.block_index)
+        if (!atual || atual !== v.variant_id) continue
+        const finalistas = (rankingByBlock.get(v.block_index) ?? []).map((c) => c.variant_id)
+        const limpa = finalistas.find(
+          (id) =>
+            id !== atual &&
+            byId.has(id) &&
+            !usadas.has(id) &&
+            !violacoesDaEscolha(decisao, v.block_index, id, contratoPorId.get(id)).some((x) => x.severidade === "high"),
+        )
+        chosenById.delete(v.block_index)
+        usadas.delete(atual)
+        if (limpa) {
+          chosenById.set(v.block_index, limpa)
+          usadas.add(limpa)
+        }
+        substituicoes.push({ block_index: v.block_index, de: atual, para: limpa ?? null, violacao: v.tipo })
+      }
+    }
+  }
+
   // ── Resgate da posição vazia ────────────────────────────────────────
   // Posição sem variante SOME do e-mail: `assembleDocument` a pula e nada é
   // puxado do template curado para a lacuna. O Curador não sabe disso — em
@@ -1969,6 +2032,8 @@ export async function assembleStoreReference(
   )
   const jaUsadas = new Set<string>()
   const resgatadas: Array<{ block_index: number; section: string; variant_id: string; motivo: string; custo: number }> = []
+  const resgatesRecusados: Array<{ block_index: number; section: string; variant_id: string; violacoes: string[] }> = []
+  const violacoesDoResgate: Violacao[] = []
 
   const slots: AssemblySlot[] = sections.map((section, i) => {
     const label = input.structure[i]?.label ?? section
@@ -1984,8 +2049,18 @@ export async function assembleStoreReference(
       const resgate = menosIncompativel(pool, requisitosPorPosicao[i], section, jaUsadas)
       const candidata = resgate ? byId.get(resgate.variant_id) : undefined
       if (resgate && candidata) {
-        variant = candidata
-        resgatadas.push({ block_index: i, section, variant_id: resgate.variant_id, motivo: resgate.motivo, custo: resgate.custo })
+        // O resgate aceita concessão de redação; anatomia contrária à
+        // decisão (cupom sem incentivo, CTA negado) não entra em `on`.
+        const val = decisao && roda(contratoModo)
+          ? validarResgate(decisao, { block_index: i, variant_id: resgate.variant_id }, contratoPorId.get(resgate.variant_id))
+          : null
+        if (val) violacoesDoResgate.push(...val.violacoes)
+        if (val && !val.ok && bloqueia(contratoModo)) {
+          resgatesRecusados.push({ block_index: i, section, variant_id: resgate.variant_id, violacoes: val.violacoes.filter((x) => x.severidade === "high").map((x) => x.tipo) })
+        } else {
+          variant = candidata
+          resgatadas.push({ block_index: i, section, variant_id: resgate.variant_id, motivo: resgate.motivo, custo: resgate.custo })
+        }
       }
     }
     if (!variant) return { kind: "missing", section, label }
@@ -2225,6 +2300,17 @@ export async function assembleStoreReference(
       // Self-checks da concatenação: os dois têm de ser sempre limpos.
       marker_selfcheck: markerCheck.status,
       image_tags_dropped: droppedImageTags,
+      // Validadores estruturais (14/09): o que a escolha e o resgate
+      // violaram da decisão, e o que o código trocou por causa disso.
+      // `modo: "off"` com `decisao_presente: false` = não havia decisão.
+      _contrato: {
+        modo: contratoModo,
+        decisao_presente: decisao != null,
+        violacoes: [...violacoesDasEscolhas, ...violacoesDoResgate],
+        substituicoes,
+        resgates_recusados: resgatesRecusados,
+        regra_pendente: ["dispositivo"],
+      },
   }
 
   if (asmRunId !== null) await finishGenerationRun(asmRunId, {
