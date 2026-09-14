@@ -90,6 +90,13 @@ vi.mock("@/lib/agents/objecoes/seletor.service", () => ({
   ensureObjectionTargets: (...a: unknown[]) => ensureObjectionTargets(...a),
 }))
 
+// Gate de prontidão (B1, set/2026): por padrão a loja está pronta; o teste
+// que cobre o bloqueio troca o resultado.
+const aplicarGate = vi.fn()
+vi.mock("@/lib/stores/prontidao.service", () => ({
+  aplicarGate: (...a: unknown[]) => aplicarGate(...a),
+}))
+
 import {
   enqueueDispatchJob,
   processDispatchJobs,
@@ -115,6 +122,7 @@ beforeEach(() => {
   isArchitectConfigured.mockReset().mockResolvedValue(true)
   dispatchEmailCopyWebhook.mockReset().mockResolvedValue({ ok: true, flow_count: 1, email_count: 2 })
   ensureObjectionTargets.mockReset().mockResolvedValue({ mode: "off", targets: [], ran: 0, reused: 0, skipped: 0 })
+  aplicarGate.mockReset().mockResolvedValue({ mode: "on", bloqueada: false, prontidao: { pronta: true, bloqueios: [], avisos: [] } })
   // por padrão, "gerar" persiste a reference (Montador genuíno → source 'llm')
   generateBlueprintAndReference.mockImplementation(async (input: { storeId: string; flowType: string; emailNumber: number }) => {
     if (h.refControl.persistOnRun) {
@@ -129,6 +137,26 @@ beforeEach(() => {
 })
 
 describe("enqueueDispatchJob", () => {
+  it("gate de prontidão bloqueado → store_not_ready, sem job e sem dedup", async () => {
+    reset()
+    aplicarGate.mockResolvedValueOnce({
+      mode: "on",
+      bloqueada: true,
+      prontidao: { pronta: false, bloqueios: [{ id: "pesquisa_incompleta" }], avisos: [] },
+    })
+    const res = await enqueueDispatchJob("store1", { onlyDrafts: true })
+    expect(res).toEqual({ ok: false, reason: "store_not_ready" })
+    expect(h.tables.email_dispatch_jobs).toHaveLength(0)
+  })
+
+  it("o motivo de override viaja até o gate", async () => {
+    reset()
+    await enqueueDispatchJob("store1", { onlyDrafts: true, gateOverride: { motivo: "cliente aprovou gerar sem selos" } })
+    expect(aplicarGate).toHaveBeenCalledWith(
+      expect.objectContaining({ storeId: "store1", override: { motivo: "cliente aprovou gerar sem selos" }, origem: "enqueue:manual_store_button" }),
+    )
+  })
+
   it("resolve os emails-alvo e insere o job pending sem rodar LLM", async () => {
     const res = await enqueueDispatchJob("store1", { flowIds: ["flow1"], onlyDrafts: true })
     expect(res.ok).toBe(true)

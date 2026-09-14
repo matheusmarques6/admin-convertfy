@@ -423,6 +423,13 @@ export type GenerationRunAgent =
   | "copy_fit"
   // background_fit: faixa + foto no tamanho declarado (migration 20261102).
   | "background_fit"
+  // Trilha B (migration 20261147): gate de prontidão da loja (skipped =
+  // bloqueou), override humano com motivo, lint de renderização (código,
+  // custo zero) e gerador offline de anatomias da biblioteca.
+  | "gate"
+  | "gate_override"
+  | "lint_envio"
+  | "gerador_anatomia"
 
 export interface EmailGenerationRun {
   id: string

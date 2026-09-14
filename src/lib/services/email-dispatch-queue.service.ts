@@ -30,6 +30,7 @@ import {
 } from "@/lib/agents/architect/generate.service"
 import type { ReferenceSource } from "@/lib/agents/architect/component-assembler.service"
 import { ensureObjectionTargets } from "@/lib/agents/objecoes/seletor.service"
+import { aplicarGate } from "@/lib/stores/prontidao.service"
 import { loadTextOnlyBlueprints } from "@/lib/agents/architect/blueprint-loader"
 import {
   dispatchEmailCopyWebhook,
@@ -91,6 +92,8 @@ export interface EnqueueOptions {
    * Architect sobrescreve). Usado pelo endpoint regenerate-pipeline.
    */
   forceArchitect?: boolean
+  /** Motivo humano para gerar com bloqueio de prontidão (run `gate_override`). */
+  gateOverride?: { motivo: string } | null
 }
 
 export interface EnqueueResult {
@@ -116,6 +119,24 @@ export async function enqueueDispatchJob(
 ): Promise<EnqueueResult> {
   const admin = createAdminClient()
   const onlyDrafts = options.onlyDrafts ?? true
+
+  // Gate de prontidão (B1, set/2026): a loja só entra na fila se pesquisa,
+  // produtos, paleta, logo e fontes existem. Roda ANTES do dedup para o run
+  // `gate` ser gravado mesmo quando já há job ativo — quem olha a tela
+  // precisa ver por que a loja não gerou. O batch aqui é sintético (o job
+  // ainda não existe); a fase 1 grava as runs dela sob o batch do job, e o
+  // gate fica ligado à loja pela data.
+  const gate = await aplicarGate({
+    storeId,
+    batchId: crypto.randomUUID(),
+    triggeredBy: options.triggeredBy ?? null,
+    origem: `enqueue:${options.triggerSource ?? "manual_store_button"}`,
+    override: options.gateOverride ?? null,
+  })
+  if (gate.bloqueada) {
+    log.info("enqueue.store_not_ready", { storeId, bloqueios: gate.prontidao.bloqueios.map((b) => b.id) })
+    return { ok: false, reason: "store_not_ready" }
+  }
 
   // Dedup: se já existe job ativo pra loja, não enfileira outro (o n8n pode
   // re-chamar o callback pesquisa-completa; sem isso pagaríamos Opus 2×).

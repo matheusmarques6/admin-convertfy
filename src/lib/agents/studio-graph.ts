@@ -50,6 +50,10 @@ export const STUDIO_NODES: StudioNode[] = [
   // o Estruturador e o Curador consomem. Roda como pré-passo sequencial da
   // fase 1; com seletor_mode=off não há run e o nó aparece pendente — que é
   // a verdade, e melhor do que o agente não existir no mapa.
+  // Gate de prontidão (B1, set/2026): avaliado ANTES de enfileirar. Fica na
+  // linha de cima porque é condicional ao modo — `skipped` = a loja não
+  // entrou na fila, e é isso que a tela precisa mostrar em vez de "pendente".
+  { key: "gate", type: "agent", agent: "gate", icon: "check", x: 300, y: 308 },
   { key: "seletor", type: "agent", agent: "seletor", icon: "target", x: 300, y: 452 },
   // Estruturador antes do Curador: decide o esqueleto (modo shadow/on) que a
   // fase 1 consome — em off o nó aparece como pulado, que é a verdade.
@@ -82,9 +86,12 @@ export const STUDIO_NODES: StudioNode[] = [
   // porque é condicional — só há run quando o documento tem box de fundo.
   { key: "background_fit", type: "agent", agent: "background_fit", icon: "check", x: 3372, y: 308 },
   // ── Qualidade ──
-  { key: "qa", type: "agent", agent: "qa", icon: "target", x: 3628, y: 452 },
-  { key: "qavision", type: "agent", agent: "qavision", icon: "search", x: 3884, y: 308 },
-  { key: "out", type: "output", label: "Email pronto", sub: "Status ready · workspace do designer", icon: "send", x: 4140, y: 452 },
+  // Lint de envio (B2, set/2026): pós-processador + lint por código sobre o
+  // HTML final, ANTES do QA — achado bloqueante reprova sem pagar o LLM.
+  { key: "lint_envio", type: "agent", agent: "lint_envio", icon: "check", x: 3628, y: 452 },
+  { key: "qa", type: "agent", agent: "qa", icon: "target", x: 3884, y: 452 },
+  { key: "qavision", type: "agent", agent: "qavision", icon: "search", x: 4140, y: 308 },
+  { key: "out", type: "output", label: "Email pronto", sub: "Status ready · workspace do designer", icon: "send", x: 4396, y: 452 },
 ]
 
 export const STUDIO_NODE_BY_KEY: Record<string, StudioNode> = Object.fromEntries(
@@ -92,6 +99,8 @@ export const STUDIO_NODE_BY_KEY: Record<string, StudioNode> = Object.fromEntries
 )
 
 export const STUDIO_EDGES: Array<[string, string]> = [
+  ["trigger", "gate"],
+  ["gate", "seletor"],
   ["trigger", "seletor"],
   ["seletor", "estruturador"],
   ["estruturador", "assembler_chooser"],
@@ -112,8 +121,9 @@ export const STUDIO_EDGES: Array<[string, string]> = [
   ["image_format", "typography"],
   ["typography", "color_format"],
   ["color_format", "background_fit"],
-  ["background_fit", "qa"],
-  ["color_format", "qa"],
+  ["background_fit", "lint_envio"],
+  ["color_format", "lint_envio"],
+  ["lint_envio", "qa"],
   ["qa", "qavision"],
   ["qa", "out"],
   ["qavision", "out"],
@@ -134,7 +144,7 @@ export const STUDIO_GROUPS: StudioGroup[] = [
   { label: "REFERÊNCIA & ESTRUTURA", x: 272, y: 244, w: 1304, h: 348, bg: "rgba(78,98,216,0.05)", border: "rgba(78,98,216,0.18)", c: "#4E62D8" },
   { label: "COPY (N8N)", x: 1552, y: 388, w: 252, h: 204, bg: "rgba(107,114,128,0.05)", border: "rgba(107,114,128,0.2)", c: "#6B7280" },
   { label: "MONTAGEM", x: 1808, y: 244, w: 1304, h: 348, bg: "rgba(124,58,237,0.05)", border: "rgba(124,58,237,0.16)", c: "#7C3AED" },
-  { label: "QUALIDADE", x: 3088, y: 244, w: 540, h: 348, bg: "rgba(6,95,70,0.05)", border: "rgba(6,95,70,0.16)", c: "#065F46" },
+  { label: "QUALIDADE", x: 3088, y: 244, w: 796, h: 348, bg: "rgba(6,95,70,0.05)", border: "rgba(6,95,70,0.16)", c: "#065F46" },
 ]
 
 // ── Estado de run por nó ─────────────────────────────────────────────────
@@ -237,6 +247,7 @@ export const MAIN_ORDER = [
   "typography",
   "color_format",
   "background_fit",
+  "lint_envio",
   "qa",
   "qavision",
   "out",
@@ -610,6 +621,7 @@ const PHASE2_KEYS = new Set([
   "typography",
   "color_format",
   "background_fit",
+  "lint_envio",
   "qa",
   "qavision",
 ])

@@ -26,6 +26,11 @@ export type PipelineAgentKey =
   | "typography"
   | "color_format"
   | "background_fit"
+  // Trilha B (set/2026)
+  | "gate"
+  | "gate_override"
+  | "lint_envio"
+  | "gerador_anatomia"
   | "html"
   | "refiner"
   | "qa"
@@ -144,6 +149,38 @@ export const AGENT_VISUAL: Record<PipelineAgentKey, AgentVisual> = {
     border: "#99F6E4",
     kind: "sistema",
   },
+  gate: {
+    name: "Prontidão",
+    desc: "Gate de prontidão da loja antes de enfileirar — pesquisa, produtos, paleta, logo, fontes (skipped = bloqueou)",
+    color: "#71778A",
+    bg: "#F3F4F6",
+    border: "#E5E7EB",
+    kind: "sistema",
+  },
+  gate_override: {
+    name: "Prontidão (override)",
+    desc: "O operador gerou com bloqueio de prontidão, com motivo registrado",
+    color: "#B45309",
+    bg: "#FFFBEB",
+    border: "#FDE68A",
+    kind: "sistema",
+  },
+  lint_envio: {
+    name: "Lint de Envio",
+    desc: "Pós-processador + lint de renderização do HTML final — código, custo zero; achado bloqueante reprova antes do QA",
+    color: "#0F766E",
+    bg: "#F0FDFA",
+    border: "#99F6E4",
+    kind: "sistema",
+  },
+  gerador_anatomia: {
+    name: "Gerador de Anatomias",
+    desc: "Gera uma anatomia nova para a biblioteca (offline, entra desativada até aprovação)",
+    color: "#7C3AED",
+    bg: "#F3E8FF",
+    border: "#E0CBFF",
+    kind: "texto",
+  },
   copy_fit: {
     name: "Encurtador de Copy",
     desc: "Reescreve os campos que o n8n devolveu acima do limite da caixa — só eles, e o código decide se a reescrita entra",
@@ -256,6 +293,8 @@ export const AGENT_VISUAL: Record<PipelineAgentKey, AgentVisual> = {
 /** Ordem canônica de exibição dos agentes operacionais (sem 'seed'). */
 export const PIPELINE_AGENT_ORDER: PipelineAgentKey[] = [
   "copy",
+  "gate",
+  "gate_override",
   // Objeções (set/2026): Catalogador é por LOJA (1×/pesquisa) e o Seletor
   // roda por email antes do Estruturador — a ordem aqui é a das telas.
   "catalogador",
@@ -275,11 +314,13 @@ export const PIPELINE_AGENT_ORDER: PipelineAgentKey[] = [
   "typography",
   "color_format",
   "background_fit",
+  "lint_envio",
   "html",
   "refiner",
   "qa",
   "qavision",
   "campaign_image",
+  "gerador_anatomia",
 ]
 
 /** Slug do flow → label PT-BR (mostrado nas badges). */

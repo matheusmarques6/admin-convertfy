@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import { notificationService } from "@/lib/services/notification.service"
 import { logger } from "@/lib/logger"
+import { avisosDoBatch } from "@/lib/stores/prontidao.service"
 import { renderErrorEmailTemplate } from "./templates/error-email.template"
 import { renderSuccessEmailTemplate } from "./templates/success-email.template"
 
@@ -340,7 +341,13 @@ export async function notifyBatchComplete(params: {
     const storeName = (storeRow?.store_name as string | undefined) ?? "Loja"
 
     const title = `Batch de emails completo - ${storeName}`
-    const body = `${ready} de ${total} emails prontos. ${failed} falharam.`
+    // Avisos do gate de prontidão (B1): a peça saiu, mas com lacunas que
+    // alguém vai notar depois — vão no in-app (o template de e-mail tem
+    // assinatura fixa; declarado).
+    const avisosGate = await avisosDoBatch(params.storeId, params.batchId)
+    const body = `${ready} de ${total} emails prontos. ${failed} falharam.${
+      avisosGate.length ? ` Avisos de prontidão: ${avisosGate.join("; ")}.` : ""
+    }`
     const link = `/admin/stores/${params.storeId}/emails`
 
     const admins = await getStoreInvolvedAdmins(params.storeId)
@@ -367,6 +374,7 @@ export async function notifyBatchComplete(params: {
         total,
         ready,
         failed,
+        ...(avisosGate.length ? { avisos_prontidao: avisosGate } : {}),
       },
     })
 

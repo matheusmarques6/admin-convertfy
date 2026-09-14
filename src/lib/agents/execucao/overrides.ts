@@ -149,6 +149,10 @@ export const DEGRADACAO: Record<string, NodeDegradacao> = {
   typography: { kind: "passa_adiante", motivo: "a tipografia segue a das variantes" },
   color_format: { kind: "passa_adiante", motivo: "as cores seguem as das variantes" },
   background_fit: { kind: "passa_adiante", motivo: "faixa de fundo não é ajustada" },
+  lint_envio: {
+    kind: "passa_adiante",
+    motivo: "o HTML segue sem o pós-processador nem o lint — var(--x), comentários e MSO divergente chegam ao QA como estão",
+  },
   qa: { kind: "roda_degradado", motivo: "o e-mail sai sem o selo de qualidade" },
   qavision: { kind: "roda_degradado", motivo: "sem conferência visual da peça" },
 }
@@ -177,6 +181,7 @@ export const ESTAGIO_ANTES: Record<string, "hero" | "text" | "image" | null> = {
   // vez de fingir granularidade que a coluna não tem.
   color_format: "image",
   background_fit: "image",
+  lint_envio: "image",
 }
 
 export interface Recusa {

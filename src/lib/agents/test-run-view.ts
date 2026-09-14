@@ -40,6 +40,11 @@ export const TEST_AGENT_LABELS: Record<string, string> = {
   // nunca chega mentiria sobre o pipeline.
   copy_fit: "Encurtador de Copy",
   background_fit: "Fundo no Tamanho",
+  // Gate de prontidão (B1): run por LOJA/batch, sem email_id — só aparece
+  // quando existe, como os condicionais.
+  gate: "Prontidão da loja",
+  gate_override: "Prontidão (override)",
+  lint_envio: "Lint de Envio (código)",
   image: "Imagem (IA)",
   hero_section: "Hero Section",
   copy_merge: "Merge de Copy (código)",
@@ -66,6 +71,9 @@ const PHASE2_STEP_KEYS = [
   "image_format",
   "typography",
   "color_format",
+  // Lint de envio (B2): pós-processador + lint por código, sempre antes do QA
+  // (em `lint_mode=off` a linha fica pendente — e é a verdade).
+  "lint_envio",
   "qa",
 ] as const
 
@@ -108,7 +116,9 @@ export const TEST_BASE_AGENT_KEYS = [
  */
 // - `background_fit`: só roda quando o documento tem elemento com
 //   background e tamanho declarado (migration 20261102).
-export const TEST_CONDITIONAL_AGENT_KEYS = ["qavision", "copy_fit", "background_fit"] as const
+// - `gate`/`gate_override`: gravados por LOJA no enfileiramento/rota manual,
+//   sem email_id — aparecem quando existem.
+export const TEST_CONDITIONAL_AGENT_KEYS = ["qavision", "copy_fit", "background_fit", "gate", "gate_override"] as const
 
 /**
  * Steps esperados por modo — o esqueleto que a tela mostra ANTES da primeira

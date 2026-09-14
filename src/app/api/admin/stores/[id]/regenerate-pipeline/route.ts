@@ -45,6 +45,8 @@ export const dynamic = "force-dynamic"
 
 const bodySchema = z.object({
   flow_ids: z.array(z.string().uuid()).optional(),
+  /** Gate de prontidão (B1): motivo para gerar com bloqueio. */
+  override_motivo: z.string().trim().min(10).max(500).optional(),
 })
 
 // Statuses do pipeline AE que voltam para draft na regeneração. Espelha a
@@ -142,7 +144,15 @@ export async function POST(
       flowIds: flowIds ?? undefined,
       triggerSource: "full_regeneration",
       triggeredBy: user.id,
+      gateOverride: body.override_motivo ? { motivo: body.override_motivo } : null,
     })
+    if (!enqueue.ok && enqueue.reason === "store_not_ready") {
+      throw new AppError(
+        "A loja não está pronta para gerar (pesquisa, produtos, paleta, logo ou fontes). Veja o card de prontidão ou informe um motivo para gerar mesmo assim.",
+        422,
+        "store_not_ready",
+      )
+    }
     if (!enqueue.ok) {
       throw new AppError(
         `Falha ao enfileirar a regeneração: ${enqueue.reason ?? "desconhecida"}`,
