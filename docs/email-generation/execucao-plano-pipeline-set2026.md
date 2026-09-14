@@ -6,6 +6,11 @@ B6; `contrato_mode` em dois flags; fonte do QA corrigida; A9.6 como linha, não
 issue; A4 na semana 1; divisão de trabalho). Este documento é o que se lê
 ANTES de tocar em cada coisa e DEPOIS, para saber se ficou certo.
 
+Revisão 3 (14/09): entra o **Passo 7, auditoria do output do Estruturador**,
+porque é de lá que saem os parâmetros do filtro por contrato e hoje nada
+confere isso; os passos seguintes foram renumerados (o antigo 7 é o 8, e
+assim por diante, até o 23).
+
 Base: código do repo em 13/09, banco de produção em 13/09 e 14/09.
 
 ---
@@ -93,6 +98,26 @@ from email_generation_runs
 where batch_id = '<batch>' and agent = 'assembler_chooser';
 ```
 
+Custódia do requisito (o que o Estruturador declarou chegou ao Curador e ao
+Blueprint?), por e-mail:
+
+```sql
+select e.email_id,
+  (select count(*) from jsonb_array_elements(e.parsed_output -> 'estrutura') p
+     where p ? 'requisitos')                           as posicoes_com_requisito,
+  jsonb_array_length(e.parsed_output -> 'estrutura')  as posicoes,
+  e.parsed_output -> 'auditoria_requisitos' -> 'duras' as duras,
+  c.parsed_output -> 'eliminadas_por_requisito'        as eliminadas_no_curador,
+  b.parsed_output -> 'omitidos'                        as omitidos_no_blueprint
+from email_generation_runs e
+left join email_generation_runs c on c.email_id = e.email_id and c.agent = 'assembler_chooser' and c.batch_id = e.batch_id
+left join email_generation_runs b on b.email_id = e.email_id and b.agent = 'blueprint' and b.batch_id = e.batch_id
+where e.agent = 'estruturador' and e.batch_id = '<batch>';
+```
+
+Requisito declarado e `eliminadas_no_curador` vazio numa seção que tem
+variante conflitante é perda na fronteira, não acerto.
+
 Gates vigentes:
 
 ```sql
@@ -112,9 +137,9 @@ ocorrência. Os quatro juntos. `ready` sozinho não conta (o batch 57bf409d saiu
 
 | Lado | Dono | Passos |
 |---|---|---|
-| Validadores, migrations, gates, lint, painel, tiering, captura de políticas | Matheus (+ Claude Code) | 1, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 15, 16, 18, 20, 21, 22 |
-| Prompts, vocabulário, campos do contrato, biblioteca, n8n | Bruno | 2, 9 (template), 17 (vocabulário), 19 (regras), A10, prompt do n8n |
-| Interface entre os dois: `DecisaoDoEmail` (P6) e `dispositivo` (P17) | Bruno define os campos; Matheus implementa e valida | — |
+| Validadores, migrations, gates, lint, painel, tiering, captura de políticas | Matheus (+ Claude Code) | 1, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17, 19, 21, 22, 23 |
+| Prompts, vocabulário, campos do contrato, biblioteca, n8n | Bruno | 2, 7 (régua da auditoria), 10 (template), 18 (vocabulário), 20 (regras), A10, prompt do n8n |
+| Interface entre os dois: `DecisaoDoEmail` (P6), a régua do Estruturador (P7) e `dispositivo` (P18) | Bruno define os campos e a régua; Matheus implementa e valida | — |
 
 ---
 
@@ -166,7 +191,7 @@ marcado como `traducao_faltante`.
    `incentivoDoCatalogo` fora do arquivo da UI.
 6. O `DecisaoDeIncentivo` ganha `valor: string | null` lido de uma coluna
    nova `coupon_value` do outline (Passo 4 cria). Sem ela, `valor` é `null`
-   e o validador textual (Passo 8) não confere percentual, só presença.
+   e o validador textual (Passo 9) não confere percentual, só presença.
 
 **Por quê.** Em 09/09 o Catalogador passou a decidir e a Hero Boxers virou
 "sem incentivo" com `null`; `couponCodeEfetivo` zerou o código,
@@ -235,7 +260,7 @@ where agent_type = 'assembler_chooser' and is_active;
 5. `curador-shadow.test.ts`: adicionar um teste que lê
    `DEFAULT_CURADOR_SHORTLIST_SYSTEM` e o prompt de escolha e reprova se
    contiverem "É PERMITIDO" ou "cai no template global". É o embrião do
-   teste de coerência do Passo 19.
+   teste de coerência do Passo 20.
 
 **Por quê.** O Curador decide sob premissa falsa. No batch de referência ele
 escreveu "a posição fica na peça e cai no template global" e devolveu
@@ -441,7 +466,7 @@ chamado (linha ~2510).
 
 **O que muda.** Nasce `DecisaoDoEmail`, montado uma vez depois do
 Estruturador, gravado no blueprint e lido por todo nó a jusante. Ainda sem
-validador (Passos 7 e 8).
+validador (Passos 8 e 9).
 
 **Onde.**
 
@@ -478,16 +503,16 @@ validador (Passos 7 e 8).
    }
    ```
 
-   `dispositivo` nasce `null` e é preenchido no Passo 17.
+   `dispositivo` nasce `null` e é preenchido no Passo 18.
 
 2. `montarDecisao(alvo, estruturador, incentivo)`: puro. Dedupe de
    `proibido` por chave normalizada (sem acento, minúsculas) E por
    tradução literal PT↔EN das seis famílias que o Seletor usa (o dedupe por
    chave de `texto.ts` não pega "não prometa nota média" × "no average
    rating claim").
-3. Gravar no blueprint. Lê-se de lá em: Curador (Passo 7), resgate (Passo
-   10), `packageBlueprint`/`arbitrarCampos` (Passo 7), webhook do n8n e
-   callback (Passo 12), `color_format` (Passo 13), QA (Passo 14).
+3. Gravar no blueprint. Lê-se de lá em: Curador (Passo 8), resgate (Passo
+   10), `packageBlueprint`/`arbitrarCampos` (Passo 8), webhook do n8n e
+   callback (Passo 13), `color_format` (Passo 14), QA (Passo 15).
 4. Telemetria: toda run que valida grava `parsed_output._contrato =
    { modo_estrutural, modo_textual, violacoes: [], retry: 0 }`, mesmo
    vazio. É o que o painel B6 lê.
@@ -499,7 +524,7 @@ validador (Passos 7 e 8).
 saída do Estruturador, catálogo, outline) e cada nó lê um subconjunto
 diferente. A inversão acontece na fronteira, não dentro do agente.
 
-**Consequência.** Nenhuma ainda no e-mail. É a fundação dos Passos 7 e 8.
+**Consequência.** Nenhuma ainda no e-mail. É a fundação dos Passos 8 e 9.
 
 **Ficou correto se.** Reproduzindo o batch: `store_email_blueprints.decisao`
 preenchido para o e-mail, com 6 posições, `incentivo.existe: true` e
@@ -516,7 +541,115 @@ está casando.
 
 ---
 
-### Passo 7 · A1 · Validadores estruturais, ligados desde o dia 1
+### Passo 7 · Auditoria do output do Estruturador (o filtro só vale se o requisito sair certo)
+
+**O que muda.** Toda run do Estruturador passa por uma auditoria de código
+ANTES de a decisão seguir para o Curador: forma dos `requisitos`, coerência
+com o alvo do Seletor, coerência com a capacidade da biblioteca, custódia
+até o Curador e o Blueprint. Incoerência DURA volta ao modelo uma vez com o
+motivo; na segunda, o e-mail falha nomeado. O resto vira aviso na run e no
+Estúdio.
+
+**Por que este passo existe.** A eliminação por contrato (Passo 3) e os
+validadores (Passos 8 e 9) comparam a variante com `requisitos`. Se o
+Estruturador não declarar o requisito, ou declarar errado, tudo a jusante
+filtra em cima de nada e parece funcionar: `null` é "indiferente", a
+normalização é fail-open e descarta valor inválido em SILÊNCIO (um `cupom:
+"não"` vira `null`, sem log), e o serviço só faz retry quando o JSON é
+ilegível. Hoje não existe nenhum lugar que diga "este e-mail saiu com 6
+posições e 2 requisitos".
+
+**Onde.**
+
+- Novo `src/lib/agents/estruturador/auditoria-requisitos.ts` (puro).
+- `normalizarRequisitos` (`estruturador-prompt.ts`, linha ~101): passa a
+  devolver também `descartados: Array<{campo, valor_cru}>`.
+- `estruturador.service.ts`: após `normalizarOutput` (linha ~695) e antes
+  de `finishGenerationRun`; o retry reusa `planejarRetentativa` (linha
+  ~653, hoje só para JSON ilegível ou truncado).
+- Gate: `email_generation_settings.auditoria_estruturador text default
+  'on'` (`off|shadow|on`).
+- Estúdio: a Saída da run `estruturador` mostra a tabela posição × requisito
+  × veredito da auditoria.
+
+**Como.** A régua (Bruno fecha a lista; Matheus implementa), cada item com
+severidade:
+
+| Regra | Detecta | Severidade |
+|---|---|---|
+| `sem_requisitos` | posição sem objeto `requisitos` | aviso; **dura** se TODAS as posições estão sem |
+| `valor_descartado` | campo fora do domínio (`cupom: "sim"`, `n_itens: "2-3"`) | aviso, com o valor cru; **dura** se 3+ campos num e-mail |
+| `cupom_contradiz_incentivo` | `incentivo.existe === false` e alguma posição com `cupom: true` | **dura** |
+| `incentivo_sem_lugar` | `incentivo.existe === true`, `trabalhos_fixos` contém `entrega_de_incentivo`, e NENHUMA posição com `cupom: true` | **dura** (a peça promete cupom e não tem onde entregá-lo) |
+| `exige_fora_da_capacidade` | `preco: true` numa seção com `com_preco = 0`; `n_itens.min` acima do maior grade da seção; `avaliacao: true` sem variante com avaliação | aviso + registra em `exige` como lacuna; vai a `vault_propostas` |
+| `secao_fora_da_lista` | `section` fora de `<secoes_disponiveis>` | **dura** |
+| `papel_diz_requisito_nao` | o texto de `papel` fala em preço, cupom, "N produtos", avaliação e o campo tipado correspondente é `null` | aviso (é exatamente a prosa-sem-tipo que motivou 09/09) |
+| `descarte_sem_dispositivo` | item de `descartes` sem `section` nem `papel_na_referencia` | aviso |
+
+1. `auditarRequisitos(saida, alvo, capacidade)` → `{ duras: [], avisos:
+   [], descartados: [], posicoes, com_requisito }`. Puro, com fixture da
+   saída real do batch de referência.
+2. No serviço: `on` + `duras.length > 0` → retry 1× com o bloco
+   `<auditoria>` no prompt ("sua decisão anterior violou: …; corrija
+   SOMENTE os requisitos apontados, mantendo a sequência"); segunda vez →
+   e-mail `failed`, `failure_reason: 'estruturador_incoerente'`. `shadow`
+   → só grava. Avisos nunca param.
+3. Telemetria: `parsed_output.auditoria_requisitos` na run, sempre, mesmo
+   vazio. É a fonte da query de custódia da seção 0.1 e do painel (Passo
+   23).
+4. Custódia: teste de integração que pega o `parsed_output` do
+   Estruturador, passa por `requisitosDaDecisao` e confere que
+   `eliminarPorRequisitos` recebe o MESMO número de posições com
+   requisito. É a fronteira onde "a string `estruturadorDecisao` não é o
+   `parsed_output`" faria tudo sumir sem erro.
+5. Prompt do Estruturador (Bruno): acrescentar um exemplo COMPLETO de
+   `requisitos` preenchido (hoje o formato só mostra tudo `null`), porque
+   o modelo copia o exemplo.
+
+**Por quê.** É o ponto único de onde saem os parâmetros do filtro mais
+importante do pipeline, e hoje ele não tem nenhuma verificação além de
+"o JSON abriu".
+
+**Consequência.** Requisito errado deixa de atravessar em silêncio.
+Batches com Estruturador incoerente falham no PRIMEIRO nó, antes do
+Curador, custando uma chamada.
+
+**Ficou correto se.** Reproduzindo o batch: run `estruturador` com
+`auditoria_requisitos.duras = []`, `com_requisito = posicoes`, e (com o
+Passo 1 aplicado) ao menos uma posição com `cupom: true`; a query de
+custódia mostra `eliminadas_no_curador` não vazio em `products` (8 de 9
+sem preço). Monitoramento contínuo, semanal:
+
+```sql
+select date_trunc('day', created_at) as dia,
+  count(*) as runs,
+  avg((parsed_output -> 'auditoria_requisitos' ->> 'com_requisito')::int
+      / nullif((parsed_output -> 'auditoria_requisitos' ->> 'posicoes')::int, 0)) as cobertura,
+  sum(jsonb_array_length(parsed_output -> 'auditoria_requisitos' -> 'duras')) as duras
+from email_generation_runs
+where agent = 'estruturador' and created_at > now() - interval '7 days'
+group by 1 order by 1;
+```
+
+Meta: cobertura ≥ 0,9 e `duras = 0` em regime.
+
+**NÃO ficou se.** (a) `descartados` cheio em toda run: o modelo devolve
+texto onde se espera booleano; é o exemplo do prompt (item 5), não o
+código. (b) `duras` em toda run com `cupom_contradiz_incentivo`: o alvo
+chegou vazio (Seletor `skipped`); conferir a run `seletor` antes de mexer
+no Estruturador. (c) Requisito declarado e `eliminadas_no_curador` vazio
+numa seção com variante conflitante: a custódia quebrou entre a run e o
+Curador; o teste do item 4 aponta onde.
+
+**Rollback.** `auditoria_estruturador = 'shadow'`. Sem deploy.
+
+**Esforço.** 1 dia. Dono: Matheus (código), Bruno (régua e exemplo do
+prompt). Entra no dia 3 da semana 1, antes do contrato; A1 desliza para os
+dias 4 e 5 e o textual em shadow fecha no dia 1 da semana 2.
+
+---
+
+### Passo 8 · A1 · Validadores estruturais, ligados desde o dia 1
 
 **O que muda.** Três validadores puros reprovam escolha, resgate e blueprint
 que contradizem a decisão. Em `on`, a violação para o batch ANTES da imagem.
@@ -532,7 +665,7 @@ blueprint}.ts`. Chamadas em: `component-assembler.service.ts` após
    tem `tem_cupom` e `incentivo.existe === false`; (b) `n_itens` da variante
    fora de `requisitos.n_itens`; (c) a mesma variante em duas posições; (d)
    `preco: true` e `!tem_preco`. A regra "dispositivo em descartes" fica
-   como `severidade: shadow` até o Passo 17 (casa por nome).
+   como `severidade: shadow` até o Passo 18 (casa por nome).
 2. `validarResgate(decisao, resgate)`: mesma régua, e `descartes` é veto
    absoluto quando `dispositivo` existir.
 3. `validarBlueprint(decisao, blueprint)`: campo de cupom/percentual/prazo
@@ -572,7 +705,7 @@ e NENHUMA run de `image` existe no batch.
 `contrato_estrutural` não está `on` ou o validador não é chamado no ponto
 certo (conferir `_contrato` na run `assembler_chooser`). (b) Batch morre
 com violação que não é violação: ler `evidencia` e `esperado`; se for
-regra de dispositivo, ela deveria estar em `shadow` até o Passo 17.
+regra de dispositivo, ela deveria estar em `shadow` até o Passo 18.
 
 **Rollback.** `contrato_estrutural = 'shadow'`. Sem deploy.
 
@@ -580,7 +713,7 @@ regra de dispositivo, ela deveria estar em `shadow` até o Passo 17.
 
 ---
 
-### Passo 8 · A1 · Validadores textuais, em shadow por uma semana
+### Passo 9 · A1 · Validadores textuais, em shadow por uma semana
 
 **O que muda.** `validarCopy` (no callback do n8n) e `validarHtmlFinal` (antes
 do QA) comparam o texto com a decisão. Só gravam, por uma semana.
@@ -624,13 +757,13 @@ QA (linha ~2510).
    ```
 
    Ler cada linha. Evidência que é atributo → ajustar a regex antes de
-   ligar (Passo 16).
+   ligar (Passo 17).
 
 **Por quê.** Uma regex ingênua reprova "100% cotton" e "30 dias para
 trocar"; em `on` isso mata batches inteiros. O padrão da casa é ler uma
 semana de shadow.
 
-**Consequência.** Nenhuma no e-mail durante a semana. Depois do Passo 16:
+**Consequência.** Nenhuma no e-mail durante a semana. Depois do Passo 17:
 copy com oferta indevida volta ao n8n uma vez com o motivo, e HTML final
 com claim proibido reprova.
 
@@ -639,7 +772,7 @@ com `tipo` coerente com a decisão (oferta em toque sem cupom, percentual
 divergente) e ZERO linhas de atributo de produto.
 
 **NÃO ficou se.** Linhas com "100% cotton", "30 days" de política, contagem
-de reviews: a janela de adjacência está larga; apertar antes do Passo 16.
+de reviews: a janela de adjacência está larga; apertar antes do Passo 17.
 
 **Rollback.** `contrato_textual = 'off'`.
 
@@ -647,7 +780,7 @@ de reviews: a janela de adjacência está larga; apertar antes do Passo 16.
 
 ---
 
-### Passo 9 · A4 · Subject e messaging lidos da decisão
+### Passo 10 · A4 · Subject e messaging lidos da decisão
 
 **O que muda.** O subject deixa de ler o outline e passa a ler fio, alvo e
 incentivo resolvido; sai validado.
@@ -666,7 +799,7 @@ incentivo resolvido; sai validado.
    `valor` ou "sem incentivo neste toque"), tom/vocabulário, produto herói.
    As três vars antigas saem do template e da origem
    (`SUBJECT_VAR_ORIGINS` → `upstream`).
-3. Saída passa por `validarCopy` (Passo 8) mesmo em shadow do textual:
+3. Saída passa por `validarCopy` (Passo 9) mesmo em shadow do textual:
    aqui é `on` desde já, porque subject sem oferta indevida é barato de
    garantir e o fallback é determinístico (subject = headline da hero do
    Estruturador cortada em 55; messaging = fio).
@@ -710,7 +843,7 @@ concluir que o prompt está errado (foi assim que o Fable com 400 morreu em
 
 ## SEMANA 2 — a falha nomeada vira e-mail certo
 
-### Passo 10 · A2 parte 1 · Resgate que respeita descartes e preço
+### Passo 11 · A2 parte 1 · Resgate que respeita descartes e preço
 
 **O que muda.** O resgate deixa de escolher variante de dispositivo
 descartado e deixa de tratar "sem preço" como barato. Sem candidata, a
@@ -725,7 +858,7 @@ posição cai e o batch pode parar.
 **Como.**
 
 1. `custoDeIncompatibilidade(c, r, descartes)`: `Infinity` quando a variante
-   realiza um dispositivo descartado. Até o Passo 17, o dispositivo da
+   realiza um dispositivo descartado. Até o Passo 18, o dispositivo da
    variante vem de `dispositivoPorNome(nome, tags)` com um mapa CURTO
    (`comparativ*` → comparação, `gift*` → presente, `natal|black friday|
    dia das mães` → data comemorativa), e a run grava
@@ -762,14 +895,14 @@ proposta nova com esses dois nomes no mesmo dia.
 em `hero_failed` em vez de `lacuna_biblioteca`: `coberturaSuficiente`
 rodou antes da coleta de posições sem variante; a ordem importa.
 
-**Rollback.** Reverter o commit. Sem gate próprio; o Passo 7 (`shadow`)
+**Rollback.** Reverter o commit. Sem gate próprio; o Passo 8 (`shadow`)
 não afeta este.
 
 **Esforço.** 1 dia. Dono: Matheus.
 
 ---
 
-### Passo 11 · B2 · Lint do HTML e pós-processador, por código
+### Passo 12 · B2 · Lint do HTML e pós-processador, por código
 
 **O que muda.** Antes do QA, um módulo puro varre o HTML final e (a) corrige
 o que é corrigível sem julgamento, (b) reporta o resto como issue `high`.
@@ -792,7 +925,7 @@ ação e teste:
 | 6 | Botão branco sobre branco | reporta `high`: `cta_sem_contraste` (< 4,5:1 contra o `<td>` real) | `extrairCtas` + `color-contrast` |
 | 7 | `alt` lixo ("image", "img_1", vazio em imagem de conteúdo) | corrige: `alt` = rótulo do slot do blueprint | comparar com lista de lixo |
 | 8 | Ano errado / `{{YEAR}}` | corrige: ano corrente | regex `20\d\d` no rodapé + placeholder |
-| 9 | `line-height < font-size` | corrige: `line-height = 1,1 × font-size` (reusa a régua do Passo 13) | inventário de tipografia |
+| 9 | `line-height < font-size` | corrige: `line-height = 1,1 × font-size` (reusa a régua do Passo 14) | inventário de tipografia |
 
 Telemetria: run `lint` (agent novo no CHECK de `email_generation_runs`,
 migration junto; sem isso o step roda e some da telemetria, incidente do
@@ -822,7 +955,7 @@ contra o render no Chromium antes de mexer na régua.
 
 ---
 
-### Passo 12 · A5 · Payload do n8n com uma voz, callback que valida
+### Passo 13 · A5 · Payload do n8n com uma voz, callback que valida
 
 **O que muda.** O n8n recebe uma instrução por campo, o callback valida e
 reenvia uma vez, o `copy_fit` deixa de inventar e de cortar no meio.
@@ -843,10 +976,10 @@ reenvia uma vez, o `copy_fit` deixa de inventar e de cortar no meio.
 
 **Como.**
 
-1. Payload: `fields[].example` que casa com `claims.ts` (Passo 8) numa
+1. Payload: `fields[].example` que casa com `claims.ts` (Passo 9) numa
    posição cujo requisito nega → `example: null` + `directive: <exige da
    posição>`. `example` de forma ("Name. 1") fica. `blueprint.messaging` e
-   `subject_hint` vêm do Passo 9. `estrutura_geral: null` quando `decisao`
+   `subject_hint` vêm do Passo 10. `estrutura_geral: null` quando `decisao`
    existe (exceto `text_only`). `decisao.incentivo` completo (Passo 1).
    `blocks[].campos_omitidos: string[]`. `blocks[].requisitos` e
    `decisao.proibido` no nível do e-mail, uma vez.
@@ -896,7 +1029,7 @@ commit.
 
 ---
 
-### Passo 13 · A6 · Formatação fail-closed com fallback determinístico
+### Passo 14 · A6 · Formatação fail-closed com fallback determinístico
 
 **O que muda.** `color_format` deixa de inserir botão onde há botão, decide
 a cor pelo `<td>` real, perde a pesquisa inteira do prompt e, se falhar
@@ -960,7 +1093,7 @@ conferir `color-roles`.
 
 ---
 
-### Passo 14 · A7 determinístico · QA com a decisão e com responsável
+### Passo 15 · A7 determinístico · QA com a decisão e com responsável
 
 **O que muda.** O QA recebe `DecisaoDoEmail`, roda os checks por código
 novos e cada issue diz de quem é.
@@ -973,10 +1106,10 @@ dentro do objeto), `types/email-generation.ts` (`QaIssue.no_responsavel`).
 
 1. Var `decisao_json` no QA (insumos, proibido, incentivo, requisitos por
    posição) e `slot_map` com a variante por posição.
-2. Checks novos em `content-checks.ts`: `validarHtmlFinal` (Passo 8, com o
-   modo textual valendo); `posicao_sem_variante` (Passo 10);
-   `cupom_nao_conferido` como UMA linha por peça (Passo 15);
-   `traducao_faltante` (Passo 4). Os do lint (Passo 11) já entram.
+2. Checks novos em `content-checks.ts`: `validarHtmlFinal` (Passo 9, com o
+   modo textual valendo); `posicao_sem_variante` (Passo 11);
+   `cupom_nao_conferido` como UMA linha por peça (Passo 16);
+   `traducao_faltante` (Passo 4). Os do lint (Passo 12) já entram.
 3. `no_responsavel` em cada issue: `seletor | estruturador | curador | copy
    | imagem | formatacao | biblioteca | loja`, atribuído pelo check que a
    gerou (tabela fixa no módulo).
@@ -1003,7 +1136,7 @@ pela tabela; grep por `issues.push` em `content-checks.ts`.
 
 ---
 
-### Passo 15 · A9.6 e A9.7 · Cupom conferido na plataforma; políticas lidas da loja
+### Passo 16 · A9.6 e A9.7 · Cupom conferido na plataforma; políticas lidas da loja
 
 **O que muda.** (a) O QA diz, numa linha, se o cupom da peça foi conferido
 na plataforma. (b) Troca e frete passam a ser lidos das páginas públicas da
@@ -1053,14 +1186,14 @@ HTTP.
 
 ---
 
-### Passo 16 · Ligar o contrato textual
+### Passo 17 · Ligar o contrato textual
 
 **O que muda.** `contrato_textual` de `shadow` para `on`, depois de ler a
 semana de violações.
 
 **Onde.** `email_generation_settings`.
 
-**Como.** Rodar a query do Passo 8 item 5; corrigir regex com falso
+**Como.** Rodar a query do Passo 9 item 5; corrigir regex com falso
 positivo; `update email_generation_settings set contrato_textual = 'on'`.
 Anunciar no canal do time: a partir daqui, copy com oferta indevida volta
 ao n8n e HTML com claim proibido reprova.
@@ -1080,7 +1213,7 @@ apertar a regex, religar.
 A10.2 (desativar reviews-3b e hero-8), A10.3 (footer-1 com `nav_label_1..6`
 e `nav_url_1..6`), A10.4 (hex → papel nos briefs), A10.5 (`objecao`/
 `aliviador` nas 16 sem eixo), A10.6 (`rendered_html` nas 7 sem). Prompt do
-n8n (Passo 12.4). Verificação agregada:
+n8n (Passo 13.4). Verificação agregada:
 
 ```sql
 select
@@ -1096,7 +1229,7 @@ Meta: 0, 0, 0.
 
 ## SEMANA 3 — dispositivo tipado, dieta, modelos, painel
 
-### Passo 17 · B3 · Dispositivo tipado na biblioteca e na decisão
+### Passo 18 · B3 · Dispositivo tipado na biblioteca e na decisão
 
 **O que muda.** `dispositivo` deixa de ser palavra em prosa e vira campo
 fechado: na variante, na decisão do Estruturador e no resgate.
@@ -1109,7 +1242,7 @@ a fechar); coluna `email_component_variants.dispositivo text` com CHECK;
 dispositivos disponíveis por seção); `estruturador-consume.ts`
 (`normalizarRequisitos` aceita `dispositivo`); `decisao-do-email.ts`
 (`posicoes[].dispositivo`, `descartes[].dispositivo`);
-`resgate-de-posicao.ts` (Passo 18); tela "Editar variante" (select).
+`resgate-de-posicao.ts` (Passo 19); tela "Editar variante" (select).
 
 **Como.**
 
@@ -1121,7 +1254,7 @@ dispositivos disponíveis por seção); `estruturador-consume.ts`
 3. O Estruturador passa a devolver `dispositivo` por posição e nos
    descartes; `montarDecisao` copia; o Curador recebe no catálogo e no
    `<decisao_do_estruturador>`.
-4. A regra "dispositivo em descartes" do Passo 7 sai de `shadow`.
+4. A regra "dispositivo em descartes" do Passo 8 sai de `shadow`.
 
 **Por quê.** Sem campo tipado, "comparativo vetado" é casamento por nome,
 que este repo já pagou com apelidos.
@@ -1145,13 +1278,13 @@ comparação; `_contrato` sem a regra em shadow.
 
 ---
 
-### Passo 18 · A2 parte 2 · Resgate por dispositivo
+### Passo 19 · A2 parte 2 · Resgate por dispositivo
 
 **Onde.** `resgate-de-posicao.ts`, `menosIncompativel`.
 
 **Como.** `candidatas.filter(c => c.dispositivo === posicao.dispositivo)`
 antes de pontuar; sem candidata do mesmo dispositivo → `null` (a posição
-cai, Passo 10 decide). Remover `dispositivoPorNome` e a flag
+cai, Passo 11 decide). Remover `dispositivoPorNome` e a flag
 `dispositivo_por_nome`.
 
 **Ficou correto se.** Reproduzindo o batch: posição 3 (`garantia`) sem
@@ -1161,7 +1294,7 @@ candidata → lacuna nomeada `body: garantia`; teste do módulo com a fixture.
 
 ---
 
-### Passo 19 · A3.3 e A3.4 · Regras do Curador como texto versionado + dieta
+### Passo 20 · A3.3 e A3.4 · Regras do Curador como texto versionado + dieta
 
 **O que muda.** As regras vivas saem do TS para um markdown que o prompt
 monta; a chamada de escolha recebe só o que decide.
@@ -1202,7 +1335,7 @@ os aprendizados da seção). Repor um bloco por vez e medir.
 
 ---
 
-### Passo 20 · A7 LLM · O QA julga só o que o código não decide
+### Passo 21 · A7 LLM · O QA julga só o que o código não decide
 
 **Onde.** `qa.chain.ts` (prompt) + `email_agent_configs.qa`.
 
@@ -1217,7 +1350,7 @@ duplicam as do código (mesmo `block_id` + mesmo tipo).
 
 ---
 
-### Passo 21 · A8 · Modelo por nó
+### Passo 22 · A8 · Modelo por nó
 
 **Onde.** `email_agent_configs`, via `TROCAR_modelo_agentes.sql`.
 
@@ -1225,7 +1358,7 @@ duplicam as do código (mesmo `block_id` + mesmo tipo).
 `model` E `max_tokens` juntos. Barra no slug = OpenRouter; sem barra = SDK
 da Anthropic e outra fatura. Tabela do plano (Fable em seletor,
 estruturador, escolha do Curador; Sonnet 4.6 no resto; imagem inalterada).
-Rodar DEPOIS do Passo 19 para não misturar efeitos.
+Rodar DEPOIS do Passo 20 para não misturar efeitos.
 
 **Ficou correto se.** Batch da Hero Boxers com `sum(cost_cents) ≤ 350` e
 os três e-mails de referência com saída equivalente (mesma escolha de
@@ -1240,7 +1373,7 @@ baixo para o modelo novo pensar; subir `max_tokens` daquele nó.
 
 ---
 
-### Passo 22 · B6 · Painel decisão × entregue
+### Passo 23 · B6 · Painel decisão × entregue
 
 **O que muda.** Uma aba no Estúdio mostra, por batch e por posição: o que o
 Estruturador decidiu, o que o Curador escolheu, o que o resgate fez, o que
@@ -1256,10 +1389,10 @@ escolhida · dispositivo da variante · violação (tipo, responsável) ·
 issue do QA. Linha vermelha quando decidido ≠ entregue. Rodapé: custo,
 tempo, ponto onde o batch parou. É a query de 0.1 em tela.
 
-**Por quê.** Sem ele ninguém sabe se o Passo 7 está funcionando sem SQL.
+**Por quê.** Sem ele ninguém sabe se o Passo 8 está funcionando sem SQL.
 
 **Ficou correto se.** Abrindo o batch de referência (o antigo) a tela
-mostra 3 linhas vermelhas; abrindo um batch pós-Passo 7, mostra onde parou
+mostra 3 linhas vermelhas; abrindo um batch pós-Passo 8, mostra onde parou
 e por quê.
 
 **Esforço.** 1,5 dia. Dono: Matheus.
@@ -1279,6 +1412,7 @@ medir:
 | Tempo por e-mail | `max(created_at) - min(created_at)` das runs | ≤ 12 min |
 | Tokens do Curador | `tokens_input` da run `assembler_chooser` | ≤ 30k |
 | Onde morre com violação | `failure_reason` | `contrato_*` ou `lacuna_biblioteca`, nunca `qa_failed` |
+| Requisitos declarados pelo Estruturador | query de cobertura do Passo 7 | cobertura ≥ 0,9, duras = 0 |
 | Enviável sem edição | régua 0.2 nos 5 | 5 de 5 |
 
 Se a última linha falhar com as outras cinco passando, o problema é
@@ -1291,4 +1425,4 @@ resposta é cadastro, não código.
   lá as anatomias que faltam são do Bruno.
 - Quaisquer trocas em `image`: o modelo e o fallback de 08/09 ficam.
 - O diagnóstico do batch 6249aef2 precisa ser commitado em
-  `docs/email-generation/` antes do Passo 7 (as fixtures saem dele).
+  `docs/email-generation/` antes do Passo 8 (as fixtures saem dele).

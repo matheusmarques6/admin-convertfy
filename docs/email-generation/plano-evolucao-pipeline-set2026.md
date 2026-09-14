@@ -1,5 +1,12 @@
 # Plano de evolução do pipeline de e-mail — set/2026 (revisão 2, 13/09)
 
+> **Revisão 3 (14/09)**: o documento canônico passou a ser
+> `execucao-plano-pipeline-set2026.md`, que absorve a revisão do agente
+> (Trilha B com B2, B3 e B6; contrato em dois flags; fonte do QA corrigida;
+> A9.6 como linha; A4 na semana 1; divisão de trabalho) e acrescenta a
+> auditoria do output do Estruturador (Passo 7). Este arquivo fica como
+> registro da revisão 2.
+
 Base: batch 6249aef2 (Hero Boxers · Welcome 1, 11/09), código do repo em 13/09,
 banco de produção em 13/09.
 
