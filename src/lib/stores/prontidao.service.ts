@@ -18,6 +18,7 @@ import { logger } from "@/lib/logger"
 import { logGenerationRun } from "@/lib/agents/callbacks/telemetry.callback"
 import { carregarIdiomaDaLoja, carregarOutlineComCupom } from "@/lib/agents/objecoes/incentivo-da-loja.service"
 import { incentivoDoOutline } from "@/lib/agents/objecoes/incentivo"
+import { normalizarPoliticas } from "./politicas"
 import { normalizarFicha } from "./ficha-operacional"
 import {
   PILARES_DA_PESQUISA,
@@ -73,6 +74,7 @@ export async function carregarProntidao(storeId: string, opts: CarregarProntidao
       "frete_prazo",
       "frete_cobertura",
       "ficha_operacional",
+      "politicas",
     ].join(", ")
     const [storeRes, identityRes, produtosRes, idioma] = await Promise.all([
       admin.from("client_stores").select(colunas).eq("id", storeId).maybeSingle(),
@@ -104,6 +106,7 @@ export async function carregarProntidao(storeId: string, opts: CarregarProntidao
       identity,
       produtos,
       ficha: normalizarFicha(store?.ficha_operacional),
+      politicas: normalizarPoliticas(store?.politicas),
       idioma: { codigo: idioma, outline_tem_cupom: decisao.existe, traducao_presente: !decisao.traducao_faltante },
     }
     return avaliarProntidao(entrada)

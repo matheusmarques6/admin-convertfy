@@ -37,12 +37,14 @@ import {
   UniqueMechanism,
   ObjectionList,
   FichaOperacionalCard,
+  PoliticasPublicasCard,
   ObjectionCatalogEmpty,
   ObjectionCatalogPanel,
   VocabularyList,
 } from "./primitives"
 import type { CatalogoDeObjecoes } from "@/lib/agents/objecoes/vocabulario"
 import { fichaSugeridaDaLoja, type FichaOperacional } from "@/lib/stores/ficha-operacional"
+import type { PoliticasDaLoja } from "@/lib/stores/politicas"
 import { EditMarcaModal } from "./editors/edit-marca"
 import { EditLojaModal } from "./editors/edit-loja"
 import { EditIcpModal } from "./editors/edit-icp"
@@ -106,6 +108,8 @@ export interface PesquisaData {
   objection_catalog_updated_at?: string | null
   /** Ficha operacional verificada pelo time (09/09) — vence a pesquisa no Catalogador. */
   ficha_operacional?: FichaOperacional | null
+  /** Passo 16: políticas lidas das páginas públicas. */
+  politicas?: PoliticasDaLoja | null
   frete_prazo?: string | null
   frete_gratis_acima_cents?: number | null
   devolucao_politica?: string | null
@@ -187,6 +191,7 @@ export function PesquisaSection({ storeId, initialData, editor }: PesquisaSectio
   const [reanalyzing, setReanalyzing] = useState(false)
   const [regeneratingAll, setRegeneratingAll] = useState(false)
   const [regeneratingObjections, setRegeneratingObjections] = useState(false)
+  const [lendoPoliticas, setLendoPoliticas] = useState(false)
   const [clearing, setClearing] = useState(false)
   // Última run `catalogador` da loja (link "ver run" do painel do catálogo).
   // Vem do POST de regeneração quando o operador acabou de rodar; no load
@@ -317,6 +322,29 @@ export function PesquisaSection({ storeId, initialData, editor }: PesquisaSectio
   // desfecho e a única saída era recarregar a página. O teto é maior que o
   // `maxDuration` da rota (300s) de propósito — quem tem de cortar primeiro
   // é o servidor, que sabe o motivo; aqui é só a rede de segurança.
+  // Passo 16: "Reler políticas" — a rota captura das páginas públicas e
+  // grava; a tela recarrega a loja (o GET seleciona `*`).
+  const lerPoliticas = async () => {
+    setLendoPoliticas(true)
+    try {
+      const res = await fetch(`/api/admin/stores/${storeId}/politicas`, { method: "POST" })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        toast({ variant: "destructive", title: "Não foi possível ler as políticas", description: String(j?.error ?? "") })
+        return
+      }
+      const j = await res.json().catch(() => ({}))
+      const r = j.data ?? j
+      if (r?.status === "sem_url") toast({ variant: "destructive", title: "A loja não tem URL cadastrada" })
+      else if (r?.status === "nada_encontrado") toast({ title: "Nenhuma página de política respondeu", description: "Veja as URLs tentadas no card; loja com página própria vai pela ficha." })
+      else if (r?.status === "falhou") toast({ variant: "destructive", title: "Falha ao ler as políticas", description: String(r?.motivo ?? "") })
+      else toast({ title: "Políticas lidas das páginas da loja" })
+      await reload()
+    } finally {
+      setLendoPoliticas(false)
+    }
+  }
+
   const regenerateObjections = async () => {
     setRegeneratingObjections(true)
     const ctrl = new AbortController()
@@ -700,6 +728,10 @@ export function PesquisaSection({ storeId, initialData, editor }: PesquisaSectio
               hasCatalog={Boolean(data.objection_catalog)}
             />
           )}
+
+          {/* Políticas públicas (Passo 16): troca/frete lidos das páginas da
+              loja, com URL. Vira insumo do Seletor e sugestão da ficha. */}
+          <PoliticasPublicasCard politicas={data.politicas ?? null} running={lendoPoliticas} onRun={lerPoliticas} />
 
           {/* Ficha operacional (09/09): o dado verificado que o Catalogador e o
               Seletor tratam como fato. Salvar carimba o catálogo existente. */}

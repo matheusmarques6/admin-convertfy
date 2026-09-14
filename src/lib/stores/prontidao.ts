@@ -106,6 +106,8 @@ export interface EntradaDeProntidao {
   ficha?: { troca?: { texto?: string | null; prazo_dias?: number | null } | null; envio?: { texto?: string | null; prazo?: string | null } | null } | null
   /** Idioma da loja (código) e se o outline do toque tem tradução para ele. */
   idioma?: { codigo: string | null; outline_tem_cupom: boolean; traducao_presente: boolean } | null
+  /** Passo 16: políticas lidas das páginas públicas (troca/frete). */
+  politicas?: { troca?: { dias?: number | null } | null; frete?: { gratis?: boolean | null; prazo?: string | null } | null } | null
 }
 
 const HEX_RE = /^#?[0-9a-f]{6}$/i
@@ -206,12 +208,14 @@ export function avaliarProntidao(entrada: EntradaDeProntidao): Prontidao {
   }
   const politicaLoja = preenchido(entrada.store?.devolucao_politica) || preenchido(entrada.store?.frete_prazo) || preenchido(entrada.store?.frete_cobertura)
   const politicaFicha = Boolean(entrada.ficha?.troca?.texto || entrada.ficha?.troca?.prazo_dias != null || entrada.ficha?.envio?.texto || entrada.ficha?.envio?.prazo)
-  if (!politicaLoja && !politicaFicha) {
+  // Passo 16: a página pública da loja também conta como fonte.
+  const politicaPagina = Boolean(entrada.politicas?.troca || entrada.politicas?.frete)
+  if (!politicaLoja && !politicaFicha && !politicaPagina) {
     avisos.push({
       id: "politica_sem_pagina",
       severidade: "aviso",
       titulo: "Política de troca e frete não informada",
-      detalhe: "Nem o setup nem a ficha operacional têm troca/frete: o Seletor proíbe afirmar prazo e garantia, e os selos de confiança saem vazios.",
+      detalhe: "Nem o setup, nem a ficha operacional, nem as páginas públicas da loja têm troca/frete: o Seletor proíbe afirmar prazo e garantia, e os selos de confiança saem vazios.",
       acao: { destino: rotaContexto, rotulo: "Preencher a ficha operacional" },
     })
   }

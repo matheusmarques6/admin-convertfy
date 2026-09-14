@@ -114,6 +114,13 @@ export const DEFAULT_CATALOGADOR_USER = `<loja>
 {{ficha_operacional}}
 </ficha_operacional_verificada>
 
+<politicas_publicas>
+Troca/devolução e frete lidos das PÁGINAS PÚBLICAS da loja, com a URL de
+origem. NÃO foram verificados pelo time (a ficha acima vence quando
+divergem): use como lastro citando a página, não como fato confirmado.
+{{politicas_publicas}}
+</politicas_publicas>
+
 <perfil_da_marca>
 {{pesquisa}}
 
@@ -140,6 +147,7 @@ export const CATALOGADOR_ORIGINS: Record<string, SegmentOrigin> = {
   brand_name: { cls: "loja", rotulo: "Dados da loja — client_stores" },
   idioma: { cls: "loja", rotulo: "Idioma da loja — client_stores.language" },
   ficha_operacional: { cls: "curadoria", rotulo: "Ficha operacional verificada pelo time — client_stores.ficha_operacional" },
+  politicas_publicas: { cls: "loja", rotulo: "Políticas públicas lidas das páginas da loja — client_stores.politicas (Passo 16)" },
   pesquisa: { cls: "loja", rotulo: "Perfil da marca — Pesquisa & Diagnóstico completa (client_stores)" },
   top_products: { cls: "loja", rotulo: "Top 5 produtos — store_top_products (nome, preço e link)" },
   objecoes_anteriores: { cls: "loja", rotulo: "Objeções anteriores — client_stores.icp_objections (material, não gabarito)" },

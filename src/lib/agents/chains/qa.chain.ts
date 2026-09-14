@@ -750,6 +750,11 @@ export interface RunQaAgentInput {
   decisao?: import("../shared/decisao-do-email").DecisaoDoEmail | null
   /** Passo 15: variante por posição (`store_email_references.slot_map`). */
   slotMap?: import("@/types/email-generation").ReferenceSlotMapEntry[] | null
+  /**
+   * Passo 16: NOTAS da run — o que o código não pôde afirmar e não vira
+   * issue ("cupom_nao_conferido: sem_token"). Vão em `parsed_output.notas`.
+   */
+  notas?: string[]
 }
 
 export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
@@ -1291,6 +1296,8 @@ export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
       // Passo 15: claims do LLM que a decisão cobria e o código descartou.
       claims_filtrados: claims.filtradas,
       decisao_presente: input.decisao != null,
+      // Passo 16: o que o código não pôde conferir (não é issue).
+      ...(input.notas && input.notas.length > 0 ? { notas: input.notas } : {}),
       // As issues em si. Iam só para `email_flow_emails.qa_issues`, o que
       // deixava a run com o número e sem o motivo — para saber POR QUE o
       // email reprovou era preciso abrir outra tabela.

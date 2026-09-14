@@ -16,6 +16,7 @@
 import crypto from "crypto"
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
+import { montarInsumos, normalizarPoliticas, type PoliticasDaLoja } from "@/lib/stores/politicas"
 import { classificarFalha, planejarRetentativa, avisoDeContaPerdida } from "../retry-teto"
 import { tetoDeRelogioDoAgente } from "../fase1-orcamento"
 import { loadTopProducts } from "../top-products"
@@ -245,6 +246,12 @@ export interface RunSeletorInput {
   topProductsTexto: string
   /** Decisão de incentivo do toque (outline + idioma + override), 14/09. */
   incentivo: DecisaoDeIncentivo
+  /**
+   * Passo 16: políticas públicas da loja (`client_stores.politicas`). O
+   * código as INJETA em `insumos_permitidos` com a URL — o modelo não
+   * decide se a troca existe; a página decide.
+   */
+  politicas?: PoliticasDaLoja | null
 }
 
 /** Um call do Seletor para um email. Persiste alvo (válido ou sintético) e a run. Nunca lança. */
@@ -360,6 +367,17 @@ export async function runSeletor(input: RunSeletorInput): Promise<ObjectionTarge
       }
       const { alvo, avisos } = normalizarAlvo(parsed, input.contrato, input.catalogo, input.jaAtacadas, input.incentivo)
       avisosFinais = avisos
+      // Passo 16: os insumos da PÁGINA PÚBLICA entram primeiro (fato com
+      // URL), os do modelo completam até o teto de 12 — o Seletor deixa de
+      // proibir "prometer troca" quando a loja promete na própria página.
+      const insumosDePolitica = montarInsumos(input.politicas)
+      if (insumosDePolitica.length > 0) {
+        const vistos = new Set(insumosDePolitica.map((i) => i.toLowerCase()))
+        alvo.insumos_permitidos = [
+          ...insumosDePolitica,
+          ...(alvo.insumos_permitidos ?? []).filter((i) => !vistos.has(i.toLowerCase())),
+        ].slice(0, 12)
+      }
       const reprovacoes = validarAlvo(alvo, input.contrato, input.catalogo, input.jaAtacadas, input.flowType)
       if (reprovacoes.length) throw new ValidacaoError(reprovacoes)
 
@@ -398,6 +416,8 @@ export async function runSeletor(input: RunSeletorInput): Promise<ObjectionTarge
             lacuna_com_candidatas: Boolean(alvo.lacuna) && candidatas.length > 0,
             catalog_sha8: input.catalogSha8,
             target_id: row?.id ?? null,
+            // Passo 16: quantos insumos vieram das páginas públicas da loja.
+            insumos_de_politica: montarInsumos(input.politicas).length,
             // De onde saiu o modo: a nota tipou, ou o agente leu a prosa.
             // Sem isto não dá para auditar a decisão nem medir quantas
             // intenções ainda estão sem `modo` declarado (07/09).
@@ -512,10 +532,11 @@ export async function ensureObjectionTargets(input: EnsureTargetsInput): Promise
     const admin = createAdminClient()
     const { data: store } = await admin
       .from("client_stores")
-      .select("store_name, store_url, objection_catalog")
+      .select("store_name, store_url, objection_catalog, politicas")
       .eq("id", input.storeId)
       .maybeSingle()
-    const s = (store ?? {}) as { store_name?: string | null; store_url?: string | null; objection_catalog?: unknown }
+    const s = (store ?? {}) as { store_name?: string | null; store_url?: string | null; objection_catalog?: unknown; politicas?: unknown }
+    const politicas = normalizarPoliticas(s.politicas)
     const batchId = input.batchId ?? crypto.randomUUID()
 
     const porFlow = new Map<string, number[]>()
@@ -595,6 +616,7 @@ export async function ensureObjectionTargets(input: EnsureTargetsInput): Promise
           storeId: input.storeId, flowType, emailNumber: n, batchId, triggeredBy: input.triggeredBy, mode,
           brandName, catalogo, catalogSha8: sha8, contrato, intencaoBody: intent?.body_md ?? "", jaAtacadas, topProductsTexto,
           incentivo,
+          politicas,
         })
         result.ran++
         if (row) {

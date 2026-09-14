@@ -70,6 +70,7 @@ import { atribuirResponsaveis } from "./html/qa-responsavel"
 import { inventarioDeCtas } from "./html/cta-inventario"
 import { aplicarPaletaPorCodigo } from "./html/paleta-por-codigo"
 import { diffTextoVisivel } from "./html/texto-diff"
+import { cupomExisteNaPlataforma } from "@/lib/integrations/shopify/discount-lookup"
 import { computeContentChecks } from "./html/content-checks"
 import { lerDecisao } from "./shared/decisao-do-email"
 import { loadContratoModes, bloqueia, roda } from "./shared/contrato-mode"
@@ -4603,6 +4604,31 @@ export async function runPhase2HtmlQa(
     posicoesSemVariante,
     traducaoFaltante: decisaoDoEmail?.incentivo.traducao_faltante ?? null,
   })
+  // Passo 16: o cupom da peça existe na PLATAFORMA da loja? Com token
+  // Shopify, `discountNodes` responde; sem token, vira NOTA da run `qa`
+  // (`cupom_nao_conferido`), nunca issue — "não conferi" não é "não existe".
+  const notasQa: string[] = []
+  if (decisaoDoEmail?.incentivo.existe && decisaoDoEmail.incentivo.codigo) {
+    try {
+      const conf = await cupomExisteNaPlataforma(storeId, decisaoDoEmail.incentivo.codigo)
+      if (conf.conferido && !conf.existe) {
+        contentIssues.push({
+          type: "cupom_inexistente_na_plataforma",
+          severity: "high",
+          disposition: "blocking",
+          message: `O cupom ${conf.codigo} não existe na plataforma da loja (Shopify discountNodes) — a peça promete um desconto que o checkout não reconhece.`,
+          location: "html",
+          no_responsavel: "loja",
+        })
+      } else if (conf.conferido) {
+        notasQa.push(`cupom_conferido: ${conf.codigo} existe na plataforma${conf.titulo ? ` (${conf.titulo})` : ""}`)
+      } else {
+        notasQa.push(`cupom_nao_conferido: ${conf.motivo}${conf.detalhe ? ` — ${conf.detalhe}` : ""} (código ${conf.codigo})`)
+      }
+    } catch (err) {
+      notasQa.push(`cupom_nao_conferido: erro — ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
   if (contentIssues.length > 0) {
     log.warn("phase2.qa.content_checks_issues", {
       emailId,
@@ -4724,6 +4750,7 @@ export async function runPhase2HtmlQa(
         reason: "qa_disabled_flag",
         passed: true,
         issues_count: renderIssues.length,
+        ...(notasQa.length > 0 ? { notas: notasQa } : {}),
       },
     }).catch(() => {})
     if (batchId) await rollupCostAndMaybeAlert({ storeId, emailId, batchId, costAlertUsd: ctx.costAlertUsd }).catch(() => {})
@@ -4816,6 +4843,7 @@ export async function runPhase2HtmlQa(
       // Seletor verificou.
       decisao: decisaoDoEmail,
       slotMap: slotMapDoEmail,
+      notas: notasQa,
     })
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Erro no QA"

@@ -23,7 +23,8 @@
  */
 
 import { toolJson, type ConnectorTool, type ResolvedConnector } from "./types"
-import { checarRedirecionamento, checarUrlPublica } from "@/lib/ai/web/web-guard"
+import { checarUrlPublica } from "@/lib/ai/web/web-guard"
+import { baixarPagina } from "@/lib/ai/web/baixar-pagina"
 import { extrairPagina } from "@/lib/ai/web/web-extract"
 import { buscarNaWeb } from "@/lib/ai/web/web-search"
 import { logger } from "@/lib/logger"
@@ -32,97 +33,8 @@ const log = logger.child("ConectorWeb")
 
 export const WEB_CONNECTOR_KEY = "web"
 
-const TIMEOUT_MS = 20_000
-const MAX_BYTES = 3_000_000
-const MAX_REDIRECIONAMENTOS = 4
-
-/** Tipos que viram texto. PDF/imagem/vídeo não — dizer isso é melhor que devolver lixo binário. */
-function tipoLegivel(contentType: string): "html" | "texto" | "json" | null {
-  const t = contentType.toLowerCase()
-  if (t.includes("html") || t.includes("xhtml")) return "html"
-  if (t.includes("json")) return "json"
-  if (t.startsWith("text/") || t.includes("xml")) return "texto"
-  return null
-}
-
-async function baixarPagina(alvo: URL): Promise<
-  | { ok: true; url: string; status: number; tipo: string; corpo: string }
-  | { ok: false; motivo: string }
-> {
-  let atual = alvo
-  for (let salto = 0; salto <= MAX_REDIRECIONAMENTOS; salto++) {
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
-    let resp: Response
-    try {
-      resp = await fetch(atual.toString(), {
-        // manual: o `fetch` seguiria o 302 sozinho, e aí a URL final nunca
-        // passaria pelo guard — é exatamente por onde o SSRF entraria.
-        redirect: "manual",
-        signal: controller.signal,
-        cache: "no-store",
-        headers: {
-          // User-agent honesto: muitos sites recusam o default do runtime,
-          // e mentir sobre ser um navegador é o começo de outro problema.
-          "User-Agent": "ConvertfyBot/1.0 (+https://convertfy.com.br; leitura para assistente interno)",
-          Accept: "text/html,application/xhtml+xml,text/plain;q=0.9,application/json;q=0.8,*/*;q=0.5",
-          "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
-        },
-      })
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      return {
-        ok: false,
-        motivo: msg.includes("abort")
-          ? `A página não respondeu em ${TIMEOUT_MS / 1000}s.`
-          : `Não consegui acessar: ${msg}`,
-      }
-    } finally {
-      clearTimeout(timer)
-    }
-
-    if (resp.status >= 300 && resp.status < 400) {
-      const location = resp.headers.get("location")
-      if (!location) return { ok: false, motivo: `Redirecionamento ${resp.status} sem destino.` }
-      const check = checarRedirecionamento(location, atual)
-      if (!check.ok) return { ok: false, motivo: `Redirecionamento recusado: ${check.motivo}` }
-      atual = check.url
-      continue
-    }
-
-    if (resp.status === 403 || resp.status === 401) {
-      return {
-        ok: false,
-        motivo: `O site recusou o acesso (HTTP ${resp.status}) — provavelmente exige login ou bloqueia leitura automática. Diga isso ao usuário em vez de descrever a página de memória.`,
-      }
-    }
-    if (!resp.ok) return { ok: false, motivo: `A página respondeu HTTP ${resp.status}.` }
-
-    const contentType = resp.headers.get("content-type") ?? ""
-    const tipo = tipoLegivel(contentType)
-    if (!tipo) {
-      return {
-        ok: false,
-        motivo: `O conteúdo é ${contentType.split(";")[0] || "de tipo desconhecido"}, que não dá para ler como texto (PDF, imagem e vídeo ficam de fora).`,
-      }
-    }
-
-    const tamanho = Number(resp.headers.get("content-length") ?? 0)
-    if (tamanho > MAX_BYTES) {
-      return { ok: false, motivo: `A página tem ${Math.round(tamanho / 1e6)} MB — grande demais para ler.` }
-    }
-
-    const bruto = await resp.text()
-    return {
-      ok: true,
-      url: atual.toString(),
-      status: resp.status,
-      tipo,
-      corpo: bruto.slice(0, MAX_BYTES),
-    }
-  }
-  return { ok: false, motivo: `Mais de ${MAX_REDIRECIONAMENTOS} redirecionamentos — desisti.` }
-}
+// O fetch com a régua de SSRF mora em `lib/ai/web/baixar-pagina.ts` (Passo
+// 16): a captura de políticas da loja usa o MESMO caminho.
 
 /**
  * Embrulho que separa DADO de INSTRUÇÃO. Qualquer texto de fora entra
