@@ -36,6 +36,8 @@ export type RegraDaAuditoria =
   | "secao_fora_da_lista"
   | "papel_diz_requisito_nao"
   | "descarte_sem_dispositivo"
+  | "dispositivo_ausente"
+  | "dispositivo_sem_variante"
 
 export interface AchadoDaAuditoria {
   regra: RegraDaAuditoria
@@ -64,7 +66,7 @@ export interface AuditarRequisitosInput {
 }
 
 /** Campos cujo descarte muda o FILTRO do Curador (o resto é copy/imagem). */
-const CAMPOS_DE_FILTRO = new Set(["cupom", "cta", "n_itens", "preco", "avaliacao", "requisitos"])
+const CAMPOS_DE_FILTRO = new Set(["dispositivo", "cupom", "cta", "n_itens", "preco", "avaliacao", "requisitos"])
 
 /** Seções que o system manda NUNCA emitir (absorvidas pela vizinha). */
 const SECOES_PROIBIDAS = new Set(["header", "cta"])
@@ -180,6 +182,32 @@ export function auditarRequisitos(input: AuditarRequisitosInput): AuditoriaDosRe
     }
 
     const r = p.requisitos
+    // Dispositivo (B3): obrigatório onde a seção tem variantes classificadas.
+    // Seção sem NENHUMA classificada (biblioteca ainda não passou pelo
+    // backfill) só avisa — reprovar a geração por dado que não existe seria
+    // o erro caro.
+    if (r && cap) {
+      const secaoClassificada = (cap.classificadas ?? 0) > 0
+      if (!r.dispositivo) {
+        const achado: AchadoDaAuditoria = {
+          regra: "dispositivo_ausente",
+          block_index: i,
+          section: p.section,
+          detalhe: `posição ${i + 1} (${p.section}) sem "requisitos.dispositivo" — o Curador não tem o primeiro filtro (dispositivos da seção: ${Object.keys(cap.por_dispositivo ?? {}).join(", ") || "nenhum classificado"})`,
+        }
+        if (secaoClassificada) duras.push(achado)
+        else avisos.push(achado)
+      } else if (!(cap.por_dispositivo ?? {})[r.dispositivo]) {
+        const achado: AchadoDaAuditoria = {
+          regra: "dispositivo_sem_variante",
+          block_index: i,
+          section: p.section,
+          detalhe: `posição ${i + 1} (${p.section}) pede "${r.dispositivo}" e a biblioteca não tem variante ativa desse dispositivo (tem: ${Object.keys(cap.por_dispositivo ?? {}).join(", ") || "nenhuma classificada"})`,
+        }
+        if (secaoClassificada) duras.push(achado)
+        else avisos.push(achado)
+      }
+    }
     if (r && cap) {
       const fora = (o: string) =>
         duras.push({
@@ -219,6 +247,13 @@ export function auditarRequisitos(input: AuditarRequisitosInput): AuditoriaDosRe
         block_index: null,
         section: d.section,
         detalhe: `descarte ${i + 1} sem ${!d.porque.trim() ? "porquê" : "seção nem papel na referência"} — não dá para saber o que ficou de fora`,
+      })
+    } else if (d.section && !d.dispositivo && (capacidade[d.section]?.classificadas ?? 0) > 0) {
+      avisos.push({
+        regra: "descarte_sem_dispositivo",
+        block_index: null,
+        section: d.section,
+        detalhe: `descarte ${i + 1} (${d.section}) sem "dispositivo" — o Curador não sabe qual forma NÃO recolocar`,
       })
     }
   })

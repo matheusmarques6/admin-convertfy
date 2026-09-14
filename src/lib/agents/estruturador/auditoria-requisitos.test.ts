@@ -235,3 +235,49 @@ describe("custódia: os requisitos auditados são os que chegam ao Curador", () 
     expect(noCurador[4]).toMatchObject({ preco: true, n_itens: { min: 2, max: 2 } })
   })
 })
+
+describe("dispositivo (B3)", () => {
+  const CAP_DISP: Record<string, CapacidadeDaSecao> = {
+    hero: { ...CAP.hero, por_dispositivo: { hero_pergunta: 2, hero_oferta_cupom: 5 }, classificadas: 7 },
+    body: { ...CAP.body, por_dispositivo: { body_tese: 2 }, classificadas: 2 },
+    // reviews sem NENHUMA classificada: dispositivo ausente ali só avisa.
+    reviews: { ...CAP.reviews },
+    products: { ...CAP.products, por_dispositivo: { products_grade_sem_preco: 5 }, classificadas: 5 },
+    footer: { ...CAP.footer, por_dispositivo: { footer_nav: 3 }, classificadas: 3 },
+  }
+  const base = (estrutura: Array<Record<string, unknown>>) =>
+    auditarRequisitos({
+      saida: normalizarOutputDetalhado({ estrutura, descartes: [] }).saida,
+      alvo: null,
+      incentivo: null,
+      capacidade: CAP_DISP,
+      secoesDisponiveis: Object.keys(CAP_DISP),
+      descartados: [],
+    })
+
+  it("posição sem dispositivo numa seção classificada é DURA; em seção não classificada é aviso", () => {
+    const a = base([
+      { section: "hero", papel: "abre", referencia: "r", porque: "p", requisitos: { cta: true } },
+      { section: "reviews", papel: "prova", referencia: "r", porque: "p", requisitos: { n_itens: { min: 2, max: 2 } } },
+    ])
+    expect(a.duras.map((d) => [d.regra, d.block_index])).toEqual([["dispositivo_ausente", 0]])
+    expect(a.avisos.filter((v) => v.regra === "dispositivo_ausente").map((v) => v.block_index)).toEqual([1])
+  })
+
+  it("dispositivo sem variante ativa na seção é DURA quando a seção está classificada", () => {
+    const a = base([
+      { section: "body", papel: "compara", referencia: "r", porque: "p", requisitos: { dispositivo: "body_comparacao" } },
+    ])
+    expect(a.duras.map((d) => d.regra)).toEqual(["dispositivo_sem_variante"])
+    expect(a.duras[0].detalhe).toContain("tem: body_tese")
+  })
+
+  it("dispositivo fora do vocabulário chega como valor descartado e é DURA (campo de filtro)", () => {
+    const n = normalizarOutputDetalhado({
+      estrutura: [{ section: "body", papel: "x", referencia: "r", porque: "p", requisitos: { dispositivo: "body_varredura", cupom: false } }],
+      descartes: [],
+    })
+    const a = auditarRequisitos({ saida: n.saida, alvo: null, incentivo: null, capacidade: CAP_DISP, secoesDisponiveis: Object.keys(CAP_DISP), descartados: n.descartados })
+    expect(a.duras.map((d) => d.regra).sort()).toEqual(["dispositivo_ausente", "valor_descartado"])
+  })
+})

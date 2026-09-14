@@ -27,6 +27,7 @@
  * pipeline precisa (`normalizarOutput`).
  */
 
+import { dispositivoPertenceASecao, ehDispositivo, type Dispositivo } from "../shared/dispositivos"
 import type { RequisitosDuros } from "../shared/field-roles"
 
 // ── Tipos do material servido ───────────────────────────────────────────
@@ -54,6 +55,12 @@ export interface MaterialDoFlow {
  * campo que colide e o QA confere. `null`/vazio = indiferente.
  */
 export interface RequisitosDaPosicao extends RequisitosDuros {
+  /**
+   * Dispositivo pedido (B3): vocabulário fechado, tem de pertencer à seção da
+   * posição. É o PRIMEIRO filtro do Curador. `null` = o modelo não declarou
+   * (a auditoria acusa quando a seção tem variantes classificadas).
+   */
+  dispositivo?: Dispositivo | null
   cupom: boolean | null
   cta: boolean | null
   n_itens: { min: number; max: number } | null
@@ -136,6 +143,12 @@ export function normalizarRequisitosComDescartes(raw: unknown): RequisitosNormal
   }
   const r = raw as Record<string, unknown>
   const descartados: ValorDescartado[] = []
+  // Dispositivo primeiro (é o primeiro filtro). Fora do vocabulário → descarte
+  // DURO na auditoria (`CAMPOS_DE_FILTRO`): pedir "body_varredura" é o mesmo
+  // erro de `cupom: "false"` — a intenção existe e a máquina não a lê.
+  let dispositivo: Dispositivo | null = null
+  if (ehDispositivo(r.dispositivo)) dispositivo = r.dispositivo
+  else if (definido(r.dispositivo) && r.dispositivo !== "") descartados.push({ campo: "dispositivo", valor_cru: r.dispositivo })
   const bool = (campo: "cupom" | "cta" | "preco" | "avaliacao"): boolean | null => {
     const v = boolOuNull(r[campo])
     if (v == null && definido(r[campo])) descartados.push({ campo, valor_cru: r[campo] })
@@ -190,6 +203,7 @@ export function normalizarRequisitosComDescartes(raw: unknown): RequisitosNormal
     descartados.push({ campo: "imagem", valor_cru: r.imagem })
   }
   const out: RequisitosDaPosicao = {
+    ...(dispositivo ? { dispositivo } : {}),
     cupom,
     cta,
     n_itens,
@@ -200,6 +214,7 @@ export function normalizarRequisitosComDescartes(raw: unknown): RequisitosNormal
     exige,
   }
   const vazio =
+    out.dispositivo == null &&
     out.cupom == null && out.cta == null && !out.n_itens && out.preco == null && out.avaliacao == null &&
     out.campos.length === 0 && !out.imagem && out.exige.length === 0
   return { requisitos: vazio ? null : out, descartados }
@@ -207,6 +222,8 @@ export function normalizarRequisitosComDescartes(raw: unknown): RequisitosNormal
 
 export interface EstruturadorDescarte {
   section: string | null
+  /** Dispositivo que o descarte tirou da peça (B3) — o Curador não o recoloca por outra via. */
+  dispositivo?: Dispositivo | null
   papel_na_referencia: string | null
   porque: string
   origem: "modelo" | "validador"
@@ -303,6 +320,20 @@ export function normalizarOutputDetalhado(parsed: unknown): OutputNormalizado {
     .map((p, i) => {
       const { _descartados, ...pos } = p as EstruturadorPosicao & { _descartados?: ValorDescartado[] }
       for (const d of _descartados ?? []) descartados.push({ ...d, block_index: i, section: pos.section })
+      // Dispositivo de OUTRA seção ("hero_pergunta" numa posição body) é
+      // descarte, não indiferença silenciosa.
+      if (pos.requisitos?.dispositivo && !dispositivoPertenceASecao(pos.requisitos.dispositivo, pos.section)) {
+        descartados.push({ campo: "dispositivo", valor_cru: `${pos.requisitos.dispositivo} (posição ${pos.section})`, block_index: i, section: pos.section })
+        const { dispositivo: _fora, ...resto } = pos.requisitos
+        void _fora
+        // Sem o dispositivo pode não sobrar nada declarado — e "nada" é
+        // ausência, não um objeto de nulls.
+        const sobrou =
+          resto.cupom != null || resto.cta != null || !!resto.n_itens || resto.preco != null || resto.avaliacao != null ||
+          resto.campos.length > 0 || !!resto.imagem || resto.exige.length > 0
+        if (sobrou) pos.requisitos = resto
+        else delete pos.requisitos
+      }
       return pos
     })
   if (estrutura.length === 0) {
@@ -335,6 +366,7 @@ export function normalizarOutputDetalhado(parsed: unknown): OutputNormalizado {
     text_only: o.text_only === true,
     descartes: arr(o.descartes, (d) => ({
       section: str(d.section) || null,
+      ...(ehDispositivo(d.dispositivo) ? { dispositivo: d.dispositivo } : {}),
       papel_na_referencia: str(d.papel_na_referencia) || null,
       porque: str(d.porque),
       origem: d.origem === "validador" ? "validador" : "modelo",
@@ -392,14 +424,15 @@ Como decidir:
 - VALIDAÇÃO: confira sua estrutura contra o que <decisao_de_objecao> exige deste toque — os "trabalhos fixos" (cada um precisa de posição que o realize), os "veículos" com insumo disponível e o "proibido neste toque" (que restringe a REDAÇÃO, não elimina posição). Quando a nota de intenção estiver servida (fallback sem alvo), confira também contra a checklist dela ("Quando ela termina de ler...") e contra os anti-objetivos.
 
 REQUISITOS por posição (o que a decisão EXIGE ou NEGA, legível por máquina):
-- Cada posição leva "requisitos": {"cupom": true|false|null, "cta": true|false|null, "n_itens": {"min":N,"max":N}|null, "preco": true|false|null, "avaliacao": true|false|null, "campos": [...], "imagem": "uma frase"|null, "exige": ["curto", ...]}. null = indiferente. Declare SÓ o que a decisão exige ou nega — requisito é FILTRO para quem escolhe o bloco (variante que colide é eliminada) e ordem para quem escreve a copy (campo que colide é omitido), não é desejo.
+- Cada posição leva "requisitos": {"dispositivo": "<um dos dispositivos da seção>", "cupom": true|false|null, "cta": true|false|null, "n_itens": {"min":N,"max":N}|null, "preco": true|false|null, "avaliacao": true|false|null, "campos": [...], "imagem": "uma frase"|null, "exige": ["curto", ...]}. null = indiferente.
+- "dispositivo" é OBRIGATÓRIO e é o PRIMEIRO filtro de quem escolhe o bloco: nomeia a FORMA que realiza o papel, no vocabulário fechado listado por seção em <secoes_disponiveis> (ex.: hero_pergunta, body_tese, body_garantias, body_comparacao, products_grade_preco, reviews_com_credencial, footer_nav). Tem de ser da MESMA seção da posição — "hero_pergunta" numa posição body é descartado. O papel em prosa não filtra; o dispositivo filtra. Dispositivo com 0 variantes na seção vira lacuna declarada (a posição pode ficar sem candidata): prefira o dispositivo que existe e registre em "exige" o que faltou. Em "descartes", o "dispositivo" que você tirou da peça também vai declarado, para o Curador não o recolocar por outra via. Declare SÓ o que a decisão exige ou nega — requisito é FILTRO para quem escolhe o bloco (variante que colide é eliminada) e ordem para quem escreve a copy (campo que colide é omitido), não é desejo.
 - "cupom": false quando <decisao_de_objecao> diz que não há incentivo ativo ou quando este toque não entrega oferta — o bloco com slot de cupom fica fora e o campo não é escrito. "cta": false só quando a posição NÃO deve ter botão. "n_itens" para grades e listas (2–3 produtos, 1 depoimento). "preco"/"avaliacao": true quando os cards precisam mostrá-los.
 - "campos" usa vocabulário fechado: preco, avaliacao, nome, idade, contexto, selo_nomeado, categoria, mecanismo, garantia.
 - "imagem": a cena que a foto desta posição precisa mostrar (ex.: "uso real em corpo adulto, não estúdio"). É a instrução de maior peso do agente de imagem.
 - <secoes_disponiveis> diz, por seção, o que a biblioteca TEM (quantas variantes, faixa de itens, quantas mostram preço/avaliação/cupom/CTA). Não exija o que não existe: se exigir, a posição pode ficar sem candidata — prefira ajustar o papel e registrar em "exige" o que faltou.
 - TODA posição leva "requisitos" (mesmo que só com "exige"). Os valores são JSON tipado, nunca texto: true/false/null, números em "n_itens", e "campos" só com o vocabulário fechado — "cupom": "false" (string) é descartado e vira indiferente, o oposto do que você quis.
 - O incentivo deste toque está DECIDIDO em <decisao_de_objecao> (existe/código/valor): se ele existe e o toque o entrega, ALGUMA posição declara "cupom": true; se não existe, NENHUMA posição pode declarar "cupom": true.
-- Exemplo de requisitos preenchidos num toque COM incentivo: hero → {"cupom":true,"cta":true,"n_itens":null,"preco":null,"avaliacao":null,"campos":[],"imagem":"uso real em corpo adulto, luz natural","exige":["código visível","sem prazo"]}; products → {"cupom":false,"cta":true,"n_itens":{"min":2,"max":3},"preco":true,"avaliacao":null,"campos":["preco","nome"],"imagem":null,"exige":["preço em texto real"]}.
+- Exemplo de requisitos preenchidos num toque COM incentivo: hero → {"dispositivo":"hero_oferta_cupom","cupom":true,"cta":true,"n_itens":null,"preco":null,"avaliacao":null,"campos":[],"imagem":"uso real em corpo adulto, luz natural","exige":["código visível","sem prazo"]}; products → {"dispositivo":"products_grade_preco","cupom":false,"cta":true,"n_itens":{"min":2,"max":3},"preco":true,"avaliacao":null,"campos":["preco","nome"],"imagem":null,"exige":["preço em texto real"]}.
 - <auditoria_anterior>, quando vier preenchida, é a lista de incoerências que o código encontrou na sua ÚLTIMA resposta para este mesmo email. Corrija cada item nomeado — a estrutura pode ser mantida; o que precisa mudar são os requisitos e o que os contradiz.
 
 Restrições de construção:
@@ -414,7 +447,7 @@ Restrições de construção:
 - Em "descartes", tudo que VOCÊ decidiu não emitir leva "origem": "modelo".
 
 Responda APENAS o JSON, sem markdown e sem texto ao redor, no formato:
-{"diagnostico":{"alvo_id":"obj_N ou null","objecao_dominante":"só no fallback sem alvo","referencia_base":"...","traducao_do_mecanismo":"..."},"estrutura":[{"section":"...","papel":"...","referencia":"...","adaptacao":"...","porque":"...","requisitos":{"cupom":null,"cta":null,"n_itens":null,"preco":null,"avaliacao":null,"campos":[],"imagem":null,"exige":[]}}],"fio_narrativo":"...","fontes":[{"ref":"...","o_que_pegou":"...","porque":"..."}],"aprendizados_aplicados":[{"slug":"...","como":"..."}],"text_only":false,"descartes":[{"section":null,"papel_na_referencia":"...","porque":"...","origem":"modelo"}]}
+{"diagnostico":{"alvo_id":"obj_N ou null","objecao_dominante":"só no fallback sem alvo","referencia_base":"...","traducao_do_mecanismo":"..."},"estrutura":[{"section":"...","papel":"...","referencia":"...","adaptacao":"...","porque":"...","requisitos":{"dispositivo":"body_tese","cupom":null,"cta":null,"n_itens":null,"preco":null,"avaliacao":null,"campos":[],"imagem":null,"exige":[]}}],"fio_narrativo":"...","fontes":[{"ref":"...","o_que_pegou":"...","porque":"..."}],"aprendizados_aplicados":[{"slug":"...","como":"..."}],"text_only":false,"descartes":[{"section":null,"dispositivo":null,"papel_na_referencia":"...","porque":"...","origem":"modelo"}]}
 Toda posição exige "referencia" E "porque". Posição sem os dois é inválida.`
 
 /**

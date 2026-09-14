@@ -313,7 +313,7 @@ async function loadIntencaoDoEmail(flowType: string, emailNumber: number): Promi
 async function loadCapacidade(produtosDaLoja: number): Promise<CapacidadeBiblioteca> {
   const admin = createAdminClient()
   const { data } = await admin.from("email_component_variants")
-    .select("block_type, output_schema").eq("is_active", true)
+    .select("block_type, output_schema, dispositivo").eq("is_active", true)
   const porCategoria: Record<string, number> = {}
   for (const v of data ?? []) {
     const t = v.block_type as string
@@ -322,7 +322,7 @@ async function loadCapacidade(produtosDaLoja: number): Promise<CapacidadeBibliot
   // 09/09: o que cada seção TEM (grade, preço, avaliação, cupom, CTA) —
   // sem isso o Estruturador exigia o que a biblioteca não tinha.
   const resumo = capacidadePorSecao(
-    (data ?? []).map((v) => ({ block_type: v.block_type as string, output_schema: v.output_schema })),
+    (data ?? []).map((v) => ({ block_type: v.block_type as string, output_schema: v.output_schema, dispositivo: (v as { dispositivo?: string | null }).dispositivo ?? null })),
   )
   return { porCategoria, produtosDaLoja, resumo }
 }

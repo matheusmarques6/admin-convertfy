@@ -12,6 +12,7 @@ import {
 } from "@/lib/agents/shared/rendered-reference"
 import { assertCanManagePrompts } from "@/lib/services/prompt-management.service"
 import { logger } from "@/lib/logger"
+import { DISPOSITIVOS } from "@/lib/agents/shared/dispositivos"
 import { COMPONENT_CATEGORY_KEYS } from "@/lib/agents/shared/component-categories"
 import { outputFieldSchema } from "@/lib/agents/shared/component-schemas"
 import { enforceEmailWidth } from "@/lib/email-workspace/email-width"
@@ -36,6 +37,12 @@ const postSchema = z.object({
   design_system: z.string().nullable().optional(),
   photo_direction: z.string().nullable().optional(),
   product_slots: z.number().int().min(0).max(20).default(0),
+  // B3/B5: dispositivo (vocabulário fechado), identidade da anatomia e
+  // tokens de identidade. `dispositivo` nasce opcional na API (a coluna é
+  // nullable até o backfill ser revisado).
+  dispositivo: z.enum(DISPOSITIVOS as unknown as [string, ...string[]]).nullable().optional(),
+  anatomia_slug: z.string().trim().max(120).nullable().optional(),
+  tokens_de_identidade: z.boolean().optional(),
   output_schema: z.array(outputFieldSchema).default([]),
   density: z.enum(["minimal", "balanced", "rich"]).nullable().optional(),
   tags: z.array(z.string()).default([]),

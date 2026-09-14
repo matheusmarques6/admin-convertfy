@@ -5,6 +5,7 @@ import {
   intencaoParaOPrompt,
   normalizarOutput,
   normalizarRequisitos,
+  normalizarOutputDetalhado,
 } from "./estruturador-prompt"
 
 /**
@@ -127,7 +128,28 @@ describe("requisitos tipados por posição (09/09)", () => {
   })
   it("o system pede requisitos por posição e explica a capacidade das seções", () => {
     expect(DEFAULT_ESTRUTURADOR_SYSTEM).toContain("REQUISITOS por posição")
-    expect(DEFAULT_ESTRUTURADOR_SYSTEM).toContain('"requisitos":{"cupom":null')
+    expect(DEFAULT_ESTRUTURADOR_SYSTEM).toContain('"requisitos":{"dispositivo":"body_tese","cupom":null')
     expect(DEFAULT_ESTRUTURADOR_SYSTEM).toContain("Não exija o que não existe")
+  })
+})
+
+describe("requisitos.dispositivo (B3)", () => {
+  it("dispositivo válido entra; fora do vocabulário ou de outra seção vira descarte (não indiferença muda)", () => {
+    const r = normalizarOutputDetalhado({
+      estrutura: [
+        { section: "body", papel: "tese", referencia: "r", porque: "p", requisitos: { dispositivo: "body_tese", cupom: false } },
+        { section: "body", papel: "x", referencia: "r", porque: "p", requisitos: { dispositivo: "body_varredura", cupom: false } },
+        { section: "body", papel: "y", referencia: "r", porque: "p", requisitos: { dispositivo: "hero_pergunta" } },
+      ],
+      descartes: [{ section: "offer", dispositivo: "offer_cupom", papel_na_referencia: "cupom", porque: "sem incentivo" }],
+    })
+    expect(r.saida.estrutura[0].requisitos?.dispositivo).toBe("body_tese")
+    expect(r.saida.estrutura[1].requisitos?.dispositivo).toBeUndefined()
+    expect(r.saida.estrutura[2].requisitos).toBeUndefined()
+    expect(r.descartados.map((d) => [d.block_index, d.campo, d.valor_cru])).toEqual([
+      [1, "dispositivo", "body_varredura"],
+      [2, "dispositivo", "hero_pergunta (posição body)"],
+    ])
+    expect(r.saida.descartes[0].dispositivo).toBe("offer_cupom")
   })
 })

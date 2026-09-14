@@ -40,7 +40,7 @@ export interface DecisaoIncentivo {
 export interface DecisaoPosicao {
   block_index: number
   section: string
-  /** Campo tipado que nasce em B3 (vocabulário fechado). Até lá, null. */
+  /** Dispositivo pedido (B3, vocabulário fechado de `shared/dispositivos.ts`); null = o Estruturador não declarou. */
   dispositivo: string | null
   papel: string
   requisitos: RequisitosDaPosicao | null
@@ -151,7 +151,7 @@ export function montarDecisao(p: {
   const posicoes: DecisaoPosicao[] = p.estruturador.estrutura.map((pos, i) => ({
     block_index: i,
     section: pos.section,
-    dispositivo: null,
+    dispositivo: pos.requisitos?.dispositivo ?? null,
     papel: pos.papel,
     requisitos: pos.requisitos ?? null,
     exige: pos.requisitos?.exige ?? [],
@@ -159,7 +159,7 @@ export function montarDecisao(p: {
   }))
   const descartes: DecisaoDescarte[] = (p.estruturador.descartes ?? []).map((d) => ({
     section: d.section ?? null,
-    dispositivo: null,
+    dispositivo: d.dispositivo ?? null,
     motivo: [d.papel_na_referencia, d.porque].filter(Boolean).join(" — "),
   }))
   return {

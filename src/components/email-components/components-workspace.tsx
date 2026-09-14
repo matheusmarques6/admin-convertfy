@@ -146,6 +146,8 @@ function emptyDraft(blockType: string): VariantDraft {
     tones: [],
     density: "",
     product_slots: 0,
+    dispositivo: "",
+    anatomia_slug: "",
     output_schema: [],
     slots: "",
     tags: "",
@@ -173,6 +175,8 @@ function draftFromVariant(v: EmailComponentVariant): VariantDraft {
     tones: v.tones ?? [],
     density: v.density ?? "",
     product_slots: v.product_slots ?? 0,
+    dispositivo: v.dispositivo ?? "",
+    anatomia_slug: v.anatomia_slug ?? "",
     output_schema: v.output_schema ?? [],
     slots: arrToCsv(v.slots),
     tags: arrToCsv(v.tags),
@@ -200,6 +204,8 @@ function payloadFromDraft(draft: VariantDraft) {
     tones: draft.tones,
     density: draft.density || null,
     product_slots: draft.product_slots,
+    dispositivo: draft.dispositivo || null,
+    anatomia_slug: draft.anatomia_slug.trim() || null,
     // Canoniza a chave técnica no save — destrava rascunhos com chaves em
     // maiúsculo/acento sem obrigar a reeditar campo a campo (o servidor
     // também normaliza, mas garantir aqui melhora o feedback imediato).

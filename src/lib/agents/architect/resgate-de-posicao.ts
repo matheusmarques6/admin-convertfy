@@ -83,6 +83,10 @@ export function custoDeIncompatibilidade(
   if (!c) return 1
   if (!r) return 0
   let custo = 0
+  // Dispositivo (B3): outra FORMA não realiza o papel — pesa mais que cupom.
+  // Variante sem dispositivo (não classificada) não paga: não saber não é
+  // violar.
+  if (r.dispositivo && c.dispositivo && c.dispositivo !== r.dispositivo) custo += 150
   // Slot de cupom sem oferta: o merge deixa "Use code: [WELCOME-CODE]" no
   // HTML e o e-mail promete um desconto que não existe.
   if (r.cupom === false && c.tem_cupom) custo += 100

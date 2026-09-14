@@ -127,7 +127,6 @@ export function montarConformidade(input: MontarConformidadeInput): { linhas: Li
         if (c) {
           retroativaRodou = true
           for (const v of violacoesDaEscolha(input.decisao, i, p.variante_entregue, c)) violacoes.push({ ...v, origem: "retroativa" })
-          if (!regra_pendente.includes("dispositivo")) regra_pendente.push("dispositivo")
         }
       }
 

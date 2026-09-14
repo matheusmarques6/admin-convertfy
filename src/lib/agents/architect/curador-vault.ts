@@ -825,14 +825,19 @@ export async function loadAprendizadosResumo(flowType: string): Promise<Aprendiz
  * email_generation_choices (fail-open → mapa vazio). Aproximação suficiente
  * para rotação de criativo — o objetivo é "menos usada primeiro", não BI.
  */
-export async function loadVariantUsageCounts(limitRows = 500): Promise<Map<string, number>> {
+export async function loadVariantUsageCounts(storeId?: string | null, limitRows = 500): Promise<Map<string, number>> {
   try {
     const admin = createAdminClient()
-    const { data, error } = await admin
+    // B3: memória POR LOJA — "menos usada" era global do sistema, e a rotação
+    // que importa é a da carteira desta loja (o índice (store_id, flow_type,
+    // email_number, created_at) já existia; a query é que não o usava).
+    let q = admin
       .from("email_generation_choices")
       .select("choices")
       .order("created_at", { ascending: false })
       .limit(limitRows)
+    if (storeId) q = q.eq("store_id", storeId)
+    const { data, error } = await q
     if (error) {
       log.warn("usage_load_failed", { error: error.message })
       return new Map()

@@ -603,6 +603,16 @@ export interface EmailComponentVariant {
   version: number
   created_at: string
   created_by: string | null
+  // Trilha B (migration 20261149).
+  /** Dispositivo (vocabulário fechado de 22 — `shared/dispositivos.ts`); null = não classificada. */
+  dispositivo?: string | null
+  /** Identidade da anatomia (slug do vault ou nome normalizado). */
+  anatomia_slug?: string | null
+  /** O HTML usa tokens {{COR_*}}/{{FONTE_*}} (B5). */
+  tokens_de_identidade?: boolean
+  /** manual | gerada (B4). */
+  source?: "manual" | "gerada"
+  geracao_meta?: Record<string, unknown> | null
   // As colunas do épico Taguedor (html_tagged/tagging_status/tagging_meta)
   // saíram do tipo em 20/08 — o merge por example matou a camada tagueada.
   // A migration APPLY_MANUALLY_drop_tagged_columns.sql derruba as colunas.

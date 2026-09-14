@@ -46,7 +46,7 @@ describe("validarEscolhas", () => {
     const r = validarEscolhas(decisao(SEM), ESCOLHA_BOA, POR_ID)
     expect(r.violacoes).toEqual([])
     expect(r.ok).toBe(true)
-    expect(r.regra_pendente).toEqual(["dispositivo"])
+    expect(r.regra_pendente).toEqual([])
   })
 
   it("(i) hero com slot de cupom numa peça sem incentivo é high — pelo requisito E pelo incentivo", () => {
@@ -97,12 +97,18 @@ describe("validarEscolhas", () => {
     expect(validarEscolhas(decisao(SEM), [{ block_index: 0, variant_id: "desconhecida" }], POR_ID).violacoes).toEqual([])
   })
 
-  it("(ii) body-4 na posição cujo descarte fala em comparação fica em regra_pendente — hoje NÃO reprova", () => {
+  it("(ii) body-4 (body_comparacao) na posição que pede body_tese é HIGH — a regra deixou de ser pendente (B3)", () => {
     const d = decisao(SEM)
     expect(d.descartes.some((x) => /compara/i.test(x.motivo))).toBe(true)
-    const r = validarEscolhas(d, [{ block_index: 1, variant_id: "body-4" }], POR_ID)
-    expect(r.violacoes).toEqual([])
-    expect(r.regra_pendente).toContain("dispositivo")
+    expect(d.posicoes[1].dispositivo).toBe("body_tese")
+    const comDisp = new Map(POR_ID)
+    comDisp.set("body-4", { ...CONTRATOS["body-4"], dispositivo: "body_comparacao" })
+    const r = validarEscolhas(d, [{ block_index: 1, variant_id: "body-4" }], comDisp)
+    expect(r.violacoes.map((v) => [v.tipo, v.severidade])).toEqual([["requisito_violado", "high"]])
+    expect(r.violacoes[0].evidencia).toBe("dispositivo body_comparacao e a decisão pede body_tese")
+    expect(r.regra_pendente).toEqual([])
+    // Variante ainda não classificada não conflita (fail-open declarado).
+    expect(validarEscolhas(d, [{ block_index: 1, variant_id: "body-4" }], POR_ID).violacoes).toEqual([])
   })
 })
 

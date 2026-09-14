@@ -19,6 +19,8 @@
  * leem a MESMA classificação. Puro, sem I/O.
  */
 
+import { conflitoDeDispositivo } from "./dispositivos"
+
 export type FamiliaDeItem = "product" | "review" | "item" | "feature"
 
 export interface PapelDoCampo {
@@ -115,6 +117,12 @@ export interface ContratoResumo {
   /** Contagem de campos de copy e de imagem. */
   copy: number
   imagens: number
+  /**
+   * Dispositivo da variante (B3, coluna `email_component_variants.dispositivo`).
+   * Não vem do schema — quem monta o catálogo o preenche. `null` = variante
+   * ainda não classificada: nunca conflita (fail-open).
+   */
+  dispositivo?: string | null
 }
 
 type CampoMinimo = { key?: unknown; type?: unknown; nature?: unknown; required?: unknown }
@@ -171,6 +179,8 @@ export function resumirContrato(schema: unknown): ContratoResumo {
  * (passo 2 do plano); até lá o filtro só recebe o que o alvo já sabe.
  */
 export interface RequisitosDuros {
+  /** Dispositivo pedido pela decisão (B3). É o PRIMEIRO filtro. */
+  dispositivo?: string | null
   cupom?: boolean | null
   cta?: boolean | null
   n_itens?: { min?: number | null; max?: number | null } | null
@@ -181,6 +191,10 @@ export interface RequisitosDuros {
 /** Motivo pelo qual um contrato colide com os requisitos; null = compatível. */
 export function conflitoDeContrato(c: ContratoResumo, r: RequisitosDuros | null | undefined): string | null {
   if (!r) return null
+  // Dispositivo ANTES de tudo (B3): variante de outro dispositivo não realiza
+  // o papel por definição — o resto do contrato nem é olhado.
+  const disp = conflitoDeDispositivo(c.dispositivo, r.dispositivo)
+  if (disp) return disp
   if (r.cupom === false && c.tem_cupom) return "tem slot de cupom e a decisão nega cupom"
   if (r.cupom === true && !c.tem_cupom) return "não tem slot de cupom e a decisão exige cupom"
   if (r.cta === false && c.tem_cta) return "tem CTA e a decisão nega CTA"
@@ -258,6 +272,10 @@ export function filtrarPorRequisitos<T extends { variant_id: string; contrato?: 
 
 export interface CapacidadeDaSecao {
   variantes: number
+  /** Variantes ativas por dispositivo (B3). Só as classificadas contam. */
+  por_dispositivo?: Record<string, number>
+  /** Quantas variantes da seção têm dispositivo (0 = seção ainda não classificada → filtro fail-open). */
+  classificadas?: number
   /** Faixa de itens das variantes que têm grade (null = nenhuma tem). */
   itens: { min: number; max: number } | null
   com_preco: number
@@ -274,13 +292,15 @@ export interface CapacidadeDaSecao {
  * exige o que a biblioteca não tem (quando exige, é lacuna declarada).
  */
 export function capacidadePorSecao(
-  variantes: Array<{ block_type: string; output_schema?: unknown }>,
+  variantes: Array<{ block_type: string; output_schema?: unknown; dispositivo?: string | null }>,
 ): Record<string, CapacidadeDaSecao> {
   const out: Record<string, CapacidadeDaSecao> = {}
   for (const v of variantes) {
     const c = resumirContrato(v.output_schema)
     const cap = (out[v.block_type] ??= {
       variantes: 0,
+      por_dispositivo: {},
+      classificadas: 0,
       itens: null,
       com_preco: 0,
       com_avaliacao: 0,
@@ -289,6 +309,11 @@ export function capacidadePorSecao(
       com_credencial: 0,
     })
     cap.variantes++
+    if (v.dispositivo) {
+      cap.classificadas = (cap.classificadas ?? 0) + 1
+      cap.por_dispositivo ??= {}
+      cap.por_dispositivo[v.dispositivo] = (cap.por_dispositivo[v.dispositivo] ?? 0) + 1
+    }
     if (c.n_itens != null) {
       cap.itens = cap.itens
         ? { min: Math.min(cap.itens.min, c.n_itens), max: Math.max(cap.itens.max, c.n_itens) }
@@ -314,7 +339,15 @@ export function renderCapacidade(cap: Record<string, CapacidadeDaSecao>): string
       if (c.itens) partes.push(c.itens.min === c.itens.max ? `${c.itens.max} itens` : `${c.itens.min}–${c.itens.max} itens`)
       partes.push(`com preço: ${c.com_preco}`, `com avaliação: ${c.com_avaliacao}`, `com cupom: ${c.com_cupom}`, `com CTA: ${c.com_cta}`)
       if (c.com_credencial > 0) partes.push(`com credencial do depoente: ${c.com_credencial}`)
-      return `- ${k}: ${partes.join(" · ")}`
+      // Dispositivos com variante ATIVA nesta seção (B3): é a lista de onde o
+      // Estruturador escolhe `requisitos.dispositivo`. Seção sem nenhuma
+      // classificada diz isso — pedir dispositivo ali é lacuna declarada.
+      const disps = Object.entries(c.por_dispositivo ?? {}).sort((a, b) => a[0].localeCompare(b[0]))
+      const classificadas = c.classificadas ?? 0
+      const linhaDisp = disps.length > 0
+        ? `  dispositivos: ${disps.map(([d, n]) => `${d} (${n})`).join(", ")}${classificadas < c.variantes ? ` · ${c.variantes - classificadas} sem classificação` : ""}`
+        : "  dispositivos: (nenhuma variante classificada — qualquer dispositivo desta seção é lacuna)"
+      return `- ${k}: ${partes.join(" · ")}\n${linhaDisp}`
     })
     .join("\n")
 }

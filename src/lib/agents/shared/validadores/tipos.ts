@@ -29,13 +29,14 @@ export interface ResultadoValidacao {
   violacoes: Violacao[]
   /**
    * Regras que o contrato prevê e ainda não podem rodar por falta de dado
-   * tipado — `dispositivo` nasce em B3. Declarado para o painel não ler
-   * "zero violações" como "tudo conferido".
+   * tipado. Declarado para o painel não ler "zero violações" como "tudo
+   * conferido". `dispositivo` saiu daqui em 14/09 (B3): a variante carrega o
+   * dele e `conflitoDeContrato` o compara em todo validador.
    */
   regra_pendente: string[]
 }
 
-export const REGRAS_PENDENTES = ["dispositivo"] as const
+export const REGRAS_PENDENTES: readonly string[] = []
 
 export function resultado(violacoes: Violacao[]): ResultadoValidacao {
   return {

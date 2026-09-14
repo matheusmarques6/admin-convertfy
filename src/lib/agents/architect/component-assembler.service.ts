@@ -27,6 +27,7 @@
  *     template global.
  */
 
+import { REGRAS_PENDENTES } from "@/lib/agents/shared/validadores/tipos"
 import { ALVO_AUSENTE_CURADOR } from "../objecoes/alvo-render"
 import { INTENCAO_NAO_SERVIDA } from "../estruturador/estruturador-prompt"
 import { cabeNaJanela, relogioParaTeto, restanteDoOrcamento } from "../fase1-orcamento"
@@ -1410,7 +1411,7 @@ export async function assembleStoreReference(
   if (curadorVaultMode === "on") {
     const [aprendizadosOn, usageCountsOn, indiceDoVault] = await Promise.all([
       loadAprendizadosResumo(input.flowType),
-      loadVariantUsageCounts(),
+      loadVariantUsageCounts(input.storeId),
       loadIndiceDoVault(),
     ])
     vaultResultado = await runCuradorShadow({
@@ -1694,7 +1695,7 @@ export async function assembleStoreReference(
     const shadowExtras = buildCatalogVaultExtras(vaultKnowledge, eligible)
     const [aprendizados, usageCounts] = await Promise.all([
       loadAprendizadosResumo(input.flowType),
-      loadVariantUsageCounts(),
+      loadVariantUsageCounts(input.storeId),
     ])
     const liveRank1 = rank1ByBlock(rankingByBlock)
     await runCuradorShadow({
@@ -2309,7 +2310,7 @@ export async function assembleStoreReference(
         violacoes: [...violacoesDasEscolhas, ...violacoesDoResgate],
         substituicoes,
         resgates_recusados: resgatesRecusados,
-        regra_pendente: ["dispositivo"],
+        regra_pendente: [...REGRAS_PENDENTES],
       },
   }
 

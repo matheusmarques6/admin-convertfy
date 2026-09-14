@@ -18,6 +18,7 @@
  *    (front 1) chama runPhase2InBackground pra cada email em copy_ready.
  */
 
+import { REGRAS_PENDENTES } from "@/lib/agents/shared/validadores/tipos"
 import { NextRequest, after } from "next/server"
 import { z } from "zod"
 import { createAdminClient } from "@/lib/supabase/server"
@@ -784,14 +785,14 @@ export async function POST(request: NextRequest) {
     // `high` derruba o e-mail com `copy_contrato` e a fase 2 não dispara.
     // O reenvio único ao n8n com as violações fica para a leitura da
     // primeira semana em shadow (a saída `on` já existe atrás do gate).
-    let contratoCopy: Record<string, unknown> = { modo: "off", decisao_presente: false, violacoes: [], regra_pendente: ["dispositivo"] }
+    let contratoCopy: Record<string, unknown> = { modo: "off", decisao_presente: false, violacoes: [], regra_pendente: [...REGRAS_PENDENTES] }
     let copyContratoReprovada: string | null = null
     try {
       const modoTextual = (await loadContratoModes(body.store_id)).textual
       if (roda(modoTextual) && flowType) {
         const decisao = await carregarDecisaoDoEmail(admin, body.store_id, flowType, emailNumber)
         if (!decisao) {
-          contratoCopy = { modo: modoTextual, decisao_presente: false, violacoes: [], regra_pendente: ["dispositivo"] }
+          contratoCopy = { modo: modoTextual, decisao_presente: false, violacoes: [], regra_pendente: [...REGRAS_PENDENTES] }
         } else {
           const { data: blocosFinais } = await admin
             .from("email_blocks")

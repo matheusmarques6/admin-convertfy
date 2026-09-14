@@ -23,6 +23,7 @@ import {
   DENSITY_LABELS_PT,
 } from "@/lib/agents/shared/component-dimensions"
 import { COMPONENT_CATEGORIES } from "@/lib/agents/shared/component-categories"
+import { DESCRICAO_DO_DISPOSITIVO, dispositivosDaSecao } from "@/lib/agents/shared/dispositivos"
 import { C, F, egInputStyle } from "@/components/email-generation/ui/eg-theme"
 import {
   EGBtn,
@@ -64,6 +65,9 @@ export interface VariantDraft {
   tones: string[]
   density: string // "" | minimal | balanced | rich
   product_slots: number
+  /** B3: dispositivo (vocabulário fechado da seção) e identidade da anatomia. */
+  dispositivo: string // "" | um de DISPOSITIVOS
+  anatomia_slug: string
   output_schema: ComponentOutputField[]
   slots: string // CSV (avançado)
   tags: string // CSV (avançado)
@@ -298,6 +302,27 @@ export function VariantEditor({
                 value={draft.density}
                 onChange={(v) => set({ density: v })}
                 options={DENSITY_OPTIONS}
+              />
+            </div>
+            <div>
+              <EGLabel>Dispositivo</EGLabel>
+              {/* B3: o PRIMEIRO filtro do Curador. Só os da seção escolhida —
+                  "hero_pergunta" numa body é descartado no pipeline. */}
+              <EGSelect
+                value={draft.dispositivo}
+                onChange={(v) => set({ dispositivo: v })}
+                options={[
+                  { value: "", label: "(não classificada — filtro fail-open)" },
+                  ...dispositivosDaSecao(draft.block_type).map((d) => ({ value: d, label: `${d} — ${DESCRICAO_DO_DISPOSITIVO[d]}` })),
+                ]}
+              />
+            </div>
+            <div>
+              <EGLabel>Slug da anatomia</EGLabel>
+              <EGInput
+                value={draft.anatomia_slug}
+                onChange={(v) => set({ anatomia_slug: v })}
+                placeholder="ex: welcome-hero-section-3 (slug do vault)"
               />
             </div>
             <div style={{ gridColumn: "1 / -1" }}>

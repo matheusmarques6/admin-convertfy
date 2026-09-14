@@ -345,6 +345,7 @@ export function buildCompactCatalog(sections: ReadonlyArray<CatalogSection>): Co
       ].filter(Boolean)
       const partes = [
         `${e.variant_id} · ${e.title}${e.note_slug ? ` [${e.note_slug}]` : ""} — ${e.summary}`,
+        campo("dispositivo", c.dispositivo ?? null),
         campo("objeção", e.axes.objecao),
         campo("aliviador", e.axes.aliviador),
         campo("profundidade", e.axes.profundidade),
@@ -405,7 +406,10 @@ function toEntry(
     product_slots: v.product_slots ?? 0,
     orientacao_copy: v.copy_guidance ?? "",
     notas_implementacao: v.long_description ?? "",
-    contrato: resumirContrato(v.output_schema),
+    // B3: o dispositivo viaja DENTRO do contrato — assim `conflitoDeContrato`
+    // o compara em todos os lugares (elegíveis, eliminação, resgate,
+    // validadores) sem um segundo mapa que pudesse divergir.
+    contrato: { ...resumirContrato(v.output_schema), ...(v.dispositivo ? { dispositivo: v.dispositivo } : {}) },
   }
   if (extra) {
     entry.vault = {

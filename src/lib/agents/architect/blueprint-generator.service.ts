@@ -7,6 +7,7 @@
  * LLM falhar ou retornar JSON inválido — nunca derruba o onboarding.
  */
 
+import { REGRAS_PENDENTES } from "@/lib/agents/shared/validadores/tipos"
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 import type { CopySpecField, EmailOutlineTemplate } from "@/types/email-generation"
@@ -78,7 +79,7 @@ async function aplicarContratoNoBlueprint<
   const decisao = input.decisao ?? null
   const modo: ContratoMode = decisao ? (await loadContratoModes(input.storeId)).estrutural : "off"
   if (!decisao || !roda(modo)) {
-    return { blueprint, _contrato: { modo, decisao_presente: decisao != null, violacoes: [], omitidos: [], regra_pendente: ["dispositivo"] } }
+    return { blueprint, _contrato: { modo, decisao_presente: decisao != null, violacoes: [], omitidos: [], regra_pendente: [...REGRAS_PENDENTES] } }
   }
   const r = validarBlueprint(decisao, blueprint.blocks, { corrigir: bloqueia(modo) })
   if (r.violacoes.length > 0) {

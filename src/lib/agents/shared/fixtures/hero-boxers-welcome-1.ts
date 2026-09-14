@@ -109,6 +109,7 @@ export const ESTRUTURADOR_HERO_BOXERS_W1: EstruturadorOutput = {
       referencia: "avelmore-inspecao-antecipada",
       adaptacao: "Na amostra o hero entregava o cupom prometido no opt-in. Aqui o incentivo é desconhecido, então o slot de cupom sai.",
       requisitos: {
+        dispositivo: "hero_apresentacao",
         cta: true, cupom: false, preco: null, avaliacao: null, n_itens: null, campos: [],
         imagem: "uso real: homem 50+ com barriga, cintura do boxer assentada acima do abdômen, luz natural",
         exige: ["curto", "sem oferta, sem código, sem prazo", "tese em texto real, não só na imagem"],
@@ -120,6 +121,7 @@ export const ESTRUTURADOR_HERO_BOXERS_W1: EstruturadorOutput = {
       porque: "Uma marca sem nome só deixa de parecer suspeita quando o leitor entende para que ela foi feita.",
       referencia: "avelmore-inspecao-antecipada",
       requisitos: {
+        dispositivo: "body_tese",
         cta: null, cupom: false, preco: null, avaliacao: null, n_itens: { min: 3, max: 3 }, campos: ["categoria", "mecanismo"], imagem: null,
         exige: ["curto", "títulos que contam a história sozinhos", "itens de naturezas distintas: lacuna / desenho / efeito no dia", "sem história de fundação", "sem spec medida nem '83%'", "CTA secundário, não disputa com o hero"],
       },
@@ -130,6 +132,7 @@ export const ESTRUTURADOR_HERO_BOXERS_W1: EstruturadorOutput = {
       porque: "Ticket de $60 por uma peça de roupa íntima de marca desconhecida: remoção de risco sobe para antes do preço.",
       referencia: "avelmore-inspecao-antecipada",
       requisitos: {
+        dispositivo: "body_garantias",
         cta: null, cupom: false, preco: null, avaliacao: null, n_itens: { min: 3, max: 3 }, campos: ["garantia", "selo_nomeado"], imagem: null,
         exige: ["curto", "fundo contrastante / isolamento visual", "segurança de pagamento atribuída ao Shopify, não à marca", "sem número de dias, sem 'grátis', sem 'sem perguntas' na troca", "sem prazo de entrega, sem transportadora", "sem selo que não exista na página"],
       },
@@ -140,6 +143,7 @@ export const ESTRUTURADOR_HERO_BOXERS_W1: EstruturadorOutput = {
       porque: "prova_secundaria é trabalho fixo deste toque e esta é a única voz externa do e-mail.",
       referencia: "avelmore-inspecao-antecipada",
       requisitos: {
+        dispositivo: "reviews_com_credencial",
         cta: null, cupom: false, preco: null, avaliacao: null, n_itens: { min: 2, max: 2 }, campos: ["nome", "contexto"], imagem: null,
         exige: ["somente depoimentos que existam no site — nada fabricado", "idade e contexto de corpo só se constarem no depoimento real", "citação curta que nomeie a mudança física", "CTA secundário se a variante tiver"],
       },
@@ -150,6 +154,7 @@ export const ESTRUTURADOR_HERO_BOXERS_W1: EstruturadorOutput = {
       porque: "A grade é a saída de quem já decidiu; o preço na cara revela posicionamento.",
       referencia: "avelmore-inspecao-antecipada",
       requisitos: {
+        dispositivo: "products_grade_preco",
         cta: true, cupom: false, preco: true, avaliacao: null, n_itens: { min: 2, max: 2 }, campos: ["preco", "nome"],
         imagem: "produto em uso ou vestido em corpo adulto real, não flat em fundo branco",
         exige: ["exatamente 2 produtos: boxer + meias", "preço em texto real", "sem avaliação nos cards (biblioteca não tem)", "sem menção a bundle 'Buy 5 & Get 5'"],
@@ -161,6 +166,7 @@ export const ESTRUTURADOR_HERO_BOXERS_W1: EstruturadorOutput = {
       porque: "Saída padrão; a única adaptação é a poda pelo lastro.",
       referencia: "avelmore-inspecao-antecipada",
       requisitos: {
+        dispositivo: "footer_nav",
         cta: null, cupom: false, preco: null, avaliacao: null, n_itens: null, campos: ["categoria"], imagem: null,
         exige: ["sem credencial de tempo de mercado (não verificada)", "sem promessa de tempo de resposta do suporte", "sem pedido de seguir rede social"],
       },
@@ -178,10 +184,10 @@ export const ESTRUTURADOR_HERO_BOXERS_W1: EstruturadorOutput = {
   ],
   text_only: false,
   descartes: [
-    { origem: "modelo", section: "offer", papel_na_referencia: "Incentivo como fechamento do argumento / entrega do cupom no hero", porque: "Incentivo desconhecido — a decisão proíbe afirmar oferta, código ou prazo até o cliente confirmar." },
-    { origem: "modelo", section: "body", papel_na_referencia: "Comparação categoria-vs-loja (medicube-comparacao-categoria), sugerida pela própria referência #1 para objeção de canal", porque: "Bloco defensivo no 1º toque cria a dúvida que pretende curar." },
-    { origem: "modelo", section: "products", papel_na_referencia: "Grade 2×2 com avaliação por card (prova distribuída)", porque: "Catálogo é um produto + meias; 4 cards iguais leriam como loja vazia. Biblioteca não tem card com avaliação." },
-    { origem: "modelo", section: "body", papel_na_referencia: "Item de garantia com política de devolução em linguagem simples", porque: "A política não foi verificada como página viva." },
-    { origem: "modelo", section: "footer", papel_na_referencia: "Credencial discreta de tempo de mercado", porque: "Nenhum dado de tempo de mercado verificado na pesquisa." },
+    { origem: "modelo", section: "offer", dispositivo: "offer_cupom", papel_na_referencia: "Incentivo como fechamento do argumento / entrega do cupom no hero", porque: "Incentivo desconhecido — a decisão proíbe afirmar oferta, código ou prazo até o cliente confirmar." },
+    { origem: "modelo", section: "body", dispositivo: "body_comparacao", papel_na_referencia: "Comparação categoria-vs-loja (medicube-comparacao-categoria), sugerida pela própria referência #1 para objeção de canal", porque: "Bloco defensivo no 1º toque cria a dúvida que pretende curar." },
+    { origem: "modelo", section: "products", dispositivo: "products_grade_preco", papel_na_referencia: "Grade 2×2 com avaliação por card (prova distribuída)", porque: "Catálogo é um produto + meias; 4 cards iguais leriam como loja vazia. Biblioteca não tem card com avaliação." },
+    { origem: "modelo", section: "body", dispositivo: "body_garantias", papel_na_referencia: "Item de garantia com política de devolução em linguagem simples", porque: "A política não foi verificada como página viva." },
+    { origem: "modelo", section: "footer", dispositivo: "footer_nav", papel_na_referencia: "Credencial discreta de tempo de mercado", porque: "Nenhum dado de tempo de mercado verificado na pesquisa." },
   ],
 }
