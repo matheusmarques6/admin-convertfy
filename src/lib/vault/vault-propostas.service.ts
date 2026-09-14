@@ -15,7 +15,14 @@ import { agregarLacunas, buildLacunaDraft, type RunParaLacuna } from "@/lib/agen
 
 const log = logger.child("VaultPropostas")
 
-const MISSING = new Set(["42P01", "PGRST205", "PGRST204", "42703"])
+/**
+ * Tabela/cache ausentes — a migration 20261135 não rodou. `42703` (coluna
+ * inexistente) saiu daqui em 14/09: ali ele traduzia "escrevi a coluna
+ * errada" em `schema_missing: true`, e a resposta acusava uma migration que
+ * está aplicada enquanto o defeito era nosso. Erro de nome de coluna tem de
+ * aparecer como erro.
+ */
+const MISSING = new Set(["42P01", "PGRST205", "PGRST204"])
 
 export interface ProporLacunasResult {
   runs: number
@@ -52,8 +59,21 @@ export async function proporLacunas(
   const storeIds = Array.from(new Set((runs ?? []).map((r) => r.store_id).filter((v): v is string => Boolean(v))))
   const nomes = new Map<string, string>()
   if (storeIds.length > 0) {
-    const { data: lojas } = await admin.from("client_stores").select("id, name").in("id", storeIds)
-    for (const l of (lojas ?? []) as Array<{ id: string; name: string | null }>) if (l.name) nomes.set(l.id, l.name)
+    // `store_name`, não `name` (14/09): a coluna errada devolvia 400 do
+    // PostgREST em TODA rodada e o `error` não era lido — `nomes` ficava
+    // vazio e cada exemplo entrava com `storeName: null`, então o "Onde
+    // apareceu" de toda proposta saía "(loja não identificada)". Medido
+    // antes do conserto: 7 propostas, 35 exemplos, zero com nome.
+    const { data: lojas, error: errLojas } = await admin
+      .from("client_stores")
+      .select("id, store_name")
+      .in("id", storeIds)
+    // Fail-open de propósito — o nome DECORA a proposta, não a habilita —,
+    // mas nunca em silêncio: foi a falha calada que fez isto durar.
+    if (errLojas) log.warn("lojas_load_failed", { error: errLojas.message, code: errLojas.code })
+    for (const l of (lojas ?? []) as Array<{ id: string; store_name: string | null }>) {
+      if (l.store_name) nomes.set(l.id, l.store_name)
+    }
   }
 
   const entrada: RunParaLacuna[] = (runs ?? []).map((r) => {
