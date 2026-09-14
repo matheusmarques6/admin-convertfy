@@ -277,6 +277,8 @@ describe("dispatchEmailCopyWebhook — emails somente texto (text_only)", () => 
           tone_hint: string | null
         } | null
         blueprint: { objective: string | null } | null
+        coupon_code: string | null
+        decisao: { incentivo: { existe: boolean; codigo: string | null; origem: string; traducao_faltante: boolean } }
       }>
     }>
   } {
@@ -341,17 +343,51 @@ describe("dispatchEmailCopyWebhook — emails somente texto (text_only)", () => 
     expect(email.text_only).toBe(true)
     expect(email.estrutura_geral).toEqual({
       objective: "OUT-OBJ",
-      // A loja da fixture não tem `objection_catalog` → incentivo
-      // DESCONHECIDO, e desde 09/09 desconhecido não promete: o guidance
-      // do outline chega prefixado. O texto original continua embaixo.
+      // Este outline de teste não tem `coupon_code` → o TOQUE não tem
+      // incentivo (14/09: quem decide é o catálogo de outlines, não o
+      // Catalogador) e o guidance chega prefixado. O texto original
+      // continua embaixo.
       guidance: expect.stringContaining("OUT-GUIDE"),
       suggested_blocks: ["header", "text", "footer"],
       tone_hint: "caloroso",
-      // Este outline de teste não tem coupon_codes → sem cupom no idioma.
       coupon_code: null,
     })
-    expect(email.estrutura_geral?.guidance).toContain("INCENTIVO NÃO CONFIRMADO")
+    expect(email.estrutura_geral?.guidance).toContain("SEM INCENTIVO NESTE TOQUE")
+    expect(email.decisao.incentivo).toMatchObject({ existe: false, codigo: null, origem: "sem_incentivo" })
     expect(email.blueprint?.objective).toBe("OBJ-GLOBAL")
+  })
+
+  it("toque com cupom numa loja em inglês: o código sai traduzido do outline e o override do bloco vence (14/09)", async () => {
+    resetTables([
+      { id: "e1", flow_id: "flow1", number: 1, name: "Welcome 1", status: "draft" },
+      { id: "e2", flow_id: "flow1", number: 2, name: "Welcome 2", status: "draft" },
+    ])
+    h.tables.client_stores[0].language = "en"
+    h.tables.email_outline_templates = [
+      { flow_type: "welcome", email_number: 1, objective: "O1", guidance: "G1", suggested_blocks: ["hero"], tone_hint: null, is_active: true,
+        coupon_code: "BEMVINDO10", coupon_codes: { en: "WELCOME10" }, coupon_value: "10%" },
+      { flow_type: "welcome", email_number: 2, objective: "O2", guidance: "G2", suggested_blocks: ["hero"], tone_hint: null, is_active: true,
+        coupon_code: "BEMVINDO10", coupon_codes: {}, coupon_value: "10%" },
+    ]
+    // O e-mail 2 tem override gravado pela loja no bloco `coupon`.
+    h.tables.email_blocks = [
+      { id: "b2", email_id: "e2", block_type: "coupon", position: 1, content: { code: "HERO15" } },
+    ]
+    loadEffectiveBlueprintsBatch.mockResolvedValue(new Map())
+    loadTextOnlyBlueprints.mockResolvedValue(new Map([
+      ["welcome:1", { flow_type: "welcome", email_number: 1, objective: "OBJ", messaging: "MSG", subject_hint: null, text_only: true }],
+      ["welcome:2", { flow_type: "welcome", email_number: 2, objective: "OBJ", messaging: "MSG", subject_hint: null, text_only: true }],
+    ]))
+
+    const res = await dispatchEmailCopyWebhook("store1", { triggerSource: "manual_store_button", flowIds: ["flow1"], onlyDrafts: true })
+    expect(res.ok).toBe(true)
+    const [e1, e2] = payloadFromFetch().flows[0].emails
+    expect(e1.coupon_code).toBe("WELCOME10")
+    expect(e1.decisao.incentivo).toMatchObject({ existe: true, codigo: "WELCOME10", origem: "outline_traduzido", traducao_faltante: false })
+    expect(e1.estrutura_geral?.guidance).toBe("G1")
+    // Sem tradução para `en` o pt-BR sai, marcado — mas aqui o override da loja vence.
+    expect(e2.coupon_code).toBe("HERO15")
+    expect(e2.decisao.incentivo).toMatchObject({ existe: true, codigo: "HERO15", origem: "override_loja" })
   })
 
   it("seed/reconcile de email text_only roda SEM storeId (pula camada da loja)", async () => {

@@ -66,7 +66,7 @@ import { personaToText } from "./image/persona-text"
 import { buildImageAlt } from "./image/resolve-block-prompt.service"
 import { computeRenderChecks } from "./html/render-checks"
 import { computeContentChecks } from "./html/content-checks"
-import { incentivoDoCatalogo, incentivoExisteDoCatalogo } from "./objecoes/incentivo"
+import { resolverIncentivoDoEmail } from "./objecoes/incentivo-da-loja.service"
 import {
   runQaAgent,
   runSchemaChecks,
@@ -671,6 +671,13 @@ async function loadMinimalContext(storeId: string, emailId: string) {
       | undefined) ?? null,
   )
 
+  const incentivo = await resolverIncentivoDoEmail({
+    storeId,
+    flowType: flowTypeForBlueprint,
+    emailNumber: emailNumberForBlueprint,
+    emailId,
+  })
+
   return {
     storeRaw: (storeData as Record<string, unknown>) ?? { store_name: "Loja" },
     brand: (brandRes.data as StoreBrandIdentity | null) ?? null,
@@ -705,14 +712,15 @@ async function loadMinimalContext(storeId: string, emailId: string) {
     heroVisionModel,
     flowType: flowTypeForBlueprint,
     emailNumber: emailNumberForBlueprint,
-    // Decisão de incentivo da loja (Catalogador, `objection_catalog.incentivo.existe`):
-    // `false` liga o check `oferta_sem_incentivo`; `null` = desconhecido.
-    incentivoExiste: incentivoExisteDoCatalogo(storeData?.objection_catalog),
-    incentivoCodigo: incentivoDoCatalogo(storeData?.objection_catalog).codigo,
+    // Decisão de incentivo do TOQUE (14/09): vem do catálogo de outlines
+    // (`coupon_code` + tradução por idioma + override do bloco `coupon`),
+    // nunca do Catalogador. `existe` é booleano; `false` liga o check
+    // `oferta_sem_incentivo` e o `codigo` alimenta `codigo_inventado`.
+    incentivo,
+    incentivoExiste: incentivo.existe,
+    incentivoCodigo: incentivo.codigo,
   }
 }
-
-export { incentivoExisteDoCatalogo }
 
 // ── checkBatchTerminal: chamado apos cada UPDATE final ────────────────
 export async function checkBatchTerminal(

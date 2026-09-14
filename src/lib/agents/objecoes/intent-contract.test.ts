@@ -172,6 +172,19 @@ describe("parseIntentContract — catálogo da loja como fonte", () => {
     expect(comOferta.promessa_a_pagar).toContain("BEM10")
   })
 
+  it("a decisão do TOQUE (outline) vence o catálogo do Catalogador na promessa e na proibição (14/09)", () => {
+    const catalogoComOferta = { ...catalogo, incentivo: { existe: true, valor: "10%", codigo: "BEM10", alerta: "não afirmar oferta sem confirmação" } }
+    // Toque SEM cupom: nem a oferta que o Catalogador viu vira promessa, e o alerta vira proibição.
+    const sem = parseIntentContract({ frontmatter: {}, catalogo: catalogoComOferta, flowType: "welcome", incentivo: { existe: false } })
+    expect(sem.promessa_a_pagar).toBeNull()
+    expect(sem.proibicoes).toContain("não afirmar oferta sem confirmação")
+    // Toque COM cupom traduzido: promessa é o do outline, e o alerta NÃO vira proibição.
+    const com = parseIntentContract({ frontmatter: {}, catalogo: catalogoComOferta, flowType: "welcome", incentivo: { existe: true, codigo: "WELCOME10", valor: "10%" } })
+    expect(com.promessa_a_pagar).toBe("10% · WELCOME10")
+    expect(com.origens.promessa_a_pagar).toBe("outline")
+    expect(com.proibicoes).not.toContain("não afirmar oferta sem confirmação")
+  })
+
   it("a nota VENCE o catálogo", () => {
     const c = parseIntentContract({
       frontmatter: { riscos_elegiveis: ["adequacao"], profundidade_minima: "prova_de_terceiro" },

@@ -53,6 +53,8 @@ import {
   validarAlvo,
 } from "./seletor-regras"
 import type { AlvoDoEmail, CatalogoDeObjecoes, JaAtacada } from "./vocabulario"
+import type { DecisaoDeIncentivo } from "./incentivo"
+import { resolverIncentivoDoEmail } from "./incentivo-da-loja.service"
 
 const log = logger.child("Seletor")
 
@@ -241,6 +243,8 @@ export interface RunSeletorInput {
   intencaoBody: string
   jaAtacadas: JaAtacada[]
   topProductsTexto: string
+  /** Decisão de incentivo do toque (outline + idioma + override), 14/09. */
+  incentivo: DecisaoDeIncentivo
 }
 
 /** Um call do Seletor para um email. Persiste alvo (válido ou sintético) e a run. Nunca lança. */
@@ -354,7 +358,7 @@ export async function runSeletor(input: RunSeletorInput): Promise<ObjectionTarge
       } catch {
         throw new Error(res.tokensOutput >= tetoDaVez ? `resposta truncada no teto de ${tetoDaVez} tokens` : "resposta não é JSON válido")
       }
-      const { alvo, avisos } = normalizarAlvo(parsed, input.contrato, input.catalogo, input.jaAtacadas)
+      const { alvo, avisos } = normalizarAlvo(parsed, input.contrato, input.catalogo, input.jaAtacadas, input.incentivo)
       avisosFinais = avisos
       const reprovacoes = validarAlvo(alvo, input.contrato, input.catalogo, input.jaAtacadas, input.flowType)
       if (reprovacoes.length) throw new ValidacaoError(reprovacoes)
@@ -441,7 +445,7 @@ export async function runSeletor(input: RunSeletorInput): Promise<ObjectionTarge
   }
 
   // 2 falhas → alvo sintético com lacuna (nunca alvo inventado) + run error.
-  const sintetico = alvoSintetico(input.contrato, "seletor_falhou", erros.join("; ").slice(0, 600), input.jaAtacadas, input.catalogo)
+  const sintetico = alvoSintetico(input.contrato, "seletor_falhou", erros.join("; ").slice(0, 600), input.jaAtacadas, input.incentivo)
   const row = await persistTarget({
     storeId: input.storeId, flowType: input.flowType, emailNumber: input.emailNumber,
     catalogSha8: input.catalogSha8, target: sintetico, consumido: input.mode === "on", runId,
@@ -573,16 +577,24 @@ export async function ensureObjectionTargets(input: EnsureTargetsInput): Promise
         // O contrato vem das TRÊS fontes (07/09): nota tipada > catálogo da
         // loja > default por modo. Nunca é null — falta de etiqueta no
         // frontmatter não desliga mais o agente.
+        // Incentivo do TOQUE (14/09): outline + idioma da loja + override do
+        // bloco `coupon`. Entra no contrato (promessa/proibição) e no alvo.
+        const refDoEmail = await resolveEmailRef(input.storeId, flowType, n)
+        const incentivo = await resolverIncentivoDoEmail({
+          storeId: input.storeId, flowType, emailNumber: n, emailId: refDoEmail.emailId ?? null,
+        })
         const contrato = parseIntentContract({
           frontmatter: intent.frontmatter,
           catalogo,
           flowType,
+          incentivo,
         })
         const anteriores = Array.from(porNumero.values()).filter((t) => t.email_number < n)
         const jaAtacadas = jaAtacadasDe(anteriores.map((t) => ({ email_number: t.email_number, target: t.target })))
         const row = await runSeletor({
           storeId: input.storeId, flowType, emailNumber: n, batchId, triggeredBy: input.triggeredBy, mode,
           brandName, catalogo, catalogSha8: sha8, contrato, intencaoBody: intent?.body_md ?? "", jaAtacadas, topProductsTexto,
+          incentivo,
         })
         result.ran++
         if (row) {
