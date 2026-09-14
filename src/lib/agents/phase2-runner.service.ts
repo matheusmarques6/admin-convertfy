@@ -678,10 +678,32 @@ async function loadMinimalContext(storeId: string, emailId: string) {
     emailId,
   })
 
+  // Briefing: `store_briefings` tem 0 linhas em lojas cujo briefing vive só
+  // em `onboardings.briefing` (Hero Boxers, 14/09) — o QA recebia `{}` e
+  // marcava "não coberto" o que o onboarding já dizia. A origem viaja junto.
+  let briefing: StoreBriefing | null = (briefingRes.data as StoreBriefing | null) ?? null
+  let briefingOrigem: "store_briefings" | "onboardings" | "nenhum" = briefing ? "store_briefings" : "nenhum"
+  if (!briefing) {
+    const { data: onb } = await admin
+      .from("onboardings")
+      .select("briefing")
+      .eq("store_id", storeId)
+      .not("briefing", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    const b = (onb as { briefing?: unknown } | null)?.briefing
+    if (b && typeof b === "object") {
+      briefing = b as StoreBriefing
+      briefingOrigem = "onboardings"
+    }
+  }
+
   return {
     storeRaw: (storeData as Record<string, unknown>) ?? { store_name: "Loja" },
     brand: (brandRes.data as StoreBrandIdentity | null) ?? null,
-    briefing: (briefingRes.data as StoreBriefing | null) ?? null,
+    briefing,
+    briefingOrigem,
     topProducts,
     generateImages,
     qaVisionEnabled,
@@ -4472,7 +4494,9 @@ export async function runPhase2HtmlQa(
       blocks: blocksForQa,
       blockViews,
       briefing: ctx.briefing,
+      briefingOrigem: ctx.briefingOrigem,
       brand: ctx.brand,
+      topProducts: ctx.topProducts,
       blueprintObjective: ctx.blueprintObjective,
       qaVisionEnabled: ctx.qaVisionEnabled,
       // fields v2 do blueprint híbrido → validação max_len/required no QA.

@@ -326,6 +326,26 @@ describe("runQaAgent — com config ativo", () => {
     expect(invocation.user).toContain("Advisors/Max/copy/clareza.md")
   })
 
+  // 14/09: o QA lia `brand.top_products` (identidade visual, vazia na Hero
+  // Boxers) e marcava "claim não coberto" sobre produto que a tabela viva
+  // tinha. Agora recebe a tabela e o dump da identidade sai sem o array.
+  it("serve os top products da tabela viva e a origem do briefing; a identidade vai sem top_products", async () => {
+    chainInvokeMock.mockResolvedValueOnce(JSON.stringify({ passed: true, issues: [] }))
+    tables.email_agent_configs.length = 0
+    tables.email_agent_configs.push({ ...makeConfig(), user_template: "{{brand_json}}|{{top_products_json}}|{{briefing_origem}}" } as unknown as Row)
+    await runQaAgent(
+      makeInput({
+        brand: { top_products: [], colors_primary: [{ hex: "#000" }] } as unknown as Parameters<typeof runQaAgent>[0]["brand"],
+        topProducts: [{ name: "Boxer Pro", price: "29.90", image_url: "", url: "https://loja/boxer" }],
+        briefingOrigem: "onboardings",
+      }),
+    )
+    const invocation = chainInvokeMock.mock.calls[0][0] as { user: string }
+    expect(invocation.user).toContain("Boxer Pro")
+    expect(invocation.user).toContain("onboardings")
+    expect(invocation.user).not.toContain('"top_products": []')
+  })
+
   it("retorna passed=false quando Claude reporta issue severity=high", async () => {
     chainInvokeMock.mockResolvedValueOnce(
       JSON.stringify({

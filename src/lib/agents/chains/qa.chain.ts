@@ -40,7 +40,7 @@ import type {
   QaIssueType,
   QaResult,
 } from "@/types/email-generation"
-import type { StoreBrandIdentity, StoreBriefing } from "@/types/email-workspace"
+import type { StoreBrandIdentity, StoreBriefing, TopProduct } from "@/types/email-workspace"
 import {
   resolveCostCents,
   finishGenerationRun,
@@ -161,6 +161,12 @@ contrato ausente no documento é achado de QA, não um bloco menor.
 <brand>
 {{brand_json}}
 </brand>
+
+<top_products>
+Produtos da loja (tabela viva store_top_products). Claim sobre produto que
+está aqui é COBERTO. Origem do briefing acima: {{briefing_origem}}.
+{{top_products_json}}
+</top_products>
 
 <metodo_convertfy_advisor_max>
 As notas abaixo foram recuperadas por relevância. Precedência: fatos da loja
@@ -479,9 +485,18 @@ const QA_VAR_ORIGINS: Record<string, SegmentOrigin> = {
   block_contracts_json: { cls: "biblioteca", rotulo: "Contrato dos blocos — schema das variantes" },
   blocks_json: { cls: "upstream", rotulo: "Copy esperada — callback do n8n" },
   briefing_json: { cls: "loja", rotulo: "Briefing da loja — store_briefings" },
-  brand_json: { cls: "loja", rotulo: "Identidade visual — store_brand_identity" },
+  brand_json: { cls: "loja", rotulo: "Identidade visual — store_brand_identity (sem top_products)" },
+  top_products_json: { cls: "loja", rotulo: "Produtos — store_top_products (tabela viva)" },
+  briefing_origem: { cls: "sistema", rotulo: "De onde veio o briefing (store_briefings | onboardings | nenhum)" },
   blueprint_objective: { cls: "upstream", rotulo: "Objetivo — blueprint da loja" },
   advisor_max_notes: { cls: "vault", rotulo: "Doutrina recuperada — Advisor Max" },
+}
+
+function brandSemProdutos(brand: StoreBrandIdentity | null): Record<string, unknown> {
+  if (!brand) return {}
+  const { top_products: _omitido, ...resto } = brand as StoreBrandIdentity & { top_products?: unknown }
+  void _omitido
+  return resto
 }
 
 // ── Render do user prompt ─────────────────────────────────────────────
@@ -667,6 +682,15 @@ export interface RunQaAgentInput {
   blocks: Array<{ block_type: string; content: Record<string, unknown> }>
   briefing: StoreBriefing | null
   brand: StoreBrandIdentity | null
+  /**
+   * Produtos da TABELA VIVA (`store_top_products`, via `loadTopProducts`).
+   * Até 14/09 o QA lia `brand.top_products` — a identidade visual, cujo
+   * array estava vazio na Hero Boxers enquanto a tabela tinha 5 linhas —
+   * e marcava "claim não coberto" sobre produto que a loja tem.
+   */
+  topProducts?: TopProduct[]
+  /** De onde veio `briefing` (o runner cai em `onboardings.briefing` quando `store_briefings` não tem linha). */
+  briefingOrigem?: "store_briefings" | "onboardings" | "nenhum"
   blueprintObjective: string
   // Override do QA Vision vindo de email_generation_settings.qa_vision_enabled.
   // null/undefined = respeita a env EMAIL_QA_VISION_ENABLED (comportamento
@@ -778,7 +802,16 @@ export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
     block_contracts_json: JSON.stringify(input.blockContracts ?? [], null, 2),
     blocks_json: JSON.stringify(blocks, null, 2),
     briefing_json: JSON.stringify(briefing ?? {}, null, 2),
-    brand_json: JSON.stringify(brand ?? {}, null, 2),
+    // `top_products` sai do dump da identidade: a fonte é a tabela viva, e
+    // servir os dois faria o modelo ler o vazio da identidade como "sem
+    // produtos".
+    brand_json: JSON.stringify(brandSemProdutos(brand), null, 2),
+    top_products_json: JSON.stringify(
+      (input.topProducts ?? []).map((p) => ({ name: p.name, price: p.price, url: p.url ?? null })),
+      null,
+      2,
+    ),
+    briefing_origem: input.briefingOrigem ?? (briefing ? "store_briefings" : "nenhum"),
     blueprint_objective: blueprintObjective || "",
     advisor_max_notes: advisorContext.block,
   }
@@ -891,6 +924,10 @@ export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
     renderedPrompt: userPrompt,
     promptSegments,
     inputSummary,
+    inputVars: {
+      briefing_origem: renderVars.briefing_origem,
+      top_products: (input.topProducts ?? []).length,
+    },
   }).catch(() => "")
 
   // ── 4. Chama Claude com timeout 15s ─────────────────────────────────
@@ -1099,7 +1136,7 @@ export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
     if (imageBlocks.length > 0) {
       const nicho = briefing?.marca?.nicho ?? ""
       const produtoHeroi =
-        (brand?.top_products ?? [])[0]?.name ?? ""
+        (input.topProducts ?? brand?.top_products ?? [])[0]?.name ?? ""
       const paleta1 = (brand?.colors_primary ?? [])[0]?.hex ?? ""
       const paleta2 = (brand?.colors_secondary ?? [])[0]?.hex ?? ""
 
