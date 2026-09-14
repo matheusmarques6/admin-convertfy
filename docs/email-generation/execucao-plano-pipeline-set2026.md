@@ -273,8 +273,17 @@ parâmetro que diz quais seções chegam pré-rankeadas.
 
 **Como.**
 
-1. Depois da eliminação, contar elegíveis por seção. Seção com `≤ 3` entra
-   numa lista `shortlistPulada`.
+1. **Antes de tudo, tornar a eliminação um filtro de verdade.** Hoje
+   `eliminarPorRequisitos` NÃO tira ninguém do catálogo: a lista vai ao
+   prompt como `<eliminadas_por_requisito>` ("NÃO as escolha") e à
+   telemetria, e o catálogo servido continua inteiro (comentário no ponto
+   de chamada: "zero código veta a escolha"). Calcular `elegiveis =
+   catálogo da seção − eliminadas` e servir SÓ as elegíveis à chamada de
+   escolha. Contar elegíveis por seção; seção com `≤ 3` entra numa lista
+   `shortlistPulada`. Corrigir junto a inconsistência de `n_itens: null`:
+   `conflitoDeContrato` pula o mínimo quando a variante não tem família
+   numerada (foi assim que products-4, de 1 item, escapou do mínimo de 2),
+   enquanto o resgate trata `null` como 1; adotar 1 nos dois.
 2. `runCuradorShadow` recebe a lista e, na etapa de shortlist, só inclui no
    prompt as seções fora dela; as puladas vão à etapa de escolha como
    finalistas, na ordem em que sobraram. Se TODAS as seções foram puladas, a
@@ -286,7 +295,7 @@ parâmetro que diz quais seções chegam pré-rankeadas.
    reviews 3, products 1, footer 3 → zero chamadas de shortlist).
 
 **Por quê.** No batch de referência TODAS as seções chegaram à shortlist com
-≤ 3 candidatas. A chamada custou tokens de entrada (101k chars) para
+≤ 3 candidatas fora da lista de eliminadas. A chamada custou tokens de entrada (101k chars) para
 devolver o que já estava decidido por código.
 
 **Consequência.** Custo do Curador cai pela metade nos batches com
@@ -542,7 +551,10 @@ blueprint}.ts`. Chamadas em: `component-assembler.service.ts` após
    `preco: true`. Cada validador reprova a sua.
 
 **Por quê.** Nenhuma das três inversões passa por regex nem tem falso
-positivo; são comparações de campo. Deixá-las em shadow é pagar US$ 8 por
+positivo; são comparações de campo. E hoje a eliminação por contrato é só
+uma recomendação no prompt: o catálogo chega inteiro e o modelo pode
+escolher uma eliminada (o medidor registra `requisito_violado` depois, sem
+impedir). Este passo é o que fecha a porta. Deixá-las em shadow é pagar US$ 8 por
 batch para confirmar o que já foi medido.
 
 **Consequência.** Batch com estratégia violada morre no Curador, antes de
