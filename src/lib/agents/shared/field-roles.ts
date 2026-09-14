@@ -188,11 +188,48 @@ export function conflitoDeContrato(c: ContratoResumo, r: RequisitosDuros | null 
   if (r.avaliacao === true && !c.tem_avaliacao) return "não mostra avaliação e a decisão exige avaliação"
   const max = r.n_itens?.max
   const min = r.n_itens?.min
-  if (c.n_itens != null) {
-    if (typeof max === "number" && c.n_itens > max) return `grade de ${c.n_itens} itens e a decisão pede no máximo ${max}`
-    if (typeof min === "number" && c.n_itens < min) return `grade de ${c.n_itens} itens e a decisão pede no mínimo ${min}`
+  if (c.n_itens != null && typeof max === "number" && c.n_itens > max) {
+    return `grade de ${c.n_itens} itens e a decisão pede no máximo ${max}`
+  }
+  // `n_itens: null` = a anatomia não tem família numerada — numa posição
+  // que pede 2+ itens isso é UM item, não "qualquer quantidade". Mesma
+  // régua do resgate (`resgate-de-posicao.ts`); a assimetria deixou
+  // products-4 (1 item) escapar do mínimo de 2 em 11/09.
+  const entrega = c.n_itens ?? 1
+  if (typeof min === "number" && entrega < min) {
+    return c.n_itens == null
+      ? `sem família numerada (1 item) e a decisão pede no mínimo ${min}`
+      : `grade de ${c.n_itens} itens e a decisão pede no mínimo ${min}`
   }
   return null
+}
+
+/**
+ * Elegíveis por POSIÇÃO: as variantes da seção daquela posição menos as
+ * eliminadas por requisito — fail-open: quando o filtro zeraria a seção,
+ * todas continuam elegíveis (lacuna de biblioteca é dado, não corte).
+ *
+ * É a lista que a shortlist do Curador e o resgate consomem (14/09). Até
+ * aqui a eliminação só informava o prompt (`<eliminadas_por_requisito>`) e
+ * o catálogo chegava inteiro ao modelo — "eliminada" era recomendação.
+ * Posição cuja seção não existe no catálogo fica FORA do mapa (o chamador
+ * distingue "sem seção" de "zero elegíveis").
+ */
+export function elegiveisPorPosicao(
+  sections: string[],
+  requisitos: Array<RequisitosDuros | null | undefined>,
+  catalogo: Array<{ section: string; variantes: Array<{ variant_id: string; contrato?: ContratoResumo }> }>,
+): Map<number, string[]> {
+  const norm = (x: string) => x.trim().toLowerCase()
+  const porSecao = new Map(catalogo.map((c) => [norm(c.section), c.variantes]))
+  const out = new Map<number, string[]>()
+  sections.forEach((section, i) => {
+    const candidatas = porSecao.get(norm(section))
+    if (!candidatas) return
+    const r = filtrarPorRequisitos(candidatas, requisitos[i])
+    out.set(i, r.elegiveis.map((v) => v.variant_id))
+  })
+  return out
 }
 
 /**

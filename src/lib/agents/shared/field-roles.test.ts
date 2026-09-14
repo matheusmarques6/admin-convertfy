@@ -9,6 +9,7 @@ import {
   renderCapacidade,
   renderEliminadasPorRequisito,
   resumirContrato,
+  elegiveisPorPosicao,
 } from "./field-roles"
 
 // Schemas REAIS da biblioteca (09/09) — só as chaves importam aqui.
@@ -197,5 +198,35 @@ describe("eliminarPorRequisitos + render + índice (09/09)", () => {
   it("sem requisito nenhum → ausência declarada", () => {
     expect(eliminarPorRequisitos(["hero"], [], catalogo)).toEqual([])
     expect(renderEliminadasPorRequisito([])).toContain("nenhuma")
+  })
+})
+
+// 14/09: `n_itens: null` (anatomia sem família numerada) contava como
+// "qualquer quantidade" no mínimo — products-4, de 1 item, escapou do
+// mínimo de 2 e foi o MODELO quem a recusou. O resgate já tratava null como
+// 1; agora os dois concordam. E a eliminação passou a produzir a lista de
+// ELEGÍVEIS por posição, que é o que a shortlist e o resgate consomem.
+describe("n_itens null conta como 1 item; elegíveis por posição (14/09)", () => {
+  const P9 = { variant_id: "p9", contrato: resumirContrato(PRODUTOS_9) }
+  const P4 = { variant_id: "p4", contrato: resumirContrato(PRODUTOS_4) }
+  const H3 = { variant_id: "h3", contrato: resumirContrato(HERO_3) }
+  const cat = [
+    { section: "Products", variantes: [P9, P4] },
+    { section: "hero", variantes: [H3] },
+  ]
+  it("sem família numerada, o mínimo de 2 elimina", () => {
+    expect(conflitoDeContrato(P4.contrato, { n_itens: { min: 2 } })).toContain("no mínimo 2")
+    expect(conflitoDeContrato(P4.contrato, { n_itens: { min: 1 } })).toBeNull()
+    expect(conflitoDeContrato(P4.contrato, { n_itens: { max: 3 } })).toBeNull()
+  })
+  it("elegíveis = seção menos eliminadas; seção normalizada; posição sem seção fica fora do mapa", () => {
+    const e = elegiveisPorPosicao(["hero", "products", "reviews"], [null, { n_itens: { min: 2 } }, null], cat)
+    expect(e.get(0)).toEqual(["h3"])
+    expect(e.get(1)).toEqual(["p9"])
+    expect(e.has(2)).toBe(false)
+  })
+  it("fail-open: requisito que zera a seção mantém todas elegíveis", () => {
+    const e = elegiveisPorPosicao(["products"], [{ n_itens: { min: 2, max: 3 }, preco: true }], cat)
+    expect(e.get(0)).toEqual(["p9", "p4"])
   })
 })

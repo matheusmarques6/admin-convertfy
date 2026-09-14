@@ -78,6 +78,7 @@ import { fieldOrMissing, renderTopProducts } from "./store-context"
 import { requisitosDaDecisao } from "../estruturador/estruturador-consume"
 import {
   eliminarPorRequisitos,
+  elegiveisPorPosicao,
   indiceDeEliminadas,
   renderEliminadasPorRequisito,
 } from "../shared/field-roles"
@@ -1072,6 +1073,10 @@ export async function assembleStoreReference(
     requisitosPorPosicao,
     catalog.sections,
   )
+  // 14/09: a eliminação vira FILTRO. Elegíveis por posição decidem se a
+  // shortlist do Curador chama o modelo (≤ 3 elegíveis = por código),
+  // restringem as finalistas e são o pool do resgate.
+  const elegiveisDaPosicao = elegiveisPorPosicao(sections, requisitosPorPosicao, catalog.sections)
   const intencoesHumanas = input.structure.filter((s) => (s.intencao ?? "").trim()).length
   const curatedReference = input.referenceTemplateHtml.trim()
   const t0 = Date.now()
@@ -1413,6 +1418,7 @@ export async function assembleStoreReference(
         parcialDoVault.valor = p
       },
       eliminadasPorRequisito,
+      elegiveisPorPosicao: elegiveisDaPosicao,
       origins,
       alvoMedicao: input.alvoMedicao ?? null,
       vault: vaultKnowledge,
@@ -1691,6 +1697,7 @@ export async function assembleStoreReference(
       modelo: chooserConfig.model,
       maxTokens: chooserRow?.max_tokens ?? null,
       eliminadasPorRequisito,
+      elegiveisPorPosicao: elegiveisDaPosicao,
       origins,
       alvoMedicao: input.alvoMedicao ?? null,
       vault: vaultKnowledge,
@@ -1965,12 +1972,13 @@ export async function assembleStoreReference(
     const id = chosenById.get(i)
     let variant = id ? byId.get(id) : undefined
     if (!variant) {
-      const resgate = menosIncompativel(
-        variantesDaSecao.get(normalizarSecao(section)) ?? [],
-        requisitosPorPosicao[i],
-        section,
-        jaUsadas,
+      // Pool = elegíveis por contrato (fail-open: seção zerada devolve
+      // todas). Sem o filtro o resgate podia pôr uma eliminada na posição.
+      const elegiveisIds = elegiveisDaPosicao.get(i)
+      const pool = (variantesDaSecao.get(normalizarSecao(section)) ?? []).filter(
+        (c) => !elegiveisIds || elegiveisIds.includes(c.variant_id),
       )
+      const resgate = menosIncompativel(pool, requisitosPorPosicao[i], section, jaUsadas)
       const candidata = resgate ? byId.get(resgate.variant_id) : undefined
       if (resgate && candidata) {
         variant = candidata

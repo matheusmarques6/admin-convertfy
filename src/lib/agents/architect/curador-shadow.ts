@@ -81,6 +81,116 @@ export function contratosDoCatalogo(sections: Array<{ variantes: Array<{ variant
 const SHADOW_TOP_N = 1
 const SHORTLIST_TOP_N = 3
 
+/**
+ * Plano da shortlist (14/09): que posições o CÓDIGO resolve e que posições
+ * ainda precisam do modelo.
+ *
+ * A shortlist existe para reduzir muitas candidatas a até `SHORTLIST_TOP_N`
+ * finalistas por posição. No batch 6249aef2 TODAS as seções chegaram com 3
+ * ou menos elegíveis (hero 3, body 2, reviews 3, products 1, footer 3) e a
+ * chamada leu 101k chars para devolver a mesma lista que entrou. Posição com
+ * `elegiveis.length <= SHORTLIST_TOP_N` é resolvida por código; a chamada
+ * ao modelo só acontece quando alguma posição tem mais do que isso.
+ *
+ * `elegiveisPorPosicao` ausente (chamador antigo) = comportamento anterior:
+ * tudo vai ao modelo. `forcarChamada` (env `CURADOR_SHORTLIST_SEMPRE=1`) é
+ * o rollback.
+ */
+export interface PlanoDaShortlist {
+  /** Posições resolvidas por código (≤ SHORTLIST_TOP_N elegíveis). */
+  puladas: number[]
+  /** Há posição que precisa do modelo. */
+  chamar: boolean
+  /** Posições que o modelo tem de mencionar (as não puladas). */
+  obrigatorias: number[]
+  porCodigo: Map<number, RankedChoice[]>
+  elegiveis: Map<number, Set<string>>
+}
+
+export function planejarShortlist(p: {
+  sections: string[]
+  elegiveisPorPosicao?: Map<number, string[]> | null
+  forcarChamada?: boolean
+}): PlanoDaShortlist {
+  const todas = p.sections.map((_, i) => i)
+  const elegiveis = new Map<number, Set<string>>()
+  for (const [i, ids] of p.elegiveisPorPosicao ?? []) elegiveis.set(i, new Set(ids))
+  if (!p.elegiveisPorPosicao || p.forcarChamada) {
+    return { puladas: [], chamar: true, obrigatorias: todas, porCodigo: new Map(), elegiveis }
+  }
+  const puladas: number[] = []
+  const porCodigo = new Map<number, RankedChoice[]>()
+  for (const i of todas) {
+    const ids = p.elegiveisPorPosicao.get(i)
+    if (!ids || ids.length > SHORTLIST_TOP_N) continue
+    puladas.push(i)
+    if (ids.length > 0) porCodigo.set(i, ids.map((variant_id) => ({ variant_id, motivo: "elegível por contrato (shortlist por código)" })))
+  }
+  const obrigatorias = todas.filter((i) => !puladas.includes(i))
+  return { puladas, chamar: obrigatorias.length > 0, obrigatorias, porCodigo, elegiveis }
+}
+
+function rankingVazio(sections: string[]): ParsedRanking {
+  return {
+    byBlock: new Map(),
+    invalidIds: [],
+    retypedChoices: [],
+    unknownBlocks: [],
+    duplicateIds: [],
+    emptyBlocks: sections.map((_, i) => i),
+    resolvedByAlias: [],
+    malformed: false,
+  }
+}
+
+/**
+ * Funde o que o modelo devolveu com o que o código já sabia: posição pulada
+ * recebe as elegíveis; posição do modelo é INTERSECTADA com as elegíveis
+ * (variante eliminada por contrato nunca vira finalista). Quando a
+ * interseção esvazia — o modelo só apontou eliminadas — entram as três
+ * primeiras elegíveis, e a posição fica registrada em `intersecaoVazia`.
+ */
+export function mesclarShortlist(p: {
+  plano: PlanoDaShortlist
+  llm: ParsedRanking | null
+  sections: string[]
+}): { shortlist: ParsedRanking; fonte: "codigo" | "llm" | "mista"; intersecaoVazia: number[] } {
+  const base = p.llm ?? rankingVazio(p.sections)
+  const byBlock = new Map<number, RankedChoice[]>()
+  const intersecaoVazia: number[] = []
+  p.sections.forEach((_, i) => {
+    if (p.plano.puladas.includes(i)) {
+      const codigo = p.plano.porCodigo.get(i)
+      if (codigo?.length) byBlock.set(i, codigo)
+      return
+    }
+    const escolhas = base.byBlock.get(i) ?? []
+    const elegiveis = p.plano.elegiveis.get(i)
+    if (!elegiveis || elegiveis.size === 0) {
+      if (escolhas.length) byBlock.set(i, escolhas)
+      return
+    }
+    const validas = escolhas.filter((c) => elegiveis.has(c.variant_id))
+    if (validas.length) {
+      byBlock.set(i, validas)
+      return
+    }
+    if (escolhas.length) intersecaoVazia.push(i)
+    const fallback = Array.from(elegiveis).slice(0, SHORTLIST_TOP_N).map((variant_id) => ({
+      variant_id,
+      motivo: "elegível por contrato (o modelo só apontou eliminadas)",
+    }))
+    if (fallback.length) byBlock.set(i, fallback)
+  })
+  const shortlist: ParsedRanking = {
+    ...base,
+    byBlock,
+    emptyBlocks: p.sections.map((_, i) => i).filter((i) => !byBlock.has(i)),
+  }
+  const fonte = !p.plano.chamar ? "codigo" : p.plano.puladas.length > 0 ? "mista" : "llm"
+  return { shortlist, fonte, intersecaoVazia }
+}
+
 export const DEFAULT_CURADOR_SHORTLIST_SYSTEM = `Você é o Curador de Componentes da Convertfy na etapa de SHORTLIST.
 A estrutura e os papéis já foram decididos. Compare TODAS as variantes do índice compacto e selecione até 3 finalistas por posição. Não escolha a vencedora ainda e não invente ids.
 
@@ -105,6 +215,8 @@ export function parseValidatedShortlist(input: {
   sections: string[]
   typeIndex: Map<string, string>
   aliasIndex?: Map<string, string>
+  /** Posições que o modelo TEM de mencionar (as puladas por código ficam de fora). Default: todas. */
+  posicoesObrigatorias?: number[]
 }): ParsedRanking {
   const parsed = parseCuratorRanking({ ...input, maxPerBlock: SHORTLIST_TOP_N })
   try {
@@ -115,7 +227,8 @@ export function parseValidatedShortlist(input: {
             .filter((v): v is number => typeof v === "number" && Number.isInteger(v))
         : [],
     )
-    if (input.sections.some((_, i) => !mentioned.has(i))) parsed.malformed = true
+    const obrigatorias = input.posicoesObrigatorias ?? input.sections.map((_, i) => i)
+    if (obrigatorias.some((i) => !mentioned.has(i))) parsed.malformed = true
   } catch {
     parsed.malformed = true
   }
@@ -846,6 +959,12 @@ export interface CuradorShadowParams {
   alvoMedicao?: AlvoParaMedicao | null
   /** Eliminadas por requisito do Estruturador × contrato (09/09) — telemetria + medidor. */
   eliminadasPorRequisito?: EliminacaoDaPosicao[]
+  /**
+   * Elegíveis por POSIÇÃO (14/09, `elegiveisPorPosicao` em field-roles):
+   * catálogo da seção menos as eliminadas por contrato. É o que decide se
+   * a shortlist chama o modelo e o que restringe as finalistas.
+   */
+  elegiveisPorPosicao?: Map<number, string[]> | null
 }
 
 /** O que o Curador legado herda de um JSON do vault que não pôde ser consumido. */
@@ -909,7 +1028,7 @@ export async function runCuradorShadow(
    * se o teto novo precisa ir para a shortlist, para a escolha, ou para as
    * duas, e a próxima decisão de teto vira chute.
    */
-  const porChamada: Record<string, { tokens_output: number; tokens_input: number; seg: number }> = {}
+  const porChamada: Record<string, { tokens_output: number; tokens_input: number; seg: number } | null> = {}
   const medir = async <T extends { tokensInput: number; tokensOutput: number }>(
     etapa: string,
     fn: () => Promise<T>,
@@ -1076,22 +1195,45 @@ export async function runCuradorShadow(
     // em `email_agent_configs` — que já estava em 16.000 e era cortado aqui.
     // `max_tokens` é TETO, não consumo: cortar não poupa um token quando a
     // resposta é curta, só quebra quando ela precisa de um a mais.
-    const shortlistCall = await medir("shortlist", () =>
-      naEtapa("shortlist", () =>
-      invokeAgent(
-        { ...config, system_prompt: DEFAULT_CURADOR_SHORTLIST_SYSTEM, max_tokens: maxTokens },
-        vars,
-        systemVars,
-      ),
-      ),
-    )
-    const shortlist = parseValidatedShortlist({
-      raw: shortlistCall.raw,
+    //
+    // 14/09: a chamada só acontece quando alguma posição tem MAIS de
+    // `SHORTLIST_TOP_N` elegíveis por contrato. Com 3 ou menos não há o que
+    // reduzir — o código monta a shortlist daquela posição — e o resultado
+    // do modelo é intersectado com as elegíveis (`mesclarShortlist`).
+    const planoShortlist = planejarShortlist({
       sections: p.liveSections,
-      typeIndex: p.typeIndex,
-      aliasIndex: p.aliasIndex,
+      elegiveisPorPosicao: p.elegiveisPorPosicao ?? null,
+      forcarChamada: process.env.CURADOR_SHORTLIST_SEMPRE === "1",
     })
-    if (shortlist.malformed || shortlist.byBlock.size === 0) {
+    let shortlistLlm: ParsedRanking | null = null
+    const shortlistConsumo = { tokensInput: 0, tokensOutput: 0, costUsd: 0 }
+    if (planoShortlist.chamar) {
+      const shortlistCall = await medir("shortlist", () =>
+        naEtapa("shortlist", () =>
+        invokeAgent(
+          { ...config, system_prompt: DEFAULT_CURADOR_SHORTLIST_SYSTEM, max_tokens: maxTokens },
+          vars,
+          systemVars,
+        ),
+        ),
+      )
+      shortlistConsumo.tokensInput = shortlistCall.tokensInput
+      shortlistConsumo.tokensOutput = shortlistCall.tokensOutput
+      shortlistConsumo.costUsd = shortlistCall.costUsd
+      shortlistLlm = parseValidatedShortlist({
+        raw: shortlistCall.raw,
+        sections: p.liveSections,
+        typeIndex: p.typeIndex,
+        aliasIndex: p.aliasIndex,
+        posicoesObrigatorias: planoShortlist.obrigatorias,
+      })
+      if (shortlistLlm.malformed) throw new Error("curador_shortlist_invalida")
+    } else {
+      porChamada.shortlist = null
+    }
+    const mesclaShortlist = mesclarShortlist({ plano: planoShortlist, llm: shortlistLlm, sections: p.liveSections })
+    const shortlist = mesclaShortlist.shortlist
+    if (shortlist.byBlock.size === 0) {
       throw new Error("curador_shortlist_invalida")
     }
     const finalistIds = Array.from(new Set(Array.from(shortlist.byBlock.values()).flatMap((choices) => choices.map((c) => c.variant_id))))
@@ -1127,9 +1269,9 @@ export async function runCuradorShadow(
     }
     const res = {
       ...finalCall,
-      tokensInput: shortlistCall.tokensInput + finalCall.tokensInput,
-      tokensOutput: shortlistCall.tokensOutput + finalCall.tokensOutput,
-      costUsd: shortlistCall.costUsd + finalCall.costUsd,
+      tokensInput: shortlistConsumo.tokensInput + finalCall.tokensInput,
+      tokensOutput: shortlistConsumo.tokensOutput + finalCall.tokensOutput,
+      costUsd: shortlistConsumo.costUsd + finalCall.costUsd,
       consultas: [],
       voltas: retomada?.feita ? 3 : 2,
       fallback_sem_ferramentas: false,
@@ -1214,6 +1356,12 @@ export async function runCuradorShadow(
         // Quanto CADA chamada gastou, não só a soma: é o que diz para onde
         // o teto precisa ir na próxima vez.
         consumo_por_chamada: porChamada,
+        // 14/09: posições resolvidas por código (≤ 3 elegíveis por contrato),
+        // origem da shortlist e onde o modelo só apontou eliminadas.
+        shortlist_pulada: planoShortlist.puladas,
+        shortlist_fonte: mesclaShortlist.fonte,
+        shortlist_intersecao_vazia: mesclaShortlist.intersecaoVazia,
+        elegiveis_por_posicao: Object.fromEntries(Array.from(planoShortlist.elegiveis, ([i, ids]) => [i, ids.size])),
         progressive_disclosure: {
           initial_variants: p.catalogComExtras.total,
           finalists: res.finalistIds,

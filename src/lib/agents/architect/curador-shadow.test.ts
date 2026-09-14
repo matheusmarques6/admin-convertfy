@@ -23,6 +23,8 @@ import {
   renderFinalistNotes,
   restrictRankingToShortlist,
   DEFAULT_CURADOR_SHORTLIST_SYSTEM,
+  planejarShortlist,
+  mesclarShortlist,
 } from "./curador-shadow"
 import { RespostaVaziaError } from "../resposta-vazia"
 import { resumirContrato } from "../shared/field-roles"
@@ -799,5 +801,71 @@ describe("eliminadas por requisito (09/09)", () => {
     expect(DEFAULT_CHOOSER_VAULT_USER).toContain("<eliminadas_por_requisito>")
     expect(DEFAULT_CHOOSER_VAULT_USER).toContain("{{eliminadas_requisito}}")
     expect(DEFAULT_CHOOSER_USER).toContain("{{eliminadas_requisito}}")
+  })
+})
+
+
+// 14/09: no batch 6249aef2 todas as seções chegaram à shortlist com ≤ 3
+// candidatas elegíveis e a chamada leu 101k chars para devolver a mesma
+// lista. E a eliminação por contrato era só recomendação no prompt: o
+// catálogo chegava inteiro e uma eliminada podia virar finalista.
+describe("shortlist por código quando não há o que rankear (14/09)", () => {
+  const sections = ["hero", "body", "reviews", "products", "footer"]
+  const batch = new Map<number, string[]>([
+    [0, ["h1", "h2", "h3"]], [1, ["b1", "b2"]], [2, ["r1", "r2", "r3"]], [3, ["p1"]], [4, ["f1", "f2", "f3"]],
+  ])
+  it("o cenário do batch: zero chamadas, shortlist inteira por código", () => {
+    const plano = planejarShortlist({ sections, elegiveisPorPosicao: batch })
+    expect(plano.chamar).toBe(false)
+    expect(plano.puladas).toEqual([0, 1, 2, 3, 4])
+    const { shortlist, fonte } = mesclarShortlist({ plano, llm: null, sections })
+    expect(fonte).toBe("codigo")
+    expect(shortlist.byBlock.get(3)?.map((c) => c.variant_id)).toEqual(["p1"])
+    expect(shortlist.byBlock.get(0)).toHaveLength(3)
+    expect(shortlist.emptyBlocks).toEqual([])
+    expect(shortlist.malformed).toBe(false)
+  })
+  it("posição com zero elegíveis fica vazia por código, sem chamar o modelo", () => {
+    const plano = planejarShortlist({ sections: ["hero", "body"], elegiveisPorPosicao: new Map([[0, ["h1"]], [1, []]]) })
+    expect(plano.chamar).toBe(false)
+    const { shortlist } = mesclarShortlist({ plano, llm: null, sections: ["hero", "body"] })
+    expect(shortlist.emptyBlocks).toEqual([1])
+  })
+  it("uma seção com 6 elegíveis chama o modelo só para ela; as outras vêm do código e o resultado é intersectado", () => {
+    const elegiveis = new Map<number, string[]>([[0, ["h1", "h2"]], [1, ["b1", "b2", "b3", "b4", "b5", "b6"]]])
+    const plano = planejarShortlist({ sections: ["hero", "body"], elegiveisPorPosicao: elegiveis })
+    expect(plano.chamar).toBe(true)
+    expect(plano.puladas).toEqual([0])
+    expect(plano.obrigatorias).toEqual([1])
+    const typeIndex = new Map([["b1", "body"], ["b9", "body"], ["h1", "hero"]])
+    // O modelo mencionou só a posição obrigatória — não é malformed.
+    const llm = parseValidatedShortlist({
+      raw: JSON.stringify([{ block_index: 1, escolhas: [{ variant_id: "b9" }, { variant_id: "b1" }] }]),
+      sections: ["hero", "body"], typeIndex, posicoesObrigatorias: plano.obrigatorias,
+    })
+    expect(llm.malformed).toBe(false)
+    const { shortlist, fonte, intersecaoVazia } = mesclarShortlist({ plano, llm, sections: ["hero", "body"] })
+    expect(fonte).toBe("mista")
+    expect(shortlist.byBlock.get(0)?.map((c) => c.variant_id)).toEqual(["h1", "h2"])
+    // b9 não é elegível (eliminada por contrato): sai da lista de finalistas.
+    expect(shortlist.byBlock.get(1)?.map((c) => c.variant_id)).toEqual(["b1"])
+    expect(intersecaoVazia).toEqual([])
+  })
+  it("modelo que só aponta eliminadas cai nas três primeiras elegíveis, registrado", () => {
+    const elegiveis = new Map<number, string[]>([[0, ["b1", "b2", "b3", "b4"]]])
+    const plano = planejarShortlist({ sections: ["body"], elegiveisPorPosicao: elegiveis })
+    const typeIndex = new Map([["b9", "body"], ["b1", "body"]])
+    const llm = parseValidatedShortlist({ raw: JSON.stringify([{ block_index: 0, escolhas: [{ variant_id: "b9" }] }]), sections: ["body"], typeIndex })
+    const { shortlist, intersecaoVazia, fonte } = mesclarShortlist({ plano, llm, sections: ["body"] })
+    expect(fonte).toBe("llm")
+    expect(intersecaoVazia).toEqual([0])
+    expect(shortlist.byBlock.get(0)?.map((c) => c.variant_id)).toEqual(["b1", "b2", "b3"])
+  })
+  it("sem elegíveis informadas, ou forçando, tudo vai ao modelo (comportamento anterior)", () => {
+    expect(planejarShortlist({ sections }).chamar).toBe(true)
+    expect(planejarShortlist({ sections }).obrigatorias).toEqual([0, 1, 2, 3, 4])
+    const forcado = planejarShortlist({ sections, elegiveisPorPosicao: batch, forcarChamada: true })
+    expect(forcado.chamar).toBe(true)
+    expect(forcado.puladas).toEqual([])
   })
 })
