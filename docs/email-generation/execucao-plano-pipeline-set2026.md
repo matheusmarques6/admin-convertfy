@@ -841,6 +841,29 @@ concluir que o prompt está errado (foi assim que o Fable com 400 morreu em
 
 ---
 
+## Executado — Semana 1 (14/09, branch `claude/resume-previous-session-UvATK`)
+
+Os dez passos da semana 1 estão em código, testados (6.534 testes, 443
+arquivos) e as migrations aplicadas em produção (`20261144`, `20261145`,
+`20261146`). O que DIVERGIU do desenho, e por quê:
+
+| Passo | Desenho | Executado | Motivo |
+|---|---|---|---|
+| 8 | violação `high` → 1 retentativa do Curador; 2ª → `contrato_curador` | violação `high` → a escolha é TROCADA por código pela próxima finalista limpa do ranking; sem finalista limpa a posição cai para o resgate (pool = elegíveis); resgate anatomicamente contrário à decisão é recusado | desde o Passo 3 a shortlist já é a interseção com as elegíveis — repetir o Curador com a mesma lista devolveria a mesma escolha, a US$ 2 e 400 s. A substituição é determinística e fica em `_contrato.substituicoes` |
+| 9 (`on`) | não grava `copy_ready`, reenvio único ao n8n com as violações, 2ª → `failed` | `on` + `high` → e-mail `failed: copy_contrato`, run `copy` `error`, fase 2 não dispara | o reenvio precisa de contagem de tentativas e de `dispatchEmailCopyWebhook` para UM e-mail; fica para depois da leitura em `shadow` (`DIAGNOSTICO_contrato_textual.sql`) |
+| 11 | 15 agentes Fable → Sonnet 4.6 | **13** agentes (o banco tinha 16 em Fable, 3 ficam) | contagem medida na hora: `assembler, blueprint, catalogador, color_format, copy, copy_fit, hero_section, image_format, merge_verifier, qa, subject, text_format, typography` |
+| 7 | — | `cupom: "false"` (string) passou a ser DESCARTE REGISTRADO e dura; a fixture real revelou que `products` diz "sem avaliação" em prosa e deixou `avaliacao: null` (aviso `papel_diz_requisito_nao`) | a auditoria pegou na fixture o que o plano previa em abstrato |
+
+Gates no banco em 14/09: `contrato_estrutural = on`, `contrato_textual =
+shadow`, `auditoria_estruturador = on` (`estruturador_mode`, `seletor_mode`
+e `color_plano_mode` já estavam `on`; `qa_mode = enforce`).
+
+**O que falta para a geração de verificação**: `coupon_codes` está `{}` em
+TODOS os 24 outlines com cupom — a Hero Boxers (inglês) vai sair com
+`BEMVINDO10` e `traducao_faltante: true` até alguém preencher `en` na tela
+de outlines. `coupon_value` também está vazio em todos: sem ele a régua de
+claims não confere percentual (só existência e código).
+
 ## SEMANA 2 — a falha nomeada vira e-mail certo
 
 ### Passo 11 · A2 parte 1 · Resgate que respeita descartes e preço

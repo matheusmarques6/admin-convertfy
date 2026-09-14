@@ -6047,6 +6047,77 @@ contrário do que acontece. Fica em aberto
 `ig_reels_video_view_total_time` (também aceito, 4.637.596 ms na peça
 medida) — tempo TOTAL assistido, que hoje não coletamos.
 
+## O contrato de decisão do e-mail — semana 1 do plano de set/2026 (14/09)
+
+Batch 6249aef2 (Hero Boxers · Welcome 1, 11/09): 3 de 6 posições contrárias
+à decisão do Estruturador, US$ 8,20, reprovado só no QA. As causas eram de
+FRONTEIRA entre agentes, não de um agente errando. Plano e execução em
+`docs/email-generation/{plano-evolucao,execucao-plano}-pipeline-set2026.md`.
+
+**O incentivo é decisão do FLOW, não do Catalogador** (`objecoes/incentivo.ts`,
+puro): `email_outline_templates.coupon_code` diz se o toque entrega cupom;
+`coupon_codes[idioma]` (migration 20261144, grade na tela de outlines) é a
+tradução, DADO humano; o bloco `coupon` do e-mail sobrescreve por loja.
+`existe` é sempre booleano — "não se sabe" deixou de existir, porque foi o
+`null` do Catalogador que zerou o cupom de um toque que tem cupom.
+`resolverIncentivoDoEmail` (I/O) é a única porta; Seletor, `intent-contract`,
+webhook do n8n e fase 2 leem dela. Sem tradução, sai o pt-BR com
+`traducao_faltante: true` (aviso, não bloqueio).
+
+**`DecisaoDoEmail`** (`shared/decisao-do-email.ts`, migration 20261145):
+alvo + incentivo + insumos + proibições deduplicadas entre idiomas + posições
+com `requisitos` + descartes + fio, montada UMA vez no `generate.service` e
+persistida em `store_email_blueprints.decisao`. É o que os validadores
+comparam. Três gates em `email_generation_settings` (`contrato-mode.ts`,
+mesmo desenho do `color_plano_mode`): `auditoria_estruturador` (on),
+`contrato_estrutural` (on), `contrato_textual` (shadow).
+
+**Auditoria do Estruturador** (`estruturador/auditoria-requisitos.ts`, puro):
+confere os `requisitos` contra o que ELE recebeu — incentivo, capacidade da
+biblioteca, seções — e contra o que a normalização descartou. `cupom: "false"`
+(string) virava `null` em silêncio e o filtro deixava passar a variante com
+cupom exatamente no toque em que o agente tentou negá-lo: agora é descarte
+REGISTRADO e dura. Em `on`, dura = retentativa com `<auditoria_anterior>`;
+esgotada, `estruturador_incoerente` e a geração PARA — seguir com o outline
+montaria a peça sobre a decisão que o código acabou de recusar.
+
+**A eliminação virou filtro** (`elegiveisPorPosicao`): a shortlist do Curador
+é a interseção com as elegíveis e nem chama o modelo com ≤ 3 por posição
+(`shortlist_fonte: codigo`); o resgate só puxa de elegíveis. O prompt do
+Curador parou de contradizer os guards ("cai no template global" — não cai;
+"repetir É PERMITIDO" — não é em hero/products); um teste reprova as frases.
+
+**Validadores** (`shared/validadores/`, puros): `escolhas` (requisito ×
+contrato da variante; `cupom_sem_incentivo` mesmo com `cupom: null`;
+variante repetida em hero/products), `resgate` (anatomia é `high`, redação —
+preço, avaliação — é `medium`: a copy compensa), `blueprint` (campo de
+oferta OMITIDO por código numa peça sem incentivo — `arbitrarCampos` só
+alcançava `cupom: false` explícito), `claims` (oferta com âncora na mesma
+janela em pt/en/pl/da: "10% off" é oferta, "10% mais leve" é atributo),
+`copy` (callback do n8n, sobre a copy GRAVADA) e `html-final` (por view de
+bloco, vira `QaIssue` `contrato_*`). Em `on` a escolha que viola é TROCADA
+por código pela próxima finalista limpa — não se repete o Curador, porque
+a shortlist já é a interseção e ele devolveria a mesma escolha. `_contrato`
+é chave obrigatória nas runs `assembler` e `blueprint` (contrato de
+telemetria); `dispositivo` fica em `regra_pendente` até B3.
+
+**Subject lê a decisão** (migration 20261146 troca o prompt do banco — ele
+VENCE o in-code, e um teste garante que os dois são o mesmo texto): alvo,
+fio, incentivo, insumos e proibições como `upstream`; a saída passa SEMPRE
+pela régua de claims; 2ª violação → fallback determinístico (papel da 1ª
+posição em 55 chars + fio), nunca a oferta inventada.
+
+**Modelos (14/09)**: 13 agentes de `~anthropic/claude-fable-latest` para
+`anthropic/claude-sonnet-4.6`; Seletor, Estruturador e `assembler_chooser`
+seguem em Fable (os três que DECIDEM). `max_tokens` intocado. Receita na
+seção 14/09 de `TROCAR_modelo_agentes.sql`.
+
+**Pendências declaradas**: `coupon_codes` está `{}` nos 24 outlines com
+cupom (a Hero Boxers sai em pt-BR com aviso até alguém preencher `en`);
+`coupon_value` vazio em todos (a régua de claims não confere percentual sem
+ele); o reenvio ao n8n em `contrato_textual = on` fica para depois da leitura
+em shadow (`DIAGNOSTICO_contrato_textual.sql`).
+
 ---
 
 *Última atualização: Setembro 2026*
