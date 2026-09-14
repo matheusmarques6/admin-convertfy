@@ -28,7 +28,6 @@ import { FormField } from "@/components/ui/form-field"
 import { SaveBar } from "@/components/ui/save-bar"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/lib/hooks/use-toast"
-import { createClient } from "@/lib/supabase/client"
 import { cn } from "@/lib/utils"
 
 interface ProfileData {
@@ -120,20 +119,29 @@ export function AccountSection() {
     async function loadAll() {
       await fetchProfile()
       try {
-        const supabase = createClient()
-        const { data } = await supabase.from("company_settings").select("*").limit(1).single()
-        if (data) {
-          const companyData = data as unknown as CompanyData
+        const res = await fetch("/api/settings/company")
+        if (!res.ok) throw new Error("Erro ao carregar dados da empresa")
+        const { company: loaded } = await res.json()
+        if (loaded) {
+          const companyData = { ...emptyCompany, ...loaded } as CompanyData
           setCompany(companyData)
           setOriginalCompany(companyData)
         }
-      } catch {
-        // No company data yet
+      } catch (err) {
+        // Antes este catch era decorativo: o supabase-js devolve o erro em
+        // `error` em vez de lançar, e o código nem o desestruturava — a
+        // tabela não existia, a leitura dava 404 e o formulário aparecia
+        // vazio como se ninguém o tivesse preenchido.
+        toast({
+          variant: "destructive",
+          title: "Erro",
+          description: err instanceof Error ? err.message : "Erro ao carregar dados da empresa",
+        })
       }
       setLoading(false)
     }
     loadAll()
-  }, [fetchProfile])
+  }, [fetchProfile, toast])
 
   useEffect(() => {
     return () => { if (avatarPreview) URL.revokeObjectURL(avatarPreview) }
@@ -256,13 +264,23 @@ export function AccountSection() {
   const handleSaveCompany = async () => {
     setSavingCompany(true)
     try {
-      const supabase = createClient()
-      const { error } = await supabase.from("company_settings").upsert(company, { onConflict: "id" })
-      if (error) throw error
+      const res = await fetch("/api/settings/company", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(company),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        throw new Error(data?.error || "Erro ao salvar dados da empresa.")
+      }
       setOriginalCompany({ ...company })
       toast({ title: "Salvo!", description: "Informações da empresa atualizadas." })
-    } catch {
-      toast({ variant: "destructive", title: "Erro", description: "Erro ao salvar dados da empresa." })
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Erro",
+        description: err instanceof Error ? err.message : "Erro ao salvar dados da empresa.",
+      })
     } finally {
       setSavingCompany(false)
     }
