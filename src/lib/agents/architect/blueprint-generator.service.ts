@@ -33,6 +33,7 @@ import {
   type SegmentOrigin,
 } from "../shared/prompt-provenance"
 import { loadEffectiveBlueprint } from "./blueprint-loader"
+import type { DecisaoDoEmail } from "../shared/decisao-do-email"
 import {
   buildDeterministicBlueprint,
   collectSchemaAnchorIssues,
@@ -319,6 +320,8 @@ export interface GenerateBlueprintInput {
    * estrutura adaptativa não rodou (e por quê).
    */
   estruturadorStatus?: EstruturadorStatus | null
+  /** O contrato de decisão (14/09) — persistido em `store_email_blueprints.decisao`. */
+  decisao?: DecisaoDoEmail | null
 }
 
 export interface GenerateBlueprintResult {
@@ -1109,25 +1112,32 @@ async function upsertStoreBlueprint(
     subject_hint: blueprint.subject_hint,
     blocks: blueprint.blocks,
     fio_narrativo: blueprint.fio_narrativo ?? null,
+    // 14/09 (migration 20261145): o contrato de decisão viaja com o blueprint.
+    decisao: input.decisao ?? null,
     source,
     model,
     updated_at: new Date().toISOString(),
   }
-  let { error } = await admin
-    .from("store_email_blueprints")
-    .upsert(row, { onConflict: "store_id,flow_type,email_number" })
-  // Migration 20261083 ainda não aplicada → retry sem a coluna (padrão da
-  // casa: a geração nunca quebra por schema atrasado; o fio só não persiste).
-  if (error && (error.code === "42703" || error.code === "PGRST204")) {
-    log.warn("blueprint.fio_narrativo_column_missing", {
-      storeId: input.storeId,
-      error: error.message,
-    })
-    const { fio_narrativo: _omitido, ...semFio } = row
+  const upsert = (r: Record<string, unknown>) =>
+    admin.from("store_email_blueprints").upsert(r, { onConflict: "store_id,flow_type,email_number" })
+  let { error } = await upsert(row)
+  // Migrations aplicadas à mão escorregam: coluna ausente → retry sem ela e
+  // log NOMEADO (a geração nunca quebra por schema atrasado; o campo só não
+  // persiste). Primeiro `decisao` (20261145), depois `fio_narrativo` (20261083).
+  const colunaAusente = (e: { code?: string } | null) => !!e && (e.code === "42703" || e.code === "PGRST204")
+  let linha: Record<string, unknown> = row
+  if (colunaAusente(error)) {
+    log.warn("blueprint.decisao_column_missing", { storeId: input.storeId, error: error?.message })
+    const { decisao: _semDecisao, ...semDecisao } = linha
+    void _semDecisao
+    linha = semDecisao
+    ;({ error } = await upsert(linha))
+  }
+  if (colunaAusente(error)) {
+    log.warn("blueprint.fio_narrativo_column_missing", { storeId: input.storeId, error: error?.message })
+    const { fio_narrativo: _omitido, ...semFio } = linha
     void _omitido
-    ;({ error } = await admin
-      .from("store_email_blueprints")
-      .upsert(semFio, { onConflict: "store_id,flow_type,email_number" }))
+    ;({ error } = await upsert(semFio))
   }
   if (error) {
     log.error("blueprint.upsert_failed", {

@@ -111,6 +111,7 @@ import { variantIsFillable as coherenceVariantIsFillable } from "@/lib/email-wor
 import { assembleDocument, coberturaSuficiente, validateBlockMarkers } from "./assemble-document"
 import { normalizarSecao } from "./repeticao"
 import { menosIncompativel } from "./resgate-de-posicao"
+import type { DecisaoDoEmail } from "../shared/decisao-do-email"
 import type { OutlineSection } from "./outline-sections"
 import {
   interpolateSystem,
@@ -691,6 +692,8 @@ export interface AssembleReferenceInput {
   // o modo é 'on' e a run validou (em shadow o pipeline não vê a decisão).
   // Papéis na MESMA ordem da structure/<sequencia_do_email>.
   estruturadorDecisao?: string | null
+  /** O contrato de decisão (14/09) — o que os validadores comparam. */
+  decisao?: DecisaoDoEmail | null
 }
 
 // "code" = documento concatenado pelo código a partir das variantes

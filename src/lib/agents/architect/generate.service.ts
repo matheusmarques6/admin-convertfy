@@ -51,6 +51,8 @@ import {
 } from "./component-assembler.service"
 import type { EstruturadorStatus } from "./blueprint-generator.service"
 import { loadRevisoesAplicaveis } from "../shared/load-revisoes"
+import { montarDecisao, type DecisaoDoEmail } from "../shared/decisao-do-email"
+import { resolverIncentivoDoEmail } from "../objecoes/incentivo-da-loja.service"
 
 const log = logger.child("ArchitectGenerate")
 
@@ -134,6 +136,15 @@ export async function generateBlueprintAndReference(
     | null
   const emailId = emailRow?.id ?? null
   const flowId = emailRow?.flow_id ?? null
+
+  // Incentivo do TOQUE (14/09): outline + idioma da loja + override do bloco
+  // `coupon`. Entra na decisão do e-mail e, adiante, no Estruturador.
+  const incentivo = await resolverIncentivoDoEmail({
+    storeId: input.storeId,
+    flowType: input.flowType,
+    emailNumber: input.emailNumber,
+    emailId,
+  })
 
   // ── Overrides desta execução (migration 20261129) ──────────────────
   //
@@ -572,6 +583,11 @@ export async function generateBlueprintAndReference(
       sequencia: posicoes.map((p) => p.section),
     })
   }
+  // A DECISÃO do e-mail (14/09): alvo + estrutura com requisitos + incentivo,
+  // montada UMA vez e servida a Curador, blueprint (persistida em
+  // `store_email_blueprints.decisao`), n8n, formatação e QA. Nasce só
+  // quando o Estruturador foi consumido; sem ele não há decisão a validar.
+  let decisao: DecisaoDoEmail | null = null
   let structure: Array<{ section: string; label: string; intencao?: string | null }> =
     posicoes ?? structureBase
   if (maxBlocksPerEmail != null && structure.length > maxBlocksPerEmail) {
@@ -588,6 +604,25 @@ export async function generateBlueprintAndReference(
     // viajam DENTRO dos itens — structure e papéis saem da mesma lista
     // clampada, sem desalinhamento de índice com o blueprint.
     if (posicoes) posicoes = structure as PosicaoEstruturada[]
+  }
+  if (estruturadorOutput && posicoes) {
+    // Depois do clamp, de propósito: as posições da decisão têm de ser as
+    // que viraram estrutura, senão o validador compara índice com índice
+    // errado.
+    decisao = montarDecisao({
+      alvo,
+      estruturador: {
+        ...estruturadorOutput,
+        estrutura: posicoes.map((pos) => ({
+          section: pos.section,
+          papel: pos.papel,
+          porque: pos.porque,
+          referencia: "",
+          requisitos: pos.requisitos ?? undefined,
+        })),
+      },
+      incentivo,
+    })
   }
   const {
     html,
@@ -662,6 +697,7 @@ export async function generateBlueprintAndReference(
       estruturadorOutput && posicoes
         ? decisaoCompletaParaCurador(estruturadorOutput)
         : null,
+    decisao,
   })
 
   // A INTENÇÃO humana de cada posição (Arquitetura) vem PRIMEIRO no purpose
@@ -761,6 +797,7 @@ export async function generateBlueprintAndReference(
     intencoesHumanas: intencoesPorPosicao.filter(Boolean).length,
     fioNarrativo: estruturadorOutput?.fio_narrativo ?? fioDoCurador ?? null,
     estruturadorStatus,
+    decisao,
   })
 
   // Passo 3 — Propaga a estrutura recém-gerada para os `email_blocks`.
