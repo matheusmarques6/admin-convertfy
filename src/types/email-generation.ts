@@ -111,6 +111,9 @@ export interface EmailBlueprint {
   // store_email_blueprints (migration 20261083). Opcional: rows globais e
   // legadas passam pelo mesmo cast; consumidores caem no `messaging`.
   fio_narrativo?: string | null
+  // Contrato de decisão do e-mail (migration 20261145) — só em
+  // store_email_blueprints; lido com `lerDecisao` (versão conferida).
+  decisao?: unknown
   // ── Epic AE-Image Niche-Adaptive (story AE-10) ───────────
   // Briefing visual por blueprint (slot E1..E6). Opcional para
   // retrocompat com rows legacy criados antes da migration
@@ -271,6 +274,14 @@ export type QaIssueType =
   // — href de exemplo da variante, que não é merge tag e por isso nenhum
   // strip alcança e nenhum ESP preenche.
   | "link_sem_endereco"
+  // ── Validador TEXTUAL do contrato de decisão (14/09, shared/validadores) ──
+  // Claims de oferta no HTML final contra `store_email_blueprints.decisao`.
+  // Em `contrato_textual = shadow` saem `low`/`warning` (só registro); em
+  // `on`, `high`/`blocking`.
+  | "contrato_oferta_sem_incentivo"
+  | "contrato_percentual_diverge"
+  | "contrato_codigo_diverge"
+  | "contrato_urgencia_artificial"
 
 export interface QaIssue {
   type: QaIssueType

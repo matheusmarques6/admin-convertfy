@@ -40,6 +40,9 @@ import { resolveStoreLanguage } from "@/lib/i18n/store-language"
 import { logGenerationRun } from "@/lib/agents/callbacks/telemetry.callback"
 import type { InputSummaryItem } from "@/lib/agents/shared/prompt-provenance"
 import { normalizeCopyEnvelope } from "@/lib/email-workspace/copy-envelope"
+import { carregarDecisaoDoEmail } from "@/lib/agents/shared/decisao-loader"
+import { bloqueia, loadContratoModes, roda } from "@/lib/agents/shared/contrato-mode"
+import { validarCopy } from "@/lib/agents/shared/validadores/copy"
 import type { BlueprintBlockField } from "@/types/email-generation"
 import { resolveBrandTokens } from "@/lib/agents/html/brand-guards"
 import { couponTokenKeys, resolveCouponTokens } from "@/lib/agents/html/coupon-tokens"
@@ -774,6 +777,71 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // 3.7) Validador TEXTUAL do contrato (14/09, gate `contrato_textual`):
+    // a copy GRAVADA (depois do encurtador) contra a decisão persistida no
+    // blueprint — claims de oferta, campo omitido preenchido, max_len. Em
+    // `shadow` só grava em `_contrato` da run `copy`; em `on`, violação
+    // `high` derruba o e-mail com `copy_contrato` e a fase 2 não dispara.
+    // O reenvio único ao n8n com as violações fica para a leitura da
+    // primeira semana em shadow (a saída `on` já existe atrás do gate).
+    let contratoCopy: Record<string, unknown> = { modo: "off", decisao_presente: false, violacoes: [], regra_pendente: ["dispositivo"] }
+    let copyContratoReprovada: string | null = null
+    try {
+      const modoTextual = (await loadContratoModes(body.store_id)).textual
+      if (roda(modoTextual) && flowType) {
+        const decisao = await carregarDecisaoDoEmail(admin, body.store_id, flowType, emailNumber)
+        if (!decisao) {
+          contratoCopy = { modo: modoTextual, decisao_presente: false, violacoes: [], regra_pendente: ["dispositivo"] }
+        } else {
+          const { data: blocosFinais } = await admin
+            .from("email_blocks")
+            .select("id, content, block_type, fields, position")
+            .eq("email_id", body.email_id)
+            .order("position", { ascending: true })
+          const r = validarCopy(
+            decisao,
+            ((blocosFinais ?? []) as Array<{ id: string; content: Record<string, unknown> | null; block_type: string | null; fields: unknown }>).map((b, i) => ({
+              block_index: i,
+              block_id: b.id,
+              block_type: b.block_type,
+              fields: Array.isArray(b.fields) ? (b.fields as BlueprintBlockField[]) : [],
+              content: b.content,
+            })),
+          )
+          contratoCopy = { modo: modoTextual, decisao_presente: true, ok: r.ok, violacoes: r.violacoes, regra_pendente: r.regra_pendente }
+          if (r.violacoes.length > 0) {
+            log.warn("email_copy.contrato_textual", {
+              email_id: body.email_id, modo: modoTextual,
+              violacoes: r.violacoes.map((v) => `${v.block_index}.${v.campo ?? "?"}:${v.tipo}`),
+            })
+          }
+          if (!r.ok && bloqueia(modoTextual)) {
+            copyContratoReprovada = r.violacoes
+              .filter((v) => v.severidade === "high")
+              .map((v) => `${v.block_index}.${v.campo ?? "?"}:${v.tipo}`)
+              .join(", ")
+          }
+        }
+      }
+    } catch (err) {
+      log.warn("email_copy.contrato_textual_failed", {
+        email_id: body.email_id, error: err instanceof Error ? err.message : String(err),
+      })
+    }
+    if (copyContratoReprovada) {
+      const { error: failErr } = await admin
+        .from("email_flow_emails")
+        .update({
+          status: "failed",
+          failed_at: new Date().toISOString(),
+          failure_reason: "copy_contrato",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", body.email_id)
+      if (failErr) log.error("email_copy.contrato_fail_update_failed", { email_id: body.email_id, error: failErr.message })
+      log.error("email_copy.contrato_reprovou", { email_id: body.email_id, violacoes: copyContratoReprovada })
+    }
+
     // 4) Telemetria
     //
     // Entrada estruturada: o que VOLTOU do n8n, com origem. A copy é do
@@ -859,7 +927,8 @@ export async function POST(request: NextRequest) {
       // id já estava aqui em escopo desde o guard de batch stale.
       batchId: currentBatchId ?? "",
       agent: "copy",
-      status: "success",
+      status: copyContratoReprovada ? "error" : "success",
+      ...(copyContratoReprovada ? { errorMessage: `copy_contrato: ${copyContratoReprovada}`.slice(0, 2000) } : {}),
       model: body.meta?.model ?? "n8n",
       tokensInput: body.meta?.tokens_input ?? undefined,
       tokensOutput: body.meta?.tokens_output ?? undefined,
@@ -870,6 +939,8 @@ export async function POST(request: NextRequest) {
         preheader: body.preheader ?? null,
         blocks_written: blocksWritten,
         blocks_total: body.blocks.length,
+        // Validador textual do contrato (14/09) — sempre presente.
+        _contrato: contratoCopy,
         contrato: {
           keys_recebidas: keysRecebidas,
           keys_no_contrato: keysNoContrato,
@@ -970,6 +1041,19 @@ export async function POST(request: NextRequest) {
     // Somente-texto: já ficou `ready` acima — sem fase 2. Se veio de um
     // batch (aba Testar / legado), fecha a contagem terminal do batch
     // (paridade com o phase2-runner, que faz isso ao marcar ready).
+    if (copyContratoReprovada) {
+      // Contrato reprovado em `on`: o e-mail já está `failed`; a fase 2 não
+      // dispara e o batch fecha a contagem terminal como em qualquer falha.
+      const batchId = (email as { generation_batch_id?: string | null }).generation_batch_id
+      if (batchId) await checkBatchTerminal(body.store_id, batchId).catch(() => {})
+      return successResponse(request, {
+        ok: false,
+        email_id: body.email_id,
+        blocks_written: blocksWritten,
+        contrato: "reprovado",
+        violacoes: copyContratoReprovada,
+      })
+    }
     if (textOnly) {
       const batchId = (email as { generation_batch_id?: string | null })
         .generation_batch_id

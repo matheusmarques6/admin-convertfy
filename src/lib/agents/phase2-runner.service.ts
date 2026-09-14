@@ -66,6 +66,10 @@ import { personaToText } from "./image/persona-text"
 import { buildImageAlt } from "./image/resolve-block-prompt.service"
 import { computeRenderChecks } from "./html/render-checks"
 import { computeContentChecks } from "./html/content-checks"
+import { lerDecisao } from "./shared/decisao-do-email"
+import { loadContratoModes, bloqueia, roda } from "./shared/contrato-mode"
+import { validarHtmlFinal } from "./shared/validadores/html-final"
+import { orphanTextFragments } from "./html/anchor-match"
 import { resolverIncentivoDoEmail } from "./objecoes/incentivo-da-loja.service"
 import {
   runQaAgent,
@@ -4345,6 +4349,38 @@ export async function runPhase2HtmlQa(
     })
   }
 
+  // Validador TEXTUAL do contrato (14/09, gate `contrato_textual`): claims
+  // de oferta por bloco contra a decisão persistida no blueprint. Nasce em
+  // `shadow` — `low`/`warning`, só registro em `qa_issues`; em `on`,
+  // `high`/`blocking`. Sem decisão (Estruturador desligado) não roda.
+  const contratoIssues: QaIssue[] = await (async () => {
+    try {
+      const decisao = lerDecisao(ctx.blueprint?.decisao)
+      if (!decisao) return []
+      const modo = (await loadContratoModes(storeId)).textual
+      if (!roda(modo)) return []
+      const views = fmtResult.qaViews.length > 0
+        ? fmtResult.qaViews
+        : [{ block_id: null, indice: 0, tipo: "documento", texto_visivel: orphanTextFragments(finalHtml, []).map((f) => f.texto).join(" ") }]
+      const r = validarHtmlFinal(decisao, views)
+      if (r.violacoes.length > 0) {
+        log.warn("phase2.qa.contrato_textual", { emailId, modo, violacoes: r.violacoes.map((v) => `${v.block_index}:${v.tipo}`) })
+      }
+      const on = bloqueia(modo)
+      return r.violacoes.map((v) => ({
+        type: `contrato_${v.tipo}` as QaIssue["type"],
+        severity: on ? (v.severidade === "high" ? "high" : "medium") : "low",
+        disposition: on && v.severidade === "high" ? ("blocking" as const) : ("warning" as const),
+        message: `[contrato ${modo}] "${v.evidencia}" — esperado: ${v.esperado}`,
+        location: v.section ?? "html",
+        block_id: v.variant_id ?? null,
+      }))
+    } catch (err) {
+      log.warn("phase2.qa.contrato_textual_failed", { emailId, error: err instanceof Error ? err.message : String(err) })
+      return []
+    }
+  })()
+
   // ── QA fora do fluxo somente quando EMAIL_QA_MODE=off ────────────────
   // Bypass do agente LLM: HTML pronto -> status `ready` direto, sem custo,
   // sem custo do modelo. O gate determinístico obrigatório já rodou acima;
@@ -4383,6 +4419,7 @@ export async function runPhase2HtmlQa(
     const renderIssues = [
       ...heroCopyIssues,
       ...contentIssues,
+      ...contratoIssues,
       ...computeRenderChecks(finalHtml),
       ...schemaIssues,
     ]
@@ -4527,7 +4564,9 @@ export async function runPhase2HtmlQa(
   // double-check redundante.
   // Com o gate ligado, `high` dos checks de conteúdo reprova como o agente
   // reprovaria — é o mesmo threshold (EMAIL_QA_BLOCK_SEVERITY default high).
-  const contentReprova = contentIssues.some((i) => i.severity === "high")
+  // O validador textual do contrato entra na mesma conta: em `on` ele emite
+  // `high` e reprova; em `shadow` emite `low` e nunca chega aqui.
+  const contentReprova = [...contentIssues, ...contratoIssues].some((i) => i.severity === "high")
   if (qaMode === "enforce" && (!qaResult.passed || contentReprova)) {
     await admin
       .from("email_flow_emails")
@@ -4535,7 +4574,7 @@ export async function runPhase2HtmlQa(
         status: "failed",
         failed_at: new Date().toISOString(),
         failure_reason: "qa_failed",
-        qa_issues: [...heroCopyIssues, ...contentIssues, ...qaResult.issues],
+        qa_issues: [...heroCopyIssues, ...contentIssues, ...contratoIssues, ...qaResult.issues],
         updated_at: new Date().toISOString(),
       })
       .eq("id", emailId)
@@ -4560,7 +4599,7 @@ export async function runPhase2HtmlQa(
     .update({
       status: "ready",
       ready_at: new Date().toISOString(),
-      qa_issues: [...heroCopyIssues, ...contentIssues, ...qaResult.issues],
+      qa_issues: [...heroCopyIssues, ...contentIssues, ...contratoIssues, ...qaResult.issues],
       updated_at: new Date().toISOString(),
     })
     .eq("id", emailId)
