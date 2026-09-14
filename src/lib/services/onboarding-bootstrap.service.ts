@@ -669,6 +669,23 @@ export async function ensureOnboardingBootstrap(
   // tutorial_pages_org_id_slug_key. ON CONFLICT DO NOTHING resolve a corrida:
   // quem insere de fato recebe a linha (e semeia os blocks); o perdedor recebe
   // vazio e relê a linha existente.
+  //
+  // SEM `.maybeSingle()` aqui. `ignoreDuplicates` manda
+  // `Prefer: resolution=ignore-duplicates`, que devolve ZERO linhas quando a
+  // pagina ja existe — o caso normal depois da primeira vez. E `maybeSingle()`
+  // num POST manda `Accept: application/vnd.pgrst.object+json` (postgrest-js:
+  // `if (this.method === "GET") ... else object+json`), que exige exatamente
+  // uma linha: o PostgREST responde **406** e a requisicao aparece assim no
+  // edge_logs de todo bootstrap.
+  //
+  // Medido no postgrest-js 2.100.0: o erro NAO chega aqui — logo depois de
+  // montar o erro o cliente faz
+  // `if (error && isMaybeSingle && error.details?.includes("0 rows")) error = null`
+  // e devolve `{ data: null, error: null, status: 200 }`. Ou seja, o
+  // `if (tutErr) throw` abaixo nao dispara e a releitura acontece. O que
+  // sobra e ruido no log e uma dependencia de match por SUBSTRING no texto
+  // do erro de um servidor que nao e nosso — sem o `maybeSingle` o POST volta
+  // 201 com `[]` e nada disso precisa dar certo.
   let tutorialPageId: string
   const { data: insertedTut, error: tutErr } = await admin
     .from("tutorial_pages")
@@ -685,15 +702,15 @@ export async function ensureOnboardingBootstrap(
       { onConflict: "org_id,slug", ignoreDuplicates: true },
     )
     .select("id")
-    .maybeSingle()
 
   if (tutErr) {
     throw new Error(`Falha bootstrap tutorial: ${tutErr.message}`)
   }
 
-  if (insertedTut?.id) {
+  const inserido = insertedTut?.[0]
+  if (inserido?.id) {
     // Linha recem-criada por este processo -> semear blocks default
-    tutorialPageId = insertedTut.id
+    tutorialPageId = inserido.id
     const blockRows = TUTORIAL_DEFAULT_BLOCKS.map((b, i) => ({
       page_id: tutorialPageId,
       type: b.type,
