@@ -6422,6 +6422,66 @@ ele não cita (aprendizados, índice do Obsidian, intenção do flow — "a
 estrutura vai ficar repetitiva"), reusar a decisão do Estruturador
 quando nada mudou, e teto de raciocínio ou troca de modelo.
 
+## Os sete alertas de Configurações eram três causas (set/2026, migration 20261154)
+
+Sete warnings do `edge_logs` num único carregamento de `/admin/settings`.
+O ×4 do avatar é a topologia do layout — `Sidebar` (com `SidebarUser`),
+`SidebarMobileDrawer` (que monta a Sidebar de novo) e `MobileTopBar`, mais o
+avatar da própria seção Conta. Mesma multiplicação por montagem do
+`useUnifiedNotifications`.
+
+**1. O avatar apontava para um arquivo apagado.** O único perfil com foto
+tinha `avatar_url` em `<uid>/avatar.png` e o bucket `avatars` guardava UM
+objeto: `<uid>/avatar.jpg`. Storage público responde **400** para objeto
+ausente. Ninguém viu porque o `AvatarImage` do Radix cai nas iniciais. A
+causa é a ORDEM da rota de upload: ela removia as outras extensões **antes**
+de subir o arquivo novo e antes de o banco saber dele, então qualquer falha
+entre os três passos deixava o ponteiro no vazio. Agora é **upload → update
+→ limpeza**: arquivo velho sobrando é lixo tolerável, ponteiro para o vazio
+não é. Junto saiu o cruzamento com o PORTAL, que usava o **mesmo bucket e o
+mesmo caminho** e grava em `client_portal_users.avatar_url` — um upload lá
+invalidava a URL de `profiles` sem que nenhuma das rotas soubesse. O portal
+passou a escrever em `<uid>/portal/avatar.<ext>`; o subdiretório vem **depois
+do id** porque a policy de Storage exige
+`(storage.foldername(name))[1] = auth.uid()` — prefixo `portal/` na frente
+quebraria o upload. Caminhos e limpeza moram em `avatar-validation.ts`.
+
+**2. `company_settings` não existia.** A seção "Dados da empresa" lia e
+escrevia numa tabela que nenhuma migration criava. A leitura dava 404 com o
+erro engolido (o `catch` nem dispara: o supabase-js devolve o erro em `error`
+em vez de lançar, e o código nem o desestruturava), então o formulário
+aparecia **vazio como se ninguém o tivesse preenchido**; o Salvar falhava
+sempre. Medido antes de criar: `company_name` já existia em dois lugares
+(`organizations.name` e a key/value `settings`) e os outros sete campos em
+nenhum — `clients.cpf_cnpj`/`clients.address` são dos CLIENTES,
+`store_brand_identity.logo_*` e `store_onboarding_data.logo_url` são das
+lojas deles. **UNIQUE em `org_id`** é o que torna o upsert idempotente: o
+código fazia `onConflict: "id"` com um payload **sem `id`** — conflito que
+nunca acontece, linha nova a cada clique. A tabela nasce FECHADA
+(`TO authenticated` + `is_org_member()` nos quatro comandos), provada nos
+três papéis: anon 0, membro 1, portal 0. A tela saiu do acesso direto para
+`/api/settings/company`, que resolve o `org_id` no SERVIDOR — a
+`is_org_member()` não confere QUAL org, então org no payload seria a única
+brecha do desenho.
+
+**3. O 406 do `tutorial_pages` era ruído — e a suspeita de que não era não
+se sustentou.** `ignoreDuplicates` devolve ZERO linhas quando a página já
+existe (a nossa é de 13/05/2026) e `.maybeSingle()` num POST manda
+`Accept: application/vnd.pgrst.object+json` (só no GET usa
+`application/json`), então o PostgREST responde 406. Parecia derrubar o
+bootstrap pelo `if (tutErr) throw`; **medido com o cliente real, não
+derruba**: logo depois de montar o erro o postgrest-js faz
+`if (error && isMaybeSingle && error.details?.includes("0 rows")) error = null`
+e devolve `{data: null, error: null, status: 200}`. O que sobrava era log
+sujo e uma dependência de **match por substring** no texto de erro de um
+servidor que não é nosso — mude "0 rows" e o mesmo caso vira `throw` na
+criação de onboarding. Sem `maybeSingle`, o POST volta 201 com `[]`.
+
+**Regra derivada, comum às três**: erro que o cliente ABSORVE continua sendo
+erro no fio, e é no fio que ele é visível antes de doer. As três causas
+estavam nos logs há meses, cada uma com a UI degradando bem o bastante para
+ninguém reclamar.
+
 ---
 
 *Última atualização: Setembro 2026*
