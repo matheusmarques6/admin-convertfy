@@ -14,6 +14,9 @@ const h = vi.hoisted(() => ({
   // mockada — o teste controla a sequência que ele devolve.
   estruturadorMode: "off" as "off" | "shadow" | "on",
   estruturadorSpy: vi.fn(),
+  // Passo 11: lacuna devolvida pelo Montador e os UPDATEs em email_flow_emails.
+  lacuna: null as null | { posicoes: unknown[]; fatal: boolean },
+  updateSpy: vi.fn(),
 }))
 
 vi.mock("@/lib/supabase/server", () => {
@@ -24,6 +27,11 @@ vi.mock("@/lib/supabase/server", () => {
     const chain: Record<string, unknown> = {
       select: () => chain,
       eq: () => chain,
+      in: () => chain,
+      update: (...a: unknown[]) => {
+        h.updateSpy(table, ...a)
+        return chain
+      },
       order: () => chain,
       limit: () => chain,
       maybeSingle: () => {
@@ -76,7 +84,7 @@ vi.mock("../estruturador/estruturador.service", () => ({
 vi.mock("./component-assembler.service", () => ({
   assembleStoreReference: (...a: unknown[]) => {
     h.assembleSpy(...a)
-    return Promise.resolve({ html: "<html></html>", source: "llm", variantIds: [] })
+    return Promise.resolve({ html: "<html></html>", source: h.lacuna?.fatal ? "lacuna" : "llm", variantIds: [], lacuna: h.lacuna })
   },
 }))
 
@@ -129,6 +137,40 @@ beforeEach(() => {
   })
   h.assembleSpy.mockReset()
   h.blueprintSpy.mockReset()
+  h.lacuna = null
+  h.updateSpy.mockReset()
+})
+
+describe("generateBlueprintAndReference — lacuna de biblioteca (Passo 11)", () => {
+  it("lacuna FATAL: marca o e-mail failed:lacuna_biblioteca, devolve 'lacuna' e NÃO roda blueprint nem reconcile", async () => {
+    h.lacuna = {
+      fatal: true,
+      posicoes: [
+        { block_index: 2, section: "body", label: "Garantias", dispositivo_pedido: "body_garantias", motivo: "todas_descartadas", flow_type: "welcome", email_number: 1 },
+        { block_index: 4, section: "products", label: "Produtos", dispositivo_pedido: "products_grade_preco", motivo: "sem_candidata", flow_type: "welcome", email_number: 1 },
+      ],
+    }
+    const res = await generateBlueprintAndReference(input)
+    expect(res.referenceSource).toBe("lacuna")
+    expect(h.blueprintSpy).not.toHaveBeenCalled()
+    expect(h.reconcileSpy).not.toHaveBeenCalled()
+    expect(h.updateSpy).toHaveBeenCalledWith(
+      "email_flow_emails",
+      expect.objectContaining({ status: "failed", failure_reason: "lacuna_biblioteca" }),
+      expect.anything(),
+    )
+  })
+
+  it("lacuna NÃO fatal (uma posição não-hero): segue com blueprint e não marca failed", async () => {
+    h.lacuna = {
+      fatal: false,
+      posicoes: [{ block_index: 4, section: "products", label: "Produtos", dispositivo_pedido: "products_grade_preco", motivo: "sem_candidata", flow_type: "welcome", email_number: 1 }],
+    }
+    const res = await generateBlueprintAndReference(input)
+    expect(res.referenceSource).toBe("llm")
+    expect(h.blueprintSpy).toHaveBeenCalled()
+    expect(h.updateSpy).not.toHaveBeenCalledWith("email_flow_emails", expect.objectContaining({ status: "failed" }), expect.anything())
+  })
 })
 
 describe("generateBlueprintAndReference — propaga estrutura (Fase 1)", () => {

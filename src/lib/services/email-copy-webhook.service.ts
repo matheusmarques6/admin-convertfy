@@ -254,6 +254,8 @@ interface EmailRow {
   name: string | null
   status: string
   generation_batch_id: string | null
+  /** Passo 11: `lacuna_biblioteca` tira o e-mail do dispatch. */
+  failure_reason?: string | null
 }
 
 interface BlockRow {
@@ -539,7 +541,7 @@ export async function dispatchEmailCopyWebhook(
   // ── Buscar emails + blocks + blueprints + references em paralelo
   let emailsQuery = admin
     .from("email_flow_emails")
-    .select("id, flow_id, number, name, status, generation_batch_id")
+    .select("id, flow_id, number, name, status, generation_batch_id, failure_reason")
     .in("flow_id", flowIds)
     .order("number", { ascending: true })
 
@@ -595,7 +597,7 @@ export async function dispatchEmailCopyWebhook(
       log.info("email_copy.webhook.autoseed", { storeId, seeded })
       let retryQuery = admin
         .from("email_flow_emails")
-        .select("id, flow_id, number, name, status, generation_batch_id")
+        .select("id, flow_id, number, name, status, generation_batch_id, failure_reason")
         .in("flow_id", flowIds)
         .order("number", { ascending: true })
       if (options.onlyDrafts) {
@@ -611,6 +613,15 @@ export async function dispatchEmailCopyWebhook(
       }
       emails = (retryRes.data ?? []) as EmailRow[]
     }
+  }
+
+  // Passo 11: e-mail reprovado na fase 1 por lacuna de biblioteca não vai ao
+  // n8n — com `onlyDrafts: false` (regenerar pipeline) ele entraria com o
+  // template global e morreria em `hero_failed` depois de gastar copy.
+  const lacunas = emails.filter((e) => e.status === "failed" && e.failure_reason === "lacuna_biblioteca")
+  if (lacunas.length > 0) {
+    log.warn("email_copy.emails_com_lacuna_de_biblioteca", { storeId, ids: lacunas.map((e) => e.id) })
+    emails = emails.filter((e) => !lacunas.includes(e))
   }
 
   if (emails.length === 0) {

@@ -408,6 +408,9 @@ describe("SETTLED_REFERENCE_SOURCES", () => {
       global: true,
       store: true,
       none: false,
+      // Passo 11: lacuna de biblioteca é desfecho, não tentativa — o e-mail
+      // já está `failed: lacuna_biblioteca` e o dispatch o pula.
+      lacuna: true,
     }
     for (const [source, settla] of Object.entries(decisao)) {
       expect(SETTLED_REFERENCE_SOURCES.has(source as ReferenceSource)).toBe(

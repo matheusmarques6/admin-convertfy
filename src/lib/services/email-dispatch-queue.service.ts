@@ -384,7 +384,7 @@ async function heartbeat(admin: SupabaseClient, job: JobRow): Promise<void> {
  */
 export const SETTLED_REFERENCE_SOURCES: ReadonlySet<ReferenceSource> = new Set<
   ReferenceSource
->(["code", "llm", "global", "store"])
+>(["code", "llm", "global", "store", "lacuna"])
 
 async function runArchitectForEmail(
   job: JobRow,
@@ -419,6 +419,11 @@ async function runArchitectForEmail(
   //              (intencional, não re-tenta);
   //   "store"  — guard de reuso achou reference+blueprint já persistidos,
   //              settla sem repagar Curador/Blueprint.
+  //   "lacuna" — Passo 11: a biblioteca não tem variante para uma posição
+  //              decidida (hero vazia ou 2+ lacunas). O e-mail já foi
+  //              marcado `failed: lacuna_biblioteca` pelo generate.service;
+  //              repetir o Curador pagaria pelo mesmo resultado, e o
+  //              dispatch pula e-mail com esse motivo.
   // "none" (nenhum bloco montado e sem global curado) ou exceção → conta
   // tentativa; esgotou → 'failed'.
   if (referenceSource && SETTLED_REFERENCE_SOURCES.has(referenceSource))

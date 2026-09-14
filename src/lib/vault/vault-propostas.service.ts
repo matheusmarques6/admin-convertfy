@@ -1,7 +1,7 @@
 /**
  * Lacunas propostas por telemetria — o I/O em volta de `lacuna-draft.ts`.
  *
- * Lê as runs `assembler_chooser` da janela, agrega por chave e faz upsert em
+ * Lê as runs `assembler_chooser` e `assembler` da janela, agrega por chave e faz upsert em
  * `vault_propostas`. Proposta `descartada` NÃO volta a `proposta` quando a
  * violação se repete: descartar é dizer "isto não é lacuna", e o cron
  * ressuscitá-la todo dia ensinaria a ignorar a lista. `copiada` mantém o
@@ -38,7 +38,9 @@ export async function proporLacunas(
   const { data: runs, error } = await admin
     .from("email_generation_runs")
     .select("id, store_id, created_at, parsed_output")
-    .eq("agent", "assembler_chooser")
+    // `assembler` entra pelo Passo 11: é a run que grava
+    // `posicoes_sem_variante` com dispositivo pedido e motivo.
+    .in("agent", ["assembler_chooser", "assembler"])
     .gte("created_at", desde)
     .order("created_at", { ascending: false })
     .limit(500)

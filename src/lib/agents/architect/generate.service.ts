@@ -47,6 +47,7 @@ import {
   type PosicaoEstruturada,
 } from "../estruturador/estruturador-consume"
 import type { EstruturadorOutput } from "../estruturador/estruturador-prompt"
+import { marcarEmailFalhoNaFase1 } from "./fase1-failure"
 import {
   assembleStoreReference,
   type ReferenceSource,
@@ -649,6 +650,7 @@ export async function generateBlueprintAndReference(
     slots,
     papeisPorPosicao: papeisDoCurador,
     fioNarrativo: fioDoCurador,
+    lacuna,
   } = await assembleStoreReference({
     storeId: input.storeId,
     flowType: input.flowType,
@@ -721,6 +723,28 @@ export async function generateBlueprintAndReference(
         : null,
     decisao,
   })
+
+  // Passo 11 — lacuna de biblioteca FATAL: a decisão pediu uma posição
+  // (hero, ou 2+) que a biblioteca não cobre e o resgate não pôde
+  // preencher sem contrariar a decisão. O e-mail é marcado `failed` AQUI,
+  // com o dispositivo pedido na run `assembler`, e NÃO segue para o
+  // blueprint nem para o n8n — antes ia com o template global e morria
+  // em `hero_failed` três minutos e três agentes depois.
+  if (lacuna?.fatal) {
+    log.warn("architect.lacuna_biblioteca", {
+      storeId: input.storeId,
+      flowType: input.flowType,
+      emailNumber: input.emailNumber,
+      emailId,
+      posicoes: lacuna.posicoes.map((p) => `${p.block_index}:${p.section}:${p.dispositivo_pedido ?? "-"}:${p.motivo}`),
+    })
+    if (emailId) {
+      await marcarEmailFalhoNaFase1(admin, emailId, "lacuna_biblioteca", {
+        posicoes: lacuna.posicoes.map((p) => ({ section: p.section, dispositivo: p.dispositivo_pedido, motivo: p.motivo })),
+      })
+    }
+    return { referenceSource: "lacuna" }
+  }
 
   // A INTENÇÃO humana de cada posição (Arquitetura) vem PRIMEIRO no purpose
   // do blueprint; o papel do agente (Curador do vault) entra embaixo como

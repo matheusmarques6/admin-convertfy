@@ -29,7 +29,19 @@ export interface RunParaLacuna {
   createdAt: string
   storeName?: string | null
   violations: ViolacaoDaRun[]
-  posicoesSemVariante: Array<{ section?: string; block_index?: number }>
+  /**
+   * Posições sem variante. Do `assembler_chooser` vêm só `section`; do
+   * `assembler` (Passo 11) vêm também `dispositivo_pedido` e `flow_type`,
+   * que é o que faz a lacuna ter NOME (`lacuna_biblioteca`) em vez de
+   * "nenhuma variante para a seção".
+   */
+  posicoesSemVariante: Array<{
+    section?: string
+    block_index?: number
+    dispositivo_pedido?: string | null
+    flow_type?: string
+    motivo?: string
+  }>
 }
 
 export interface LacunaAgregada {
@@ -47,8 +59,16 @@ export interface LacunaAgregada {
 }
 
 /** Só o que significa "a biblioteca não cobre" vira proposta. */
-const TIPOS_DE_LACUNA = new Set(["aliviador_ausente", "proibicao_violada", "posicao_sem_variante"])
+const TIPOS_DE_LACUNA = new Set(["aliviador_ausente", "proibicao_violada", "posicao_sem_variante", "lacuna_biblioteca"])
 const EXEMPLOS_MAX = 5
+
+/**
+ * Limiar por tipo (Passo 11). `lacuna_biblioteca` vira proposta na PRIMEIRA
+ * ocorrência: o e-mail já reprovou por causa dela, e esperar três batches
+ * seria esperar três reprovações da mesma loja. O resto segue em 3 — são
+ * sinais do Curador, não desfechos.
+ */
+export const MINIMO_POR_TIPO: Readonly<Record<string, number>> = { lacuna_biblioteca: 1 }
 
 /**
  * Chave normalizada. A proibição vem em PROSA da loja ("Não inventar código…
@@ -77,12 +97,17 @@ function secaoDoDetalhe(v: ViolacaoDaRun): string | null {
 }
 
 /** Agrega as violações de N runs por chave; só devolve quem atingiu o mínimo. */
-export function agregarLacunas(runs: RunParaLacuna[], opts: { minimo?: number } = {}): LacunaAgregada[] {
+export function agregarLacunas(
+  runs: RunParaLacuna[],
+  opts: { minimo?: number; minimoPorTipo?: Readonly<Record<string, number>> } = {},
+): LacunaAgregada[] {
   const minimo = opts.minimo ?? 3
+  const minimoPorTipo = opts.minimoPorTipo ?? MINIMO_POR_TIPO
+  const minimoDe = (tipo: string) => minimoPorTipo[tipo] ?? minimo
   const baldes = new Map<string, LacunaAgregada>()
-  const registrar = (run: RunParaLacuna, tipo: string, detalhe: string, secao: string | null) => {
+  const registrar = (run: RunParaLacuna, tipo: string, detalhe: string, secao: string | null, chaveFixa?: string) => {
     if (!TIPOS_DE_LACUNA.has(tipo)) return
-    const chave = `${tipo}:${normalizarDetalhe(tipo, detalhe)}`
+    const chave = chaveFixa ?? `${tipo}:${normalizarDetalhe(tipo, detalhe)}`
     const atual = baldes.get(chave)
     if (!atual) {
       baldes.set(chave, {
@@ -120,6 +145,16 @@ export function agregarLacunas(runs: RunParaLacuna[], opts: { minimo?: number } 
     for (const p of run.posicoesSemVariante ?? []) {
       const secao = (p.section ?? "").trim().toLowerCase()
       if (!secao) continue
+      // Com dispositivo pedido a lacuna tem nome: é o que se cadastra.
+      if (p.dispositivo_pedido) {
+        const flow = (p.flow_type ?? "").trim().toLowerCase() || "flow"
+        const detalhe = `${flow}: a decisão pediu ${p.dispositivo_pedido} (${secao}) e a biblioteca não tem variante ativa`
+        const chave = `lacuna_biblioteca:${flow}:${p.dispositivo_pedido.toLowerCase()}`
+        if (vistas.has(chave)) continue
+        vistas.add(chave)
+        registrar(run, "lacuna_biblioteca", detalhe, secao, chave)
+        continue
+      }
       const detalhe = `nenhuma variante elegível para a seção ${secao}`
       const chave = `posicao_sem_variante:${normalizarDetalhe("posicao_sem_variante", detalhe)}`
       if (vistas.has(chave)) continue
@@ -128,7 +163,7 @@ export function agregarLacunas(runs: RunParaLacuna[], opts: { minimo?: number } 
     }
   }
   return [...baldes.values()]
-    .filter((b) => b.ocorrencias >= minimo)
+    .filter((b) => b.ocorrencias >= minimoDe(b.tipo))
     .sort((a, b) => b.ocorrencias - a.ocorrencias || a.chave.localeCompare(b.chave))
 }
 
@@ -149,6 +184,8 @@ const EXPLICACAO: Record<string, string> = {
     "O toque proíbe algo que a variante escolhida OBRIGA pela anatomia (o requisito depois do ×). Se toda candidata da seção carrega esse requisito, falta uma variante que faça o mesmo papel sem ele.",
   posicao_sem_variante:
     "A sequência do Estruturador pede a seção e o catálogo não tem candidata elegível — a posição fica vazia ou cai no template global.",
+  lacuna_biblioteca:
+    "O Estruturador pediu este DISPOSITIVO para a posição, a biblioteca não tem variante ativa que o realize e o resgate não pôde preencher sem contrariar a decisão (as candidatas eram de dispositivo descartado, ou violavam a decisão). O e-mail foi REPROVADO em `lacuna_biblioteca` — toda geração deste flow reprova até a variante existir. É o caso do gerador de anatomias (Componentes → Gerar anatomia).",
 }
 
 export interface LacunaDraft {
@@ -161,7 +198,10 @@ export interface LacunaDraft {
 /** Determinístico: mesma agregação + mesma data → mesmo rascunho. */
 export function buildLacunaDraft(agg: LacunaAgregada, dataIso: string): LacunaDraft {
   const dia = dataIso.slice(0, 10)
-  const miolo = normalizarDetalhe(agg.tipo, agg.detalhe).replace(/^exige |^aliviador |^nenhuma posicao realiza o aliviador pedido /, "")
+  const miolo =
+    agg.tipo === "lacuna_biblioteca"
+      ? agg.chave.split(":").slice(1).join("-")
+      : normalizarDetalhe(agg.tipo, agg.detalhe).replace(/^exige |^aliviador |^nenhuma posicao realiza o aliviador pedido /, "")
   const slug = slugify(`${agg.secao ?? "geral"}-${agg.tipo.replace(/_/g, "-")}-${miolo}`) || slugify(agg.chave)
   const exemplos = agg.exemplos
     .map((e) => `- ${e.createdAt.slice(0, 10)} · ${e.storeName ?? "(loja não identificada)"} · run ${e.runId.slice(0, 8)}`)
@@ -181,7 +221,7 @@ proposta_em: ${dia}
 
 # Lacuna · ${agg.secao ?? "geral"} · ${agg.tipo.replace(/_/g, " ")}
 
-> RASCUNHO proposto pela telemetria do Curador (${agg.ocorrencias} gerações em 14 dias).
+> RASCUNHO proposto pela telemetria do Curador (${agg.ocorrencias} ${agg.ocorrencias === 1 ? "geração" : "gerações"} em 14 dias).
 > Revise o texto, confirme que a biblioteca de fato não cobre isto e salve em
 > \`componentes/lacunas/${slug}.md\`. Com \`status: aberta\` a nota é servida ao
 > Curador em \`<lacunas_da_biblioteca>\`: ele para de procurar bloco para o que

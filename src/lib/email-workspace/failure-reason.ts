@@ -28,6 +28,12 @@ const FAILURE_REASON_LABELS: Record<string, string> = {
   // variante, e ninguém percebia.
   merge_sem_contrato: "Bloco com copy e sem contrato — a copy nao tem onde entrar",
   qa_failed: "QA reprovou (issues criticas)",
+  // Passo 11: a decisão pediu uma posição que a biblioteca não cobre (o
+  // dispositivo pedido está no slot_map e na run `assembler`). Não é falha
+  // de agente — é lacuna de curadoria, e a proposta já foi ao vault.
+  lacuna_biblioteca: "A biblioteca nao tem anatomia para uma posicao decidida (ver dispositivo pedido)",
+  // Dispatch: nenhum bloco com variante montada.
+  sem_secao_montada: "Nenhuma secao montada — regerar as references ou curar as variantes",
   // Lint de envio (B2): o id da primeira regra bloqueante vai no reason.
   lint_css_var_em_uso: "Lint: var(--x) no HTML final (Gmail/Outlook ignoram)",
   lint_img_sem_src: "Lint: imagem sem src (icone de imagem quebrada no Outlook)",

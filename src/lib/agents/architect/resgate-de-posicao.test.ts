@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import type { ContratoResumo } from "../shared/field-roles"
 
-import { custoDeIncompatibilidade, menosIncompativel } from "./resgate-de-posicao"
+import { custoDeIncompatibilidade, descartesEfetivos, menosIncompativel } from "./resgate-de-posicao"
 
 function contrato(p: Partial<ContratoResumo> = {}): ContratoResumo {
   return {
@@ -59,15 +59,28 @@ describe("menosIncompativel — o caso que motivou o módulo", () => {
 })
 
 describe("custoDeIncompatibilidade", () => {
-  // A regra inteira em uma frase: a copy conserta redação, não conserta
-  // anatomia.
-  it("faltar preço é mais barato que faltar um item da grade", () => {
+  // Medido em 11/09: a copy NÃO pôs preço em products-7 — o slot que a
+  // anatomia não tem, ninguém preenche. Preço custa o mesmo que um item a
+  // menos na grade (40): as duas são faltas de anatomia. O teste antigo
+  // afirmava "faltar preço é mais barato que faltar item" e era ele que
+  // mantinha o e-mail sem preço saindo como se estivesse certo.
+  it("faltar preço custa o mesmo que faltar um item da grade — anatomia, não redação", () => {
     const semPreco = custoDeIncompatibilidade(contrato({ n_itens: 2 }), PRODUCTS_HERO_BOXERS)
     const faltaItem = custoDeIncompatibilidade(
       contrato({ tem_preco: true, n_itens: 1 }),
       PRODUCTS_HERO_BOXERS,
     )
-    expect(semPreco).toBeLessThan(faltaItem)
+    expect(semPreco).toBe(40)
+    expect(semPreco).toBe(faltaItem)
+  })
+
+  // Avaliação segue sendo redação: entra na linha de apoio.
+  it("faltar avaliação continua barato", () => {
+    const semAvaliacao = custoDeIncompatibilidade(
+      contrato({ tem_preco: true, n_itens: 2 }),
+      { ...PRODUCTS_HERO_BOXERS, avaliacao: true },
+    )
+    expect(semAvaliacao).toBe(3)
   })
 
   // Item além do máximo some sozinho (`arbitrarCampos` → `omitir` → o merge
@@ -76,6 +89,50 @@ describe("custoDeIncompatibilidade", () => {
     const aMais = custoDeIncompatibilidade(contrato({ tem_preco: true, n_itens: 4 }), PRODUCTS_HERO_BOXERS)
     const aMenos = custoDeIncompatibilidade(contrato({ tem_preco: true, n_itens: 1 }), PRODUCTS_HERO_BOXERS)
     expect(aMais).toBeLessThan(aMenos)
+  })
+
+  // O caso real da posição 3 do batch 6249aef2: body-4 (body_comparacao)
+  // entrou por resgate depois de o Estruturador descartar exatamente esse
+  // dispositivo com motivo. Descarte é decisão, custa Infinity.
+  it("variante de dispositivo DESCARTADO custa Infinity", () => {
+    const custo = custoDeIncompatibilidade(
+      contrato({ dispositivo: "body_comparacao", n_itens: 3 }),
+      { cupom: false, n_itens: { min: 3, max: 3 } },
+      [{ dispositivo: "body_comparacao" }],
+    )
+    expect(custo).toBe(Infinity)
+  })
+
+  // Sem requisito nenhum na posição o descarte continua valendo: ele é da
+  // DECISÃO do e-mail, não da posição.
+  it("descarte vale mesmo sem requisito na posição", () => {
+    expect(
+      custoDeIncompatibilidade(contrato({ dispositivo: "body_comparacao" }), null, [{ dispositivo: "body_comparacao" }]),
+    ).toBe(Infinity)
+  })
+
+  // A decisão de referência pede `body_garantias` na posição 2 E lista
+  // `body_garantias` nos descartes. Comparar pelo requisito, ou aplicar o
+  // descarte sem olhar o pedido, mataria a posição certa.
+  it("descarte que nomeia o dispositivo PEDIDO pela posição é ignorado", () => {
+    const r = { dispositivo: "body_garantias", cupom: false }
+    expect(descartesEfetivos([{ dispositivo: "body_garantias" }, { dispositivo: "body_comparacao" }], r)).toEqual(
+      new Set(["body_comparacao"]),
+    )
+    expect(
+      custoDeIncompatibilidade(contrato({ dispositivo: "body_garantias" }), r, [{ dispositivo: "body_garantias" }]),
+    ).toBe(0)
+  })
+
+  // Não saber não é violar: variante ainda não classificada (coluna NULL)
+  // nunca é eliminada por descarte.
+  it("variante sem dispositivo cadastrado tem custo finito mesmo com descartes", () => {
+    const custo = custoDeIncompatibilidade(contrato({ dispositivo: null }), null, [{ dispositivo: "body_comparacao" }])
+    expect(Number.isFinite(custo)).toBe(true)
+  })
+
+  it("descarte sem dispositivo é ignorado", () => {
+    expect(custoDeIncompatibilidade(contrato({ dispositivo: "body_tese" }), null, [{ dispositivo: null }])).toBe(0)
   })
 
   // O example do cupom sobrevive ao merge (`pareceExemplo` não reconhece
@@ -153,6 +210,39 @@ describe("menosIncompativel — repetição", () => {
 
   it("seção sem candidata nenhuma devolve null", () => {
     expect(menosIncompativel([], PRODUCTS_HERO_BOXERS, "products")).toBeNull()
+  })
+
+  // Toda candidata descartada → null. Antes o resgate devolvia `pontuadas[0]`
+  // sem olhar o custo, e foi assim que a comparação descartada entrou.
+  it("com todas as candidatas de dispositivo descartado, não há resgate", () => {
+    const escolha = menosIncompativel(
+      [
+        { variant_id: "body-4", contrato: contrato({ dispositivo: "body_comparacao", n_itens: 6 }) },
+        { variant_id: "body-6", contrato: contrato({ dispositivo: "body_comparacao", n_itens: 3 }) },
+      ],
+      { cupom: false, n_itens: { min: 3, max: 3 } },
+      "body",
+      new Set(),
+      [{ dispositivo: "body_comparacao" }],
+    )
+    expect(escolha).toBeNull()
+  })
+
+  // Uma descartada e uma viável: entra a viável e a telemetria conta a que
+  // ficou de fora.
+  it("descartada sai do pool e a viável entra, com a contagem", () => {
+    const escolha = menosIncompativel(
+      [
+        { variant_id: "body-4", contrato: contrato({ dispositivo: "body_comparacao", n_itens: 3 }) },
+        { variant_id: "body-2", contrato: contrato({ dispositivo: "body_tese", n_itens: 3 }) },
+      ],
+      { cupom: false, n_itens: { min: 3, max: 3 } },
+      "body",
+      new Set(),
+      [{ dispositivo: "body_comparacao" }],
+    )
+    expect(escolha?.variant_id).toBe("body-2")
+    expect(escolha?.descartadas_por_dispositivo).toBe(1)
   })
 
   // Duas igualmente incompatíveis não podem alternar a cada geração.

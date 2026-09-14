@@ -693,6 +693,14 @@ export interface ReferenceSlotMapEntry {
    * o consumidor não filtra, para não descartar tudo por falta de dado.
    */
   assembled?: boolean
+  /**
+   * Passo 11: por que a posição ficou sem variante — `sem_candidata`,
+   * `todas_descartadas` (só havia dispositivo que a decisão descartou) ou
+   * `resgate_recusado`. Só em slot `variant_id: null` gravado depois de 14/09.
+   */
+  motivo?: "sem_candidata" | "todas_descartadas" | "resgate_recusado"
+  /** Dispositivo que a decisão pedia para a posição vazia. */
+  dispositivo_pedido?: string | null
 }
 
 // Reference HTML GERADO por (loja × email). Ocupa o papel do reference_html
