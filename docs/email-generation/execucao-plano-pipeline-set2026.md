@@ -917,6 +917,53 @@ de 3–4 razões" não tem dispositivo entre os 22 — o mais próximo é
 e do campo `dispositivo:` nas 44 notas de variante; (3) revisão da tabela
 de backfill (confiança `baixa` em body 6/8, produtos 2).
 
+## Executado — Semana 2 (14/09, mesma branch; commits 0ce622b → f7a57de)
+
+Passos 11 → 15 → 14 → 13 → 16, nessa ordem (o 15 logo depois do 11 porque é
+ele que dá dono ao que o 11 produz; o 16 por último porque nasce inerte).
+Migration 20261153 aplicada. Suíte completa, typecheck e lint no fecho.
+Leitura pós-deploy em `supabase/migrations/DIAGNOSTICO_semana2.sql`.
+
+| Passo | O que entrou | Onde se lê |
+|---|---|---|
+| 11 | descartes da decisão no resgate (Infinity pelo dispositivo da VARIANTE; descarte que nomeia o pedido da posição é ignorado); `preco` 3 → 40; `null` sem candidata finita; `posicoes_sem_variante` coletadas ANTES da cobertura; hero vazia ou 2+ lacunas → `ReferenceSource "lacuna"` + `failed: lacuna_biblioteca` pela fase 1 (`fase1-failure.ts`); dispatch pula; `lacuna_biblioteca` no vault com limiar 1 | run `assembler` (`resgates`, `posicoes_sem_variante`, `lacuna_biblioteca`); `vault_propostas` |
+| 15 | `no_responsavel` em toda issue (tabela exaustiva); `filtrarClaimsCobertos`; vars `decisao_json`/`slot_map_json`; checks `posicao_sem_variante` e `traducao_faltante` | run `qa` (`claims_filtrados`, `decisao_presente`); `qa_issues[].no_responsavel` |
+| 14 | `cta-inventario.ts` (contrato × heurística), `cor-do-botao.ts` (AA por código, faixa decidida no mesmo plano), pesquisa fora do prompt, `paleta-por-codigo.ts` na 2ª falha, line-height 1,1× ampliado, `checarReducaoDeFonte`, `texto_diff` da hero | run `color_format` (`cta_inventario_divergente`, `ajustes_de_cor`, `fallback`); run `lint_envio`; run `hero_section` |
+| 13 | `directive` por campo (exemplo removido por claim), `decisao.proibido`, `estrutura_geral: null` com alvo, `blocks[].campos_omitidos`, `payload_version v3.2`, `copy_prompt_version` no callback (aviso); `copy_fit` sem via `ausente`, aparo só em frase, comparativa ao modelo com `par` | run `copy_dispatch` (`exemplos_removidos`); run `copy` (`copy_prompt_version`, `avisos`); run `copy_fit` (`por_codigo`) |
+| 16 | `ShopifyService.graphql` + `discount-lookup.ts` (issue `cupom_inexistente_na_plataforma` / nota `cupom_nao_conferido`); `client_stores.politicas` + `politicas.ts`/`.service.ts`, captura em `pesquisa-completa`, botão na aba Pesquisa, insumo do Seletor, `<politicas_publicas>` no Catalogador, gate | run `qa` (`notas`); run `seletor` (`insumos_de_politica`); `client_stores.politicas` |
+
+**O que DIVERGIU do desenho, e por quê:**
+
+| Passo | Desenho | Executado | Motivo |
+|---|---|---|---|
+| 11 | `dispositivoPorNome(nome, tags)` com mapa curto | lê a coluna `dispositivo` (B3, backfillada) | a coluna existe desde a Trilha B; NULL é fail-open |
+| 11 | descarte ⇒ Infinity | descarte que nomeia o dispositivo PEDIDO pela posição é ignorado | a decisão de referência pede `body_garantias` em [2] E o lista nos descartes — aplicar mataria a posição certa |
+| 11 | sem gate | sem gate (decisão do dono, 14/09) | welcome-1 da Hero Boxers reprova até `products_grade_preco` existir; a lacuna chega ao vault no mesmo dia |
+| 13 | reenvio único ao n8n com `violacoes[]` em `on` | NÃO construído | decisão do dono: fica para o Passo 17, depois da leitura do shadow |
+| 13 | `content.items[].origem` para reviews | fora | o callback não recebe a fonte do review — o n8n não a envia |
+| 13 | JSON do workflow + teste que o abre | pendente (Bruno) | `docs/n8n/email-copy-flow.md` lista o que o flow precisa ler |
+| 14 | migration editando o `user_template` do `color_format` | sem migration | a config ativa está VAZIA no banco (`user_template` len 0) — os defaults in-code valem |
+| 15 | `no_responsavel` reusando o vocabulário da Conformidade | enum PRÓPRIO (ação) + `mapearParaConformidade` | a Conformidade nomeia fronteiras entre agentes; a issue nomeia quem corrige |
+| 16 | coluna `politicas` (doc) | coluna `politicas` SEPARADA da ficha, com precedência ficha > políticas | captura automática não pode ganhar o selo `verificado` |
+
+**Medido nesta sessão (sem geração real):** `resgate-de-posicao` 24 testes
+(descarte, null, preço); fixture do lint agora acusa **14** correções de
+line-height no HTML de 11/09 (eram 3 com a régua antiga); `cor-do-botao`
+recusa branco sobre branco e inverte na faixa preta; `paleta-por-codigo`
+tira `#D00000` e `#B1B3B6` do documento de teste; `block-copy-schema`
+remove "SHOP 10% OFF" numa posição `cupom:false` e devolve `directive`;
+`politicas.ts` extrai 30 dias (pt/en/pl) e "frete grátis acima de R$ 199 ·
+5 a 10 dias úteis"; `discount-lookup` sem token devolve `sem_token` sem
+chamar a API. Produção: `client_stores.politicas` criada; gates inalterados.
+
+**Pendências declaradas:** geração real (Hero Boxers welcome 1 → esperado
+`failed: lacuna_biblioteca` com `products_grade_preco` no `slot_map` e a
+proposta no vault; Luxe Lift welcome 1 no caminho feliz com dono em toda
+issue); captura real das políticas (egress bloqueado daqui); Bruno: flow
+do n8n (`directive`, `campos_omitidos`, `decisao.proibido`,
+`copy_prompt_version`) + export do JSON; Passo 17 (reenvio) após a leitura
+do shadow; cupom só protege quando alguma loja tiver `shopify_access_token`.
+
 ## SEMANA 2 — a falha nomeada vira e-mail certo
 
 ### Passo 11 · A2 parte 1 · Resgate que respeita descartes e preço

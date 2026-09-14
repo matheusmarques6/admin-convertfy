@@ -6198,6 +6198,69 @@ Trilha B". O que não pode regredir:
   `email_agent_configs` (20261151) E em `AGENT_VISUAL`/`PIPELINE_AGENT_ORDER`/
   grafo do estúdio — `agent-check-sync.test.ts` reprova o que faltar.
 
+## Semana 2 — a falha nomeada vira e-mail certo (14/09, migration 20261153)
+
+Passos 11, 13, 14, 15 e 16 do plano de set/2026, depois da Trilha B.
+Execução em `docs/email-generation/execucao-plano-pipeline-set2026.md`
+§ "Executado — Semana 2"; leitura pós-deploy em
+`supabase/migrations/DIAGNOSTICO_semana2.sql`. O que não pode regredir:
+
+- **Resgate respeita a decisão** (`resgate-de-posicao.ts`): variante cujo
+  DISPOSITIVO (coluna B3) está em `decisao.descartes` custa `Infinity`;
+  descarte que nomeia o dispositivo que a própria posição pede é IGNORADO
+  (a decisão de referência pede `body_garantias` e o lista nos descartes);
+  variante sem dispositivo nunca é eliminada; `preco` custa 40 (anatomia,
+  não redação — "o preço entra pela copy" era falso). Sem candidata finita
+  o resgate devolve `null`. Hero vazia ou 2+ lacunas = FATAL:
+  `ReferenceSource` `"lacuna"` (settled na fila), o `generate.service`
+  marca `failed: lacuna_biblioteca` pela fase 1 (`fase1-failure.ts` — o
+  primeiro escritor de `failure_reason` antes da fase 2), o dispatch pula
+  o e-mail. A lacuna vira proposta no vault na PRIMEIRA ocorrência
+  (`MINIMO_POR_TIPO`), chaveada por flow + dispositivo. Decisão do dono:
+  ligado direto, sem gate — welcome-1 da Hero Boxers reprova até
+  `products_grade_preco` existir na biblioteca.
+- **QA recebe a decisão** (`qa-responsavel.ts`): `QaIssue.no_responsavel`
+  (seletor | estruturador | curador | copy | imagem | formatacao |
+  biblioteca | loja | sistema) atribuído UMA vez sobre a lista final —
+  `Record<QaIssueType,…>` obriga dono para tipo novo. `claim_nao_coberto`
+  que casa com `insumos_permitidos` (2+ palavras) ou produto da tabela
+  viva é descartada por código (`claims_filtrados` na run). Vars
+  `decisao_json`/`slot_map_json`; checks `posicao_sem_variante` (high,
+  biblioteca) e `traducao_faltante` (medium, loja).
+- **Cores & Botões decide com o contrato** (`cta-inventario.ts`): o botão
+  de cada bloco vem do `output_schema` (`buildBlockContracts`), a
+  heurística `extrairCtas` é verificação — divergência vai à run
+  (`cta_inventario_divergente`). `adicionar` só quando o contrato NÃO tem
+  CTA e a decisão não o nega. **A cor do botão é do código**
+  (`cor-do-botao.ts`): só papéis da paleta, AA 4,5:1 no par, 3:1 contra a
+  faixa REAL (a decidida no mesmo plano); ajuste registrado. A pesquisa
+  saiu do prompt. Na 2ª falha, `aplicarPaletaPorCodigo` (cor saturada →
+  papel; fundo estranho → fundo da loja) em vez de deixar o HTML velho.
+  `line-height ≥ 1,1×` também para `normal`/unitless e título sem
+  entrelinha (14 correções no HTML de 11/09, não 3);
+  `checarReducaoDeFonte` — sem teto absoluto, nunca abaixo da variante,
+  no máximo 1,25×. `texto_diff` da hero na run.
+- **Payload do n8n com uma voz** (v3.2): `exemplo` que promete o que a
+  decisão nega sai (`avaliarClaims`) e vira `directive`;
+  `decisao.proibido` deduplicado; `estrutura_geral: null` com alvo;
+  `blocks[].campos_omitidos`; callback lê `copy_prompt_version` (ausente
+  = aviso na run `copy`). **Sem reenvio ao n8n** (Passo 17).
+  `copy_fit`: `apararNoLimite` só em fronteira de FRASE (senão `null` → o
+  modelo); a via `ausente` foi REMOVIDA (campo vazio sai pelo merge);
+  coluna comparativa que não cabe vai ao modelo com `par` e a instrução
+  de manter o lado.
+- **Cupom e políticas**: `ShopifyService.graphql` +
+  `cupomExisteNaPlataforma` (`discountNodes`; sem token = NOTA
+  `cupom_nao_conferido` na run `qa`, nunca issue — nasce INERTE: zero
+  lojas com token). `client_stores.politicas` (troca/frete lidos das
+  páginas públicas, com URL) é coluna SEPARADA da ficha — captura
+  automática não ganha o selo `verificado`; ficha > políticas. Captura
+  antes do Catalogador em `pesquisa-completa` (teto 20s, fail-open),
+  botão "Ler políticas" na aba Pesquisa, insumo do Seletor com a URL,
+  `<politicas_publicas>` no Catalogador, fonte para o gate. `baixarPagina`
+  saiu do conector Internet para `lib/ai/web/baixar-pagina.ts` — a régua
+  de SSRF é a parte que não pode divergir.
+
 ---
 
 *Última atualização: Setembro 2026*
