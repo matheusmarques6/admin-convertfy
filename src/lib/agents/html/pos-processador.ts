@@ -22,7 +22,8 @@
  *     solto que sobrar;
  *  6. `alt` das imagens: rótulo conhecido pela URL, senão o padrão da loja;
  *  7. ano do copyright = corrente;
- *  8. `line-height` menor que a fonte → 1,15× (texto cortado no Outlook).
+ *  8. `line-height` menor que 1,1× a fonte → 1,1× (texto cortado no Outlook);
+ *     título ≥ 20px sem line-height ganha um.
  *
  * Fora daqui, de propósito: âncora sem destino, texto de exemplo,
  * placeholder, contraste e largura — corrigir isso é inventar conteúdo ou
@@ -36,6 +37,11 @@ import {
   ehMarcadorInterno,
   paresMsoAnchor,
 } from "./lint-envio"
+
+/** Passo 14: entrelinha mínima em relação ao corpo. */
+export const FATOR_LINE_HEIGHT = 1.1
+/** Fonte a partir da qual a ausência de line-height é corrigida. */
+export const TITULO_MIN_PX = 20
 
 export type FixId =
   | "styles_fundidos"
@@ -205,15 +211,36 @@ export function posProcessar(htmlEntrada: string, ctx: PosProcessadorContexto = 
   }
 
   // 8. line-height -------------------------------------------------------------
+  // Passo 14: a régua é `line-height ≥ 1,1 × font-size` (o título de 50px
+  // com 43px passava). Três formas da mesma falta: px abaixo da fonte;
+  // `normal`/unitless abaixo de 1,1 (o Outlook resolve `normal` apertado em
+  // fontes grandes); e TÍTULO (≥ 20px) sem line-height nenhum — ali o
+  // cliente escolhe, e escolhe mal. Só mexe na mesma declaração; herança
+  // por CSS não é tocada.
   {
     let n = 0
     html = html.replace(/style\s*=\s*"([^"]*)"/gi, (m, decl: string) => {
       const fs = /font-size\s*:\s*(\d+(?:\.\d+)?)px/i.exec(decl)
-      const l = /line-height\s*:\s*(\d+(?:\.\d+)?)px/i.exec(decl)
-      if (!fs || !l || Number(l[1]) >= Number(fs[1])) return m
+      if (!fs) return m
+      const fonte = Number(fs[1])
+      const minimo = Math.round(fonte * FATOR_LINE_HEIGHT)
+      const lpx = /line-height\s*:\s*(\d+(?:\.\d+)?)px/i.exec(decl)
+      if (lpx) {
+        if (Number(lpx[1]) >= minimo) return m
+        n++
+        return `style="${decl.replace(/line-height\s*:\s*\d+(?:\.\d+)?px/i, `line-height:${minimo}px`)}"`
+      }
+      const lu = /line-height\s*:\s*(normal|\d+(?:\.\d+)?)(?![\w%.])/i.exec(decl)
+      if (lu) {
+        const valor = lu[1].toLowerCase() === "normal" ? 1.0 : Number(lu[1])
+        if (valor >= FATOR_LINE_HEIGHT) return m
+        n++
+        return `style="${decl.replace(/line-height\s*:\s*(?:normal|\d+(?:\.\d+)?)(?![\w%.])/i, `line-height:${minimo}px`)}"`
+      }
+      if (/line-height\s*:/i.test(decl)) return m // em/%/rem: fora da régua
+      if (fonte < TITULO_MIN_PX) return m
       n++
-      const novo = Math.round((Number(fs[1]) * 115) / 100)
-      return `style="${decl.replace(/line-height\s*:\s*\d+(?:\.\d+)?px/i, `line-height:${novo}px`)}"`
+      return `style="${decl.replace(/\s*;?\s*$/, "")};line-height:${minimo}px"`
     })
     if (n > 0) aplicados.push({ id: "line_height_corrigido", n })
   }

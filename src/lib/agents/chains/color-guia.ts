@@ -283,8 +283,15 @@ a regra que ela serve.
 
 /** Os botões: inversão, hierarquia e a regra da casa de que todo bloco tem um. */
 export const CTAS_BLOCO = `<ctas>
-Você recebe \`<ctas>\`: cada botão, com a faixa em que está, o texto, o fundo
-e a cor do label atuais, se é preenchido ou vazado, largura e raio.
+Você recebe \`<ctas>\` em duas listas: \`botoes\` (cada botão visível, com a
+faixa em que está, o texto, o fundo e a cor do label atuais, se é preenchido
+ou vazado, largura e raio) e \`blocos_sem_botao_visivel\` (os blocos em que a
+leitura do HTML não achou botão). As duas carregam \`tem_cta_por_contrato\`:
+o que o CONTRATO do bloco (o schema da variante) declara. O contrato vence a
+leitura: bloco com \`tem_cta_por_contrato: true\` TEM botão mesmo quando a
+lista de visíveis não o mostra — a heurística não o viu, e um \`adicionar\`
+ali é descartado pelo código. Só use \`adicionar\` quando
+\`tem_cta_por_contrato\` é \`false\` ou \`null\`.
 
 - TODA faixa que você mudar força uma decisão sobre os botões dela. Em faixa
   clara, botão escuro; em faixa escura, botão claro — mesma forma, mesma
@@ -295,9 +302,12 @@ e a cor do label atuais, se é preenchido ou vazado, largura e raio.
 - O acento marca o que importa: no máximo 2 usos na peça (o CTA, um destaque
   de headline OU o código da oferta). Nunca em texto corrido.
 
-TODO BLOCO PRECISA DE UM CTA — regra da casa. Bloco que aparece em
-\`<faixas>\` e não tem nenhuma entrada em \`<ctas>\` está sem botão, e pô-lo
-ali é seu trabalho: use \`adicionar\`.
+TODO BLOCO PRECISA DE UM CTA — regra da casa. Bloco em
+\`blocos_sem_botao_visivel\` com \`tem_cta_por_contrato\` \`false\` ou \`null\`
+está sem botão, e pô-lo ali é seu trabalho: use \`adicionar\`. A COR do botão
+(novo ou recolorido) é decidida pelo código contra o fundo real da faixa, com
+contraste AA — você indica \`fundo\`/\`cor_label\` como preferência entre os
+papéis da paleta, e o código confirma ou corrige.
 
 Você ESCREVE o label — 2 a 4 palavras, no idioma e na voz da loja, falando do
 que aquele bloco trata. Repetir o CTA principal da peça é legítimo e comum:

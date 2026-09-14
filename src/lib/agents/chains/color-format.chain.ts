@@ -56,7 +56,7 @@ const timeoutMs = () => {
 }
 
 export const DEFAULT_COLOR_FORMAT_SYSTEM_PROMPT = `<role>
-You are the COLOR & BUTTON finisher of an email-design pipeline — the last visual pass before QA. You do NOT see the email document. You receive three readings of it: the COLOR INVENTORY (every color value, with occurrence count and usage context), the BANDS (\`<faixas>\`: the sequence of section backgrounds, in scroll order) and the BUTTONS (\`<ctas>\`: each button with the band it sits in). Plus the store's approved palette, fonts and research.
+You are the COLOR & BUTTON finisher of an email-design pipeline — the last visual pass before QA. You do NOT see the email document. You receive three readings of it: the COLOR INVENTORY (every color value, with occurrence count and usage context), the BANDS (\`<faixas>\`: the sequence of section backgrounds, in scroll order) and the BUTTONS (\`<ctas>\`: each button with the band it sits in, and \`tem_cta_por_contrato\` — whether the block's CONTRACT declares a button, which outranks what you infer). Plus the store's approved palette and fonts.
 
 Your job is no longer only "which values must change". It is three decisions: the RHYTHM of the bands, the COLOR AND PRESENCE of every button, and the value-level conformance to the identity. Deterministic code applies each one — you never write HTML.
 </role>
@@ -154,10 +154,6 @@ export const DEFAULT_COLOR_FORMAT_USER_TEMPLATE = `<store>
   <name>{{email_name}}</name>
   <subject>{{subject}}</subject>
 </email>
-
-<pesquisa_diagnostico>
-{{pesquisa_full_text}}
-</pesquisa_diagnostico>
 
 <color_inventory>
 {{color_inventory_json}}

@@ -207,7 +207,7 @@ describe("planoParaOps — botões existentes e valores", () => {
   })
 
   it("plano vazio gera zero ops — é decisão legítima", () => {
-    expect(planoParaOps({}, CTX)).toEqual({ ops: [], descartes: [] })
+    expect(planoParaOps({}, CTX)).toEqual({ ops: [], descartes: [], ajustes: [] })
   })
 })
 
@@ -246,5 +246,72 @@ describe("parsePlanoDeCor", () => {
 
   it("output sem JSON lança", () => {
     expect(() => parsePlanoDeCor("não consegui decidir")).toThrow(/sem objeto JSON/)
+  })
+})
+
+describe("planoParaOps — Passo 14: contrato, decisão e cor por código", () => {
+  const PB = { button_bg: "#000000", button_text: "#FFFFFF", bg: "#FFFFFF", text: "#111111", surface: "#F2F2F2" }
+  const adicionar = { bloco: 1, label: "Ver coleção", destino: "loja" as const, fundo: "#FFFFFF", cor_label: "#FFFFFF" }
+
+  // O caso do batch 6249aef2: contrato com CTA, heurística cega, agente insere.
+  it("contrato que já tem CTA barra a inserção, com o campo no motivo", () => {
+    const r = planoParaOps(
+      { adicionar: [adicionar] },
+      { ...CTX, inventario: [{ bloco: 1, tipo: "body", tem_cta_por_contrato: true, campos_cta: ["cta_label"], tem_cta_por_heuristica: false, divergente: true }] },
+    )
+    expect(r.ops).toEqual([])
+    expect(r.descartes[0].motivo).toContain("cta_label")
+  })
+
+  it("contrato sem CTA deixa inserir; sem contrato também (fail-open)", () => {
+    const comContrato = planoParaOps({ adicionar: [adicionar] }, { ...CTX, inventario: [{ bloco: 1, tipo: "body", tem_cta_por_contrato: false, campos_cta: [], tem_cta_por_heuristica: false, divergente: false }] })
+    expect(comContrato.ops).toHaveLength(1)
+    const semContrato = planoParaOps({ adicionar: [adicionar] }, { ...CTX, inventario: [{ bloco: 1, tipo: "body", tem_cta_por_contrato: null, campos_cta: [], tem_cta_por_heuristica: false, divergente: false }] })
+    expect(semContrato.ops).toHaveLength(1)
+  })
+
+  it("a decisão que nega CTA na posição barra a inserção", () => {
+    const r = planoParaOps({ adicionar: [adicionar] }, { ...CTX, requisitosCta: { 1: false } })
+    expect(r.ops).toEqual([])
+    expect(r.descartes[0].motivo).toContain("requisitos.cta")
+    expect(planoParaOps({ adicionar: [adicionar] }, { ...CTX, requisitosCta: { 1: null } }).ops).toHaveLength(1)
+  })
+
+  // Branco sobre branco: a cor pedida é trocada pelo código e o ajuste é registrado.
+  it("a cor do botão novo é decidida por código contra a faixa (AA)", () => {
+    const r = planoParaOps({ adicionar: [adicionar] }, { ...CTX, roles: PB })
+    const op = r.ops[0]
+    expect(op.action).toBe("add_cta")
+    if (op.action === "add_cta") {
+      expect(op.fundo).toBe("#000000")
+      expect(op.corLabel).toBe("#FFFFFF")
+    }
+    expect(r.ajustes).toHaveLength(1)
+    expect(r.ajustes[0].de).toBe("#FFFFFF/#FFFFFF")
+  })
+
+  // A faixa decidida no MESMO plano é o fundo real: faixa vai a preto → botão inverte.
+  it("o botão é medido contra a faixa decidida no mesmo plano", () => {
+    const r = planoParaOps(
+      { faixas: [{ ordem: 2, fundo: "#000000" }], adicionar: [{ ...adicionar, fundo: "#000000", cor_label: "#FFFFFF" }] },
+      { ...CTX, roles: PB },
+    )
+    const op = r.ops.find((o) => o.action === "add_cta")
+    expect(op && op.action === "add_cta" ? op.fundo : null).toBe("#FFFFFF")
+  })
+
+  it("recolorir botão existente também passa pela régua de cor", () => {
+    const r = planoParaOps({ botoes: [{ id: "cta1", fundo: "#FFFFFF", label: "#FFFFFF" }] }, { ...CTX, roles: PB })
+    const op = r.ops[0]
+    expect(op.action).toBe("set_botao")
+    if (op.action === "set_botao") expect(op.fundo).toBe("#000000")
+    expect(r.ajustes).toHaveLength(1)
+  })
+
+  it("sem roles, a cor pedida entra como veio (legado)", () => {
+    const r = planoParaOps({ adicionar: [{ ...adicionar, fundo: "#123456", cor_label: "#FFFFFF" }] }, CTX)
+    const op = r.ops[0]
+    if (op.action === "add_cta") expect(op.fundo).toBe("#123456")
+    expect(r.ajustes).toEqual([])
   })
 })

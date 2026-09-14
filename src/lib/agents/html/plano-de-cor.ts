@@ -22,6 +22,8 @@
 
 import type { FormatOp } from "./apply-patches"
 import type { Cta, Faixa } from "./color-faixas"
+import { corDoBotao, type PapeisParaBotao } from "./cor-do-botao"
+import type { InventarioDeCta } from "./cta-inventario"
 import { escalaDoBotao } from "./escala-do-botao"
 import { isColorLiteral } from "./color-inventory"
 
@@ -99,6 +101,33 @@ export interface ContextoDoPlano {
   urlPorBloco?: Record<number, string>
   /** Fonte da peça, para o botão novo não estrear uma família. */
   fontFamily?: string | null
+  /**
+   * Passo 14: o botão de cada bloco pelo CONTRATO (`cta-inventario.ts`).
+   * Com ele, `adicionar` só é traduzida quando o contrato diz que o bloco
+   * NÃO tem CTA — a heurística `ctas` vira verificação secundária. Ausente
+   * → só a heurística decide (comportamento anterior).
+   */
+  inventario?: ReadonlyArray<InventarioDeCta> | null
+  /**
+   * Passo 14: `requisitos.cta` da decisão, por bloco. `false` nega o botão
+   * naquela posição; `true`/`null` deixam a inserção seguir. Ausente → não
+   * há decisão (Estruturador desligado) e nada é negado por aqui.
+   */
+  requisitosCta?: Readonly<Record<number, boolean | null | undefined>> | null
+  /**
+   * Passo 14: papéis da paleta. Com eles a COR do botão inserido ou
+   * recolorido é decidida por código contra o fundo real da faixa
+   * (`corDoBotao`) — o agente decide que o botão existe e o que diz; a
+   * cor não é dele. Ausente → a cor pedida entra como veio (legado).
+   */
+  roles?: PapeisParaBotao | null
+}
+
+export interface AjusteDeCor {
+  o_que: string
+  de: string
+  para: string
+  motivo: string
 }
 
 export interface Descarte {
@@ -110,6 +139,8 @@ export interface Descarte {
 export interface TraducaoDoPlano {
   ops: FormatOp[]
   descartes: Descarte[]
+  /** Cores de botão que o código trocou (Passo 14). Vazio sem `roles`. */
+  ajustes: AjusteDeCor[]
 }
 
 const OFERTA_NO_LABEL =
@@ -168,8 +199,15 @@ function resolverHref(destino: Destino, bloco: number, ctx: ContextoDoPlano): st
 export function planoParaOps(plano: PlanoDeCor, ctx: ContextoDoPlano): TraducaoDoPlano {
   const ops: FormatOp[] = []
   const descartes: Descarte[] = []
+  const ajustes: AjusteDeCor[] = []
   const porOrdem = new Map(ctx.faixas.map((f) => [f.ordem, f]))
+  const porBloco = new Map(ctx.faixas.map((f) => [f.bloco, f]))
+  const ctaPorId = new Map(ctx.ctas.map((c) => [c.id, c]))
   const idsDeCta = new Set(ctx.ctas.map((c) => c.id))
+  const inventarioPorBloco = new Map((ctx.inventario ?? []).map((i) => [i.bloco, i]))
+  // O fundo de uma faixa DEPOIS das decisões de faixa deste mesmo plano —
+  // o botão é medido contra a cor em que vai pousar, não contra a antiga.
+  const fundoDecidido = new Map<number, string>()
   // Botão que só existe no ramo do Outlook NÃO conta como botão presente:
   // fora dali o lugar está vazio, e tratá-lo como CTA do bloco deixaria a
   // seção sem botão para quase todo leitor. Ele aparece no `ctas_json` com
@@ -208,7 +246,16 @@ export function planoParaOps(plano: PlanoDeCor, ctx: ContextoDoPlano): TraducaoD
       continue
     }
     ops.push({ action: "set_fundo", bloco: faixa.bloco, para: d.fundo })
+    fundoDecidido.set(faixa.bloco, d.fundo)
     pintadas++
+  }
+
+  /** Fundo real em que um botão do bloco pousa (com a decisão de faixa deste plano). */
+  const fundoDaFaixaDe = (bloco: number | null): string | null => {
+    if (bloco == null) return null
+    const f = porBloco.get(bloco)
+    if (!f || f.foto) return null
+    return fundoDecidido.get(bloco) ?? f.fundo
   }
 
   // ── Botões que existem ───────────────────────────────────────────────
@@ -217,11 +264,30 @@ export function planoParaOps(plano: PlanoDeCor, ctx: ContextoDoPlano): TraducaoD
       descartes.push({ o_que: `botão ${d.id}`, motivo: "não existe no documento" })
       continue
     }
-    const fundo = d.fundo && isColorLiteral(d.fundo) ? d.fundo : undefined
-    const label = d.label && isColorLiteral(d.label) ? d.label : undefined
+    let fundo = d.fundo && isColorLiteral(d.fundo) ? d.fundo : undefined
+    let label = d.label && isColorLiteral(d.label) ? d.label : undefined
     if (!fundo && !label) {
       descartes.push({ o_que: `botão ${d.id}`, motivo: "sem cor válida para aplicar" })
       continue
+    }
+    // Passo 14: a cor é conferida por código contra o fundo real da faixa.
+    // O agente diz "este botão inverte"; o par que garante AA é do código.
+    if (ctx.roles) {
+      const cta = ctaPorId.get(d.id)
+      const cor = corDoBotao(fundoDaFaixaDe(cta?.bloco ?? null), ctx.roles, {
+        fundo: fundo ?? cta?.fundo ?? null,
+        texto: label ?? cta?.label ?? null,
+      })
+      if (cor.ajustado) {
+        ajustes.push({
+          o_que: `botão ${d.id}`,
+          de: `${fundo ?? cta?.fundo ?? "?"}/${label ?? cta?.label ?? "?"}`,
+          para: `${cor.fundo}/${cor.texto}`,
+          motivo: cor.motivo ?? "ajuste de contraste",
+        })
+      }
+      fundo = cor.fundo
+      label = cor.texto
     }
     ops.push({
       action: "set_botao",
@@ -240,6 +306,22 @@ export function planoParaOps(plano: PlanoDeCor, ctx: ContextoDoPlano): TraducaoD
     }
     if (blocosComCta.has(d.bloco)) {
       descartes.push({ o_que: alvo, motivo: "o bloco já tem botão" })
+      continue
+    }
+    // Passo 14: o CONTRATO decide se o bloco tem CTA. A heurística não viu
+    // os botões de body-3 e products-7 (batch 6249aef2) e o agente inseriu
+    // um segundo — o `output_schema` da variante já dizia que existia.
+    const inv = inventarioPorBloco.get(d.bloco)
+    if (inv?.tem_cta_por_contrato === true) {
+      descartes.push({
+        o_que: alvo,
+        motivo: `o contrato do bloco já tem CTA (${inv.campos_cta.join(", ")}) — a heurística não o viu`,
+      })
+      continue
+    }
+    // Passo 14: a decisão nega CTA nesta posição (`requisitos.cta: false`).
+    if (ctx.requisitosCta && ctx.requisitosCta[d.bloco] === false) {
+      descartes.push({ o_que: alvo, motivo: "a decisão nega CTA nesta posição (requisitos.cta: false)" })
       continue
     }
     // A HERO nunca recebe botão inserido, mesmo quando `<ctas>` chega sem
@@ -277,7 +359,19 @@ export function planoParaOps(plano: PlanoDeCor, ctx: ContextoDoPlano): TraducaoD
       descartes.push({ o_que: alvo, motivo: "nenhum destino disponível — a loja não tem URL conhecida" })
       continue
     }
-    if (!isColorLiteral(d.fundo) || !isColorLiteral(d.cor_label)) {
+    let fundoNovo = d.fundo
+    let corLabelNova = d.cor_label
+    if (ctx.roles) {
+      // Passo 14: a cor do botão novo é do código, medida contra a faixa em
+      // que ele vai pousar — foi assim que o segundo botão saiu branco
+      // sobre branco em 11/09.
+      const cor = corDoBotao(fundoDaFaixaDe(d.bloco), ctx.roles, { fundo: d.fundo, texto: d.cor_label })
+      if (cor.ajustado) {
+        ajustes.push({ o_que: alvo, de: `${d.fundo}/${d.cor_label}`, para: `${cor.fundo}/${cor.texto}`, motivo: cor.motivo ?? "ajuste de contraste" })
+      }
+      fundoNovo = cor.fundo
+      corLabelNova = cor.texto
+    } else if (!isColorLiteral(d.fundo) || !isColorLiteral(d.cor_label)) {
       descartes.push({ o_que: alvo, motivo: "cor do botão inválida" })
       continue
     }
@@ -286,8 +380,8 @@ export function planoParaOps(plano: PlanoDeCor, ctx: ContextoDoPlano): TraducaoD
       bloco: d.bloco,
       label: d.label.trim(),
       href,
-      fundo: d.fundo,
-      corLabel: d.cor_label,
+      fundo: fundoNovo,
+      corLabel: corLabelNova,
       radiusPx: escala.radiusPx,
       fontSizePx: escala.fontSizePx,
       peso: escala.peso,
@@ -322,7 +416,7 @@ export function planoParaOps(plano: PlanoDeCor, ctx: ContextoDoPlano): TraducaoD
     })
   }
 
-  return { ops, descartes }
+  return { ops, descartes, ajustes }
 }
 
 export class PlanoParseError extends Error {

@@ -67,6 +67,9 @@ import { personaToText } from "./image/persona-text"
 import { buildImageAlt } from "./image/resolve-block-prompt.service"
 import { computeRenderChecks } from "./html/render-checks"
 import { atribuirResponsaveis } from "./html/qa-responsavel"
+import { inventarioDeCtas } from "./html/cta-inventario"
+import { aplicarPaletaPorCodigo } from "./html/paleta-por-codigo"
+import { diffTextoVisivel } from "./html/texto-diff"
 import { computeContentChecks } from "./html/content-checks"
 import { lerDecisao } from "./shared/decisao-do-email"
 import { loadContratoModes, bloqueia, roda } from "./shared/contrato-mode"
@@ -195,7 +198,6 @@ import {
   stripNbspIndentation,
   enforceLangAttribute,
 } from "./html/post-process"
-import { pesquisaToFullText, type PesquisaFields } from "@/lib/briefing/briefing-text"
 import {
   logGenerationRun,
   startGenerationRun,
@@ -3301,6 +3303,12 @@ async function runFormattingChain(p: {
             // guards rodaram e o fragmento do agente entrou.
             hero_fallback: heroFallback,
             hero_inventado: inventado,
+            // Passo 14: o diff do TEXTO VISÍVEL entre a região do merge e o
+            // fragmento do agente — o rastro que os guards sim/não não davam.
+            texto_diff: (() => {
+              const d = diffTextoVisivel(regionHtml, r.output)
+              return { removidas: d.removidas.slice(0, 20), inseridas: d.inseridas.slice(0, 20), mantidas: d.mantidas }
+            })(),
             // CM-6: por que o exemplo renderizado da variante entrou (ou
             // não) no prompt. `stale` alimenta o selo dos logs.
             rendered_reference: heroRendered
@@ -3841,6 +3849,29 @@ async function runFormattingChain(p: {
     const inputHtml = currentHtml
     const config = toChainConfig(colorSwitch.config, "color_format")
     const storeRaw = ctx.storeRaw as Record<string, unknown>
+    // Passo 14: o botão de cada bloco pelo CONTRATO (schema da variante),
+    // com a heurística como verificação. Os contratos vêm das mesmas
+    // linhas de `email_blocks` que o QA usa; a decisão (requisitos.cta por
+    // posição) e os papéis decidem, junto do código, a inserção e a cor.
+    const contratosDosBlocos = buildBlockContracts(
+      (fmtCtx.blocks ?? []).map((b) => ({
+        id: (b as { id?: string }).id ?? "",
+        position: (b as { position: number }).position,
+        block_type: (b as { block_type: string }).block_type,
+        label: (b as { label?: string | null }).label ?? null,
+        fields: (b as { fields?: unknown }).fields,
+      })),
+    )
+    const faixasParaInventario = extrairFaixas(inputHtml)
+    const inventarioCta = inventarioDeCtas(
+      faixasParaInventario,
+      contratosDosBlocos,
+      extrairCtas(inputHtml, faixasParaInventario),
+    )
+    const decisaoParaCor = lerDecisao(ctx.blueprint?.decisao)
+    const requisitosCtaPorBloco: Record<number, boolean | null> | null = decisaoParaCor
+      ? Object.fromEntries(decisaoParaCor.posicoes.map((p) => [p.block_index, p.requisitos?.cta ?? null]))
+      : null
     const vars = buildColorFormatVars(fmtCtx, inputHtml, {
       brand: ctx.brand,
       niche: (storeRaw.niche as string) || "",
@@ -3849,7 +3880,9 @@ async function runFormattingChain(p: {
           (storeRaw.tom_de_voz as string)) ||
           null,
       ).join(", "),
-      pesquisaFullText: pesquisaToFullText(storeRaw as PesquisaFields),
+      // Passo 14: a pesquisa (15,5k chars) saiu do prompt — o agente nunca a
+      // usou e ela custava ~30% do input.
+      inventarioDeCtas: inventarioCta,
       blocosExcluidos: tokenizados.indices,
     })
     // Var exigida pelo schema que o builder não montou. Em produção isso só
@@ -3891,8 +3924,14 @@ async function runFormattingChain(p: {
               },
               urlLoja: (storeRaw.url as string) || (storeRaw.store_url as string) || null,
               fontFamily: fmtCtx.fontBody || null,
+              // Passo 14: contrato decide se o bloco tem CTA; a decisão pode
+              // negar CTA na posição; a cor do botão é do código (AA contra
+              // a faixa real).
+              inventario: inventarioCta,
+              requisitosCta: requisitosCtaPorBloco,
+              roles: fmtCtx.roles ?? null,
             })
-          : { ops: r.ops, descartes: [] }
+          : { ops: r.ops, descartes: [], ajustes: [] }
         // Em `shadow` o plano é decidido e GRAVADO, e nada de faixa ou botão
         // é aplicado: a aparência da peça sai como saía. É a única forma de
         // ler as decisões antes de deixá-las mexer em e-mail de cliente.
@@ -4027,6 +4066,19 @@ async function runFormattingChain(p: {
             ...(traducao.descartes.length > 0
               ? { plano_descartes: traducao.descartes }
               : {}),
+            // Passo 14: cores de botão que o código trocou, e os blocos em
+            // que contrato e heurística DISCORDAM sobre haver CTA — é o
+            // teste de regressão de "a heurística não viu body-3".
+            ...(traducao.ajustes.length > 0 ? { ajustes_de_cor: traducao.ajustes } : {}),
+            cta_inventario: inventarioCta.map((i) => ({
+              bloco: i.bloco,
+              tipo: i.tipo,
+              contrato: i.tem_cta_por_contrato,
+              heuristica: i.tem_cta_por_heuristica,
+            })),
+            cta_inventario_divergente: inventarioCta
+              .filter((i) => i.divergente)
+              .map((i) => ({ bloco: i.bloco, tipo: i.tipo, campos_cta: i.campos_cta, heuristica: i.tem_cta_por_heuristica })),
             ritmo: {
               faixas_no_documento: faixas.length,
               faixas_decididas: r.plano?.faixas?.length ?? 0,
@@ -4124,6 +4176,61 @@ async function runFormattingChain(p: {
           model: config.model,
           parsedOutput: { reason: "out_of_budget" },
         }).catch(() => {})
+      }
+      // Passo 14: a 2ª falha do agente NÃO deixa o HTML da etapa anterior
+      // no ar. O que o código já sabe fazer roda sem o modelo: cor saturada
+      // fora da paleta → papel; fundo de seção estranho à identidade →
+      // fundo da loja. Sem ritmo nem botão novo (isso é decisão). Sem
+      // papéis derivados não há para onde mandar: mantém e diz.
+      if (outcome.kind === "failed") {
+        const t0 = Date.now()
+        if (fmtCtx.roles) {
+          const fallback = aplicarPaletaPorCodigo(
+            inputHtml,
+            fmtCtx.roles,
+            fundosLegitimos(fmtCtx.roles, ctx.brand ?? null),
+          )
+          const preservado = preservarBlocos(inputHtml, fallback.html, tokenizados.indices)
+          const count = (h: string) => (h.match(/<table[\s>]/gi) ?? []).length
+          const estruturaOk = count(preservado.html) === count(inputHtml)
+          if (estruturaOk) currentHtml = preservado.html
+          await logGenerationRun({
+            ...ids,
+            agent: "color_format",
+            status: "success",
+            model: "deterministic",
+            costCents: 0,
+            durationMs: Date.now() - t0,
+            parsedOutput: {
+              fallback: "paleta_por_codigo",
+              motivo_do_fallback: outcome.lastError,
+              recolors: fallback.recolors,
+              faixas_corrigidas: fallback.faixas_corrigidas,
+              ocorrencias_recoloridas: fallback.ocorrencias,
+              estrutura_ok: estruturaOk,
+              ...(tokenizados.indices.length > 0 ? { blocos_preservados: preservado.restaurados } : {}),
+              output_html_len: currentHtml.length,
+              output_sha8: sha8(currentHtml),
+              output_html: htmlSnapshot(currentHtml),
+            },
+          }).catch(() => {})
+          log.warn("phase2.fmt.color_fallback_paleta_por_codigo", {
+            emailId,
+            recolors: fallback.recolors.length,
+            faixas: fallback.faixas_corrigidas.length,
+            estruturaOk,
+          })
+        } else {
+          await logGenerationRun({
+            ...ids,
+            agent: "color_format",
+            status: "skipped",
+            model: "deterministic",
+            costCents: 0,
+            durationMs: 0,
+            parsedOutput: { fallback: "sem_paleta", motivo_do_fallback: outcome.lastError },
+          }).catch(() => {})
+        }
       }
       await persistStage(currentHtml, null)
     }
@@ -4468,6 +4575,7 @@ export async function runPhase2HtmlQa(
       disposition: "blocking" as const,
       message: `A copy "${valor.slice(0, 80)}" não foi encontrada no bloco da hero depois da formatação. A região do merge ficou no lugar do acabamento do agente — confira a hero antes de aprovar.`,
       location: "hero",
+      evidence: valor,
     })),
     ...fmtResult.heroInventado.map((texto) => ({
       type: "hero_copy_inventada" as const,
@@ -4475,6 +4583,7 @@ export async function runPhase2HtmlQa(
       disposition: "blocking" as const,
       message: `O agente de hero escreveu "${texto.slice(0, 80)}", que não existia na copy. O fragmento foi descartado e a região do merge ficou no lugar.`,
       location: "hero",
+      evidence: texto,
     })),
   ]
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { checarInvariantesDeTipografia } from "./guards"
+import { checarInvariantesDeTipografia, checarReducaoDeFonte } from "./guards"
 import { applyTypographyOps } from "./apply"
 
 const HTML = `<!DOCTYPE html><html><head></head><body>
@@ -53,5 +53,23 @@ describe("checarInvariantesDeTipografia", () => {
     expect(checarInvariantesDeTipografia(HTML, r.html, 3).violacao).toBe(
       "font_declaration_count_changed",
     )
+  })
+})
+
+describe("checarReducaoDeFonte (Passo 14)", () => {
+  const antes = `<table><tr><td style="font-family:Arial;font-size:50px">T</td></tr><tr><td style="font-family:Arial;font-size:16px">c</td></tr></table>`
+  it("mesmo tamanho ou até 1,25× passa", () => {
+    expect(checarReducaoDeFonte(antes, antes).ok).toBe(true)
+    expect(checarReducaoDeFonte(antes, antes.replace("font-size:16px", "font-size:20px")).ok).toBe(true)
+  })
+  it("fonte REDUZIDA em relação à variante reprova, com o item", () => {
+    const r = checarReducaoDeFonte(antes, antes.replace("font-size:50px", "font-size:40px"))
+    expect(r.ok).toBe(false)
+    expect(r.fora[0]).toMatchObject({ de: 50, para: 40, motivo: "reduzida" })
+  })
+  it("acima de 1,25× reprova — sem teto absoluto", () => {
+    const r = checarReducaoDeFonte(antes, antes.replace("font-size:16px", "font-size:24px"))
+    expect(r.fora[0]).toMatchObject({ de: 16, para: 24, motivo: "acima_do_teto" })
+    expect(checarReducaoDeFonte(antes, antes.replace("font-size:50px", "font-size:62px")).ok).toBe(true)
   })
 })

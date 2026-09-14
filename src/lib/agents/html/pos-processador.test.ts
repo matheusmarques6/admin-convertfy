@@ -20,7 +20,7 @@ describe("posProcessar — batch 6249aef2", () => {
       ["img_vazias_removidas", 6],
       ["alt_preenchido", 9],
       ["ano_atualizado", 1],
-      ["line_height_corrigido", 3],
+      ["line_height_corrigido", 14],
     ])
   })
 
@@ -75,8 +75,24 @@ describe("posProcessar — batch 6249aef2", () => {
     expect(r.aplicados).toEqual([{ id: "img_vazias_removidas", n: 3 }])
   })
 
-  it("line-height abaixo da fonte vira 1,15×", () => {
+  it("line-height abaixo de 1,1× a fonte vira 1,1×", () => {
     const r = posProcessar(`<td style="font-size:50px;line-height:43px">a</td>`, { ano: 2026 })
-    expect(r.html).toBe(`<td style="font-size:50px;line-height:58px">a</td>`)
+    expect(r.html).toBe(`<td style="font-size:50px;line-height:55px">a</td>`)
+  })
+})
+
+describe("posProcessar — line-height (Passo 14)", () => {
+  it("normal e unitless abaixo de 1,1 viram px", () => {
+    expect(posProcessar(`<h1 style="font-size:40px;line-height:normal">a</h1>`, { ano: 2026 }).html).toBe(`<h1 style="font-size:40px;line-height:44px">a</h1>`)
+    expect(posProcessar(`<h1 style="font-size:40px;line-height:1">a</h1>`, { ano: 2026 }).html).toBe(`<h1 style="font-size:40px;line-height:44px">a</h1>`)
+    expect(posProcessar(`<p style="font-size:16px;line-height:1.5">a</p>`, { ano: 2026 }).html).toContain("line-height:1.5")
+  })
+  it("título sem line-height ganha um; corpo pequeno sem line-height fica", () => {
+    expect(posProcessar(`<h1 style="font-size:50px;">a</h1>`, { ano: 2026 }).html).toBe(`<h1 style="font-size:50px;line-height:55px">a</h1>`)
+    expect(posProcessar(`<p style="font-size:16px">a</p>`, { ano: 2026 }).html).toBe(`<p style="font-size:16px">a</p>`)
+  })
+  it("já ≥ 1,1× não é tocado", () => {
+    const h = `<td style="font-size:20px;line-height:22px">a</td>`
+    expect(posProcessar(h, { ano: 2026 }).html).toBe(h)
   })
 })

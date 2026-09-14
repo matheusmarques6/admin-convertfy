@@ -150,7 +150,6 @@ export const ColorFormatPromptVarsSchema = z.object({
   color_surface_strong: z.string(),
   font_heading: z.string(),
   font_body: z.string(),
-  pesquisa_full_text: z.string(),
   // A SEQUÊNCIA do documento — o que o inventário de cores nunca disse. Ele
   // conta quantas vezes cada cor aparece; estas duas dizem em que ordem as
   // faixas estão e qual botão pousa em qual delas, que é o que as regras de

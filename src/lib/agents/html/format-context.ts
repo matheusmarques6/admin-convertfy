@@ -615,7 +615,6 @@ export const COLOR_FORMAT_VAR_ORIGINS: Record<string, SegmentOrigin> = {
   tons_json: { cls: "sistema", rotulo: "Fundos de seção e sua procedência — contados por código" },
   ctas_json: { cls: "sistema", rotulo: "Botões do documento, com a faixa de cada um — extrairCtas" },
   brand_colors: LOJA_BRAND,
-  pesquisa_full_text: { cls: "loja", rotulo: "Pesquisa & Diagnóstico — client_stores" },
   email_name: EMAIL_ROW,
   subject: EMAIL_ROW,
 }
@@ -752,7 +751,17 @@ export function buildColorFormatVars(
     brand: StoreBrandIdentity | null
     niche: string
     tones: string
-    pesquisaFullText: string
+    /**
+     * @deprecated Passo 14: a pesquisa (15,5k chars) saiu do prompt do
+     * Cores & Botões — o agente nunca a usou, e ela custava ~30% do input.
+     * Aceito e ignorado para o chamador antigo não quebrar.
+     */
+    pesquisaFullText?: string
+    /**
+     * Passo 14: o botão de cada bloco pelo CONTRATO (`inventarioDeCtas`).
+     * Entra em `ctas_json` como `tem_cta_por_contrato` por bloco.
+     */
+    inventarioDeCtas?: ReadonlyArray<{ bloco: number; tem_cta_por_contrato: boolean | null }> | null
     /**
      * B5: `block_index` dos blocos com tokens de identidade. Eles saem do
      * inventário, das faixas e dos botões servidos — a cor deles já é a da
@@ -792,7 +801,6 @@ export function buildColorFormatVars(
     // template. Medido: brand_share entre 0,27 e 0,53 em 15 gerações
     // seguidas, enquanto a hero — que usa este helper — saía certa.
     ...identityVars(ctx),
-    pesquisa_full_text: extras.pesquisaFullText,
     // A sequência do documento. O inventário diz QUANTO cada cor aparece;
     // isto diz ONDE — e é o que torna executável decidir por faixa em vez de
     // por valor. Documento sem marcadores devolve `[]`, e o prompt trata o
@@ -803,7 +811,22 @@ export function buildColorFormatVars(
     // justificativa boa em cada um e a peça saiu com quatro fundos. A conta
     // vem PRONTA para ele, e é refeita por código depois de aplicar.
     tons_json: JSON.stringify(tonsDeFundo(faixas, fundosLegitimos(ctx.roles, extras.brand))),
-    ctas_json: JSON.stringify(ctas, null, 2),
+    // Passo 14: junto de cada botão vai o que o CONTRATO do bloco diz. É o
+    // que o agente lê antes de decidir "este bloco não tem CTA".
+    ctas_json: JSON.stringify(
+      (() => {
+        const porBloco = new Map((extras.inventarioDeCtas ?? []).map((i) => [i.bloco, i.tem_cta_por_contrato]))
+        const semBotao = faixas
+          .filter((f) => !ctas.some((c) => c.bloco === f.bloco))
+          .map((f) => ({ bloco: f.bloco, tipo: f.tipo, tem_cta_por_contrato: porBloco.get(f.bloco) ?? null }))
+        return {
+          botoes: ctas.map((c) => ({ ...c, tem_cta_por_contrato: c.bloco == null ? null : (porBloco.get(c.bloco) ?? null) })),
+          blocos_sem_botao_visivel: semBotao,
+        }
+      })(),
+      null,
+      2,
+    ),
     email_name: ctx.emailRow?.name || "",
     subject: ctx.emailRow?.subject || "",
   }
