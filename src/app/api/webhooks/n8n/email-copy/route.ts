@@ -603,6 +603,118 @@ export async function POST(request: NextRequest) {
       })
     }
 
+    // 3.5) Copy VAZIA ou fora do contrato = ERRO (decisão do dono, 14/09:
+    // sem copy do n8n o e-mail não é gerado). Até aqui o callback já tinha
+    // marcado `copy_ready` no passo 2 e, com zero bloco gravado, zero
+    // caractere ou contrato 100% ignorado, só fazia `log.error` e seguia:
+    // a fase 2 renderizava placeholder e texto de exemplo, e quem
+    // reprovava era o QA — no fim, depois de gastar a fase 2 inteira.
+    // Bloco SEM contrato (`esperados = 0`) não conta para a taxa: já é erro
+    // de curadoria por `merge_sem_contrato`, não copy errada.
+    const blocosComSchema = contratoPorBloco.filter(
+      (b) => (b.esperados as number) > 0,
+    ).length
+    const motivoSemCopy =
+      blocksWritten === 0 || charsTotal === 0
+        ? "copy_vazia"
+        : taxaContrato === 0 && blocosComSchema > 0
+          ? "copy_fora_do_contrato"
+          : null
+    if (motivoSemCopy) {
+      const agora = new Date().toISOString()
+      const { error: failErr } = await admin
+        .from("email_flow_emails")
+        .update({
+          status: "failed",
+          failed_at: agora,
+          failure_reason: motivoSemCopy,
+          copy_ready_at: null,
+          updated_at: agora,
+        })
+        .eq("id", body.email_id)
+      if (failErr) {
+        log.error("email_copy.sem_copy_update_failed", {
+          email_id: body.email_id,
+          error: failErr.message,
+        })
+      }
+      log.error("email_copy.sem_copy", {
+        email_id: body.email_id,
+        motivo: motivoSemCopy,
+        blocks_written: blocksWritten,
+        blocks_total: body.blocks.length,
+        chars_total: charsTotal,
+        taxa_contrato: taxaContrato,
+        por_bloco: contratoPorBloco,
+      })
+      await logGenerationRun({
+        storeId: body.store_id,
+        flowId: email.flow_id,
+        emailId: body.email_id,
+        batchId: currentBatchId ?? "",
+        agent: "copy",
+        status: "error",
+        errorMessage:
+          motivoSemCopy === "copy_vazia"
+            ? `copy_vazia: ${blocksWritten} bloco(s) gravado(s), ${charsTotal} chars — o e-mail NÃO foi gerado`
+            : `copy_fora_do_contrato: 0 de ${keysRecebidas} chave(s) no schema dos blocos — o e-mail NÃO foi gerado`,
+        model: body.meta?.model ?? "n8n",
+        tokensInput: body.meta?.tokens_input ?? undefined,
+        tokensOutput: body.meta?.tokens_output ?? undefined,
+        durationMs: body.meta?.duration_ms ?? undefined,
+        inputSummary: [
+          {
+            rotulo: "Copy recebida do n8n",
+            cls: "upstream",
+            valor: `${body.blocks.length} bloco(s) · ${charsTotal.toLocaleString("pt-BR")} chars de texto`,
+          },
+          {
+            rotulo: "Blocos gravados",
+            cls: "sistema",
+            valor: `${blocksWritten} de ${body.blocks.length} recebido(s)`,
+          },
+          {
+            rotulo: "Adesão ao contrato",
+            cls: "biblioteca",
+            valor:
+              taxaContrato == null
+                ? "sem chaves recebidas"
+                : `${taxaContrato}% — ${keysNoContrato} de ${keysRecebidas} chave(s) dentro do schema da variante`,
+          },
+          {
+            rotulo: "Desfecho",
+            cls: "sistema",
+            valor: `failed: ${motivoSemCopy} — sem copy do n8n o e-mail não é gerado (decisão de 14/09)`,
+          },
+        ],
+        parsedOutput: {
+          skip_reason: motivoSemCopy,
+          subject: body.subject,
+          blocks_written: blocksWritten,
+          blocks_total: body.blocks.length,
+          chars_total: charsTotal,
+          copy_prompt_version: (body.copy_prompt_version ?? "").trim() || null,
+          contrato: {
+            keys_recebidas: keysRecebidas,
+            keys_no_contrato: keysNoContrato,
+            taxa_pct: taxaContrato,
+            por_bloco: contratoPorBloco,
+          },
+          desvios: copyDeviations,
+        },
+      }).catch(() => {})
+      if (currentBatchId) {
+        await checkBatchTerminal(body.store_id, currentBatchId).catch(() => {})
+      }
+      return successResponse(request, {
+        ok: false,
+        email_id: body.email_id,
+        motivo: motivoSemCopy,
+        blocks_written: blocksWritten,
+        chars_total: charsTotal,
+      })
+    }
+
     if (couponSemCodigo.length > 0) {
       log.error("email_copy.coupon_placeholder_sem_codigo", {
         email_id: body.email_id,

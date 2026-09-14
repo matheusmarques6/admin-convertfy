@@ -51,6 +51,18 @@ export function violacoesDaEscolha(
       esperado: JSON.stringify(pos?.requisitos ?? null),
     })
   }
+  // CTA negado numa anatomia com botão: aviso, não veto — o campo será
+  // omitido pelo blueprint e a linha sai no merge (ver `conflitoDeContrato`).
+  if (pos?.requisitos?.cta === false && contrato.tem_cta) {
+    out.push({
+      ...base,
+      tipo: "requisito_violado",
+      severidade: "medium",
+      campo: "cta",
+      evidencia: "tem CTA e a decisão nega CTA — o campo será omitido pelo blueprint",
+      esperado: JSON.stringify(pos?.requisitos ?? null),
+    })
+  }
   // Slot de cupom numa peça SEM incentivo é violação mesmo com `cupom: null`
   // na posição: o example ("Use code: [WELCOME-CODE]") fica no HTML.
   if (decisao.incentivo.existe === false && contrato.tem_cupom && pos?.requisitos?.cupom !== false) {

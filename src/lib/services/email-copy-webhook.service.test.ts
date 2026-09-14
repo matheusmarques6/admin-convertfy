@@ -246,6 +246,46 @@ describe("dispatchEmailCopyWebhook — auto-seed e reasons", () => {
     expect(e1?.copy_ready_dispatch_attempts).toBe(0)
   })
 
+  it("dispatch carimba copy_started_at e apaga TODOS os artefatos da geração anterior (14/09)", async () => {
+    resetTables([
+      {
+        id: "e1",
+        flow_id: "flow1",
+        number: 1,
+        name: "Welcome 1",
+        status: "ready",
+        html: "<html>velho</html>",
+        html_marked: "<html>velho marcado</html>",
+        html_pre_refiner: "<html>pre</html>",
+        html_pipeline_stage: "text",
+        render_previews: { w600: "x" },
+        copy_ready_at: "2026-09-11T00:00:00.000Z",
+      },
+    ])
+
+    const antes = Date.now()
+    const res = await dispatchEmailCopyWebhook("store1", {
+      triggerSource: "manual_store_button",
+      flowIds: ["flow1"],
+      onlyDrafts: false,
+    })
+    expect(res.ok).toBe(true)
+    const e1 = h.tables.email_flow_emails.find((e) => e.id === "e1")!
+    // Sem o carimbo, o watchdog não tinha relógio para o caminho da fila e
+    // da aba Teste: callback perdido deixava o e-mail em in_progress para
+    // sempre (batch 879fe6e4, 14/09).
+    expect(typeof e1.copy_started_at).toBe("string")
+    expect(new Date(e1.copy_started_at as string).getTime()).toBeGreaterThanOrEqual(antes - 1000)
+    expect(e1.copy_ready_at).toBeNull()
+    // Sem zerar html_marked, o modo Editar abria a peça de 11/09 como se
+    // fosse a de hoje.
+    expect(e1.html).toBeNull()
+    expect(e1.html_marked).toBeNull()
+    expect(e1.html_pre_refiner).toBeNull()
+    expect(e1.html_pipeline_stage).toBeNull()
+    expect(e1.render_previews).toBeNull()
+  })
+
   it("regerar email finalizado/publicado (live) NÃO é rebaixado de status", async () => {
     resetTables([
       { id: "e1", flow_id: "flow1", number: 1, name: "Welcome 1", status: "live" },

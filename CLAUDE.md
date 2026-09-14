@@ -6267,6 +6267,68 @@ Execução em `docs/email-generation/execucao-plano-pipeline-set2026.md`
   saiu do conector Internet para `lib/ai/web/baixar-pagina.ts` — a régua
   de SSRF é a parte que não pode divergir.
 
+## Sem copy do n8n, o e-mail dá ERRO — nunca é gerado (14/09)
+
+Geração 879fe6e4 (Hero Boxers · Welcome 1, aba Teste): fase 1 inteira
+correta, copy despachada às 18:54:59 UTC, **nenhum callback em mais de
+uma hora**, status `in_progress`, `html = NULL`. A tela mostrou "só a
+hero, com a imagem no lugar errado" — não era um e-mail gerado: o preview
+caía em `email.html || renderEmailHtml(email, blocks)`, o renderizador
+LEGADO por tipo de bloco, que não conhece `body`/`reviews` e desenha a
+hero com a imagem da geração ANTERIOR gravada em `email_blocks.content`.
+Decisão do dono: **"se tiver sem copy, ou seja sem uma resposta do n8n, o
+e-mail não deve ser gerado, deve dar erro."** Três lugares faziam o
+contrário:
+
+1. **Ninguém vigiava o `in_progress`.** O dispatch
+   (`dispatchEmailCopyWebhook`) gravava `in_progress` SEM `copy_started_at`;
+   o Front 2 do watchdog só olhava `copy_generating` (o status do
+   `startOnboarding` legado). O caminho da fila e o da aba Teste ficavam
+   fora — callback perdido = e-mail preso para sempre, sem `failure_reason`.
+   Agora o dispatch carimba `copy_started_at` (e zera `html_marked`,
+   `html_pre_refiner`, `html_pipeline_stage`, `render_previews`,
+   `copy_ready_at` — senão o modo Editar abria a peça de 11/09 como se
+   fosse a de hoje) e o Front 2 (`failCopySemCallback`) cobre
+   `copy_generating` E `in_progress` por `copy_started_at`, mais uma
+   consulta de legado por `updated_at` para o que já estava preso sem
+   carimbo. Desfecho: `failed: copy_timeout` + run `copy` error
+   (`n8n_sem_callback`) + notificação. **Sem cap de `attempts`**: regerar é
+   gesto humano.
+2. **O remédio do watchdog GERAVA copy sem o n8n.** `recoverStuckCopy`
+   claimava para `copy_generating_recovery` e rodava
+   `runCopyChainInProcess` (LangChain in-process). REMOVIDO junto com
+   `copy-chain-fallback.service.ts`; o status sobrevive no tipo só para
+   linhas antigas.
+3. **Callback com copy vazia virava `copy_ready`.** A rota marca
+   `copy_ready` ANTES de gravar os blocos e, com zero bloco gravado, zero
+   caractere ou contrato 100% ignorado (`taxaContrato === 0` com pelo menos
+   um bloco COM schema), só fazia `log.error` — a fase 2 renderizava
+   placeholder e quem reprovava era o QA, no fim, depois de gastar a fase 2
+   inteira. Agora vira `failed: copy_vazia` / `copy_fora_do_contrato` ali,
+   com run `copy` error e resposta `{ok:false, motivo}` (200: o n8n não
+   deve reenviar). Bloco SEM schema não conta para a taxa — já é
+   `merge_sem_contrato`.
+
+**Preview honesto** (`lib/email-workspace/preview-state.ts`, puro, 5
+testes): `renderEmailHtml` só para e-mail SEM `generation_batch_id` (flows
+legados). Com geração e sem `html`, a ficha mostra um ESTADO —
+"Aguardando a copy do n8n desde HH:MM", "Renderizando", ou a falha
+traduzida — e o botão Editar fica desabilitado com o motivo.
+
+**Achado paralelo — a régua era mais dura que o pipeline**: a posição 2
+(`body_garantias`) ficou vazia porque `conflitoDeContrato` reprovava
+body-3 por "tem CTA e a decisão nega CTA", enquanto `arbitrarCampos` já
+OMITE o campo de CTA nesse caso. CTA negado deixou de ser conflito de
+anatomia (não elimina, não substitui, não veta no gerador); o validador
+de escolhas registra `medium` e o resgate segue cobrando 5 de custo.
+Cupom negado continua `high` — o example do cupom fica no HTML.
+
+**Pendente (do usuário)**: por que o n8n não respondeu — execuções do
+workflow de copy por volta de 18:55 UTC de 14/09 e o log da Vercel em
+`/api/webhooks/n8n/email-copy` (4xx = payload rejeitado; ausência = o n8n
+nunca chamou). Hipótese: o flow não lê o payload v3.2 (`estrutura_geral:
+null`, `directive`, `campos_omitidos`).
+
 ---
 
 *Última atualização: Setembro 2026*

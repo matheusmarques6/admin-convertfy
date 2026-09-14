@@ -15,7 +15,14 @@ const FAILURE_REASON_LABELS: Record<string, string> = {
   superseded_by_redo: "Substituido por novo batch",
   superseded: "Substituido por geracao mais nova",
   timeout_phase2: "Timeout na fase de render (HTML/imagem)",
-  copy_timeout: "Timeout na geracao da copy",
+  // Decisão de 14/09: sem copy do n8n o e-mail NÃO é gerado. O watchdog
+  // marca isto quando o callback não chega no prazo (WATCHDOG_COPY_TIMEOUT_MIN).
+  copy_timeout: "O n8n nao devolveu a copy no prazo — nada foi gerado",
+  // O callback chegou, mas sem texto (nenhum bloco gravado ou zero chars).
+  copy_vazia: "O n8n devolveu a copy vazia — nada foi gerado",
+  // O callback chegou no vocabulário errado: nenhuma chave casa com o
+  // schema da variante, então nenhum campo teria endereço no HTML.
+  copy_fora_do_contrato: "A copy do n8n nao casa com o schema dos blocos — nada foi gerado",
   copy_invalid_output: "Copy gerada nao validou no schema",
   rendering_failed: "Falha ao renderizar HTML/imagem",
   html_failed: "Falha ao gerar o HTML",

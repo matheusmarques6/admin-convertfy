@@ -197,7 +197,12 @@ export function conflitoDeContrato(c: ContratoResumo, r: RequisitosDuros | null 
   if (disp) return disp
   if (r.cupom === false && c.tem_cupom) return "tem slot de cupom e a decisão nega cupom"
   if (r.cupom === true && !c.tem_cupom) return "não tem slot de cupom e a decisão exige cupom"
-  if (r.cta === false && c.tem_cta) return "tem CTA e a decisão nega CTA"
+  // `cta: false` com anatomia que TEM botão NÃO é conflito de anatomia: o
+  // blueprint omite o campo (`arbitrarCampos`, estruturador-consume) e a
+  // linha sai no merge. Tratar como conflito eliminava body-3 da posição
+  // `body_garantias` e deixava a posição VAZIA (batch 879fe6e4, 14/09) —
+  // uma lacuna criada pela régua, não pela biblioteca. O validador de
+  // escolhas registra `medium` (aviso), o resgate cobra 5 de custo.
   if (r.preco === true && !c.tem_preco) return "não mostra preço e a decisão exige preço"
   if (r.avaliacao === true && !c.tem_avaliacao) return "não mostra avaliação e a decisão exige avaliação"
   const max = r.n_itens?.max

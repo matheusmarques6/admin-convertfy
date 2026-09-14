@@ -1889,10 +1889,23 @@ export async function dispatchEmailCopyWebhook(
         // mesmo se o callback falhar/atrasar, o estado intermediario nao
         // mostre html/imagem velha no preview.
         html: null,
+        // Sem estes três a geração anterior sobrevivia no modo Editar
+        // (`html_marked` de 11/09 abria como se fosse a peça de hoje) e o
+        // resume da cadeia lia um estágio de outra geração.
+        html_marked: null,
+        html_pre_refiner: null,
+        html_pipeline_stage: null,
+        render_previews: null,
         qa_issues: [],
         failure_reason: null,
         rendering_started_at: null,
         qa_started_at: null,
+        // Relógio do watchdog (14/09): sem `copy_started_at` o caminho da
+        // fila e o da aba Teste ficavam fora do prazo de copy — o callback
+        // perdido deixava o e-mail em `in_progress` para sempre. Agora o
+        // Front 2 conta daqui e marca `failed: copy_timeout`.
+        copy_started_at: new Date().toISOString(),
+        copy_ready_at: null,
         // Geração NOVA zera o cap de re-dispatch do watchdog. Sem isto, um
         // email cujo contador esgotou (3 POSTs de fase 2 falhos) numa geração
         // ANTERIOR ficava preso em copy_ready PRA SEMPRE na seguinte: o

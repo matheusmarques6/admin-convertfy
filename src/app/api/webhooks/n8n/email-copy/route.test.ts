@@ -61,7 +61,10 @@ function resetState() {
   updateCalls.length = 0
   errorLogs.length = 0
   insertCalls.length = 0
-  mockBlocks = []
+  // Um bloco SEM contrato por padrão: a copy do `validBody` tem onde entrar.
+  // Sem bloco nenhum, zero é gravado e (desde 14/09) o e-mail falha com
+  // `copy_vazia` — o que o happy path não é.
+  mockBlocks = [{ id: MOCK_BLOCK_ID, content: {}, block_type: "hero", fields: [] }]
   mockStore = null
   mockOutline = null
 }
@@ -255,6 +258,8 @@ describe("POST /api/webhooks/n8n/email-copy — happy path", () => {
       (c) => c.table === "email_generation_runs" && c.data.agent === "copy",
     )
     expect(copyRun).toBeDefined()
+    // Copy com texto e bloco para receber: NÃO é copy vazia.
+    expect(updateCalls.some((c) => c.table === "email_flow_emails" && c.data.status === "failed")).toBe(false)
   })
 
   it("zera artefatos de fase 2 anterior no UPDATE de email_flow_emails", async () => {
@@ -544,6 +549,20 @@ describe("POST /api/webhooks/n8n/email-copy — contrato de copy", () => {
     expect(
       desvios.filter((d) => d.kind === "unknown_key").map((d) => d.key).sort(),
     ).toEqual(["body", "cta", "headline", "text"])
+
+    // 14/09: copy 100% fora do contrato não é "parcial" — nenhum campo teria
+    // endereço no HTML. O e-mail falha AQUI, antes de gastar a fase 2.
+    const falha = updateCalls.find(
+      (c) => c.table === "email_flow_emails" && c.data.status === "failed",
+    )
+    expect(falha?.data.failure_reason).toBe("copy_fora_do_contrato")
+    const run = insertCalls.find(
+      (x) => x.table === "email_generation_runs" && x.data.agent === "copy",
+    )
+    expect(run?.data.status).toBe("error")
+    expect(String(run?.data.error_message)).toContain("copy_fora_do_contrato")
+    const body = await res.json()
+    expect(body.data?.ok ?? body.ok).toBe(false)
   })
 
   it("copy embrulhada em `campos`: desembrulha, grava plano e taxa 100", async () => {
@@ -630,6 +649,54 @@ describe("POST /api/webhooks/n8n/email-copy — contrato de copy", () => {
     expect(c.por_bloco).toEqual([
       { position: 0, type: "hero", esperados: 2, recebidos: 2, no_contrato: 2 },
     ])
+  })
+
+  it("copy VAZIA (chaves certas, valores vazios): failed:copy_vazia, sem fase 2", async () => {
+    // Decisão de 14/09: sem copy do n8n o e-mail não é gerado. Antes o
+    // callback marcava copy_ready e a fase 2 renderizava placeholder.
+    mockEmail!.generation_batch_id = "99999999-9999-4999-8999-999999999999"
+    mockBlocks = [
+      {
+        id: MOCK_BLOCK_ID,
+        content: {},
+        block_type: "hero",
+        fields: [campo("hero_headline"), campo("hero_cta_label")],
+      },
+    ]
+    const res = await POST(
+      makeRequest(
+        validBody({
+          blocks: [
+            { block_id: MOCK_BLOCK_ID, content: { hero_headline: "", hero_cta_label: "" } },
+          ],
+        }),
+      ) as any,
+    )
+    expect(res.status).toBe(200)
+    const falha = updateCalls.find(
+      (c) => c.table === "email_flow_emails" && c.data.status === "failed",
+    )
+    expect(falha?.data.failure_reason).toBe("copy_vazia")
+    expect(falha?.data.copy_ready_at).toBeNull()
+    const run = insertCalls.find(
+      (x) => x.table === "email_generation_runs" && x.data.agent === "copy",
+    )
+    expect(run?.data.status).toBe("error")
+    expect((run?.data.parsed_output as Record<string, unknown>).skip_reason).toBe("copy_vazia")
+    // Batch fecha a contagem terminal como em qualquer falha.
+    expect(checkBatchTerminalMock).toHaveBeenCalledTimes(1)
+    // Nada a jusante roda: nem o encurtador.
+    expect(runCopyFitMock).not.toHaveBeenCalled()
+  })
+
+  it("e-mail sem bloco nenhum: zero gravado = copy_vazia", async () => {
+    mockBlocks = []
+    const res = await POST(makeRequest(validBody()) as any)
+    expect(res.status).toBe(200)
+    const falha = updateCalls.find(
+      (c) => c.table === "email_flow_emails" && c.data.status === "failed",
+    )
+    expect(falha?.data.failure_reason).toBe("copy_vazia")
   })
 
   it("bloco sem contrato entra no relatório com esperados=0", async () => {

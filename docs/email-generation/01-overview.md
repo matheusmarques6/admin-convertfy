@@ -35,11 +35,9 @@ draft ────────────────────────�
 in_progress (legado)                            │
   │                                             │
   ▼                                             │
-copy_generating                                 │
-  │ (b)                                         │
-  ▼                                             │
-copy_generating_recovery (fallback in-process)  │
-  │                                             │
+copy_generating / in_progress                   │
+  │ (b)   (sem callback em 15 min → failed:     │
+  │        copy_timeout — nada é gerado)        │
   ▼                                             │
 copy_ready ─── GATE 2 ──┐                       │
                         │ (c)                   │
@@ -56,7 +54,7 @@ copy_ready ─── GATE 2 ──┐                       │
 
 Movimentações:
 - **(a)** `dispatchEmailCopyWebhook` (trigger 1, 2)
-- **(b)** Callback do n8n em `/api/webhooks/n8n/email-copy` OU watchdog recovery (`runCopyChainInProcess`)
+- **(b)** Callback do n8n em `/api/webhooks/n8n/email-copy` — a ÚNICA fonte de copy. Sem callback em `WATCHDOG_COPY_TIMEOUT_MIN` (15 min) o watchdog marca `failed: copy_timeout`; callback vazio ou fora do contrato vira `failed: copy_vazia` / `copy_fora_do_contrato` (14/09)
 - **(c)** `dispatchRenderForCopyReady` consumido pelo watchdog após designer confirmar identidade (trigger 3)
 
 ### Significado de cada status
@@ -66,7 +64,7 @@ Movimentações:
 | `draft` | Email criado no workspace, não enfileirado | Não |
 | `pending` | Agendado para gerar (entrou na fila) | Não |
 | `copy_generating` | n8n está processando a copy | Não |
-| `copy_generating_recovery` | Watchdog detectou travamento; está rodando fallback in-process | Não |
+| `copy_generating_recovery` | LEGADO — era o fallback de copy in-process do watchdog, removido em 14/09 (sem copy do n8n o e-mail não é gerado) | Não |
 | `copy_ready` | Copy gerada, aguardando GATE 2 | Não |
 | `rendering` | Gerando imagem + HTML | Não |
 | `qa_running` | QA agent validando | Não |
@@ -123,7 +121,6 @@ Toda transição passa pelo trigger SQL `fn_log_email_status_change`, que insere
 | Service principal Fase 1 | `src/lib/services/email-copy-webhook.service.ts` |
 | Roteador de sinais + Fase 2 | `src/lib/services/email-generation-trigger.service.ts` |
 | Runner da Fase 2 | `src/lib/agents/phase2-runner.service.ts` |
-| Fallback in-process (recovery) | `src/lib/agents/copy-chain-fallback.service.ts` |
 | Watchdog cron | `src/app/api/cron/email-generation-watchdog/route.ts` |
 | Callback n8n | `src/app/api/webhooks/n8n/email-copy/route.ts` |
 | Endpoint disparo manual | `src/app/api/admin/stores/[id]/dispatch-email-copies/route.ts` |

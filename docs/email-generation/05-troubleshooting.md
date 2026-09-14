@@ -21,7 +21,7 @@ Emails ficaram em `copy_generating` por mais de 15 minutos. UI mostra "Gerando�
 ```sql
 SELECT id, flow_id, status, updated_at, attempts, failure_reason
   FROM email_flow_emails
- WHERE status IN ('copy_generating', 'copy_generating_recovery')
+ WHERE status IN ('copy_generating', 'in_progress')
    AND updated_at < NOW() - INTERVAL '5 minutes'
  ORDER BY updated_at;
 ```
@@ -34,9 +34,7 @@ Causas possíveis:
 
 ### Fix
 
-**Curto prazo** (5-15 min): aguarde o watchdog. A cada 5 min ele detecta `copy_generating > WATCHDOG_COPY_TIMEOUT_MIN` (default 15min) e:
-- Tenta fallback in-process `runCopyChainInProcess` (status vira `copy_generating_recovery`).
-- Se `attempts >= MAX_GENERATION_ATTEMPTS`, marca `failed` com reason `max_attempts_exhausted`.
+**Curto prazo** (5-15 min): aguarde o watchdog. A cada 5 min ele detecta e-mail em `copy_generating`/`in_progress` com `copy_started_at` (ou `updated_at`, no legado sem carimbo) mais velho que `WATCHDOG_COPY_TIMEOUT_MIN` (default 15min) e marca `failed` com reason `copy_timeout` + run `copy` error (`n8n_sem_callback`). **Não existe mais fallback de copy in-process** (removido em 14/09): sem copy do n8n o e-mail não é gerado. Regerar é gesto humano, depois de o flow do n8n voltar a responder.
 
 **Manual** (se watchdog também travou):
 

@@ -130,8 +130,12 @@ export type FlowStatus =
  * Status canonico de email_flow_emails.
  *
  * Valores Epic AE (Agent Email Generation):
- *   draft -> pending -> copy_generating [-> copy_generating_recovery]
- *     -> copy_ready -> rendering -> qa_running -> ready | failed
+ *   draft -> pending -> copy_generating -> copy_ready -> rendering
+ *     -> qa_running -> ready | failed
+ *
+ * `copy_generating_recovery` era o fallback de copy in-process do watchdog;
+ * REMOVIDO em 14/09 (sem copy do n8n o e-mail não é gerado — vira
+ * `failed: copy_timeout`). O valor fica no tipo só para linhas antigas.
  *
  * Valores LEGACY (Epic 8/9, push Klaviyo): in_progress, approved, live.
  * Mantidos por retrocompat — NAO usar em codigo novo.

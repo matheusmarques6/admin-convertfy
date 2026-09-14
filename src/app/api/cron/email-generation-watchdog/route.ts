@@ -9,13 +9,13 @@
  *   1. Consome ate 20 sinais `pending` em `email_generation_queue_signals`
  *      via `consumeQueueSignal` (story AE-2).
  *
- *   2. Detecta copy travada: emails em `copy_generating` ha mais de
- *      `WATCHDOG_COPY_TIMEOUT_MIN` (default 15min). UPDATE atomico
- *      WHERE status='copy_generating' AND attempts < MAX_GENERATION_ATTEMPTS
- *      claima o lote para `copy_generating_recovery`. Emails com
- *      attempts >= MAX_GENERATION_ATTEMPTS sao marcados `failed` direto
- *      (`max_attempts_exhausted`). Para cada claim valido, dispatcha
- *      `runCopyChainInProcess` via `after()`.
+ *   2. Copy sem callback do n8n: emails em `copy_generating` ou
+ *      `in_progress` (os dois caminhos de dispatch) ha mais de
+ *      `WATCHDOG_COPY_TIMEOUT_MIN` (default 15min) viram `failed` com
+ *      `copy_timeout` + run `copy` error. Decisao de 14/09: sem copy do
+ *      n8n o e-mail NAO e gerado — o fallback de copy in-process
+ *      (`copy_generating_recovery`) foi REMOVIDO; o status sobrevive no
+ *      tipo so para linhas antigas.
  *
  *   3. Detecta fase 2 travada: emails em `rendering` ou `qa_running` ha
  *      mais de `WATCHDOG_PHASE2_TIMEOUT_MIN` (default 10min). UPDATE
@@ -40,11 +40,10 @@
  */
 
 import { NextRequest, NextResponse } from "next/server"
-import { after } from "next/server"
 import { requireCronAuth } from "@/lib/api/cron-auth"
 import { createAdminClient } from "@/lib/supabase/server"
 import { consumeQueueSignal } from "@/lib/services/email-generation-trigger.service"
-import { runCopyChainInProcess } from "@/lib/agents/copy-chain-fallback.service"
+import { logGenerationRun } from "@/lib/agents/callbacks/telemetry.callback"
 import { runPhase2HtmlQa } from "@/lib/agents/phase2-runner.service"
 import {
   notifyEmailFailed,
@@ -108,7 +107,6 @@ const STALE_COPY_READY_MIN = Number(process.env.WATCHDOG_STALE_COPY_READY_MIN ??
 // (texto, 540s) + hero (240s) passam de 12min — 15min de folga. O resume
 // por html_pipeline_stage garante que a re-entrada NUNCA perde trabalho.
 const STALE_IMAGE_DONE_MIN = Number(process.env.WATCHDOG_STALE_IMAGE_DONE_MIN ?? 15)
-const MAX_ATTEMPTS = Number(process.env.MAX_GENERATION_ATTEMPTS ?? 3)
 // Cap de re-dispatches do front 4 (POST /api/internal/run-phase2 para
 // emails em copy_ready travados). Atingindo o cap, marca como
 // failed:stale_copy_ready_exhausted para sair do loop.
@@ -119,15 +117,14 @@ const MAX_STALE_DISPATCH = Number(process.env.WATCHDOG_STALE_DISPATCH_MAX ?? 3)
 // geração legítima (imagem 90s timeout, HTML 200s).
 const STALE_RUN_MIN = Number(process.env.WATCHDOG_STALE_RUN_MIN ?? 20)
 const MAX_SIGNALS_PER_RUN = 20
-const MAX_COPY_RECOVERY_PER_RUN = 10
+const MAX_COPY_TIMEOUT_PER_RUN = 20
 const MAX_PHASE2_TIMEOUT_PER_RUN = 10
 const MAX_STALE_COPY_READY_PER_RUN = 10
 
 interface WatchdogSummary {
   signals_processed: number
   signals_failed: number
-  copy_recovered: number
-  max_attempts_exhausted: number
+  copy_timed_out: number
   phase2_timed_out: number
   stale_copy_ready: number
   stale_dispatch_exhausted: number
@@ -259,128 +256,135 @@ async function processSignals(): Promise<{ processed: number; failed: number }> 
   return { processed, failed }
 }
 
-// ── Front 2a: marca emails com attempts esgotados como failed ─────────
-async function exhaustMaxAttempts(thresholdIso: string): Promise<number> {
-  const admin = createAdminClient()
-  const { data, error } = await admin
-    .from("email_flow_emails")
-    .update({
-      status: "failed",
-      failure_reason: "max_attempts_exhausted",
-      failed_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq("status", "copy_generating")
-    .lt("copy_started_at", thresholdIso)
-    .gte("attempts", MAX_ATTEMPTS)
-    .select("id, generation_batch_id")
-
-  if (error) {
-    log.error("watchdog.copy.exhaust_failed", { error: error.message })
-    return 0
-  }
-  const rows = (data ?? []) as Array<{ id: string; generation_batch_id: string | null }>
-  if (rows.length === 0) return 0
-
-  log.error("watchdog.copy.max_attempts_exhausted", { count: rows.length })
-
-  for (const r of rows) {
-    const storeId = await getStoreIdForEmail(r.id)
-    await safeNotifyEmailFailed({
-      storeId: storeId ?? "",
-      emailId: r.id,
-      failureReason: "max_attempts_exhausted",
-      batchId: r.generation_batch_id,
-    })
-    if (r.generation_batch_id) {
-      await safeNotifyBatchTerminalIfDone(storeId, r.generation_batch_id)
-    }
-  }
-  return rows.length
-}
-
-// ── Front 2b: claima emails com copy travada (attempts < MAX) ─────────
+// ── Front 2: copy sem callback do n8n vira `failed` ────────────────────
 //
-// DESIGN NOTE — por que NAO incrementamos `attempts` neste claim?
+// Regra do dono (14/09): SEM copy do n8n o e-mail NÃO é gerado — dá erro.
+// Até aqui o front fazia o oposto: claimava o e-mail para
+// `copy_generating_recovery` e rodava um fallback de copy in-process
+// (LangChain, `copy-chain-fallback.service`), isto é, gerava copy sem o
+// n8n. E só olhava `status = 'copy_generating'`, o status do caminho
+// legado (`startOnboarding`): o dispatch da fila e o da aba Teste gravam
+// `in_progress`, então o callback perdido de 14/09 (batch 879fe6e4)
+// deixou o e-mail preso sem `failure_reason` por horas, e a ficha caiu no
+// renderizador legado de blocos — "só a hero, com a imagem errada".
 //
-// AE-2 (`startOnboarding`) ja chama `increment_email_attempts(UUID[])`
-// ANTES de despachar pro n8n. Quando n8n falha em 15min, o email esta
-// em `copy_generating` com `attempts >= 1` ja contado.
-//
-// Aqui no watchdog mudamos status para `copy_generating_recovery` e
-// disparamos o fallback Claude in-process. Se o fallback der sucesso
-// -> status vira `copy_ready` (sai do filtro deste front, nao volta).
-// Se der falha -> `runCopyChainInProcess` marca status='failed' (sai
-// do filtro tambem). Em ambos os casos a proxima execucao do cron
-// NAO reclama o mesmo email porque o filtro requer `status='copy_generating'`.
-//
-// Consequencia intencional para MVP: cada email recebe EXATAMENTE 1
-// tentativa de fallback (alem do envio original do n8n). Se mais
-// tentativas forem necessarias no futuro, basta chamar
-// `increment_email_attempts` aqui — o cap `< MAX_ATTEMPTS` no WHERE
-// abaixo passa a contar.
-async function recoverStuckCopy(thresholdIso: string): Promise<number> {
+// Duas consultas, porque o PostgREST não faz COALESCE:
+//   A) `copy_started_at` mais velho que o prazo — o dispatch passou a
+//      carimbar o relógio (email-copy-webhook.service) nos dois caminhos.
+//   B) legado já preso: `in_progress` com `copy_started_at` NULL e batch,
+//      medido por `updated_at`. É o que resgata o bb2ef22d de 14/09.
+// Sem cap de `attempts`: tentar de novo é gesto humano (regerar), não do
+// cron. Uma run `copy` `error` por e-mail — sem ela a falha fica só no
+// status e a aba Execuções mostra a copy "aguardando" para sempre.
+const AGUARDANDO_N8N = ["copy_generating", "in_progress"] as const
+
+async function failCopySemCallback(thresholdIso: string): Promise<number> {
   const admin = createAdminClient()
   const nowIso = new Date().toISOString()
+  const pausadas = await emailsComExecucaoPausada()
+  const patch = {
+    status: "failed",
+    failure_reason: "copy_timeout",
+    failed_at: nowIso,
+    updated_at: nowIso,
+  }
+  const cols = "id, generation_batch_id, copy_started_at, updated_at, flow:email_flows(store_id)"
 
-  const { data: claimed, error } = await admin
+  type Row = {
+    id: string
+    generation_batch_id: string | null
+    copy_started_at: string | null
+    updated_at: string | null
+    flow: { store_id?: string } | Array<{ store_id?: string }> | null
+  }
+  const rows: Row[] = []
+
+  let qA = admin
     .from("email_flow_emails")
-    .update({
-      status: "copy_generating_recovery",
-      last_attempt_at: nowIso,
-      updated_at: nowIso,
-    })
-    .eq("status", "copy_generating")
+    .update(patch)
+    .in("status", [...AGUARDANDO_N8N])
     .lt("copy_started_at", thresholdIso)
-    .lt("attempts", MAX_ATTEMPTS)
-    .select("id, flow_id, generation_batch_id, flow:email_flows(store_id)")
-    .limit(MAX_COPY_RECOVERY_PER_RUN)
-
-  if (error) {
-    log.error("watchdog.copy.recover_failed", { error: error.message })
-    return 0
+  if (pausadas.length > 0) qA = qA.not("id", "in", `(${pausadas.join(",")})`)
+  const { data: dataA, error: errA } = await qA.select(cols).limit(MAX_COPY_TIMEOUT_PER_RUN)
+  if (errA) {
+    log.error("watchdog.copy.timeout_failed", { error: errA.message, query: "copy_started_at" })
+  } else {
+    rows.push(...((dataA ?? []) as Row[]))
   }
 
-  const rows = (claimed ?? []) as Array<{
-    id: string
-    flow_id: string
-    generation_batch_id: string | null
-    flow: { store_id?: string } | Array<{ store_id?: string }> | null
-  }>
+  let qB = admin
+    .from("email_flow_emails")
+    .update(patch)
+    .eq("status", "in_progress")
+    .is("copy_started_at", null)
+    .not("generation_batch_id", "is", null)
+    .lt("updated_at", thresholdIso)
+  if (pausadas.length > 0) qB = qB.not("id", "in", `(${pausadas.join(",")})`)
+  const { data: dataB, error: errB } = await qB.select(cols).limit(MAX_COPY_TIMEOUT_PER_RUN)
+  if (errB) {
+    log.error("watchdog.copy.timeout_failed", { error: errB.message, query: "legado_sem_copy_started_at" })
+  } else {
+    rows.push(...((dataB ?? []) as Row[]))
+  }
 
   if (rows.length === 0) return 0
-
-  log.warn("watchdog.copy.recovering", { count: rows.length })
+  log.error("watchdog.copy.n8n_sem_callback", {
+    count: rows.length,
+    timeout_min: COPY_TIMEOUT_MIN,
+    email_ids: rows.map((r) => r.id),
+  })
 
   for (const r of rows) {
     const flowRel = Array.isArray(r.flow) ? r.flow[0] : r.flow
-    const storeId = (flowRel as { store_id?: string } | null)?.store_id
-    if (!storeId) {
-      log.warn("watchdog.copy.no_store_id", { emailId: r.id })
-      continue
-    }
+    const storeId = (flowRel as { store_id?: string } | null)?.store_id ?? ""
+    const desde = r.copy_started_at ?? r.updated_at ?? null
     try {
-      after(
-        runCopyChainInProcess({
-          emailId: r.id,
-          storeId,
-          triggeredBy: "watchdog:copy_fallback",
-        }),
-      )
+      await logGenerationRun({
+        storeId,
+        emailId: r.id,
+        batchId: r.generation_batch_id ?? "",
+        agent: "copy",
+        status: "error",
+        model: "n8n",
+        errorMessage: `n8n_sem_callback: nenhuma copy voltou em ${COPY_TIMEOUT_MIN} min — o e-mail NÃO foi gerado`,
+        inputSummary: [
+          {
+            rotulo: "Copy despachada ao n8n",
+            cls: "sistema",
+            valor: desde ? `em ${desde}` : "(sem carimbo — geração anterior a 14/09)",
+          },
+          {
+            rotulo: "Callback",
+            cls: "upstream",
+            valor: `nenhum em ${COPY_TIMEOUT_MIN} min (${r.copy_started_at ? "copy_started_at" : "updated_at"} como relógio)`,
+          },
+          {
+            rotulo: "Desfecho",
+            cls: "sistema",
+            valor: "failed: copy_timeout — sem copy do n8n o e-mail não é gerado (decisão de 14/09); regerar pela loja quando o flow do n8n responder",
+          },
+        ],
+        parsedOutput: {
+          skip_reason: "n8n_sem_callback",
+          timeout_min: COPY_TIMEOUT_MIN,
+          copy_started_at: r.copy_started_at,
+          updated_at: r.updated_at,
+        },
+      })
     } catch (err) {
-      log.warn("watchdog.copy.after_unavailable", {
+      log.warn("watchdog.copy.run_log_failed", {
+        emailId: r.id,
         error: err instanceof Error ? err.message : String(err),
       })
-      void runCopyChainInProcess({
-        emailId: r.id,
-        storeId,
-        triggeredBy: "watchdog:copy_fallback",
-      }).catch((e: unknown) =>
-        log.error("watchdog.copy.bg_error", {
-          emailId: r.id,
-          error: e instanceof Error ? e.message : String(e),
-        }),
-      )
+    }
+    await safeNotifyEmailFailed({
+      storeId,
+      emailId: r.id,
+      failureReason: "copy_timeout",
+      batchId: r.generation_batch_id,
+    })
+    if (r.generation_batch_id) {
+      await safeNotifyBatchTerminalIfDone(storeId || null, r.generation_batch_id)
     }
   }
   return rows.length
@@ -923,8 +927,7 @@ export async function GET(request: NextRequest) {
 
   let signalsProcessed = 0
   let signalsFailed = 0
-  let copyRecovered = 0
-  let maxAttemptsExhausted = 0
+  let copyTimedOut = 0
   let phase2TimedOut = 0
   let staleCopyReady = 0
   let staleDispatchExhausted = 0
@@ -942,13 +945,12 @@ export async function GET(request: NextRequest) {
     })
   }
 
-  // Front 2: copy travada
+  // Front 2: copy sem callback do n8n → failed (nunca fallback)
   try {
     const copyThresholdIso = new Date(
       Date.now() - COPY_TIMEOUT_MIN * 60_000,
     ).toISOString()
-    maxAttemptsExhausted = await exhaustMaxAttempts(copyThresholdIso)
-    copyRecovered = await recoverStuckCopy(copyThresholdIso)
+    copyTimedOut = await failCopySemCallback(copyThresholdIso)
   } catch (err) {
     log.error("watchdog.copy.fatal", {
       error: err instanceof Error ? err.message : String(err),
@@ -1000,8 +1002,7 @@ export async function GET(request: NextRequest) {
   const summary: WatchdogSummary = {
     signals_processed: signalsProcessed,
     signals_failed: signalsFailed,
-    copy_recovered: copyRecovered,
-    max_attempts_exhausted: maxAttemptsExhausted,
+    copy_timed_out: copyTimedOut,
     phase2_timed_out: phase2TimedOut,
     stale_copy_ready: staleCopyReady,
     stale_dispatch_exhausted: staleDispatchExhausted,
@@ -1013,9 +1014,7 @@ export async function GET(request: NextRequest) {
   }
 
   // Logs com niveis apropriados para visibilidade operacional
-  if (copyRecovered > 0) {
-    log.warn("watchdog.summary", summary)
-  } else if (phase2TimedOut > 0 || maxAttemptsExhausted > 0) {
+  if (phase2TimedOut > 0 || copyTimedOut > 0) {
     log.error("watchdog.summary", summary)
   } else {
     log.info("watchdog.summary", summary)
