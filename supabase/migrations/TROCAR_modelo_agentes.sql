@@ -371,3 +371,24 @@ HAVING max(r.tokens_output) > 0.6 * c.max_tokens
 -- Não há histórico de troca de modelo: a coluna é sobrescrita e a
 -- consulta 1 é o único registro do estado anterior. GUARDE a saída dela
 -- antes de mexer — é o seu rollback.
+
+
+-- ─────────────────────────────────────────────
+-- 14/09 — Fable → Sonnet 4.6 em tudo, menos nos 3 nós de DECISÃO
+-- ─────────────────────────────────────────────
+-- Decisão do dono (plano de evolução do pipeline, semana 1): Seletor,
+-- Estruturador e Curador do vault (`assembler_chooser`) continuam em
+-- Fable — são os três que decidem; os demais 13 agentes que estavam em
+-- `~anthropic/claude-fable-latest` vão para `anthropic/claude-sonnet-4.6`.
+-- `max_tokens` intocado (decisão do dono). Estado anterior guardado pela
+-- consulta 1 antes de rodar (rollback = o UPDATE inverso, agente a agente).
+--
+-- Esperado: 13 linhas — assembler, blueprint, catalogador, color_format,
+-- copy, copy_fit, hero_section, image_format, merge_verifier, qa, subject,
+-- text_format, typography.
+UPDATE email_agent_configs
+   SET model = 'anthropic/claude-sonnet-4.6'
+ WHERE is_active = true
+   AND model = '~anthropic/claude-fable-latest'
+   AND agent_type NOT IN ('seletor', 'estruturador', 'assembler_chooser')
+RETURNING agent_type, model;
