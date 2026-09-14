@@ -6397,6 +6397,47 @@ JSON compacto onde é gerado por código (decisão do Estruturador,
 pelo sha8 das runs antigas. Leitura pós-deploy:
 `DIAGNOSTICO_cache_por_chamada.sql`.
 
+## O lint reprovou a peça por quatro achados de FRONTEIRA (14/09)
+
+Batch ddb2d125 (Hero Boxers · Welcome 1, 22:50 UTC): `lint_anchor_sem_href`
+×4, `texto_de_example` ×8, `largura_container` ×1 e o aviso do botão que só
+o Outlook vê. Nenhum era o agente errando — cada um vivia entre duas regras
+que não se conheciam. Consertado no lugar (sem regerar) e na raiz:
+
+- **Ícone social sem destino.** `attr-token-vocabulary.ts` deixa
+  `URL_FACEBOOK`/`URL_INSTAGRAM`… sem href DE PROPÓSITO (a loja não tem
+  redes cadastradas — `client_stores` não tem coluna para isso — e apontar a
+  home no lugar do Instagram seria mentira). O lint de envio (B2), mais novo,
+  bloqueia `<a>` sem href. Os dois estão certos e o e-mail não saía. Agora o
+  pós-processador (passo 9, `icones_sem_destino_removidos`) tira a âncora
+  COM o ícone quando ela só embrulha um `<img>`; `<a>` com texto e sem
+  destino continua bloqueando — inventar o destino de um botão é conteúdo.
+- **`v:roundrect` órfão.** O merge apaga o `<a>` do CTA negado pela decisão
+  e o gêmeo `<!--[if mso]>` fica: o Outlook mostrava "DIGITAL GIFT CARD"
+  numa marca de cuecas. Passo 10 (`mso_orfao_removido`) tira o bloco MSO e
+  o ramo não-Outlook vazio ao lado.
+- **598px.** A montagem (`fitFragment`) só neutralizava a calha; a largura
+  era normalizada apenas no salvar e na varredura — que nunca rodou: **14
+  variantes ativas em 598**. `enforceEmailWidth` passou a rodar no
+  `fitFragment` (a MESMA fronteira do `neutralizeGutterPadding`, pelo mesmo
+  motivo), e as 18 variantes foram normalizadas no banco
+  (`DADOS_20260914_biblioteca_lint_598_rodape.sql`). `enforceEmailWidth` é
+  régua de BLOCO: no documento final ela transformaria a calha 100% do
+  e-mail em 600 e mudaria o fundo — por isso o pós-processador NÃO a chama.
+- **"Verified Buyer" era copy, não example.** O example do campo
+  `review_N_credential` é "Verified Buyer 1"; a regex de `pareceExemplo`
+  sem o dígito casava a copy real do n8n. Agora exige o dígito (antes ou
+  depois). Os "Link Here" ×6 do rodapé eram example de verdade: footer 1
+  ganhou seis campos `footer_link_N_label` no schema (a copy passa a
+  escrevê-los) com exemplos reais.
+
+**Retomar sem regerar**: `html` corrigido por SQL posicional (substr/||,
+guarda e conferência por md5), status `rendering` + `html_pipeline_stage =
+'image'` + `rendering_started_at` 16 min atrás + uma run `lint_envio` nova
+(o watchdog Front 5 só retoma batch com atividade em 25 min e
+`rendering_started_at` entre 15 e 25 min). Custa typography + cores + lint
++ QA, não a fase 1 nem as imagens.
+
 ## Cache de prompt de verdade nos agentes que decidem (14/09)
 
 Auditoria do batch 879fe6e4 (`docs`: artifact "Auditoria de custo ·

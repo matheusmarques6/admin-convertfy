@@ -144,8 +144,9 @@ describe("assembleDocument", () => {
       slots: [slot("hero", "a", TABLE("x"))],
     })
     expect(stats.blocks).toBe(1)
-    // O <table> da variante fica dentro de um <tr><td> do container.
-    expect(html).toMatch(/<tr>\s*<td align="center"[^>]*>\s*<table>/)
+    // O <table> da variante fica dentro de um <tr><td> do container — e
+    // ganha a largura canônica no encaixe (raiz sem largura → 600).
+    expect(html).toMatch(/<tr>\s*<td align="center"[^>]*>\s*<table width="600"/)
   })
 
   // Variante fora do padrão table-based é EMBRULHADA, não pulada: email sem

@@ -25,11 +25,25 @@
  *  8. `line-height` menor que 1,1× a fonte → 1,1× (texto cortado no Outlook);
  *     título ≥ 20px sem line-height ganha um.
  *
- * Fora daqui, de propósito: âncora sem destino, texto de exemplo,
- * placeholder, contraste e largura — corrigir isso é inventar conteúdo ou
- * redesenhar, e o lint os reporta como bloqueio.
+ *  9. remove o `<a>` SEM destino cuja única filha é um `<img>` — o ícone
+ *     social do rodapé (`URL_FACEBOOK`, `URL_INSTAGRAM`…) cujo token
+ *     ninguém preenche, porque a loja não tem redes cadastradas
+ *     (`attr-token-vocabulary.ts` decidiu, com razão, NÃO apontar a home no
+ *     lugar do Instagram). Ícone que não leva a lugar nenhum sai COM o
+ *     ícone: link morto é o que o lint bloqueia, e um ícone do Facebook sem
+ *     Facebook é promessa vazia. `<a>` sem href COM texto continua fora —
+ *     inventar o destino de um botão é outra coisa;
+ * 10. remove o `v:roundrect` que existe SÓ no ramo do Outlook (o merge
+ *     apagou o `<a>` do CTA negado pela decisão e o gêmeo MSO ficou): o
+ *     Outlook mostrava um botão que nenhum outro cliente mostra.
+ *
+ * Fora daqui, de propósito: âncora com texto e sem destino, texto de
+ * exemplo, placeholder e contraste — corrigir isso é inventar conteúdo ou
+ * redesenhar, e o lint os reporta como bloqueio. A largura do container
+ * (598 → 600) é normalizada na MONTAGEM (`fitFragment`), não aqui.
  */
 
+import { enderecoUtil } from "./content-checks"
 import {
   COMENTARIO_RE,
   blocosDeStyle,
@@ -52,6 +66,8 @@ export type FixId =
   | "alt_preenchido"
   | "ano_atualizado"
   | "line_height_corrigido"
+  | "icones_sem_destino_removidos"
+  | "mso_orfao_removido"
 
 export interface FixAplicado {
   id: FixId
@@ -243,6 +259,50 @@ export function posProcessar(htmlEntrada: string, ctx: PosProcessadorContexto = 
       return `style="${decl.replace(/\s*;?\s*$/, "")};line-height:${minimo}px"`
     })
     if (n > 0) aplicados.push({ id: "line_height_corrigido", n })
+  }
+
+  // 9. ícone-âncora sem destino ----------------------------------------------
+  // `<a>` sem href (ou com href vazio / de exemplo) cuja única filha
+  // renderizável é um `<img>`: sai a âncora E o ícone. Só ícone — `<a>`
+  // com texto fica para o lint, porque o destino de um botão é conteúdo.
+  {
+    let n = 0
+    html = html.replace(/<a\b([^>]*)>([\s\S]*?)<\/a\s*>/gi, (m, attrs: string, inner: string) => {
+      const href = /\bhref\s*=\s*["']([^"']*)["']/i.exec(attrs)?.[1]?.trim() ?? ""
+      if (href && enderecoUtil(href)) return m
+      if (!/<img\b/i.test(inner)) return m
+      const soImg = inner.replace(/<img\b[^>]*>/gi, "").replace(/&nbsp;/gi, "").replace(/<!--[\s\S]*?-->/g, "").trim() === ""
+      if (!soImg) return m
+      n++
+      return ""
+    })
+    if (n > 0) aplicados.push({ id: "icones_sem_destino_removidos", n })
+  }
+
+  // 10. v:roundrect órfão (só no ramo do Outlook) ---------------------------
+  // O par MSO ⇄ <a> do passo 4 sincroniza o texto quando os dois existem;
+  // quando o `<a>` não existe, o botão vive só no Outlook. Sai o bloco
+  // `<!--[if mso]>…<![endif]-->` inteiro; o ramo `<!--[if !mso]><!-- -->
+  // …<!--<![endif]-->` vazio que fica ao lado sai junto.
+  {
+    const orfaos = paresMsoAnchor(html).filter((p) => p.anchorTexto == null)
+    let n = 0
+    if (orfaos.length > 0) {
+      const blocos = Array.from(html.matchAll(/<!--\s*\[if\s+mso\]>([\s\S]*?)<!\[endif\]\s*-->/gi))
+        .filter((m) => /v:roundrect/i.test(m[1]))
+        .map((m) => ({ start: m.index ?? 0, end: (m.index ?? 0) + m[0].length }))
+      // Um órfão por posição: casa pelo range do <center>, que fica dentro do bloco.
+      const alvos = blocos.filter((b) => orfaos.some((o) => o.centerRange.start >= b.start && o.centerRange.end <= b.end))
+      for (const b of [...alvos].reverse()) {
+        let fim = b.end
+        const resto = html.slice(fim, fim + 400)
+        const vazio = /^\s*<!--\s*\[if\s+!mso\]>\s*<!--\s*-->\s*<!--\s*<!\[endif\]\s*-->/i.exec(resto)
+        if (vazio) fim += vazio[0].length
+        html = html.slice(0, b.start) + html.slice(fim)
+        n++
+      }
+    }
+    if (n > 0) aplicados.push({ id: "mso_orfao_removido", n })
   }
 
   return { html, aplicados }

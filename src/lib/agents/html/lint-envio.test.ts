@@ -25,7 +25,9 @@ describe("lintEnvio — batch 6249aef2", () => {
       ["mso_diverge_do_anchor", 1],
       ["img_sem_src", 6],
       ["anchor_sem_href", 4],
-      ["texto_de_example", 12],
+      // 12 até 14/09: "Verified Buyer" ×2 era copy do n8n no campo
+      // `review_N_credential`, não o example "Verified Buyer 1".
+      ["texto_de_example", 10],
       ["line_height_menor_que_fonte", 3],
       ["alt_ausente_ou_generico", 9],
       ["ano_copyright_desatualizado", 1],

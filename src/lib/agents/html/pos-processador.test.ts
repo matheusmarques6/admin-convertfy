@@ -11,7 +11,7 @@ const CTX = { ano: 2026, altPadrao: "Hero Boxers" }
 describe("posProcessar — batch 6249aef2", () => {
   const p = posProcessar(FIXTURE, CTX)
 
-  it("aplica as oito correções seguras, com as contagens medidas", () => {
+  it("aplica as correções seguras, com as contagens medidas", () => {
     expect(p.aplicados.map((a) => [a.id, a.n])).toEqual([
       ["styles_fundidos", 6],
       ["css_vars_resolvidas", 3],
@@ -21,6 +21,9 @@ describe("posProcessar — batch 6249aef2", () => {
       ["alt_preenchido", 9],
       ["ano_atualizado", 1],
       ["line_height_corrigido", 14],
+      // 14/09: os 4 ícones sociais do rodapé sem destino (a loja não tem
+      // redes cadastradas) saem com o ícone, em vez de virar link morto.
+      ["icones_sem_destino_removidos", 4],
     ])
   })
 
@@ -38,8 +41,7 @@ describe("posProcessar — batch 6249aef2", () => {
   it("o lint depois só acusa o que NÃO é auto-corrigível", () => {
     const r = lintEnvio(p.html, { ano: 2026, fontesDaLoja: ["Poppins"] })
     expect(r.itens.map((i) => [i.id, i.n])).toEqual([
-      ["anchor_sem_href", 4],
-      ["texto_de_example", 12],
+      ["texto_de_example", 10],
       ["largura_container", 1],
     ])
     expect(r.itens.every((i) => !i.auto_fix)).toBe(true)

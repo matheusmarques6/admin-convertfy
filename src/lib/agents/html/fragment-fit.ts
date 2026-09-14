@@ -26,7 +26,7 @@
  * Puro (zero I/O) — testável.
  */
 
-import { neutralizeGutterPadding } from "@/lib/email-workspace/email-width"
+import { enforceEmailWidth, neutralizeGutterPadding } from "@/lib/email-workspace/email-width"
 import { hasDocumentShell, stripDocumentShell } from "../shared/document-shell"
 import { aplicarTokens, type TokenDeIdentidade, type ValoresDeTokens } from "./identity-tokens"
 
@@ -86,6 +86,17 @@ export interface FitResult {
    */
   gutterNeutralized?: boolean
   /**
+   * A variante declarava o container fora de 600px (a assinatura de quem
+   * errou o número: 560–640, quase sempre 598) e foi normalizada no
+   * encaixe pela MESMA régua do salvar/varredura (`enforceEmailWidth`).
+   * Medido em 14/09: 14 variantes ativas em 598 e a varredura "Largura
+   * 600px na biblioteca" nunca rodada — o lint de envio (B2) reprovava
+   * a peça montada em `largura_container`. Fica aqui, e não só na
+   * biblioteca, porque o email montado não pode depender de alguém ter
+   * clicado no botão da varredura.
+   */
+  widthEnforced?: boolean
+  /**
    * Tokens de identidade resolvidos no encaixe (B5). `total` = ocorrências
    * trocadas; `sem_valor` = tokens que o HTML pedia e o chamador não tinha
    * (caíram no padrão). Ausente quando o fragmento não usa tokens ou o
@@ -114,12 +125,18 @@ export function fitFragment(
   opts: FitOptions = {},
 ): FitResult | null {
   const canonical = neutralizeGutterPadding(variantHtml ?? "")
-  const resolvido = opts.tokens ? aplicarTokens(canonical.html, opts.tokens) : null
-  const fit = fitVariant(resolvido?.html ?? canonical.html, opts)
+  // Largura canônica pela MESMA régua do salvar/varredura: container em
+  // 560–640 vira 600, calha 100% de nível raiz vira 600. Variante gravada
+  // em 598 continua no banco até alguém rodar a varredura — o email montado
+  // não pode depender disso (14/09: 14 ativas em 598, lint reprovando).
+  const largura = enforceEmailWidth(canonical.html)
+  const resolvido = opts.tokens ? aplicarTokens(largura.html, opts.tokens) : null
+  const fit = fitVariant(resolvido?.html ?? largura.html, opts)
   if (!fit) return null
   return {
     ...fit,
     ...(canonical.changed ? { gutterNeutralized: true } : {}),
+    ...(largura.changed ? { widthEnforced: true } : {}),
     ...(resolvido && resolvido.total > 0
       ? { tokens: { total: resolvido.total, sem_valor: resolvido.sem_valor } }
       : {}),
