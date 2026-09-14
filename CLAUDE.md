@@ -6329,6 +6329,31 @@ workflow de copy por volta de 18:55 UTC de 14/09 e o log da Vercel em
 nunca chamou). Hipótese: o flow não lê o payload v3.2 (`estrutura_geral:
 null`, `directive`, `campos_omitidos`).
 
+## Cache de prompt de verdade nos agentes que decidem (14/09)
+
+Auditoria do batch 879fe6e4 (`docs`: artifact "Auditoria de custo ·
+Estruturador e Curador"): o Curador em `~anthropic/claude-fable-latest`
+pagou **153k tokens de entrada em duas chamadas com o MESMO prefixo de
+58k** (US$ 2,45 a run, US$ 10/M in · US$ 50/M out). Duas causas no
+invoke: (1) a régua do `cache_control` era `^anthropic/` e o slug com
+TIL — o dos três agentes que decidem — nunca casava, então nenhum
+`cache_control` saía; (2) mesmo casando, só o SYSTEM era marcado, e o
+user do Curador tem ~100k chars. `modeloComCacheDePrompt` aceita o til;
+`AgentInvokeConfig.cache_user_prefix` marca o user como prefixo
+cacheável e `CACHE_PREFIX_MARKER` separa o prefixo (shortlist) do que
+muda (as notas das finalistas, na escolha). Só agente de DUAS chamadas
+liga o prefixo do user: escrever no cache custa 25% a mais e agente de
+uma chamada não teria leitor. `cachedTokens` volta do OpenRouter
+(`prompt_tokens_details.cached_tokens`) e vai para
+`consumo_por_chamada.tokens_cache` — sem esse número "cache ligado" era
+suposição, e foi assim de CM-3 até 14/09. TTL padrão (5 min): as duas
+chamadas ficam a ~2 min uma da outra.
+
+**Recusado pelo dono em 14/09** (não refazer): tirar do Curador o que
+ele não cita (aprendizados, índice do Obsidian, intenção do flow — "a
+estrutura vai ficar repetitiva"), reusar a decisão do Estruturador
+quando nada mudou, e teto de raciocínio ou troca de modelo.
+
 ---
 
 *Última atualização: Setembro 2026*

@@ -85,7 +85,27 @@ export interface AgentInvokeConfig {
    * resposta volta vazia (run copy_fit 5d7396b5, 02/09).
    */
   reasoning?: { effort: "low" | "medium" | "high" }
+  /**
+   * Marca também o USER como prefixo cacheável (14/09). Só para modelos
+   * Anthropic via OpenRouter; nos demais é ignorado.
+   *
+   * Existe para o agente que faz DUAS chamadas com o mesmo prefixo — o
+   * Curador manda o prompt-base inteiro na shortlist e de novo na escolha,
+   * com as notas das finalistas anexadas ao fim. Com o system sozinho
+   * cacheado, a segunda chamada pagava os 100k chars do user a preço cheio.
+   * Quando o user carrega o `CACHE_PREFIX_MARKER`, o texto ANTES dele vira o
+   * bloco cacheável e o resto vai solto; sem marcador, o user inteiro é o
+   * prefixo. Agente de uma chamada só NÃO deve ligar: escrever no cache
+   * custa 25% a mais e ninguém leria.
+   */
+  cache_user_prefix?: boolean
 }
+
+/**
+ * Sentinela que separa, no user, o prefixo cacheável do que muda entre as
+ * chamadas. Nunca chega ao modelo: `userContent` a remove.
+ */
+export const CACHE_PREFIX_MARKER = "\u0000<<cfy:cache-prefix>>\u0000"
 
 /**
  * Interpola vars no SYSTEM prompt por substituição LITERAL (story CM-3).
@@ -153,6 +173,8 @@ export interface InvokeResult {
   finishReason?: string
   /** Tokens de raciocínio cobrados como saída, quando o provider reporta. */
   reasoningTokens?: number
+  /** Tokens de entrada lidos do cache de prompt, quando o provider reporta. */
+  cachedTokens?: number
 }
 
 /**
@@ -300,7 +322,7 @@ async function invokeViaAnthropic(
  * no Sonnet 4.x) é ignorado silenciosamente pela API — marcar é sempre seguro.
  */
 function systemContent(config: AgentInvokeConfig): unknown {
-  if (!/^anthropic\//i.test(config.model)) return config.system_prompt
+  if (!modeloComCacheDePrompt(config.model)) return config.system_prompt
   return [
     {
       type: "text",
@@ -308,6 +330,39 @@ function systemContent(config: AgentInvokeConfig): unknown {
       cache_control: { type: "ephemeral" },
     },
   ]
+}
+
+/**
+ * Modelo Anthropic pelo OpenRouter, com ou sem o til de alias
+ * (`~anthropic/claude-fable-latest`). Até 14/09 a régua era `^anthropic/`
+ * e o slug com til — o dos três agentes que decidem — nunca casava: o
+ * Curador pagava 58k tokens de prefixo repetido a preço cheio em toda
+ * geração, e nada acusava, porque o cache só se vê pelo `cached_tokens`.
+ */
+export function modeloComCacheDePrompt(model: string): boolean {
+  return /^~?anthropic\//i.test(model)
+}
+
+/**
+ * Content do user para o OpenRouter (puro; exportado para o teste).
+ *
+ * String crua quando o modelo não cacheia ou o agente não pediu prefixo.
+ * Com `cache_user_prefix`: o texto até o `CACHE_PREFIX_MARKER` (ou o user
+ * inteiro, sem marcador) vira bloco com `cache_control`; o que vem depois
+ * vai num segundo bloco, sem marca. O marcador é REMOVIDO — sentinela no
+ * prompt seria lida pelo modelo como conteúdo.
+ */
+export function userContent(config: AgentInvokeConfig, userMessage: string): unknown {
+  const semMarcador = userMessage.split(CACHE_PREFIX_MARKER).join("")
+  if (!config.cache_user_prefix || !modeloComCacheDePrompt(config.model)) return semMarcador
+  const corte = userMessage.indexOf(CACHE_PREFIX_MARKER)
+  const prefixo = corte >= 0 ? userMessage.slice(0, corte) : userMessage
+  const resto = corte >= 0 ? userMessage.slice(corte + CACHE_PREFIX_MARKER.length) : ""
+  const blocos: Array<Record<string, unknown>> = [
+    { type: "text", text: prefixo, cache_control: { type: "ephemeral" } },
+  ]
+  if (resto) blocos.push({ type: "text", text: resto })
+  return blocos
 }
 
 /** Invoca via OpenRouter (OpenAI-compatible chat/completions). */
@@ -348,7 +403,7 @@ async function callOnceArchitect(
       max_tokens: config.max_tokens,
       messages: [
         { role: "system", content: systemContent(config) },
-        { role: "user", content: userMessage },
+        { role: "user", content: userContent(config, userMessage) },
       ],
     }
     if (modelSupportsTemperature(config.model)) {
@@ -413,6 +468,9 @@ async function callOnceArchitect(
       tokensOut: parsed.tokensOutput,
       finishReason: parsed.finishReason ?? null,
       reasoningTokens: parsed.reasoningTokens ?? null,
+      // Quanto do prompt veio do cache — zero com cache marcado é a
+      // assinatura de prefixo que mudou entre as chamadas.
+      cachedTokens: parsed.cachedTokens ?? null,
       // Resposta vazia com orçamento cheio: o sinal que faltou na run
       // 5d7396b5 — a telemetria só via "Unexpected end of JSON input".
       emptyText: parsed.text === "",
@@ -426,6 +484,7 @@ async function callOnceArchitect(
       ...(typeof parsed.reasoningTokens === "number"
         ? { reasoningTokens: parsed.reasoningTokens }
         : {}),
+      ...(typeof parsed.cachedTokens === "number" ? { cachedTokens: parsed.cachedTokens } : {}),
     }
   } catch (e) {
     if (ctrl.signal.aborted || (e as Error)?.name === "AbortError") {

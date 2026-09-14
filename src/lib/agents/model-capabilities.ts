@@ -115,7 +115,8 @@ export function corteDeRaciocinio(model: string): {
  * Fora da lista o modelo é tratado como cego — ver a assimetria no topo.
  */
 const FAMILIAS_COM_VISAO = [
-  /^anthropic\/claude-/i,
+  // O til é o alias do OpenRouter (`~anthropic/claude-fable-latest`).
+  /^~?anthropic\/claude-/i,
   /^openai\/gpt-(?:4o|4\.1|5)/i,
   /^google\/gemini/i,
 ]

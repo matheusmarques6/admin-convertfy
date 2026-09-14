@@ -165,6 +165,13 @@ export interface ParsedBody {
   finishReason?: string
   /** `usage.completion_tokens_details.reasoning_tokens`, quando o provider reporta. */
   reasoningTokens?: number
+  /**
+   * Tokens de entrada LIDOS do cache de prompt (14/09). É o único jeito de
+   * saber se o `cache_control` pegou: sem este número, "cache ligado" é
+   * suposição — como foi de CM-3 até 14/09, quando o slug com til
+   * (`~anthropic/…`) nunca casou a régua e ninguém viu.
+   */
+  cachedTokens?: number
 }
 
 type UsageBody = {
@@ -172,17 +179,26 @@ type UsageBody = {
   completion_tokens?: number
   cost?: number
   completion_tokens_details?: { reasoning_tokens?: number }
+  // OpenRouter: `cached_tokens` (formato OpenAI) e/ou os campos da Anthropic.
+  prompt_tokens_details?: {
+    cached_tokens?: number
+    cache_read_input_tokens?: number
+    cache_creation_input_tokens?: number
+  }
 }
 
 /** Campos opcionais do ParsedBody — só entram quando existem no body. */
 function usageExtras(
   finishReason: string | undefined,
   usage: UsageBody | undefined,
-): Pick<ParsedBody, "finishReason" | "reasoningTokens"> {
+): Pick<ParsedBody, "finishReason" | "reasoningTokens" | "cachedTokens"> {
   const reasoning = usage?.completion_tokens_details?.reasoning_tokens
+  const det = usage?.prompt_tokens_details
+  const cached = det?.cached_tokens ?? det?.cache_read_input_tokens
   return {
     ...(typeof finishReason === "string" ? { finishReason } : {}),
     ...(typeof reasoning === "number" ? { reasoningTokens: reasoning } : {}),
+    ...(typeof cached === "number" ? { cachedTokens: cached } : {}),
   }
 }
 

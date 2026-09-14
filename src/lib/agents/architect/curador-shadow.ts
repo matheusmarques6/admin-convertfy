@@ -36,6 +36,7 @@ import {
   interpolateSystem,
   invokeAgent,
   type AgentInvokeConfig,
+  CACHE_PREFIX_MARKER,
 } from "./llm-invoke"
 import { loadFinalistNotes, type FinalistNoteResult } from "./curador-vault-tools"
 import { tetoDeRelogioDoAgente } from "@/lib/agents/fase1-orcamento"
@@ -1028,8 +1029,11 @@ export async function runCuradorShadow(
    * se o teto novo precisa ir para a shortlist, para a escolha, ou para as
    * duas, e a próxima decisão de teto vira chute.
    */
-  const porChamada: Record<string, { tokens_output: number; tokens_input: number; seg: number } | null> = {}
-  const medir = async <T extends { tokensInput: number; tokensOutput: number }>(
+  const porChamada: Record<
+    string,
+    { tokens_output: number; tokens_input: number; tokens_cache?: number; seg: number } | null
+  > = {}
+  const medir = async <T extends { tokensInput: number; tokensOutput: number; cachedTokens?: number }>(
     etapa: string,
     fn: () => Promise<T>,
   ): Promise<T> => {
@@ -1039,6 +1043,9 @@ export async function runCuradorShadow(
       porChamada[etapa] = {
         tokens_input: r.tokensInput,
         tokens_output: r.tokensOutput,
+        // Quanto do input veio do cache (14/09). Na "escolha" o esperado é o
+        // prompt-base inteiro; zero aqui é prefixo que mudou, não economia.
+        ...(typeof r.cachedTokens === "number" ? { tokens_cache: r.cachedTokens } : {}),
         seg: Math.round((Date.now() - inicio) / 1000),
       }
       return r
@@ -1069,6 +1076,10 @@ export async function runCuradorShadow(
         : {}),
       system_prompt: DEFAULT_CHOOSER_VAULT_SYSTEM,
       user_template: DEFAULT_CHOOSER_VAULT_USER,
+      // As duas chamadas (shortlist e escolha) compartilham o prompt-base
+      // inteiro; a escolha só anexa as notas das finalistas DEPOIS do
+      // marcador. Sem isto o user de ~100k chars era pago duas vezes.
+      cache_user_prefix: true,
     }
 
     const estruturadorOn = p.estruturadorOn === true
@@ -1241,7 +1252,7 @@ export async function runCuradorShadow(
     const finalVars = { ...vars, finalistas_notas: renderFinalistNotes(finalistNotes) }
     const finalConfig = {
       ...config,
-      user_template: `${config.user_template}\n\n<notas_das_finalistas>\n{{finalistas_notas}}\n</notas_das_finalistas>\n\nEscolha SOMENTE entre as finalistas listadas acima.`,
+      user_template: `${config.user_template}${CACHE_PREFIX_MARKER}\n\n<notas_das_finalistas>\n{{finalistas_notas}}\n</notas_das_finalistas>\n\nEscolha SOMENTE entre as finalistas listadas acima.`,
     }
     let finalCall = await medir("escolha", () =>
       naEtapa("escolha", () => invokeAgent(finalConfig, finalVars, systemVars)),
