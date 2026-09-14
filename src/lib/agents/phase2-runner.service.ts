@@ -77,6 +77,10 @@ import {
   type SchemaCheckBlueprintBlock,
 } from "./chains/qa.chain"
 import { resolveQaMode } from "./chains/qa-mode-loader"
+import { resolveLintMode } from "./chains/lint-mode-loader"
+import { lintEnvio, resumoDoLint } from "./html/lint-envio"
+import { posProcessar } from "./html/pos-processador"
+import { PREVIEW_BUDGET_MIN_MS, capturarPreviews } from "./html/render-previews.service"
 // ── Cadeia de formatação (split do HTML agent, migration 20261039) ──
 import {
   invokeHeroChain,
@@ -4312,7 +4316,96 @@ export async function runPhase2HtmlQa(
   // documento chega da cadeia com os marcadores de bloco (a fronteira de
   // saída é o persistStage), e aqui eles saem. As views por bloco vêm
   // separadas, extraídas do documento marcado.
-  const finalHtml = stripCfyBlockMarkers(fmtResult.html)
+  let finalHtml = stripCfyBlockMarkers(fmtResult.html)
+
+  // ── Pós-processador + lint de envio (B2, set/2026; código, custo zero) ──
+  // Sobre o documento que VAI ao cliente: funde os <style>, resolve var(--x),
+  // tira comentário de dev, sincroniza o botão do Outlook, apaga <img src="">,
+  // preenche alt, ano e line-height — e depois o lint diz o que restou. Em
+  // `enforce`, achado bloqueante reprova ANTES do QA por modelo (sem pagar a
+  // chamada); em `shadow` só grava; em `off` nem roda. Os prints (600/375px)
+  // saem daqui porque é este HTML, e não um estágio, que o operador revisa.
+  {
+    const lintMode = await resolveLintMode(storeId)
+    if (lintMode !== "off") {
+      const lintT0 = Date.now()
+      const entrada = finalHtml
+      const altPorUrl = new Map<string, string>()
+      const { data: blocosAlt } = await admin.from("email_blocks").select("content").eq("email_id", emailId)
+      for (const b of (blocosAlt ?? []) as Array<{ content?: { images?: Record<string, { url?: string; alt?: string }> } | null }>) {
+        for (const img of Object.values(b.content?.images ?? {})) if (img?.url && img?.alt) altPorUrl.set(img.url, img.alt)
+      }
+      const brandFontes = [ctx.brand?.font_heading, ctx.brand?.font_body].filter((f): f is string => typeof f === "string" && f.trim().length > 0)
+      const { data: storeNome } = await admin.from("client_stores").select("store_name").eq("id", storeId).maybeSingle()
+      const pos = posProcessar(entrada, { altPorUrl, altPadrao: (storeNome as { store_name?: string } | null)?.store_name ?? null })
+      const lint = lintEnvio(pos.html, { fontesDaLoja: brandFontes })
+      const bloqueou = lintMode === "enforce" && lint.bloqueia
+      finalHtml = pos.html
+      if (pos.aplicados.length > 0 || lint.itens.length > 0) {
+        log.info("phase2.lint_envio", { emailId, modo: lintMode, aplicados: pos.aplicados.map((a) => `${a.id}×${a.n}`), lint: resumoDoLint(lint), bloqueou })
+      }
+      // O HTML pós-processado é o que fica gravado — o QA e o cliente leem o mesmo.
+      if (pos.aplicados.length > 0) {
+        await admin.from("email_flow_emails").update({ html: finalHtml, updated_at: new Date().toISOString() }).eq("id", emailId)
+      }
+      await logGenerationRun({
+        storeId,
+        flowId,
+        emailId,
+        triggeredBy,
+        batchId: batchId ?? "",
+        agent: "lint_envio",
+        status: bloqueou ? "error" : "success",
+        model: "deterministic",
+        inputVars: { input_html_len: entrada.length, input_sha8: sha8(entrada), modo: lintMode },
+        inputSummary: [
+          { rotulo: "Documento de entrada", cls: "upstream", valor: `${entrada.length.toLocaleString("pt-BR")} chars — HTML final da cadeia, sem marcadores (sha8 ${sha8(entrada)})` },
+          { rotulo: "Modo", cls: "sistema", valor: `lint ${lintMode} (email_generation_settings.lint_mode; EMAIL_LINT_MODE vence)` },
+          { rotulo: "Fontes da loja", cls: "loja", valor: brandFontes.join(", ") || "(nenhuma)" },
+        ] as InputSummaryItem[],
+        parsedOutput: {
+          modo: lintMode,
+          aplicados: pos.aplicados,
+          itens: lint.itens,
+          bloqueia: lint.bloqueia,
+          bloqueantes: lint.bloqueantes,
+          bloqueou,
+          output_html_len: finalHtml.length,
+          output_sha8: sha8(finalHtml),
+          output_html: htmlSnapshot(finalHtml),
+        },
+        errorMessage: bloqueou ? resumoDoLint(lint).slice(0, 500) : undefined,
+        costCents: 0,
+        durationMs: Date.now() - lintT0,
+      }).catch(() => {})
+
+      // Prints — fail-open, só com orçamento.
+      const restante = budgetMs - (Date.now() - routeT0)
+      if (restante >= PREVIEW_BUDGET_MIN_MS) {
+        await capturarPreviews({ storeId, emailId, html: finalHtml })
+      } else {
+        log.info("phase2.render_previews_skipped_budget", { emailId, restante })
+      }
+
+      if (bloqueou) {
+        const lintIssues: QaIssue[] = lint.itens
+          .filter((i) => i.severidade === "bloqueia")
+          .map((i) => ({
+            type: "html_invalido" as QaIssue["type"],
+            severity: "high" as const,
+            disposition: "blocking" as const,
+            message: `[lint ${i.id}] ${i.evidencia}`,
+            location: "html",
+          }))
+        await markEmailFailed(emailId, `lint_${lint.bloqueantes[0]}`, lintIssues)
+        await safeNotifyEmailFailed(storeId, emailId, `lint_${lint.bloqueantes[0]}`, batchId || null)
+        if (batchId) await rollupCostAndMaybeAlert({ storeId, emailId, batchId, costAlertUsd: ctx.costAlertUsd }).catch(() => {})
+        if (batchId) await checkBatchTerminal(storeId, batchId).catch(() => {})
+        log.info("phase2.lint_envio.blocked", { emailId, bloqueantes: lint.bloqueantes })
+        return { status: "failed" }
+      }
+    }
+  }
 
   // Copy da hero aceita apesar do guard (última tentativa). Vai para a aba
   // QA do email, que é onde o operador olha — e o email EXISTE para ele

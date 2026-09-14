@@ -100,6 +100,7 @@ export function StudioTestTab({ positions }: { positions?: Positions }) {
       email_status: t.statusInfo?.email_status ?? t.selectedEmail.status,
       bucket,
       failure_reason: null,
+      render_previews: null,
       updated_at: new Date(t.nowTick).toISOString(),
       ready_at: null,
       failed_at: null,

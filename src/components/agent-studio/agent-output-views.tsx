@@ -1217,6 +1217,64 @@ export function BackgroundFitView({ output }: { output: unknown }) {
   )
 }
 
+// ── Lint de envio (B2, set/2026) ────────────────────────────────────────
+
+interface LintAchadoView {
+  id?: string
+  severidade?: "bloqueia" | "aviso"
+  evidencia?: string
+  auto_fix?: boolean
+  n?: number
+}
+interface LintFixView {
+  id?: string
+  n?: number
+  detalhe?: string
+}
+
+export function LintEnvioView({ output }: { output: unknown }) {
+  const o = (output ?? {}) as Record<string, unknown>
+  if (o.itens == null && o.aplicados == null) return null
+  const itens = asArray<LintAchadoView>(o.itens)
+  const aplicados = asArray<LintFixView>(o.aplicados)
+  const bloqueantes = itens.filter((i) => i.severidade === "bloqueia")
+  const modo = typeof o.modo === "string" ? o.modo : null
+  return (
+    <OutCard>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+        <OutPill text={`${aplicados.length} correção(ões) aplicada(s)`} tone={aplicados.length > 0 ? "pos" : "neut"} />
+        <OutPill text={`${bloqueantes.length} bloqueante(s)`} tone={bloqueantes.length > 0 ? "warn" : "pos"} />
+        <OutPill text={`${itens.length - bloqueantes.length} aviso(s)`} tone="neut" />
+        {modo && <OutPill text={`lint ${modo}`} tone="neut" />}
+        {o.bloqueou === true && <OutPill text="reprovou a peça" tone="warn" />}
+      </div>
+      {aplicados.length > 0 && (
+        <OutSection title="Pós-processador">
+          {aplicados.map((a, i) => (
+            <div key={`a${i}`} style={{ ...OUT_BODY, ...TNUM }}>
+              <b>{a.id}</b> ×{a.n ?? 0}
+              {a.detalhe ? <span style={{ color: C.g500 }}> · {a.detalhe}</span> : null}
+            </div>
+          ))}
+        </OutSection>
+      )}
+      {itens.length > 0 && (
+        <OutSection title="Lint (o que restou depois das correções)">
+          {itens.map((it, i) => (
+            <OutItem key={`i${i}`}>
+              <div style={{ ...OUT_BODY, fontWeight: 700, color: it.severidade === "bloqueia" ? "#991B1B" : C.g900 }}>
+                {it.id} ×{it.n ?? 0} · {it.severidade === "bloqueia" ? "bloqueia" : "aviso"}
+              </div>
+              <div style={{ ...OUT_BODY, color: C.g500 }}>{it.evidencia}</div>
+            </OutItem>
+          ))}
+        </OutSection>
+      )}
+      {itens.length === 0 && <div style={{ ...OUT_BODY, color: C.g500 }}>HTML final limpo.</div>}
+    </OutCard>
+  )
+}
+
 /** Roteia a view legível pelo agente do nó. null = sem view própria. */
 // ── Objeções (set/2026): Seletor e Catalogador ────────────────────────
 
@@ -1409,6 +1467,8 @@ export function AgentOutputView({
       return <CopyFitView output={output} />
     case "background_fit":
       return <BackgroundFitView output={output} />
+    case "lint_envio":
+      return <LintEnvioView output={output} />
     case "hero_section":
       return <HeroSectionView output={output} />
     case "image":

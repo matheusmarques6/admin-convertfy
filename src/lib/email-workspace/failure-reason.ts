@@ -28,6 +28,14 @@ const FAILURE_REASON_LABELS: Record<string, string> = {
   // variante, e ninguém percebia.
   merge_sem_contrato: "Bloco com copy e sem contrato — a copy nao tem onde entrar",
   qa_failed: "QA reprovou (issues criticas)",
+  // Lint de envio (B2): o id da primeira regra bloqueante vai no reason.
+  lint_css_var_em_uso: "Lint: var(--x) no HTML final (Gmail/Outlook ignoram)",
+  lint_img_sem_src: "Lint: imagem sem src (icone de imagem quebrada no Outlook)",
+  lint_anchor_sem_href: "Lint: link sem destino util",
+  lint_texto_de_example: "Lint: texto de exemplo da biblioteca visivel",
+  lint_placeholder_colchete: "Lint: placeholder entre colchetes visivel",
+  lint_contraste_botao_container: "Lint: label do botao ilegivel sobre o fundo (< 4.5:1)",
+  lint_largura_container: "Lint: container fora de 600px",
   qa_timeout: "Timeout no QA",
   max_attempts_exceeded: "Numero maximo de tentativas excedido",
   brand_incomplete: "Loja sem identidade visual completa (cores e/ou logo)",

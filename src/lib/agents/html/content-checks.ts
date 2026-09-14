@@ -35,9 +35,9 @@ export interface ContentCheckOptions {
 
 const OFERTA_RE =
   /\b\d{1,3}\s?%\s?(?:off|de desconto|discount)\b|\buse (?:the )?code\b|\bc[oó]digo\s*:|\bcupom\b|\bcoupon\b|\bpromo code\b/i
-const PLACEHOLDER_RE = /\[[A-Za-z][A-Za-z0-9 _-]{2,}\]/g
+export const PLACEHOLDER_RE = /\[[A-Za-z][A-Za-z0-9 _-]{2,}\]/g
 /** Merge tags e tokens que NÃO são placeholder órfão. */
-const TOKEN_OK_RE = /^\[(?:unsubscribe(?:_link)?|preferences|view_in_browser|web_version)\]$/i
+export const TOKEN_OK_RE = /^\[(?:unsubscribe(?:_link)?|preferences|view_in_browser|web_version)\]$/i
 const REPETICAO_MIN_CHARS = 60
 const CODIGO_RE = /\b(?:use (?:the )?code|c[oó]digo|cupom|coupon(?: code)?)\s*[:\-]?\s*([A-Z0-9][A-Z0-9_-]{2,})\b/gi
 const LABEL_GENERICO_RE = /^(?:link here|click here|button|cta|learn more|saiba mais)$/i
@@ -55,7 +55,7 @@ const HREF_RE = /href\s*=\s*["']([^"']*)["']/gi
  * aconteceu com os TRÊS CTAs do hero em 11/09 — a seção mais importante do
  * e-mail, sem um link que funcione.
  */
-function enderecoUtil(href: string): boolean {
+export function enderecoUtil(href: string): boolean {
   const h = href.trim()
   if (!h) return false
   // Merge tag do ESP, em qualquer dialeto: {{x}}, *|X|*, %%x%%, [token].
