@@ -285,6 +285,32 @@ export type QaIssueType =
   | "contrato_percentual_diverge"
   | "contrato_codigo_diverge"
   | "contrato_urgencia_artificial"
+  // ── Passo 15 (14/09): o QA recebe a decisão ──────────────────────────
+  // A decisão pediu uma posição e a biblioteca não tinha variante (Passo
+  // 11); o e-mail saiu com uma seção a menos.
+  | "posicao_sem_variante"
+  // O cupom saiu em pt-BR numa loja de outro idioma (Passo 4 gravou
+  // `traducao_faltante` no incentivo).
+  | "traducao_faltante"
+  // Passo 16: a plataforma da loja foi consultada e o código NÃO existe.
+  | "cupom_inexistente_na_plataforma"
+
+/**
+ * Quem CORRIGE a issue (Passo 15). É vocabulário de ação, não de
+ * fronteira: o `NoResponsavel` de `shared/conformidade.ts` nomeia o agente
+ * em que a decisão divergiu; este nomeia para quem a issue vai. Uma issue
+ * sem dono não vira correção — foi o que se mediu no batch 6249aef2.
+ */
+export type NoResponsavelQa =
+  | "seletor"
+  | "estruturador"
+  | "curador"
+  | "copy"
+  | "imagem"
+  | "formatacao"
+  | "biblioteca"
+  | "loja"
+  | "sistema"
 
 export interface QaIssue {
   type: QaIssueType
@@ -294,6 +320,8 @@ export interface QaIssue {
   /** email_blocks.id do bloco apontado (F5 — views por bloco). Aditivo:
    *  issues antigas seguem válidas sem o campo. */
   block_id?: string | null
+  /** Quem corrige (Passo 15). Atribuído por `atribuirResponsavel` sobre a lista FINAL. */
+  no_responsavel?: NoResponsavelQa
   /** Resultado do gate determinístico. `blocking` impede `ready`; `warning`
    * continua visível para revisão, mas não interrompe a fase 2.
    *

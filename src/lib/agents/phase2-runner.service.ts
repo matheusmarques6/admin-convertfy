@@ -36,6 +36,7 @@ import type {
   QaIssue,
   QaResult,
   StoreImageOverrides,
+  ReferenceSlotMapEntry,
 } from "@/types/email-generation"
 import {
   generateEmailImage,
@@ -65,6 +66,7 @@ import { pickProductForField } from "./image/product-for-field"
 import { personaToText } from "./image/persona-text"
 import { buildImageAlt } from "./image/resolve-block-prompt.service"
 import { computeRenderChecks } from "./html/render-checks"
+import { atribuirResponsaveis } from "./html/qa-responsavel"
 import { computeContentChecks } from "./html/content-checks"
 import { lerDecisao } from "./shared/decisao-do-email"
 import { loadContratoModes, bloqueia, roda } from "./shared/contrato-mode"
@@ -2468,6 +2470,8 @@ async function runFormattingChain(p: {
       heroCopyAceita: string[]
       /** Texto que o agente de hero inventou na última tentativa (a região do merge ficou no lugar). */
       heroInventado: string[]
+      /** Passo 15: variante por posição, para o QA e os checks de lacuna. */
+      slotMap: ReferenceSlotMapEntry[] | null
     }
   | { status: "failed" }
   | { status: "out_of_budget" }
@@ -4242,7 +4246,7 @@ async function runFormattingChain(p: {
     }
   }
 
-  return { status: "ok", html: currentHtml, qaViews, heroCopyAceita, heroInventado }
+  return { status: "ok", html: currentHtml, qaViews, heroCopyAceita, heroInventado, slotMap: fmtCtx.slotMap }
 }
 
 
@@ -4477,9 +4481,18 @@ export async function runPhase2HtmlQa(
   // Checks de CONTEÚDO por código (09/09): oferta sem incentivo,
   // placeholder entre colchetes, texto de exemplo da biblioteca, parágrafo
   // repetido. Rodam sempre e bloqueiam antes do QA configurável por modelo.
+  // Passo 15: a decisão e o slot_map entram no QA (checks por código e
+  // agente). Lidos UMA vez aqui; o validador textual abaixo usa a mesma.
+  const decisaoDoEmail = lerDecisao(ctx.blueprint?.decisao)
+  const slotMapDoEmail = fmtResult.slotMap ?? null
+  const posicoesSemVariante = (slotMapDoEmail ?? [])
+    .filter((e) => e.variant_id == null)
+    .map((e) => ({ block_index: e.block_index, section: e.section, dispositivo_pedido: e.dispositivo_pedido ?? null, motivo: e.motivo ?? null }))
   const contentIssues: QaIssue[] = computeContentChecks(finalHtml, {
     incentivoExiste: ctx.incentivoExiste ?? null,
     incentivoCodigo: ctx.incentivoCodigo ?? null,
+    posicoesSemVariante,
+    traducaoFaltante: decisaoDoEmail?.incentivo.traducao_faltante ?? null,
   })
   if (contentIssues.length > 0) {
     log.warn("phase2.qa.content_checks_issues", {
@@ -4495,7 +4508,7 @@ export async function runPhase2HtmlQa(
   // `high`/`blocking`. Sem decisão (Estruturador desligado) não roda.
   const contratoIssues: QaIssue[] = await (async () => {
     try {
-      const decisao = lerDecisao(ctx.blueprint?.decisao)
+      const decisao = decisaoDoEmail
       if (!decisao) return []
       const modo = (await loadContratoModes(storeId)).textual
       if (!roda(modo)) return []
@@ -4556,13 +4569,16 @@ export async function runPhase2HtmlQa(
         fields: (b.fields ?? null) as SchemaCheckBlueprintBlock["fields"],
       })),
     )
-    const renderIssues = [
+    // Passo 15: toda issue sai com dono — a tabela é aplicada UMA vez,
+    // sobre a lista final, para checks antigos e novos passarem pela
+    // mesma régua.
+    const renderIssues = atribuirResponsaveis([
       ...heroCopyIssues,
       ...contentIssues,
       ...contratoIssues,
       ...computeRenderChecks(finalHtml),
       ...schemaIssues,
-    ]
+    ])
     if (renderIssues.length > 0) {
       log.warn("phase2.qa.render_checks_issues", {
         emailId,
@@ -4687,6 +4703,10 @@ export async function runPhase2HtmlQa(
       // fields v2 do blueprint híbrido → validação max_len/required no QA.
       blueprintBlocks: ctx.blueprint?.blocks ?? [],
       blockContracts: qaContracts,
+      // Passo 15: a decisão e o slot_map — o QA deixa de reprovar o que o
+      // Seletor verificou.
+      decisao: decisaoDoEmail,
+      slotMap: slotMapDoEmail,
     })
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Erro no QA"
@@ -4707,6 +4727,8 @@ export async function runPhase2HtmlQa(
   // O validador textual do contrato entra na mesma conta: em `on` ele emite
   // `high` e reprova; em `shadow` emite `low` e nunca chega aqui.
   const contentReprova = [...contentIssues, ...contratoIssues].some((i) => i.severity === "high")
+  // Passo 15: dono em toda issue, aplicado UMA vez sobre a lista final.
+  const issuesFinais = atribuirResponsaveis([...heroCopyIssues, ...contentIssues, ...contratoIssues, ...qaResult.issues])
   if (qaMode === "enforce" && (!qaResult.passed || contentReprova)) {
     await admin
       .from("email_flow_emails")
@@ -4714,7 +4736,7 @@ export async function runPhase2HtmlQa(
         status: "failed",
         failed_at: new Date().toISOString(),
         failure_reason: "qa_failed",
-        qa_issues: [...heroCopyIssues, ...contentIssues, ...contratoIssues, ...qaResult.issues],
+        qa_issues: issuesFinais,
         updated_at: new Date().toISOString(),
       })
       .eq("id", emailId)
@@ -4739,7 +4761,7 @@ export async function runPhase2HtmlQa(
     .update({
       status: "ready",
       ready_at: new Date().toISOString(),
-      qa_issues: [...heroCopyIssues, ...contentIssues, ...contratoIssues, ...qaResult.issues],
+      qa_issues: issuesFinais,
       updated_at: new Date().toISOString(),
     })
     .eq("id", emailId)

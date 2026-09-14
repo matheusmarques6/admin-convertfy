@@ -52,6 +52,7 @@ import { corteDeRaciocinio } from "../model-capabilities"
 import { deriveFieldNature } from "../shared/component-dimensions"
 import { isAttrToken } from "../html/attr-token-vocabulary"
 import { runQaVisionCheck } from "./qa-vision.chain"
+import { filtrarClaimsCobertos } from "../html/qa-responsavel"
 import { loadQaAdvisorContext } from "./qa-advisor-context"
 
 const log = logger.child("QaChain")
@@ -115,7 +116,7 @@ You are the QA reviewer of an email pipeline. You do NOT see the HTML document �
 
 <what_to_check>
 - tom_inconsistente: visible text clashes with the brand's tone/briefing.
-- claim_nao_coberto: a claim in the visible text that the briefing/brand data does not support.
+- claim_nao_coberto: a claim in the visible text that NEITHER the briefing/brand data NOR the decision's <insumos_permitidos> NOR <top_products> supports. A fact listed in insumos_permitidos was VERIFIED by the selector agent — it is covered, never an issue.
 - compliance: legally risky copy (health claims, guarantees) — severity high only when clearly illegal.
 - links_quebrados: a CTA href that is empty or "#" on a primary button view.
 - blocos_vazios: a block view whose visible text is empty while its expected copy has values.
@@ -167,6 +168,20 @@ Produtos da loja (tabela viva store_top_products). Claim sobre produto que
 está aqui é COBERTO. Origem do briefing acima: {{briefing_origem}}.
 {{top_products_json}}
 </top_products>
+
+<decisao_do_email>
+A decisão que governa esta peça (Seletor + Estruturador): incentivo (se
+existe, código e valor), insumos_permitidos (fatos VERIFICADOS — claim
+apoiada neles é COBERTA), proibido (o que a copy não pode afirmar) e as
+posições com dispositivo, papel e requisitos. Vazio = geração sem decisão.
+{{decisao_json}}
+</decisao_do_email>
+
+<slot_map>
+Variante montada por posição; "variant_id: null" é posição que ficou SEM
+seção (o código já registrou posicao_sem_variante).
+{{slot_map_json}}
+</slot_map>
 
 <metodo_convertfy_advisor_max>
 As notas abaixo foram recuperadas por relevância. Precedência: fatos da loja
@@ -490,6 +505,25 @@ const QA_VAR_ORIGINS: Record<string, SegmentOrigin> = {
   briefing_origem: { cls: "sistema", rotulo: "De onde veio o briefing (store_briefings | onboardings | nenhum)" },
   blueprint_objective: { cls: "upstream", rotulo: "Objetivo — blueprint da loja" },
   advisor_max_notes: { cls: "vault", rotulo: "Doutrina recuperada — Advisor Max" },
+  decisao_json: { cls: "upstream", rotulo: "Decisão do e-mail — Seletor + Estruturador (store_email_blueprints.decisao)" },
+  slot_map_json: { cls: "curadoria", rotulo: "Variante por posição — store_email_references.slot_map" },
+}
+
+/** O que da decisão vai ao QA: nada de fio/descartes — só o que julga claim. */
+function decisaoParaQa(d: RunQaAgentInput["decisao"]): Record<string, unknown> {
+  if (!d) return {}
+  return {
+    incentivo: d.incentivo,
+    insumos_permitidos: d.insumos_permitidos,
+    proibido: d.proibido,
+    posicoes: d.posicoes.map((p) => ({
+      block_index: p.block_index,
+      section: p.section,
+      dispositivo: p.dispositivo,
+      papel: p.papel,
+      requisitos: p.requisitos,
+    })),
+  }
 }
 
 function brandSemProdutos(brand: StoreBrandIdentity | null): Record<string, unknown> {
@@ -707,6 +741,15 @@ export interface RunQaAgentInput {
   // isto o QA só podia julgar o que estava escrito — um bloco que perdeu
   // um slot parecia apenas um bloco menor, não um campo faltando.
   blockContracts?: import("../html/block-contract").BlockContract[]
+  /**
+   * Passo 15: a DECISÃO do e-mail (`store_email_blueprints.decisao`). O
+   * QA reprovava "Shopify PCI" que o Seletor tinha verificado em
+   * `insumos_permitidos` porque nunca a recebia. Claim coberta por insumo
+   * ou produto é filtrada por CÓDIGO antes de gravar (`filtrarClaimsCobertos`).
+   */
+  decisao?: import("../shared/decisao-do-email").DecisaoDoEmail | null
+  /** Passo 15: variante por posição (`store_email_references.slot_map`). */
+  slotMap?: import("@/types/email-generation").ReferenceSlotMapEntry[] | null
 }
 
 export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
@@ -814,6 +857,19 @@ export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
     briefing_origem: input.briefingOrigem ?? (briefing ? "store_briefings" : "nenhum"),
     blueprint_objective: blueprintObjective || "",
     advisor_max_notes: advisorContext.block,
+    decisao_json: JSON.stringify(decisaoParaQa(input.decisao), null, 2),
+    slot_map_json: JSON.stringify(
+      (input.slotMap ?? []).map((e) => ({
+        block_index: e.block_index,
+        section: e.section,
+        variant_id: e.variant_id,
+        variant_name: e.variant_name,
+        ...(e.motivo ? { motivo: e.motivo } : {}),
+        ...(e.dispositivo_pedido ? { dispositivo_pedido: e.dispositivo_pedido } : {}),
+      })),
+      null,
+      2,
+    ),
   }
   // Append fixo: merge tags do provedor (Klaviyo, Mailchimp, Omnisend) sao
   // substituidas no envio — nao sao bug. Antes do fix o LLM marcava
@@ -908,6 +964,13 @@ export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
       rotulo: "Doutrina do Advisor Max",
       cls: "vault",
       valor: `${advisorContext.sources.length} nota(s) · ${advisorContext.status} · busca semântica ${advisorContext.semanticSearch ? "on" : "off"}`,
+    },
+    {
+      rotulo: "Decisão do e-mail",
+      cls: "upstream",
+      valor: input.decisao
+        ? `${input.decisao.insumos_permitidos.length} insumo(s) permitido(s) · ${input.decisao.proibido.length} proibição(ões) · incentivo ${input.decisao.incentivo.existe ? "sim" : "não"} · ${(input.slotMap ?? []).length} posição(ões) no slot_map`
+        : "(sem decisão — Estruturador desligado ou geração anterior ao Passo 6)",
     },
   ]
 
@@ -1088,7 +1151,18 @@ export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
   }
 
   // ── 6. Mescla deterministicas + LLM ─────────────────────────────────
-  const llmIssues = zod.data.issues
+  // Passo 15: `claim_nao_coberto` sobre fato que a decisão cobre (insumo
+  // verificado pelo Seletor ou produto da tabela viva) é descartada por
+  // CÓDIGO — o prompt já diz que é coberta, mas o filtro é o que garante.
+  // As filtradas vão à telemetria: descarte em silêncio é não ter filtrado.
+  const claims = filtrarClaimsCobertos(zod.data.issues, {
+    insumosPermitidos: input.decisao?.insumos_permitidos ?? null,
+    topProducts: input.topProducts ?? null,
+  })
+  if (claims.filtradas.length > 0) {
+    log.info("qa.claims_cobertas_filtradas", { emailId, filtradas: claims.filtradas.map((f) => f.coberto_por) })
+  }
+  const llmIssues = claims.issues
   const issues: QaIssue[] = [...deterministicIssues, ...llmIssues]
 
   // Veredito CORTADO e remontado: as issues que vieram são análise
@@ -1214,6 +1288,9 @@ export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
       issues_by_severity: issuesBySeverity,
       vision_ran: visionRan,
       advisor_max: advisorTelemetry,
+      // Passo 15: claims do LLM que a decisão cobria e o código descartou.
+      claims_filtrados: claims.filtradas,
+      decisao_presente: input.decisao != null,
       // As issues em si. Iam só para `email_flow_emails.qa_issues`, o que
       // deixava a run com o número e sem o motivo — para saber POR QUE o
       // email reprovou era preciso abrir outra tabela.

@@ -99,3 +99,29 @@ describe("link_sem_endereco", () => {
     expect(i).toBeTruthy()
   })
 })
+
+describe("computeContentChecks — a decisão entra no QA (Passo 15)", () => {
+  const LIMPO = `<html><body><table><tr><td><p>Welcome to the store.</p><a href="https://x.com">Shop</a></td></tr></table></body></html>`
+
+  it("posição sem variante vira uma issue high por lacuna, com dono biblioteca", () => {
+    const issues = computeContentChecks(LIMPO, {
+      incentivoExiste: true,
+      posicoesSemVariante: [
+        { block_index: 4, section: "products", dispositivo_pedido: "products_grade_preco", motivo: "sem_candidata" },
+      ],
+    })
+    expect(issues).toHaveLength(1)
+    expect(issues[0]).toMatchObject({ type: "posicao_sem_variante", severity: "high", no_responsavel: "biblioteca", location: "block:4:products" })
+    expect(issues[0].message).toContain("products_grade_preco")
+  })
+
+  it("cupom sem tradução é aviso medium, dono loja", () => {
+    const issues = computeContentChecks(LIMPO, { incentivoExiste: true, traducaoFaltante: true })
+    expect(issues.map((i) => i.type)).toEqual(["traducao_faltante"])
+    expect(issues[0]).toMatchObject({ severity: "medium", disposition: "warning", no_responsavel: "loja" })
+  })
+
+  it("sem lacuna e sem flag, nada muda", () => {
+    expect(computeContentChecks(LIMPO, { incentivoExiste: true, posicoesSemVariante: [], traducaoFaltante: false })).toEqual([])
+  })
+})
