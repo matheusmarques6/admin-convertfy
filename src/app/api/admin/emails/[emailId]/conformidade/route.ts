@@ -1,5 +1,5 @@
 /**
- * GET /api/admin/emails/[id]/conformidade
+ * GET /api/admin/emails/[emailId]/conformidade
  *
  * Decisão × entregue de um e-mail (B6): por posição, o que o Estruturador
  * pediu, o que o Curador escolheu, o que o blueprint gravou, o que a
@@ -17,14 +17,14 @@ export const dynamic = "force-dynamic"
 
 export async function GET(
   request: NextRequest,
-  context: { params: Promise<{ id: string }> },
+  context: { params: Promise<{ emailId: string }> },
 ) {
   try {
-    const { id } = await context.params
+    const { emailId } = await context.params
     const sb = await createClient()
     const user = await requireAuth(sb)
     await assertCanManagePrompts(createAdminClient(), user.id)
-    return successResponse(request, await conformidadeDoEmail(id))
+    return successResponse(request, await conformidadeDoEmail(emailId))
   } catch (error) {
     return errorResponse(request, error, "email-conformidade")
   }
