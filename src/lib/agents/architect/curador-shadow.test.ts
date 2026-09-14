@@ -22,6 +22,7 @@ import {
   parseValidatedShortlist,
   renderFinalistNotes,
   restrictRankingToShortlist,
+  DEFAULT_CURADOR_SHORTLIST_SYSTEM,
 } from "./curador-shadow"
 import { RespostaVaziaError } from "../resposta-vazia"
 import { resumirContrato } from "../shared/field-roles"
@@ -426,8 +427,9 @@ describe("rank1ByBlock + blocos da fase 1", () => {
     )
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).not.toContain("PODE adaptar")
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).not.toContain("Decida a estrutura")
-    // Seção sem candidata continua na peça — a lacuna vira sinal, não corte.
-    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("NÃO AUTORIZA remover")
+    // Seção sem candidata SOME da peça (14/09) — o prompt diz isso em vez
+    // de prometer um fallback que não existe; a lacuna nomeada é o sinal.
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("a posição SOME da peça")
   })
 
   // 07/09: o eixo `momento` foi APOSENTADO. Fora da hero, nenhuma variante
@@ -449,9 +451,34 @@ describe("rank1ByBlock + blocos da fase 1", () => {
   // modelo obedece o vault — foi o que aconteceu em 07/09.
   it("os dois prompts declaram a precedência sobre o passo 5", () => {
     for (const prompt of [DEFAULT_CHOOSER_VAULT_SYSTEM, DEFAULT_CHOOSER_SYSTEM]) {
-      expect(prompt).toContain("APOSENTADO")
+      expect(prompt).toContain("este prompt tem precedência")
       expect(prompt).toContain("passo 5")
     }
+  })
+
+  // 14/09: o prompt contradizia os guards. Dizia "REPETIR … É PERMITIDO"
+  // enquanto `podeRepetir()` devolve false para toda seção (10/09), e o
+  // passo 4 dizia "cai no template global" três parágrafos depois de a
+  // shortlist dizer "não cai" — `assembleDocument` não tem fallback por
+  // bloco. Decidir sob premissa falsa custou a posição de products no batch
+  // 6249aef2. Prompt também não carrega histórico ("APOSENTADO (07/09)"):
+  // é spec, não changelog.
+  describe("coerência do prompt com os guards (14/09)", () => {
+    it("nenhum dos dois prompts afirma o que o código desfaz", () => {
+      for (const prompt of [DEFAULT_CHOOSER_VAULT_SYSTEM, DEFAULT_CHOOSER_SYSTEM, DEFAULT_CURADOR_SHORTLIST_SYSTEM]) {
+        expect(prompt).not.toContain("É PERMITIDO")
+        // "não cai no template global" (shortlist) é a frase certa; a errada
+        // era "o sistema cai no template global" (escolha, passo 4).
+        expect(prompt).not.toMatch(/(?<!não )cai no template global/)
+        expect(prompt).not.toContain("APOSENTADO")
+        expect(prompt).not.toContain("SUPERADO")
+      }
+    })
+    it("a escolha diz que repetir é proibido e que a posição vazia some da peça", () => {
+      expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("NÃO PODE OCUPAR DUAS POSIÇÕES")
+      expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("a posição SOME da peça")
+      expect(DEFAULT_CHOOSER_VAULT_SYSTEM).not.toMatch(/passos 3-6|passo 7|passo 9/)
+    })
   })
 
   // 02/09: o owner fixou o texto do system. A emenda ao protocolo e a

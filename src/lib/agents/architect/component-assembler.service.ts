@@ -245,7 +245,7 @@ Regras de coexistência entre variantes na MESMA peça (vault). O campo \`vault.
 </convivencia>
 
 Como usar os eixos do vault (variantes com campo \`vault\`):
-- O eixo \`momento\` foi APOSENTADO (07/09): o catálogo não traz \`momento\` nem \`momento_vetado\`, e nenhuma variante é eliminada nem rankeada por eles. Onde o protocolo do vault ou uma nota de seção falarem em momento — inclusive o passo 5 — está SUPERADO: ignore.
+- O eixo \`momento\` NÃO existe neste protocolo: o catálogo não traz \`momento\` nem \`momento_vetado\`, e nenhuma variante é eliminada nem rankeada por eles. Onde o protocolo do vault ou uma nota de seção falarem em momento — inclusive o passo 5 do protocolo do vault — este prompt tem precedência: ignore.
 - Material que a variante pede (foto, tipografia, tipo de campanha) NÃO elimina ninguém: a imagem é gerada depois. Adequação de material entra no ranking, nunca no corte.
 - Ranking LEXICOGRÁFICO com degradação, na ordem: objecao → aliviador → profundidade → registro → paleta → papel_na_peca. Compare \`vault.objecao\` com o eixo equivalente do alvo em <alvo> (ou com <objecoes> quando não há alvo); \`vault.aliviador\` com o \`aliviador pedido\`; \`vault.profundidade\` com a \`profundidade de prova\` pedida. Eixo que não separa os candidatos daquela seção é NEUTRO — desça para o próximo. \`registro_vetado\` que casa com o registro da marca elimina.
 - \`vault.peso\` é orçamento QUALITATIVO da peça: evite indicar pesado/peca-inteira em posições consecutivas sem leve/medio entre elas — olhe o conjunto das posições, não cada uma isolada.
@@ -2124,7 +2124,9 @@ export async function assembleStoreReference(
     // seguiu lendo a referência das 13:45 (um bloco, sem hero) e a hero
     // falhou de novo. Referência que não representa o email é pior que
     // nenhuma: `store_email_references` é cache regenerável, e sem ela o
-    // consumidor usa o template global, que TEM hero.
+    // consumidor usa o template global do flow (documento inteiro; o do
+    // welcome-1 NÃO tem marcador de hero — a fase 2 pode morrer em
+    // `hero_failed`, e é o desfecho honesto para uma montagem inviável).
     await descartarStoreReference(input)
     html = curatedReference
     log.warn("assembler.cobertura_insuficiente", {
