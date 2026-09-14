@@ -607,11 +607,15 @@ export interface EmailOutlineTemplate {
   suggested_blocks: string[]
   tone_hint: string | null
   /**
-   * Código de cupom padrão deste email (global). A variação por idioma/loja é
-   * feita depois, por loja, no bloco `coupon`. Usado como default do bloco
-   * `coupon` quando ainda está vazio. `null` = email sem cupom.
+   * Código de cupom deste toque em pt-BR e fallback dos demais idiomas.
+   * `null` = o toque NÃO entrega cupom (decisão do flow — é daqui que
+   * `incentivoDoOutline` deriva `existe`).
    */
   coupon_code: string | null
+  /** Código por idioma da loja (`{"en":"WELCOME10"}`), migration 20261144. */
+  coupon_codes?: Record<string, string> | null
+  /** Valor do desconto como texto ("10%"), migration 20261144. */
+  coupon_value?: string | null
   is_active: boolean
   version: number
   created_at: string
