@@ -31,6 +31,7 @@
  */
 
 import type { BrandColor } from "@/types/email-workspace"
+import { normalizarPapel } from "@/lib/stores/papeis-de-cor"
 
 export interface ColorRoles {
   bg: string
@@ -99,13 +100,18 @@ export function contrastingText(bg: string): string {
   return relativeLuminance(bg) > 0.5 ? DEFAULT_DARK : DEFAULT_LIGHT
 }
 
+/**
+ * Casa pelo papel NORMALIZADO ("Principal", "principal" e "Superfície"
+ * são o mesmo papel) — o banco guarda o legado capitalizado e o
+ * vocabulário fechado do B5 é minúsculo e sem acento.
+ */
 function findByRole(
   colors: BrandColor[],
   role: string,
 ): BrandColor | undefined {
-  return colors.find(
-    (c) => c.role?.trim().toLowerCase() === role.toLowerCase(),
-  )
+  const alvo = normalizarPapel(role)
+  if (!alvo) return undefined
+  return colors.find((c) => normalizarPapel(c.role) === alvo)
 }
 
 function lightest(colors: BrandColor[]): BrandColor | undefined {
@@ -252,8 +258,14 @@ export function deriveColorRoles(
       ? bgCandidate
       : DEFAULT_BG
 
-  // text
-  const text = contrastingText(bg)
+  // text — papel "texto" explícito (B5) vence a derivação, desde que leia
+  // sobre o bg (AA texto normal); senão cai no preto/branco por brilho,
+  // que é o que mantém as lojas sem o papel funcionando como antes.
+  const textoRole = findByRole(validPrimary, "texto") ?? findByRole(validSecondary, "texto")
+  const text =
+    textoRole && contrastRatio(textoRole.hex, bg) >= 4.5
+      ? textoRole.hex
+      : contrastingText(bg)
 
   // heading
   const principalForHeading =
@@ -291,7 +303,19 @@ export function deriveColorRoles(
   // Superfícies — derivadas do canvas já resolvido, nunca da paleta crua:
   // o painel tem de ser um degrau do fundo que ele mora, não uma terceira
   // cor solta.
-  const { surface, surface_strong } = deriveSurfaces(bg, text)
+  const derivadas = deriveSurfaces(bg, text)
+  // superficie — papel explícito (B5) vence a derivação quando o tom se
+  // separa do canvas E deixa o texto legível; fora disso a derivação vale,
+  // pela mesma razão do piso de leitura em `tonalizar`.
+  const superficieRole =
+    findByRole(validPrimary, "superficie") ?? findByRole(validSecondary, "superficie")
+  const surface =
+    superficieRole &&
+    contrastRatio(bg, superficieRole.hex) >= SURFACE_MIN_RATIO &&
+    contrastRatio(text, superficieRole.hex) >= SURFACE_TEXT_MIN
+      ? superficieRole.hex
+      : derivadas.surface
+  const surface_strong = derivadas.surface_strong
 
   return {
     bg,

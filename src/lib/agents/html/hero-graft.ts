@@ -17,6 +17,8 @@
  */
 
 import { fitFragmentToRow } from "./fragment-fit"
+import { fallbackChainFor, pesoNumerico, quoteIfNeeded } from "./font-fallback"
+import type { ValoresDeTokens } from "./identity-tokens"
 import { locateHeroRegion, spliceHero } from "./hero-locator"
 
 export type GraftStatus =
@@ -53,6 +55,8 @@ export interface GraftResult {
 export function graftHeroVariant(
   documentHtml: string,
   variantHtml: string | null | undefined,
+  /** Tokens de identidade da loja (B5) — resolvidos no encaixe, ver fragment-fit. */
+  tokens?: Partial<ValoresDeTokens> | null,
 ): GraftResult {
   const base: Omit<GraftResult, "status"> = {
     html: documentHtml,
@@ -65,7 +69,7 @@ export function graftHeroVariant(
   const region = locateHeroRegion(documentHtml)
   if (!region) return { ...base, status: "no_region" }
 
-  const fragment = fitFragmentToRow(variantHtml)
+  const fragment = fitFragmentToRow(variantHtml, tokens)
   if (!fragment) return { ...base, status: "invalid_variant" }
 
   const spliced = spliceHero(documentHtml, region, fragment)
@@ -212,55 +216,10 @@ export function normalizeFonts(
 
 const FONT_WEIGHT_RE = /font-weight\s*:\s*([a-z]+|\d{3})/gi
 
-/**
- * "black 900" → "900"; "Regular 400" → "400"; "Bold" → "700"; "700" → "700".
- * O cadastro de marca guarda o rótulo humano do peso, não o número.
- */
-export function pesoNumerico(raw: string | null | undefined): string | null {
-  const t = (raw ?? "").trim().toLowerCase()
-  if (!t) return null
-  const num = /(\d{3})/.exec(t)
-  if (num) return String(Math.min(900, Math.max(100, Number(num[1]))))
-  const nomes: Record<string, string> = {
-    thin: "100", hairline: "100", extralight: "200", "extra light": "200", ultralight: "200",
-    light: "300", regular: "400", normal: "400", book: "400", medium: "500",
-    semibold: "600", "semi bold": "600", demibold: "600", bold: "700",
-    extrabold: "800", "extra bold": "800", ultrabold: "800", black: "900", heavy: "900",
-  }
-  for (const [nome, peso] of Object.entries(nomes)) if (t.includes(nome)) return peso
-  return null
-}
+export { pesoNumerico } from "./font-fallback"
 
-/** Nomes que denunciam uma serifada / monoespaçada de marca. */
-const SERIF_HINT =
-  /serif|georgia|garamond|times|playfair|merriweather|lora|baskerville|didot|bodoni|caslon/i
-const MONO_HINT = /mono|courier|consol|code|typewriter/i
-
-/**
- * Cadeia de fallback derivada da fonte da LOJA, não herdada do componente.
- *
- * A versão anterior preservava as famílias genéricas que já estavam na
- * declaração, com uma lista branca que incluía `monospace` e `serif`. O
- * resultado media assim:
- *
- *     Courier New,Courier,monospace  →  Montserrat,monospace
- *     Georgia,serif                  →  Montserrat,Georgia,serif
- *
- * Ou seja: marca sans-serif com monoespaçada como plano B. E como o webfont
- * é ignorado por parte dos clientes, o plano B é o que muita gente vê — o
- * email da Luxe Lift saiu monoespaçado por causa disto.
- *
- * A cadeia agora combina com a fonte pedida. A classificação é pelo NOME
- * porque é o que temos: a identidade visual guarda o nome da família, não a
- * classificação tipográfica. Errar aqui degrada para uma sans — o padrão
- * seguro em email — em vez de contradizer a marca.
- */
-export function fallbackChainFor(name: string): string {
-  if (MONO_HINT.test(name)) return "'Courier New',Courier,monospace"
-  if (SERIF_HINT.test(name)) return "Georgia,'Times New Roman',serif"
-  return "Arial,Helvetica,sans-serif"
-}
-
-function quoteIfNeeded(name: string): string {
-  return /\s/.test(name) && !/^['"]/.test(name) ? `'${name}'` : name
-}
+// `fallbackChainFor`/`quoteIfNeeded` moraram aqui até set/2026; foram para
+// `font-fallback.ts` (sem dependências) porque os tokens de identidade (B5)
+// também precisam da cadeia e são aplicados no `fragment-fit`, que este
+// módulo importa. Re-exportado para os importadores existentes.
+export { fallbackChainFor } from "./font-fallback"

@@ -10,7 +10,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { Layers, Trash2, Check, Plus, Loader2, Ruler, ImageOff } from "lucide-react"
+import { Layers, Trash2, Check, Plus, Loader2, Ruler, ImageOff, Palette } from "lucide-react"
 import type {
   EmailComponentVariant,
 } from "@/types/email-generation"
@@ -34,6 +34,7 @@ import { VariantEditor, type VariantDraft } from "./variant-editor"
 import { VariantTestCard } from "./variant-test-card"
 import { Base64ExtractDialog } from "./base64-extract-dialog"
 import { WidthNormalizeDialog } from "./width-normalize-dialog"
+import { IdentityTokenizeDialog } from "./identity-tokenize-dialog"
 import { enforceEmailWidth } from "@/lib/email-workspace/email-width"
 
 const FIRST_CATEGORY = COMPONENT_CATEGORIES[0].key
@@ -231,6 +232,7 @@ export function ComponentsWorkspace() {
   const [saving, setSaving] = useState(false)
   const [widthDialog, setWidthDialog] = useState(false)
   const [base64Dialog, setBase64Dialog] = useState(false)
+  const [tokenizeDialog, setTokenizeDialog] = useState(false)
 
   const load = useCallback(async (): Promise<EmailComponentVariant[]> => {
     setLoading(true)
@@ -452,7 +454,22 @@ export function ComponentsWorkspace() {
         >
           <ImageOff size={15} /> Imagem embutida
         </EGBtn>
+        <EGBtn
+          onClick={() => setTokenizeDialog(true)}
+          title="Troca hex e fontes fixas por tokens {{COR_*}}/{{FONTE_*}} resolvidos por loja (prévia nas duas paletas de prova)"
+        >
+          <Palette size={15} /> Tokens de identidade
+        </EGBtn>
       </div>
+      <IdentityTokenizeDialog
+        open={tokenizeDialog}
+        onClose={() => setTokenizeDialog(false)}
+        onApplied={async () => {
+          const list = await load()
+          const v = selectedId ? list.find((x) => x.id === selectedId) : null
+          if (v) setDraft(draftFromVariant(v))
+        }}
+      />
       <Base64ExtractDialog
         open={base64Dialog}
         onClose={() => setBase64Dialog(false)}

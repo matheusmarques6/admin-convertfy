@@ -38,10 +38,20 @@ export interface StoreBrandIdentity {
   confirmed_by: string | null
 }
 
+/**
+ * Papel de uma cor da paleta — vocabulário FECHADO (B5, set/2026):
+ * `principal | fundo | texto | destaque | superficie` ou "" (sem papel).
+ * Fonte única em `lib/stores/papeis-de-cor.ts`. O tipo mantém `string`
+ * porque o banco guarda o legado capitalizado ("Principal", "Fundo") das
+ * versões antigas da identidade — a leitura normaliza, a escrita (PATCH)
+ * só grava o vocabulário novo.
+ */
+export type BrandColorRole = "principal" | "fundo" | "texto" | "destaque" | "superficie" | ""
+
 export interface BrandColor {
   hex: string
   name: string
-  role: "Principal" | "Fundo" | "Destaque" | string
+  role: BrandColorRole | string
 }
 
 export interface TrustIcon {

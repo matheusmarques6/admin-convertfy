@@ -19,6 +19,7 @@
  */
 
 import { fitFragment } from "../html/fragment-fit"
+import type { TokenDeIdentidade, ValoresDeTokens } from "../html/identity-tokens"
 // normalizeFonts mora no hero-graft por herança (foi escrita lá para o
 // enxerto); é genérica e vale para o documento inteiro.
 import { normalizeFonts } from "../html/hero-graft"
@@ -146,12 +147,28 @@ export interface AssembledStats {
    * é o boilerplate padrão de email.
    */
   guttersNeutralized: string[]
+  /**
+   * B5: `block_index` das posições cuja variante usa tokens de identidade
+   * (resolvidos no encaixe). É o que o Cores & Botões lê para NÃO reescrever
+   * a cor desses blocos; com todos tokenizados o step é pulado.
+   */
+  blocosTokenizados: number[]
+  /** Ocorrências de token resolvidas na montagem inteira. */
+  tokensAplicados: number
+  /** Tokens que alguma variante pedia e a loja não tinha (caíram no padrão). */
+  tokensSemValor: TokenDeIdentidade[]
   /** Blocos esperados, na ordem — insumo do self-check de marcadores. */
   expected: ExpectedBlock[]
 }
 
 export interface AssembleDocumentInput {
   slots: AssemblySlot[]
+  /**
+   * Tokens de identidade da loja (B5, `resolverTokens`). Toda variante
+   * escrita com `{{COR_*}}`/`{{FONTE_*}}` é resolvida no encaixe. Ausente →
+   * os tokens ficam crus (só aceitável em análise, nunca numa peça).
+   */
+  tokens?: Partial<ValoresDeTokens> | null
   /** Fontes aprovadas da loja. Ausentes → nenhuma normalização. */
   fonts?: {
     heading?: string | null
@@ -231,7 +248,7 @@ export function coberturaSuficiente(stats: AssembledStats): {
 export function assembleDocument(
   input: AssembleDocumentInput,
 ): { html: string; stats: AssembledStats } {
-  const { slots, fonts, lang = "pt-BR" } = input
+  const { slots, fonts, lang = "pt-BR", tokens } = input
 
   const rows: string[] = []
   const skipped: SkippedBlock[] = []
@@ -239,6 +256,11 @@ export function assembleDocument(
   const wrappedUnknown: string[] = []
   const unshelled: string[] = []
   const guttersNeutralized: string[] = []
+  // B5: posições cuja variante usa tokens de identidade — o Cores & Botões
+  // não precisa (nem deve) reescrever a cor delas.
+  const blocosTokenizados: number[] = []
+  let tokensAplicados = 0
+  const tokensSemValor = new Set<TokenDeIdentidade>()
   // O CSS do <head> de cada variante precisa sobreviver ao desembrulho: é
   // onde vive o @media dela. Dedup por conteúdo — variantes da mesma origem
   // repetem o mesmo bloco, e duplicar CSS só engorda o email.
@@ -262,7 +284,7 @@ export function assembleDocument(
     // padrão table-based é embrulhada em vez de pulada — email sem a seção é
     // pior que uma variante cadastrada torto. O enxerto usa o modo
     // conservador (ver fragment-fit).
-    const fit = fitFragment(variantHtml, { wrapUnknown: true })
+    const fit = fitFragment(variantHtml, { wrapUnknown: true, tokens })
     if (!fit) {
       skipped.push({
         block_index: i,
@@ -275,6 +297,11 @@ export function assembleDocument(
     if (fit.kind === "wrapped_unknown") wrappedUnknown.push(section)
     if (fit.unshelled) unshelled.push(section)
     if (fit.gutterNeutralized) guttersNeutralized.push(section)
+    if (fit.tokens) {
+      blocosTokenizados.push(i)
+      tokensAplicados += fit.tokens.total
+      for (const t of fit.tokens.sem_valor) tokensSemValor.add(t)
+    }
     for (const css of fit.styles ?? []) styles.add(css)
     const marker = `${i}:${section}`
     rows.push(
@@ -298,6 +325,9 @@ export function assembleDocument(
       wrappedUnknown,
       unshelled,
       guttersNeutralized,
+      blocosTokenizados,
+      tokensAplicados,
+      tokensSemValor: [...tokensSemValor],
       stylesInlined: styles.size,
       expected,
     },

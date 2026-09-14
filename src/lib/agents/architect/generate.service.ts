@@ -8,6 +8,8 @@
  */
 
 import { createAdminClient } from "@/lib/supabase/server"
+import type { BrandColor } from "@/types/email-workspace"
+import { tokensDaLoja } from "../html/apply-identity-tokens"
 import { logger } from "@/lib/logger"
 import type { EmailOutlineTemplate } from "@/types/email-generation"
 
@@ -353,7 +355,7 @@ export async function generateBlueprintAndReference(
     // novo a cada geração, então trocar de fonte não invalida a arquitetura.
     admin
       .from("store_brand_identity")
-      .select("font_heading, font_body, font_heading_weight, font_body_weight")
+      .select("font_heading, font_body, font_heading_weight, font_body_weight, colors_primary, colors_secondary")
       .eq("store_id", input.storeId)
       .order("version", { ascending: false })
       .limit(1)
@@ -384,6 +386,8 @@ export async function generateBlueprintAndReference(
     font_heading_weight?: string | null
     font_body_weight?: string | null
     font_body?: string | null
+    colors_primary?: BrandColor[] | null
+    colors_secondary?: BrandColor[] | null
   } | null
   const intents = (intentsRes.data ?? []) as Array<{
     slug: string
@@ -702,6 +706,9 @@ export async function generateBlueprintAndReference(
     fontHeadingWeight: brand?.font_heading_weight ?? null,
     fontBodyWeight: brand?.font_body_weight ?? null,
     fontBody: brand?.font_body ?? null,
+    // B5: os tokens de identidade resolvem no encaixe as variantes escritas
+    // com {{COR_*}}/{{FONTE_*}} — a mesma derivação de papéis da fase 2.
+    tokens: tokensDaLoja(brand),
     // Contrato editorial do vault + decisão do Estruturador — critérios de
     // escolha do Curador. A decisão só desce quando foi CONSUMIDA (modo on):
     // em shadow o pipeline não pode ser influenciado por ela.

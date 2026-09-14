@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server"
 import { z } from "zod"
+import { normalizarPapel, validarPaleta } from "@/lib/stores/papeis-de-cor"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 
@@ -15,10 +16,16 @@ export const dynamic = "force-dynamic"
  *   já usado pelo Email Workspace.
  */
 
+// B5: o papel entra em qualquer grafia legada ("Principal", "Superfície",
+// "Secundário") e sai no vocabulário fechado, minúsculo — ou "" (sem
+// papel). A régua "uma principal por paleta" é conferida no PATCH.
 const colorSchema = z.object({
   hex: z.string(),
   name: z.string().optional(),
-  role: z.string().optional(),
+  role: z
+    .string()
+    .optional()
+    .transform((r) => normalizarPapel(r)),
 })
 
 const patchSchema = z.object({
@@ -123,6 +130,17 @@ export async function PATCH(
 
     for (const [k, v] of Object.entries(body)) {
       if (v !== undefined) merged[k] = v
+    }
+
+    // A paleta que VAI ser gravada (enviada ou herdada) aceita uma só
+    // principal. Com duas, a derivação escolhe a primeira por ordem de
+    // cadastro — decisão que ninguém tomou — e o botão sai na cor errada.
+    const paleta = validarPaleta(
+      (merged.colors_primary as Array<{ hex?: string; role?: string | null }>) ?? [],
+      (merged.colors_secondary as Array<{ hex?: string; role?: string | null }>) ?? [],
+    )
+    if (!paleta.ok) {
+      throw new AppError(paleta.mensagem, 422, paleta.codigo)
     }
 
     const { data: inserted, error } = await admin

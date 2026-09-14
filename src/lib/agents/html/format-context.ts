@@ -51,6 +51,7 @@ import {
 import { locateBlockRegions } from "./slot-finder"
 import { extractColorInventory } from "./color-inventory"
 import { extrairCtas, extrairFaixas, tonsDeFundo } from "./color-faixas"
+import { htmlSemBlocos } from "./blocos-tokenizados"
 // A classificação por nome mora num módulo PURO: a tela de tipografia
 // precisa dela, e importar este arquivo no navegador traria o cliente
 // Supabase junto. Reexportada aqui para os call sites antigos não mudarem.
@@ -752,6 +753,12 @@ export function buildColorFormatVars(
     niche: string
     tones: string
     pesquisaFullText: string
+    /**
+     * B5: `block_index` dos blocos com tokens de identidade. Eles saem do
+     * inventário, das faixas e dos botões servidos — a cor deles já é a da
+     * loja, e o agente não decide sobre o que não vê.
+     */
+    blocosExcluidos?: readonly number[]
   },
 ): Record<string, string> {
   // Arquitetura por views (F4): o maior prompt da cadeia (doc inteiro)
@@ -761,9 +768,11 @@ export function buildColorFormatVars(
   // Com os pares texto↔fundo anotados: sem eles o agente via `#FFFFFF`
   // como uma linha só e não tinha como saber que estava trocando o fundo
   // debaixo de um texto branco (incidente Luxe Lift, 22/08).
-  const inventory = annotateInventoryPairs(html, extractColorInventory(html))
-  const faixas = extrairFaixas(html)
-  const ctas = extrairCtas(html, faixas)
+  const excluidos = new Set(extras.blocosExcluidos ?? [])
+  const htmlVisto = excluidos.size > 0 ? htmlSemBlocos(html, [...excluidos]) : html
+  const inventory = annotateInventoryPairs(htmlVisto, extractColorInventory(htmlVisto))
+  const faixas = extrairFaixas(html).filter((f) => !excluidos.has(f.bloco))
+  const ctas = extrairCtas(html, faixas).filter((c) => c.bloco == null || !excluidos.has(c.bloco))
   const vars = {
     brand_name: ctx.brandName,
     niche: extras.niche,

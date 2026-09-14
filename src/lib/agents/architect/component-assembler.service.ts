@@ -110,6 +110,7 @@ import {
 } from "../shared/component-dimensions"
 import { variantIsFillable as coherenceVariantIsFillable } from "@/lib/email-workspace/schema-example-coherence"
 import { assembleDocument, coberturaSuficiente, validateBlockMarkers } from "./assemble-document"
+import type { ValoresDeTokens } from "../html/identity-tokens"
 import { normalizarSecao } from "./repeticao"
 import { menosIncompativel } from "./resgate-de-posicao"
 import type { DecisaoDoEmail } from "../shared/decisao-do-email"
@@ -687,6 +688,11 @@ export interface AssembleReferenceInput {
   fontBody?: string | null
   fontHeadingWeight?: string | null
   fontBodyWeight?: string | null
+  /**
+   * B5: tokens de identidade da loja (`tokensDaLoja`). Resolvidos no
+   * encaixe de cada variante escrita com `{{COR_*}}`/`{{FONTE_*}}`.
+   */
+  tokens?: Partial<ValoresDeTokens> | null
   // ── Contrato editorial do vault (email_intents) — critério do Curador ──
   // Intenção do FLOW (o que a sequência inteira protege) e DESTE email (o
   // que este toque precisa entregar). null = vault sem material — o prompt
@@ -2139,6 +2145,7 @@ export async function assembleStoreReference(
   // remover tag de imagem ou emitir marcador inválido.
   const assembled = assembleDocument({
     slots,
+    tokens: input.tokens ?? null,
     fonts: {
       heading: input.fontHeading,
       body: input.fontBody,
@@ -2294,6 +2301,13 @@ export async function assembleStoreReference(
       // recuo somava ao container e o email saía com 656/680px em vez de
       // 600 — cada bloco numa largura diferente (incidente 08/09).
       gutters_neutralized: assembled.stats.guttersNeutralized,
+      // B5: posições montadas com tokens de identidade — o Cores & Botões
+      // lê o mesmo dado pelo slot_map; aqui fica o registro da montagem.
+      blocos_tokenizados: assembled.stats.blocosTokenizados,
+      tokens_aplicados: assembled.stats.tokensAplicados,
+      ...(assembled.stats.tokensSemValor.length > 0
+        ? { tokens_sem_valor: assembled.stats.tokensSemValor }
+        : {}),
       fonts_normalized: assembled.stats.fontsNormalized,
       weights_normalized: assembled.stats.weightsNormalized,
       reference_source: source,

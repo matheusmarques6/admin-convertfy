@@ -16,6 +16,7 @@ import {
   X,
 } from "lucide-react"
 import { useToast } from "@/lib/hooks/use-toast"
+import { PAPEIS_DE_COR, ROTULO_DO_PAPEL, normalizarPapel } from "@/lib/stores/papeis-de-cor"
 import type {
   StoreBrandIdentity,
   StoreBriefing,
@@ -1146,7 +1147,7 @@ export function BrandResourceView({
               onChange={(next) =>
                 setBrandDraft((d) => ({ ...d, colors_primary: next }))
               }
-              defaultRole="Principal"
+              defaultRole=""
             />
 
             {/* Cores secundárias */}
@@ -1168,7 +1169,7 @@ export function BrandResourceView({
                   onChange={(next) =>
                     setBrandDraft((d) => ({ ...d, colors_secondary: next }))
                   }
-                  defaultRole="Secundário"
+                  defaultRole=""
                 />
               </>
             )}
@@ -2424,6 +2425,13 @@ function SectionPlaceholder({
   )
 }
 
+/** "principal" → "Principal"; legado/sem papel → como está ou "Sem papel". */
+function rotuloDoPapel(role: string | null | undefined): string {
+  const p = normalizarPapel(role)
+  if (p) return ROTULO_DO_PAPEL[p].split(" — ")[0]
+  return (role ?? "").trim() || "Sem papel"
+}
+
 function ColorGrid({
   colors,
   editing,
@@ -2595,20 +2603,30 @@ function ColorSwatchEdit({
             fontFamily: "var(--crm-font-mono, monospace)",
           }}
         />
-        <input
-          value={color.role}
+        {/* B5: papel fechado — é o que os tokens {{COR_*}} leem. Legado
+            capitalizado ("Principal") aparece normalizado; uma principal
+            por paleta (a API recusa duas). */}
+        <select
+          value={normalizarPapel(color.role)}
           onChange={(e) => onChange({ ...color, role: e.target.value })}
-          placeholder="Papel (ex: Principal / Fundo)"
+          aria-label="Papel da cor"
           style={{
             width: "100%",
             padding: "4px 8px",
             fontSize: 10.5,
-            color: "var(--crm-gray-500)",
+            color: "var(--crm-gray-700)",
             background: "var(--crm-gray-50)",
             border: "1px solid var(--crm-border)",
             borderRadius: 4,
           }}
-        />
+        >
+          <option value="">Sem papel (derivado pela luminância)</option>
+          {PAPEIS_DE_COR.map((p) => (
+            <option key={p} value={p}>
+              {ROTULO_DO_PAPEL[p]}
+            </option>
+          ))}
+        </select>
       </div>
     </div>
   )
@@ -2669,7 +2687,7 @@ function ColorSwatch({
           </button>
         </div>
         <div style={{ fontSize: 10, color: "var(--crm-gray-500)" }}>
-          {color.role}
+          {rotuloDoPapel(color.role)}
         </div>
       </div>
     </div>

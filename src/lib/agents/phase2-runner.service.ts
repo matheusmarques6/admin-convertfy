@@ -176,6 +176,9 @@ import {
 import { resolveRenderedReference } from "./shared/rendered-reference"
 import { alvoDaOp, applyOps } from "./html/apply-patches"
 import { extrairCtas, extrairFaixas, tonsDeFundo } from "./html/color-faixas"
+import { blocosTokenizadosDoSlotMap, tokensDaLoja } from "./html/apply-identity-tokens"
+import { aplicarTokens } from "./html/identity-tokens"
+import { preservarBlocos } from "./html/blocos-tokenizados"
 import { planoParaOps } from "./html/plano-de-cor"
 import { aplicaFaixasEBotoes, loadColorPlanoMode } from "./html/color-plano-mode"
 import { colorOccurrenceCount,
@@ -2632,7 +2635,12 @@ async function runFormattingChain(p: {
       ...ids,
       agent,
       status: "skipped",
-      model: motivo === "agent_disabled" ? "disabled" : "pinado",
+      model:
+        motivo === "agent_disabled"
+          ? "disabled"
+          : motivo === "tokens_de_identidade"
+            ? "deterministic"
+            : "pinado",
       inputVars: { input_html_len: html.length, input_sha8: sha8(html) },
       parsedOutput: {
         reason: motivo,
@@ -2696,6 +2704,13 @@ async function runFormattingChain(p: {
   // de espelho). Enxertado ANTES da anotação de slots para que os
   // placeholders da variante entrem no endereçamento como os demais.
   let heroVariant: HeroVariantData | null = null
+  // B5: os 11 valores da loja — a MESMA paleta (`fmtCtx.roles`) que o Cores
+  // & Botões recebe. Resolvem os `{{COR_*}}`/`{{FONTE_*}}` da variante no
+  // encaixe (enxerto da hero) e no HTML servido ao agente de hero.
+  const tokensDeIdentidade = tokensDaLoja(ctx.brand, {
+    roles: fmtCtx.roles,
+    raioBotaoPx: null,
+  })
   let heroVariantSource: HeroVariantSource = null
   let heroGraftStatus:
     | GraftStatus
@@ -2731,6 +2746,8 @@ async function runFormattingChain(p: {
       blueprint: ctx.blueprint,
     })
     heroVariant = resolved.variant
+      ? { ...resolved.variant, html: aplicarTokens(resolved.variant.html, tokensDeIdentidade).html }
+      : null
     heroVariantSource = resolved.source
     heroVariantMismatch = resolved.mismatch
   }
@@ -2748,6 +2765,7 @@ async function runFormattingChain(p: {
     const graft = graftHeroVariant(
       fmtCtx.referenceHtml,
       heroVariant?.html ?? null,
+      tokensDeIdentidade,
     )
     heroGraftStatus = graft.status
     if (graft.status === "grafted") {
@@ -3802,8 +3820,19 @@ async function runFormattingChain(p: {
   if (await pararAqui("typography")) return { status: "paused", node: "typography" }
 
   // ── STEP 4 — CORES & BOTÕES (substitui o Refinador; FAIL-OPEN) ─────
+  // B5: bloco cuja variante usa tokens de identidade já saiu do encaixe na
+  // paleta da loja. Todos tokenizados → o agente não roda (run `skipped`,
+  // motivo `tokens_de_identidade`). Misto → ele só vê os legados, e o que
+  // uma op global alcançar nos tokenizados é desfeito por código.
+  const tokenizados = await blocosTokenizadosDoSlotMap(admin, fmtCtx.slotMap)
   if (colorSwitch.disabled) {
     await logStepDisabled("color_format", currentHtml, colorSwitch.motivo ?? "agent_disabled")
+  } else if (tokenizados.todas) {
+    log.info("phase2.fmt.color_format_skipped_tokens", {
+      emailId,
+      blocos: tokenizados.indices,
+    })
+    await logStepDisabled("color_format", currentHtml, "tokens_de_identidade")
   } else {
     const inputHtml = currentHtml
     const config = toChainConfig(colorSwitch.config, "color_format")
@@ -3817,6 +3846,7 @@ async function runFormattingChain(p: {
           null,
       ).join(", "),
       pesquisaFullText: pesquisaToFullText(storeRaw as PesquisaFields),
+      blocosExcluidos: tokenizados.indices,
     })
     // Var exigida pelo schema que o builder não montou. Em produção isso só
     // virava log.warn — e foi assim que `color_surface`/`color_surface_strong`
@@ -3843,8 +3873,9 @@ async function runFormattingChain(p: {
         // O agente devolve um PLANO; quem o traduz em ops é o código, que
         // tem o que ele não tem: as faixas, os botões e o incentivo real da
         // peça (é contra ele que um label que promete desconto é medido).
-        const faixas = extrairFaixas(inputHtml)
-        const ctas = extrairCtas(inputHtml, faixas)
+        const excluidos = new Set(tokenizados.indices)
+        const faixas = extrairFaixas(inputHtml).filter((f) => !excluidos.has(f.bloco))
+        const ctas = extrairCtas(inputHtml, faixas).filter((c) => c.bloco == null || !excluidos.has(c.bloco))
         const modo = await loadColorPlanoMode(storeId)
         const traducao = r.plano
           ? planoParaOps(r.plano, {
@@ -3913,6 +3944,16 @@ async function runFormattingChain(p: {
             ocorrencias_corrigidas: corrigidasFora,
           })
         }
+        // B5: o `recolor` é global por valor — o que chegou num bloco
+        // tokenizado é desfeito aqui, pelos marcadores.
+        const preservacao = preservarBlocos(inputHtml, htmlFinal, tokenizados.indices)
+        htmlFinal = preservacao.html
+        if (preservacao.restaurados.length > 0) {
+          log.info("phase2.fmt.color_format_blocos_preservados", {
+            emailId,
+            restaurados: preservacao.restaurados,
+          })
+        }
         const restantesFora = fmtCtx.roles ? coresForaDaPaleta(htmlFinal, fmtCtx.roles) : []
         // Guard: ops replace não podem quebrar a estrutura (um find/replace
         // que engole um </table> corrompe o documento).
@@ -3964,6 +4005,12 @@ async function runFormattingChain(p: {
             // este e-mail ficou assim" não tinha resposta. Em `shadow` é o
             // único registro que existe — nada foi aplicado.
             color_plano_mode: modo,
+            ...(tokenizados.indices.length > 0
+              ? {
+                  blocos_tokenizados: tokenizados.indices,
+                  blocos_preservados: preservacao.restaurados,
+                }
+              : {}),
             // Por que o modelo parou e quanto gastou pensando. Um step
             // mecânico que gasta 90% da saída em raciocínio é caro e fica a
             // um empurrão do teto — sem estes dois campos isso só aparece
