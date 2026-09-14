@@ -35,7 +35,6 @@ describe("avaliarProntidao", () => {
     expect(p.pronta).toBe(true)
     expect(p.bloqueios).toEqual([])
     expect(p.avisos.map((a) => a.id)).toEqual([
-      "paleta_dois_principais",
       "trust_icons_vazio",
       "identidade_nao_confirmada",
     ])
@@ -65,8 +64,6 @@ describe("avaliarProntidao", () => {
     e.identity = { colors_primary: [{ hex: "azul", name: "x", role: "Principal" }], trust_icons: [{ image_url: "s" }], confirmed_at: "2026-01-01" }
     const p = avaliarProntidao(e)
     expect(p.bloqueios.map((b) => b.id)).toEqual(["sem_produtos", "paleta_sem_hex", "logo_ausente", "fontes_ausentes"])
-    // a paleta inválida NÃO gera o aviso de dois principais (só tem uma)
-    expect(p.avisos.map((a) => a.id)).not.toContain("paleta_dois_principais")
   })
 
   it("identidade ausente conta como sem paleta, sem logo e sem fontes, mas não como 'não confirmada'", () => {
@@ -77,11 +74,11 @@ describe("avaliarProntidao", () => {
     expect(p.avisos.map((a) => a.id)).not.toContain("identidade_nao_confirmada")
   })
 
-  it("dois principais COM fundo declarado não avisa", () => {
+  it("duas cores 'Principal' não geram aviso — papel por cor é decisão do agente, não do cadastro", () => {
     const e = heroBoxers()
-    e.identity!.colors_secondary = [{ hex: "#f4f4f4", name: "Fundo", role: "fundo" }]
     const p = avaliarProntidao(e)
     expect(p.avisos.map((a) => a.id)).not.toContain("paleta_dois_principais")
+    expect(p.pronta).toBe(true)
   })
 
   it("política ausente no setup E na ficha vira aviso; presente em qualquer um, não", () => {
@@ -104,7 +101,7 @@ describe("avaliarProntidao", () => {
 
   it("resumo em uma linha", () => {
     expect(resumoDaProntidao(avaliarProntidao(heroBoxers()))).toBe(
-      "avisos: paleta_dois_principais, trust_icons_vazio, identidade_nao_confirmada",
+      "avisos: trust_icons_vazio, identidade_nao_confirmada",
     )
     const e = heroBoxers()
     e.produtos = 0

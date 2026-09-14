@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server"
 import { z } from "zod"
-import { normalizarPapel, validarPaleta } from "@/lib/stores/papeis-de-cor"
+import { normalizarPaleta, normalizarPapel } from "@/lib/stores/papeis-de-cor"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 
@@ -132,16 +132,16 @@ export async function PATCH(
       if (v !== undefined) merged[k] = v
     }
 
-    // A paleta que VAI ser gravada (enviada ou herdada) aceita uma só
-    // principal. Com duas, a derivação escolhe a primeira por ordem de
-    // cadastro — decisão que ninguém tomou — e o botão sai na cor errada.
-    const paleta = validarPaleta(
+    // Uma principal, N secundárias (decisão de 14/09): a paleta que VAI ser
+    // gravada — enviada ou herdada — é normalizada, nunca recusada. A
+    // primeira primária é a cor da marca; excedente desce para as
+    // secundárias e o agente Cores & Botões decide onde cada uma entra.
+    const paleta = normalizarPaleta(
       (merged.colors_primary as Array<{ hex?: string; role?: string | null }>) ?? [],
       (merged.colors_secondary as Array<{ hex?: string; role?: string | null }>) ?? [],
     )
-    if (!paleta.ok) {
-      throw new AppError(paleta.mensagem, 422, paleta.codigo)
-    }
+    merged.colors_primary = paleta.principal
+    merged.colors_secondary = paleta.secundarias
 
     const { data: inserted, error } = await admin
       .from("store_brand_identity")

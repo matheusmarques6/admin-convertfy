@@ -6178,9 +6178,15 @@ Trilha B". O que não pode regredir:
   tokens_de_identidade`) quando todos os blocos são tokenizados; misto → o
   agente só vê os legados (`blocosExcluidos`) e o `recolor` global que
   alcançar bloco tokenizado é DESFEITO por marcador (`preservarBlocos`).
-  Papéis de cor fechados (`lib/stores/papeis-de-cor.ts`): `principal|fundo|
-  texto|destaque|superficie`, legado capitalizado normalizado na leitura,
-  422 `paleta_dois_principais` no PATCH. Tokenização de variantes existentes
+  Paleta = **uma principal, N secundárias** (`lib/stores/papeis-de-cor.ts`,
+  decisão do dono em 14/09): o papel por cor (`fundo|texto|destaque|
+  superficie`) foi DESCARTADO como cadastro — zero das 10 lojas o usavam, e
+  quem decide onde cada cor entra é o agente Cores & Botões. `normalizarPaleta`
+  carimba `principal` na primeira primária e desce o excedente para as
+  secundárias sem papel; roda no PATCH (que não recusa mais nada) e na
+  abertura do editor. O aviso `paleta_dois_principais` saiu da prontidão.
+  A derivação por luminância (`color-roles.ts`) cobre fundo/texto/botão
+  como antes. Tokenização de variantes existentes
   (`identity-tokenize.ts`, heurística) é DIFF para revisão com prévia nas
   paletas de prova; nada aplicado em produção ainda. `fallbackChainFor`/
   `pesoNumerico` moram em `html/font-fallback.ts` (ciclo de import).

@@ -1,15 +1,21 @@
 /**
- * Papéis de cor da identidade visual — vocabulário FECHADO (Trilha B5).
+ * Paleta da identidade visual: UMA cor principal e N secundárias.
  *
- * `BrandColor.role` era texto livre com a convenção "Principal | Fundo |
- * Destaque" aplicada só pela UI. Duas consequências medidas em 14/09: as
- * três lojas de teste têm DUAS cores "Principal" e nenhuma "Fundo"/"Texto"
- * (o papel de cada uma é adivinhado pela luminância), e não havia como
- * declarar `texto` nem `superficie` — os tokens {{COR_TEXTO}} e
- * {{COR_SUPERFICIE}} saíam sempre derivados.
+ * A Trilha B5 (14/09) tinha introduzido um papel FECHADO por cor
+ * (`principal|fundo|texto|destaque|superficie`), com um select por cor na
+ * tela e 422 no PATCH quando havia duas "principais". Medido no mesmo dia:
+ * das 10 lojas com identidade, ZERO usam papel de lugar — 6 têm duas
+ * "Principal" e 4 nenhuma. O papel presumia que cada cor mora num lugar só,
+ * e quem decide onde a cor entra é o agente Cores & Botões, não o cadastro
+ * (decisão do dono, 14/09).
  *
- * Aqui vive a normalização (legado capitalizado e com acento entra e sai
- * minúsculo) e a régua "no máximo uma principal". Puro (zero I/O).
+ * O modelo passa a ser o que a tela sempre teve em duas seções:
+ * `colors_primary` = A cor da marca (uma), `colors_secondary` = apoio (N).
+ * O `role` continua existindo na linha para os leitores antigos
+ * (`color-roles.ts` deriva `button_bg` da principal e o resto por
+ * luminância), mas é CARIMBADO por `normalizarPaleta`, não escolhido por
+ * humano: a primeira primária vira `principal`, o excedente desce para as
+ * secundárias sem papel. Puro (zero I/O).
  */
 
 export const PAPEIS_DE_COR = ["principal", "fundo", "texto", "destaque", "superficie"] as const
@@ -43,26 +49,39 @@ export function ehPapelDeCor(x: unknown): x is PapelDeCor {
 
 export interface CorComPapel {
   hex?: string
+  name?: string
   role?: string | null
 }
 
+export interface PaletaNormalizada<T extends CorComPapel> {
+  /** Zero ou UMA cor, sempre com `role: "principal"`. */
+  principal: T[]
+  /** As demais, na ordem em que estavam, com `role: ""`. */
+  secundarias: T[]
+  /** Quantas primárias excedentes desceram para as secundárias. */
+  movidas: number
+}
+
 /**
- * A paleta inteira (primária + secundária) aceita UMA `principal`.
+ * Uma principal, N secundárias — a régua que a tela e o PATCH aplicam.
  *
- * Duas principais não são "duas cores importantes": são a ausência de
- * decisão sobre qual pinta o botão, e a derivação escolhe a primeira por
- * ordem de cadastro — que ninguém escolheu. Devolve o código que a API e o
- * gate usam (`paleta_dois_principais`).
+ * A primeira primária é a cor da marca; a segunda em diante desce para o
+ * TOPO das secundárias (antes das que já estavam lá), porque quem cadastrou
+ * duas "principais" pôs a mais importante primeiro — é a mesma ordem que a
+ * derivação já usava para o botão. Papel de lugar (`fundo`, `texto`…) é
+ * apagado nas secundárias: o agente decide onde a cor entra. Não altera o
+ * hex nem o nome de ninguém, e nunca inventa cor: paleta vazia sai vazia.
  */
-export function validarPaleta(
-  primarias: CorComPapel[] = [],
-  secundarias: CorComPapel[] = [],
-): { ok: true } | { ok: false; codigo: "paleta_dois_principais"; mensagem: string } {
-  const principais = [...primarias, ...secundarias].filter((c) => normalizarPapel(c.role) === "principal")
-  if (principais.length <= 1) return { ok: true }
+export function normalizarPaleta<T extends CorComPapel>(
+  primarias: T[] = [],
+  secundarias: T[] = [],
+): PaletaNormalizada<T> {
+  const [primeira, ...excedentes] = primarias
+  const principal = primeira ? [{ ...primeira, role: "principal" as const }] : []
+  const semPapel = (c: T): T => ({ ...c, role: "" })
   return {
-    ok: false,
-    codigo: "paleta_dois_principais",
-    mensagem: `A paleta tem ${principais.length} cores marcadas como "Principal" (${principais.map((c) => c.hex ?? "?").join(", ")}). Só uma pode ser a principal — marque as outras como fundo, texto, destaque ou superfície.`,
+    principal,
+    secundarias: [...excedentes.map(semPapel), ...secundarias.map(semPapel)],
+    movidas: excedentes.length,
   }
 }

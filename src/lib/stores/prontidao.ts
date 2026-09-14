@@ -14,7 +14,7 @@
  *   paleta, logo, fontes). Corta a fila e as rotas manuais (422), a menos
  *   que o operador diga POR QUE quer gerar assim mesmo (`gate_override`).
  * - **aviso** — a peça sai, mas com uma lacuna que alguém vai notar depois
- *   (paleta com dois "Principal", selos vazios, cupom sem tradução,
+ *   (selos vazios, cupom sem tradução,
  *   identidade não confirmada). Vai no run `gate` e no card.
  *
  * A identidade lida é a ÚLTIMA versão, não só a confirmada: a Hero Boxers
@@ -33,7 +33,6 @@ export type IdDeProntidao =
   | "paleta_sem_hex"
   | "logo_ausente"
   | "fontes_ausentes"
-  | "paleta_dois_principais"
   | "politica_sem_pagina"
   | "trust_icons_vazio"
   | "cupom_sem_override"
@@ -195,17 +194,11 @@ export function avaliarProntidao(entrada: EntradaDeProntidao): Prontidao {
   }
 
   // ── avisos ────────────────────────────────────────────────────────────
-  const principais = primarias.filter((c) => c.role === "principal").length
-  const temFundoOuTexto = [...primarias, ...secundarias].some((c) => c.role === "fundo" || c.role === "texto")
-  if (principais >= 2 && !temFundoOuTexto) {
-    avisos.push({
-      id: "paleta_dois_principais",
-      severidade: "aviso",
-      titulo: "Paleta com dois \"Principal\" e sem fundo/texto",
-      detalhe: "Duas cores marcadas como principal e nenhuma como fundo ou texto: o papel de cada uma é adivinhado pela luminância, e o botão pode sair na cor errada.",
-      acao: { destino: recursoMarca, rotulo: "Definir os papéis das cores" },
-    })
-  }
+  // Papel por cor NÃO é aviso (decisão de 14/09): a paleta é uma principal
+  // e N secundárias, e quem decide onde cada cor entra é o agente Cores &
+  // Botões. O PATCH normaliza (primeira primária = principal) e a
+  // derivação por luminância cobre fundo/texto — não há o que cobrar do
+  // cadastro além do hex, que já é bloqueio acima.
   const politicaLoja = preenchido(entrada.store?.devolucao_politica) || preenchido(entrada.store?.frete_prazo) || preenchido(entrada.store?.frete_cobertura)
   const politicaFicha = Boolean(entrada.ficha?.troca?.texto || entrada.ficha?.troca?.prazo_dias != null || entrada.ficha?.envio?.texto || entrada.ficha?.envio?.prazo)
   // Passo 16: a página pública da loja também conta como fonte.

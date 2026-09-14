@@ -16,7 +16,7 @@ import {
   X,
 } from "lucide-react"
 import { useToast } from "@/lib/hooks/use-toast"
-import { PAPEIS_DE_COR, ROTULO_DO_PAPEL, normalizarPapel } from "@/lib/stores/papeis-de-cor"
+import { normalizarPaleta } from "@/lib/stores/papeis-de-cor"
 import type {
   StoreBrandIdentity,
   StoreBriefing,
@@ -76,9 +76,12 @@ interface EditableStore {
 }
 
 function initBrandDraft(b: StoreBrandIdentity | null): EditableBrand {
+  // Uma principal, N secundárias: linha antiga com duas "Principal" abre
+  // já normalizada (a 2ª desce para as secundárias) — é o que o PATCH grava.
+  const paleta = normalizarPaleta(b?.colors_primary ?? [], b?.colors_secondary ?? [])
   return {
-    colors_primary: b?.colors_primary ?? [],
-    colors_secondary: b?.colors_secondary ?? [],
+    colors_primary: paleta.principal,
+    colors_secondary: paleta.secundarias,
     font_heading: b?.font_heading ?? null,
     font_heading_weight: b?.font_heading_weight ?? null,
     font_body: b?.font_body ?? null,
@@ -1138,41 +1141,52 @@ export function BrandResourceView({
                 })()}
             </div>
 
-            {/* Cores principais */}
-            <SectionTitle title="Cores principais" style={{ marginTop: 40 }} />
+            {/* Cor principal — UMA. Quem decide onde cada cor entra na peça é o
+                agente Cores & Botões; o cadastro só diz qual é a cor da marca. */}
+            <SectionTitle
+              title="Cor principal"
+              subtitle="A cor da marca · botões preenchidos e títulos de destaque"
+              style={{ marginTop: 40 }}
+            />
             <ColorGrid
-              colors={mode === "edit" ? brandDraft.colors_primary : (brand?.colors_primary ?? [])}
+              colors={mode === "edit" ? brandDraft.colors_primary : normalizarPaleta(brand?.colors_primary ?? []).principal}
               editing={mode === "edit"}
               variant="large"
+              max={1}
+              papel="Principal"
               onChange={(next) =>
                 setBrandDraft((d) => ({ ...d, colors_primary: next }))
               }
-              defaultRole=""
+              defaultRole="principal"
             />
 
             {/* Cores secundárias */}
-            {(mode === "edit" || (brand?.colors_secondary && brand?.colors_secondary.length > 0)) && (
-              <>
-                <SectionTitle
-                  title="Cores secundárias"
-                  subtitle="Paleta de apoio · use em backgrounds e detalhes"
-                  style={{ marginTop: 32 }}
-                />
-                <ColorGrid
-                  colors={
-                    mode === "edit"
-                      ? brandDraft.colors_secondary
-                      : (brand?.colors_secondary ?? [])
-                  }
-                  editing={mode === "edit"}
-                  variant="small"
-                  onChange={(next) =>
-                    setBrandDraft((d) => ({ ...d, colors_secondary: next }))
-                  }
-                  defaultRole=""
-                />
-              </>
-            )}
+            {(() => {
+              const secundarias =
+                mode === "edit"
+                  ? brandDraft.colors_secondary
+                  : normalizarPaleta(brand?.colors_primary ?? [], brand?.colors_secondary ?? []).secundarias
+              if (mode !== "edit" && secundarias.length === 0) return null
+              return (
+                <>
+                  <SectionTitle
+                    title="Cores secundárias"
+                    subtitle="Paleta de apoio · o agente de cores decide onde cada uma entra"
+                    style={{ marginTop: 32 }}
+                  />
+                  <ColorGrid
+                    colors={secundarias}
+                    editing={mode === "edit"}
+                    variant="small"
+                    papel="Secundária"
+                    onChange={(next) =>
+                      setBrandDraft((d) => ({ ...d, colors_secondary: next }))
+                    }
+                    defaultRole=""
+                  />
+                </>
+              )
+            })()}
 
             {/* Tipografia */}
             <>
@@ -2425,27 +2439,27 @@ function SectionPlaceholder({
   )
 }
 
-/** "principal" → "Principal"; legado/sem papel → como está ou "Sem papel". */
-function rotuloDoPapel(role: string | null | undefined): string {
-  const p = normalizarPapel(role)
-  if (p) return ROTULO_DO_PAPEL[p].split(" — ")[0]
-  return (role ?? "").trim() || "Sem papel"
-}
-
 function ColorGrid({
   colors,
   editing,
   variant,
   onChange,
   defaultRole,
+  papel,
+  max,
 }: {
   colors: BrandColor[]
   editing: boolean
   variant: "large" | "small"
   onChange: (next: BrandColor[]) => void
   defaultRole: string
+  /** Rótulo da seção, mostrado no card ("Principal" | "Secundária"). */
+  papel: string
+  /** Teto de cores da seção — a principal aceita UMA; sem teto, N. */
+  max?: number
 }) {
   const minWidth = variant === "large" ? 280 : 180
+  const podeAdicionar = editing && (max == null || colors.length < max)
   return (
     <div
       className="grid gap-4"
@@ -2472,10 +2486,10 @@ function ColorGrid({
             onRemove={() => onChange(colors.filter((_, idx) => idx !== i))}
           />
         ) : (
-          <ColorSwatch key={i} color={c} small={variant === "small"} />
+          <ColorSwatch key={i} color={c} small={variant === "small"} papel={papel} />
         ),
       )}
-      {editing && (
+      {podeAdicionar && (
         <button
           onClick={() =>
             onChange([
@@ -2603,30 +2617,6 @@ function ColorSwatchEdit({
             fontFamily: "var(--crm-font-mono, monospace)",
           }}
         />
-        {/* B5: papel fechado — é o que os tokens {{COR_*}} leem. Legado
-            capitalizado ("Principal") aparece normalizado; uma principal
-            por paleta (a API recusa duas). */}
-        <select
-          value={normalizarPapel(color.role)}
-          onChange={(e) => onChange({ ...color, role: e.target.value })}
-          aria-label="Papel da cor"
-          style={{
-            width: "100%",
-            padding: "4px 8px",
-            fontSize: 10.5,
-            color: "var(--crm-gray-700)",
-            background: "var(--crm-gray-50)",
-            border: "1px solid var(--crm-border)",
-            borderRadius: 4,
-          }}
-        >
-          <option value="">Sem papel (derivado pela luminância)</option>
-          {PAPEIS_DE_COR.map((p) => (
-            <option key={p} value={p}>
-              {ROTULO_DO_PAPEL[p]}
-            </option>
-          ))}
-        </select>
       </div>
     </div>
   )
@@ -2635,9 +2625,11 @@ function ColorSwatchEdit({
 function ColorSwatch({
   color,
   small,
+  papel,
 }: {
   color: BrandColor
   small?: boolean
+  papel: string
 }) {
   return (
     <div
@@ -2687,7 +2679,7 @@ function ColorSwatch({
           </button>
         </div>
         <div style={{ fontSize: 10, color: "var(--crm-gray-500)" }}>
-          {rotuloDoPapel(color.role)}
+          {papel}
         </div>
       </div>
     </div>
