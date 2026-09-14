@@ -34,6 +34,7 @@ import {
   type PipelineAgentKey,
 } from "@/lib/agents/agent-visual"
 import { logger } from "@/lib/logger"
+import { conformidadeAgregada } from "@/lib/services/conformidade.service"
 
 const log = logger.child("EmailGenerationLogsRoute")
 
@@ -323,6 +324,16 @@ export async function GET(request: NextRequest) {
       return best
     }
 
+    // Decisão × entregue (B6): e-mails da janela que têm batch, do mais
+    // recente para o mais antigo, com teto declarado no serviço.
+    let conformidade = null
+    try {
+      const emailIds = Array.from(new Set(rows.filter((r) => r.email_id && r.batch_id).map((r) => r.email_id as string)))
+      conformidade = await conformidadeAgregada(emailIds)
+    } catch (e) {
+      log.warn("conformidade_failed", { error: e instanceof Error ? e.message : String(e) })
+    }
+
     // ── Payload ─────────────────────────────────────────────
     const by_agent = PIPELINE_AGENT_ORDER.map((k) => {
       const a = byAgent.get(k)!
@@ -347,6 +358,7 @@ export async function GET(request: NextRequest) {
       window_days: days,
       truncated,
       fx_brl_rate: fxBrlRate,
+      conformidade,
       totals: {
         runs: totalRuns,
         tracked_runs: trackedRuns,

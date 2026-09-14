@@ -169,6 +169,17 @@ interface Payload {
   by_type: TypeRow[]
   by_status: { success: number; error: number; running: number; skipped: number }
   recent: RecentRow[]
+  /** Decisão × entregue (B6) — null quando a RPC não existe (migration 20261148). */
+  conformidade?: {
+    emails: number
+    posicoes: number
+    conformes: number
+    divergentes: number
+    nao_avaliadas: number
+    por_no: Record<string, number>
+    amostra: number
+    truncada: boolean
+  } | null
 }
 
 const fetcher = (url: string) =>
@@ -400,6 +411,23 @@ function KpiStrip({ payload }: { payload: Payload }) {
         accent={payload.totals.errors > 0 ? C.warn : C.pos}
         tone={payload.totals.errors > 0 ? C.warn : C.g900}
       />
+      {payload.conformidade && (
+        <Kpi
+          label="Conformidade (decisão × entregue)"
+          value={
+            payload.conformidade.conformes + payload.conformidade.divergentes > 0
+              ? `${((payload.conformidade.conformes / (payload.conformidade.conformes + payload.conformidade.divergentes)) * 100).toFixed(0)}%`
+              : "—"
+          }
+          sub={`${payload.conformidade.divergentes} divergente(s) em ${payload.conformidade.emails} e-mail(s) · ${payload.conformidade.nao_avaliadas} posição(ões) não avaliada(s)${
+            Object.keys(payload.conformidade.por_no).length > 0
+              ? " · nó: " + Object.entries(payload.conformidade.por_no).map(([k, v]) => `${k} ${v}`).join(", ")
+              : ""
+          }`}
+          accent={payload.conformidade.divergentes > 0 ? C.warn : C.pos}
+          tone={payload.conformidade.divergentes > 0 ? C.warn : C.g900}
+        />
+      )}
     </div>
   )
 }

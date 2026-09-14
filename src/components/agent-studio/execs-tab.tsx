@@ -34,6 +34,7 @@ import {
   AgentOrientacoes,
 } from "./estruturador-panel"
 import { AgentOutputView } from "./agent-output-views"
+import { ConformidadePanel } from "./conformidade-panel"
 import {
   InputSummaryView,
   PromptProvenanceView,
@@ -1262,6 +1263,7 @@ export function ExecutionsTab({ positions }: { positions: Positions }) {
             </span>
           </div>
         )}
+        {exec && <ConformidadePanel key={exec.email_id} emailId={exec.email_id} />}
         <div style={{ flex: 1, position: "relative", minHeight: 0, display: "flex", flexDirection: "column" }}>
           <div style={{ flex: 1, position: "relative", minHeight: 0 }}>
           <FlowCanvas
