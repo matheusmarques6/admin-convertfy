@@ -1,3 +1,4 @@
+import { CACHE_PREFIX_MARKER } from "../shared/cache-de-prompt"
 import { describe, it, expect } from "vitest"
 import { DEFAULT_ESTRUTURADOR_USER } from "./estruturador-prompt"
 import { USER_ORIGINS } from "./estruturador.service"
@@ -49,5 +50,24 @@ describe("proveniência do Estruturador", () => {
     expect(DEFAULT_ESTRUTURADOR_USER).toContain("{{estruturas_dos_outros_emails}}")
     expect(USER_ORIGINS.estruturas_dos_outros_emails.cls).toBe("sistema")
     expect(USER_ORIGINS.estruturas_dos_outros_emails.rotulo).toContain("outros emails")
+  })
+})
+
+// 14/09: o bloco da loja (perfil + seções disponíveis) vem antes da marca
+// de cache e é lido do cache pelos 3 irmãos do lote; o do e-mail vai solto.
+describe("DEFAULT_ESTRUTURADOR_USER — prefixo estável", () => {
+  it("uma marca só: perfil e seções antes; email, alvo, material do toque, irmãos, COO, revisão e auditoria depois", () => {
+    const tpl = DEFAULT_ESTRUTURADOR_USER
+    expect(tpl.split(CACHE_PREFIX_MARKER).length - 1).toBe(1)
+    const marca = tpl.indexOf(CACHE_PREFIX_MARKER)
+    for (const tag of ["<perfil_da_marca>", "{{pesquisa}}", "{{top_products}}", "<secoes_disponiveis>"]) {
+      expect(tpl.indexOf(tag), tag).toBeLessThan(marca)
+    }
+    for (const tag of [
+      "<email>", "{{decisao_de_objecao}}", "{{objecoes_ja_atacadas}}", "<material_do_toque>",
+      "{{estruturas_dos_outros_emails}}", "{{orientacao_coo}}", "{{revisao_humana}}", "{{auditoria_anterior}}",
+    ]) {
+      expect(tpl.indexOf(tag), tag).toBeGreaterThan(marca)
+    }
   })
 })

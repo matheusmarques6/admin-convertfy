@@ -1,3 +1,4 @@
+import { CACHE_PREFIX_MARKER } from "./llm-invoke"
 import { readFileSync } from "node:fs"
 
 import { describe, it, expect } from "vitest"
@@ -22,7 +23,8 @@ import {
   parseValidatedShortlist,
   renderFinalistNotes,
   restrictRankingToShortlist,
-  DEFAULT_CURADOR_SHORTLIST_SYSTEM,
+  CAUDA_SHORTLIST_USER,
+  CAUDA_ESCOLHA_USER,
   planejarShortlist,
   mesclarShortlist,
 } from "./curador-shadow"
@@ -467,7 +469,7 @@ describe("rank1ByBlock + blocos da fase 1", () => {
   // é spec, não changelog.
   describe("coerência do prompt com os guards (14/09)", () => {
     it("nenhum dos dois prompts afirma o que o código desfaz", () => {
-      for (const prompt of [DEFAULT_CHOOSER_VAULT_SYSTEM, DEFAULT_CHOOSER_SYSTEM, DEFAULT_CURADOR_SHORTLIST_SYSTEM]) {
+      for (const prompt of [DEFAULT_CHOOSER_VAULT_SYSTEM, DEFAULT_CHOOSER_SYSTEM, CAUDA_SHORTLIST_USER]) {
         expect(prompt).not.toContain("É PERMITIDO")
         // "não cai no template global" (shortlist) é a frase certa; a errada
         // era "o sistema cai no template global" (escolha, passo 4).
@@ -619,13 +621,29 @@ describe("o teto da shortlist (10/09)", () => {
   // (`max_tokens: maxTokens`) e não há função pura para exercitar.
   it("a chamada da shortlist não carrega teto literal nenhum", () => {
     const fonte = readFileSync(new URL("./curador-shadow.ts", import.meta.url), "utf-8")
-    const chamada = fonte.slice(
-      fonte.indexOf("const shortlistCall"),
-      fonte.indexOf("const shortlist = parseValidatedShortlist"),
-    )
+    const inicio = fonte.indexOf("const shortlistCall")
+    const fim = fonte.indexOf("shortlistLlm = parseValidatedShortlist")
+    // Âncoras que existem: `indexOf` = -1 faria o `slice` ler até o fim do
+    // arquivo e o teste passar por acaso.
+    expect(inicio).toBeGreaterThan(0)
+    expect(fim).toBeGreaterThan(inicio)
+    const chamada = fonte.slice(inicio, fim)
     expect(chamada).toContain("max_tokens: maxTokens")
     expect(chamada).not.toMatch(/Math\.min\s*\(\s*maxTokens/)
     expect(chamada).not.toMatch(/max_tokens:\s*\d/)
+  })
+
+  // 14/09: o cache da Anthropic é hierárquico (system antes de messages).
+  // Com um system próprio na shortlist, o prefixo do user nunca acertava
+  // entre as duas chamadas — 55k tokens pagos duas vezes por run.
+  it("a shortlist NÃO troca o system: as duas chamadas compartilham o prefixo inteiro", () => {
+    const fonte = readFileSync(new URL("./curador-shadow.ts", import.meta.url), "utf-8")
+    const inicio = fonte.indexOf("const shortlistCall")
+    const fim = fonte.indexOf("shortlistLlm = parseValidatedShortlist")
+    const chamada = fonte.slice(inicio, fim)
+    expect(chamada).not.toContain("system_prompt:")
+    expect(chamada).toContain("CAUDA_SHORTLIST_USER")
+    expect(fonte).not.toContain("DEFAULT_CURADOR_SHORTLIST_SYSTEM")
   })
 
   it("naEtapa nomeia a chamada que falhou e preserva o erro original", async () => {
@@ -805,6 +823,57 @@ describe("eliminadas por requisito (09/09)", () => {
 })
 
 
+// 14/09: prefixo estável. Os blocos do user vão do menos ao mais mutável,
+// separados por marca de cache: global+flow → loja → e-mail → cauda. Uma
+// var que trocasse de bloco sem a marca zeraria a leitura dos seguintes.
+describe("user do Curador do vault — ordem dos blocos e marcas de cache (14/09)", () => {
+  const tpl = DEFAULT_CHOOSER_VAULT_USER
+  const pos = (tag: string) => {
+    const i = tpl.indexOf(tag)
+    expect(i, tag).toBeGreaterThanOrEqual(0)
+    return i
+  }
+  it("exatamente três marcas (o teto: 4 breakpoints por request, um é do system)", () => {
+    expect(tpl.split(CACHE_PREFIX_MARKER).length - 1).toBe(3)
+  })
+  it("global+flow < 1ª marca < loja < 2ª marca < e-mail < 3ª marca", () => {
+    const marcas: number[] = []
+    for (let i = tpl.indexOf(CACHE_PREFIX_MARKER); i >= 0; i = tpl.indexOf(CACHE_PREFIX_MARKER, i + 1)) marcas.push(i)
+    expect(marcas).toHaveLength(3)
+    const [m1, m2, m3] = marcas
+    for (const tag of ["<indice_do_vault>", "<intencao_do_flow>", "<aprendizados>", "<estruturas_de_referencia>"]) {
+      expect(pos(tag), tag).toBeLessThan(m1)
+    }
+    for (const tag of ["<store>", "<perfil_marca>", "<objecoes>", "<vocabulario>", "<top_products>"]) {
+      expect(pos(tag), tag).toBeGreaterThan(m1)
+      expect(pos(tag), tag).toBeLessThan(m2)
+    }
+    for (const tag of [
+      "<outline>", "<intencao_do_email>", "<orientacao_do_coo>", "<revisao_humana>", "<alvo>", "<memoria>",
+      "<notas_de_secao>", "<lacunas_da_biblioteca>", "<decisao_do_estruturador>", "<eliminadas_por_requisito>", "<estrutura_do_email>",
+    ]) {
+      expect(pos(tag), tag).toBeGreaterThan(m2)
+      expect(pos(tag), tag).toBeLessThan(m3)
+    }
+    // A cauda vem DEPOIS da última marca — nas duas chamadas.
+    expect(CAUDA_SHORTLIST_USER).toContain("<posicoes_da_shortlist>")
+    expect(CAUDA_ESCOLHA_USER).toContain("<notas_das_finalistas>")
+    expect(CAUDA_SHORTLIST_USER).not.toContain(CACHE_PREFIX_MARKER)
+    expect(CAUDA_ESCOLHA_USER).not.toContain(CACHE_PREFIX_MARKER)
+  })
+  it("todas as vars antigas continuam no template — nada saiu, só mudou de lugar", () => {
+    for (const v of [
+      "{{brand_name}}", "{{nicho}}", "{{outline_objective}}", "{{outline_guidance}}", "{{outline_tone_hint}}",
+      "{{intencao_flow}}", "{{intencao_email}}", "{{outline_restricoes}}", "{{estruturas_ref}}", "{{secoes_notas}}",
+      "{{lacunas_biblioteca}}", "{{aprendizados}}", "{{orientacao_coo}}", "{{revisao_humana}}", "{{briefing_marca}}",
+      "{{alvo}}", "{{objecoes}}", "{{vocabulario}}", "{{top_products}}", "{{memoria}}", "{{indice_vault}}",
+      "{{estruturador_decisao}}", "{{eliminadas_requisito}}", "{{blocks_json}}",
+    ]) {
+      expect(tpl, v).toContain(v)
+    }
+  })
+})
+
 // 14/09: no batch 6249aef2 todas as seções chegaram à shortlist com ≤ 3
 // candidatas elegíveis e a chamada leu 101k chars para devolver a mesma
 // lista. E a eliminação por contrato era só recomendação no prompt: o
@@ -852,7 +921,8 @@ describe("shortlist por código quando não há o que rankear (14/09)", () => {
     expect(intersecaoVazia).toEqual([])
   })
   it("modelo que só aponta eliminadas cai nas três primeiras elegíveis, registrado", () => {
-    const elegiveis = new Map<number, string[]>([[0, ["b1", "b2", "b3", "b4"]]])
+    // 6 elegíveis: acima do limiar de 5, senão a posição nem chega ao modelo.
+    const elegiveis = new Map<number, string[]>([[0, ["b1", "b2", "b3", "b4", "b5", "b6"]]])
     const plano = planejarShortlist({ sections: ["body"], elegiveisPorPosicao: elegiveis })
     const typeIndex = new Map([["b9", "body"], ["b1", "body"]])
     const llm = parseValidatedShortlist({ raw: JSON.stringify([{ block_index: 0, escolhas: [{ variant_id: "b9" }] }]), sections: ["body"], typeIndex })
@@ -860,6 +930,28 @@ describe("shortlist por código quando não há o que rankear (14/09)", () => {
     expect(fonte).toBe("llm")
     expect(intersecaoVazia).toEqual([0])
     expect(shortlist.byBlock.get(0)?.map((c) => c.variant_id)).toEqual(["b1", "b2", "b3"])
+  })
+  // 14/09 (passo 3): a run de 14/09 chegou com {4,2,4,3,2,2} e pagou a
+  // shortlist para escolher 3 de 4 em duas posições. Até 5 elegíveis,
+  // TODAS viram finalistas e a escolha lê as notas de todas.
+  it("até 5 elegíveis a posição é resolvida por código com todas as candidatas; 6 chama o modelo", () => {
+    const medido = new Map<number, string[]>([
+      [0, ["h1", "h2", "h3", "h4"]], [1, ["b1", "b2"]], [2, ["c1", "c2", "c3", "c4"]], [3, ["r1", "r2", "r3"]], [4, ["p1", "p2"]], [5, ["f1", "f2"]],
+    ])
+    const plano = planejarShortlist({ sections: ["hero", "body", "body", "reviews", "products", "footer"], elegiveisPorPosicao: medido })
+    expect(plano.limiar).toBe(5)
+    expect(plano.chamar).toBe(false)
+    const { shortlist, fonte } = mesclarShortlist({ plano, llm: null, sections: ["hero", "body", "body", "reviews", "products", "footer"] })
+    expect(fonte).toBe("codigo")
+    expect(shortlist.byBlock.get(0)?.map((c) => c.variant_id)).toEqual(["h1", "h2", "h3", "h4"])
+
+    const cinco = planejarShortlist({ sections: ["body"], elegiveisPorPosicao: new Map([[0, ["a", "b", "c", "d", "e"]]]) })
+    expect(cinco.chamar).toBe(false)
+    expect(cinco.porCodigo.get(0)).toHaveLength(5)
+    const seis = planejarShortlist({ sections: ["body"], elegiveisPorPosicao: new Map([[0, ["a", "b", "c", "d", "e", "f"]]]) })
+    expect(seis.chamar).toBe(true)
+    // O limiar nunca desce abaixo de SHORTLIST_TOP_N, mesmo pedido.
+    expect(planejarShortlist({ sections: ["body"], elegiveisPorPosicao: new Map([[0, ["a", "b", "c"]]]), limiar: 1 }).chamar).toBe(false)
   })
   it("sem elegíveis informadas, ou forçando, tudo vai ao modelo (comportamento anterior)", () => {
     expect(planejarShortlist({ sections }).chamar).toBe(true)

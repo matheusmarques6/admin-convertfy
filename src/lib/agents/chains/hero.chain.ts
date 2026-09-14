@@ -32,7 +32,7 @@ import {
 import { HERO_VAR_ORIGINS } from "../html/format-context"
 import { invokeFormatModel, type FormatChainConfig } from "./format-invoke"
 import { corteDeRaciocinio, modeloTemVisao } from "../model-capabilities"
-import { withUsage, type StepUsage } from "./step-usage"
+import { withUsage, type StepUsage, cacheDe } from "./step-usage"
 import type { RenderedKind } from "../shared/rendered-classify"
 import { imageUrlsIn } from "../shared/rendered-image"
 import {
@@ -264,6 +264,9 @@ export interface InvokeHeroResult {
   rawOutput: string
   /** O que aconteceu com o espelho visual (CM-8). */
   vision: VisionDecision
+  /** Cache de prompt lido / escrito nesta chamada, quando reportado. */
+  cachedTokens?: number
+  cacheWriteTokens?: number
 }
 
 // ── Espelho visual (story CM-8) ────────────────────────────────────────
@@ -733,6 +736,7 @@ export async function invokeHeroChain(input: {
     tokensInput: res.tokensInput,
     tokensOutput: res.tokensOutput,
     costUsd: res.costUsd,
+    ...cacheDe(res),
     renderedPrompt: userMessage,
     promptSegments,
   }
@@ -754,6 +758,7 @@ export async function invokeHeroChain(input: {
     tokensInput: res.tokensInput,
     tokensOutput: res.tokensOutput,
     costUsd: res.costUsd,
+    ...cacheDe(res),
     renderedPrompt: userMessage,
     promptSegments,
     rawOutput: res.text,

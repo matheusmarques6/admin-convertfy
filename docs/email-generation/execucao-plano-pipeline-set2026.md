@@ -1549,3 +1549,54 @@ resposta é cadastro, não código.
 - Quaisquer trocas em `image`: o modelo e o fallback de 08/09 ficam.
 - O diagnóstico do batch 6249aef2 precisa ser commitado em
   `docs/email-generation/` antes do Passo 8 (as fixtures saem dele).
+
+---
+
+## Executado — otimização por agente, passos 2 a 6 (14/09)
+
+Análise de custo por agente (artifact "Otimização por agente") e as
+descobertas que mudaram o plano ao ler o código e a doc da Anthropic:
+
+1. **O cache entre as duas chamadas do Curador (c08177d) nunca pôde
+   acertar**: o cache é hierárquico (system antes de messages) e as duas
+   chamadas usavam systems diferentes. Agora há UM system
+   (`DEFAULT_CHOOSER_VAULT_SYSTEM`) e a tarefa da shortlist vai na cauda
+   do user (`CAUDA_SHORTLIST_USER`), depois da última marca.
+2. **A cadeia de formatação nunca cacheou**: `openrouter-invoke.ts:callOnce`
+   mandava o system como string. Passa a mandar bloco com `cache_control`
+   (regra em `shared/cache-de-prompt.ts`), e cada step grava
+   `parsed_output.cache = {tokens_lidos, tokens_escritos}`.
+3. **Quatro e-mails em paralelo = quatro escritas** (125% cada). Gate de
+   prefixo em `invokeAgent` (`shared/gate-de-prefixo.ts`,
+   `CACHE_STAGGER_MS`, 15 s): o primeiro chamador de um prefixo passa; os
+   demais esperam ele escrever.
+4. **Prefill está morto na família 4.6+** (400 em Sonnet 4.6, Sonnet 5,
+   Opus 5, Fable). `aceitaPrefill` devolve `false` para eles; o item saiu.
+5. **A shortlist decidia 3 de 4**: `limiarSemChamada()` = 5 — posição com
+   até 5 elegíveis vai inteira às finalistas, sem chamar o modelo.
+6. **Vault por toque** (`lib/vault/toque.ts`): `emails: [N]` nas
+   estruturas e `serve_a: [flow-N]` nos aprendizados; global fica no
+   system (cacheado), o do toque vai no user (`<material_do_toque>`,
+   `<aprendizados_do_toque>`), o de outro toque sai; fail-open quando nada
+   sobra; kill-switch `VAULT_POR_TOQUE=off`; seletor "O que o toque
+   recebe" na aba Conhecimento.
+
+Ordem dos blocos do user por frequência de mudança, com três marcas:
+Curador `[global+flow] [loja] [e-mail] [cauda]`; Estruturador
+`[perfil + seções] [e-mail]`; Seletor `[loja + catálogo + oferta]
+[e-mail]`. `blocosDeCache` funde segmento vazio e respeita o teto de 4
+breakpoints; `prompt-provenance` remove a marca antes de segmentar.
+
+JSON compacto onde é gerado por código: decisão do Estruturador para o
+Curador (`decisaoCompletaParaCurador`), `format-context`, `build-vars`
+(top_products) e `qa.chain`. `catalog-builder.json` fica (sha8 de runs
+antigas).
+
+**Leitura pós-deploy**: `supabase/migrations/DIAGNOSTICO_cache_por_chamada.sql`
+— `tokens_cache_escrita` uma vez por prefixo por lote e `tokens_cache` ≈
+prefixo nas chamadas seguintes; `shortlist_fonte = codigo` quando toda
+posição tem ≤ 5 elegíveis; `refs_descartadas_por_toque` no Estruturador.
+Estimativa: Curador 2,45 → 1,3–1,5 por e-mail no lote; total ≈ 5,9 →
+4,5–4,7. Qualidade esperada igual ou melhor (mesmo conteúdo, só ordem;
+escolha com as notas completas de até 5 candidatas), medida por B6,
+auditoria de requisitos e QA contra as 3 últimas gerações.

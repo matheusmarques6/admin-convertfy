@@ -22,6 +22,7 @@
  * Builders são PUROS (testáveis); só os `load*` tocam o banco.
  */
 
+import { filtrarPorToque, vaultPorToqueLigado } from "@/lib/vault/toque"
 import { derivarAliviadorEProfundidade } from "../objecoes/aliviador-bridge"
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
@@ -791,31 +792,78 @@ export function buildAprendizadosBlock(aprendizados: AprendizadoResumo[]): strin
     .join("\n\n")
 }
 
-/** email_learnings do flow + globais com `aplica_a` (fail-open → []). */
-export async function loadAprendizadosResumo(flowType: string): Promise<AprendizadoResumo[]> {
+export interface AprendizadosPorToque {
+  /** Servem a todo toque do flow — vão no bloco flow do user (cacheado). */
+  globais: AprendizadoResumo[]
+  /** Declarados para ESTE toque (`serve_a`) — vão no bloco do e-mail. */
+  doToque: AprendizadoResumo[]
+  /** De OUTRO toque: não servidos (telemetria). */
+  fora: string[]
+  avisos: string[]
+  failOpen: boolean
+}
+
+/**
+ * email_learnings do flow + globais com `aplica_a`, separados por toque
+ * (passo 6, `frontmatter.serve_a`). Fail-open → vazio.
+ */
+export async function loadAprendizadosPorToque(
+  flowType: string,
+  emailNumber: number,
+  opts: { ligado?: boolean } = {},
+): Promise<AprendizadosPorToque> {
+  const vazio: AprendizadosPorToque = { globais: [], doToque: [], fora: [], avisos: [], failOpen: false }
   try {
     const admin = createAdminClient()
     const { data, error } = await admin
       .from("email_learnings")
-      .select("slug, body_md, flow_type, aplica_a")
+      .select("slug, body_md, flow_type, aplica_a, frontmatter")
       .eq("is_active", true)
       .or(`flow_type.eq.${flowType},flow_type.is.null`)
       .order("slug")
     if (error) {
       log.warn("aprendizados_load_failed", { flowType, error: error.message })
-      return []
+      return vazio
     }
-    return (data ?? [])
+    const doFlow = (data ?? [])
       .filter((r) => {
         if (r.flow_type === flowType) return true
         const aplica = Array.isArray(r.aplica_a) ? (r.aplica_a as string[]) : []
         return aplica.length === 0 || aplica.includes(flowType)
       })
-      .map((r) => ({ slug: r.slug as string, body: (r.body_md as string) ?? "" }))
+      .map((r) => ({
+        slug: r.slug as string,
+        body: (r.body_md as string) ?? "",
+        serve_a: (r.frontmatter as Record<string, unknown> | null)?.serve_a,
+      }))
+    const f = filtrarPorToque({
+      referencias: [],
+      aprendizados: doFlow,
+      flowType,
+      emailNumber,
+      ligado: opts.ligado ?? vaultPorToqueLigado(),
+    })
+    const resumo = (a: { slug: string; body: string }) => ({ slug: a.slug, body: a.body })
+    return {
+      globais: f.aprendizados.globais.map(resumo),
+      doToque: f.aprendizados.doToque.map(resumo),
+      fora: f.aprendizados.fora.map((a) => a.slug),
+      avisos: f.aprendizados.avisos,
+      failOpen: f.failOpen,
+    }
   } catch (err) {
     log.warn("aprendizados_load_threw", { flowType, error: err instanceof Error ? err.message : String(err) })
-    return []
+    return vazio
   }
+}
+
+/**
+ * Compatibilidade: globais + do toque numa lista só. Sem `emailNumber`, o
+ * comportamento antigo — nada é descartado.
+ */
+export async function loadAprendizadosResumo(flowType: string, emailNumber?: number): Promise<AprendizadoResumo[]> {
+  const r = await loadAprendizadosPorToque(flowType, emailNumber ?? 0, emailNumber === undefined ? { ligado: false } : {})
+  return [...r.globais, ...r.doToque]
 }
 
 // ── Contagem de uso por variante (desempate por menor uso) ──────────────

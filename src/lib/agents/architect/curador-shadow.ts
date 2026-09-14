@@ -30,6 +30,7 @@ import {
   type CuradorVaultKnowledge,
   type EstruturaRefResumo,
   type IndiceDoVault,
+  type AprendizadosPorToque,
 } from "./curador-vault"
 import {
   extractJson,
@@ -83,6 +84,23 @@ const SHADOW_TOP_N = 1
 const SHORTLIST_TOP_N = 3
 
 /**
+ * Posição com até este número de elegíveis vai INTEIRA para as finalistas,
+ * sem chamar o modelo (14/09, passo 3). A shortlist custa a SAÍDA (7,7k
+ * tokens de justificativa a preço de saída), não a entrada: na run de
+ * 14/09 ela leu 58k tokens para escolher 3 de 4 em duas posições. Com até
+ * 5 candidatas a escolha lê as notas completas de todas — mais informação
+ * do que o índice compacto que a shortlist via. Env
+ * `CURADOR_SHORTLIST_MAX_SEM_CHAMADA` ajusta; nunca abaixo de
+ * `SHORTLIST_TOP_N`.
+ */
+export const SHORTLIST_SEM_CHAMADA_PADRAO = 5
+export function limiarSemChamada(): number {
+  const env = Number(process.env.CURADOR_SHORTLIST_MAX_SEM_CHAMADA)
+  const v = Number.isFinite(env) && env > 0 ? env : SHORTLIST_SEM_CHAMADA_PADRAO
+  return Math.max(SHORTLIST_TOP_N, Math.floor(v))
+}
+
+/**
  * Plano da shortlist (14/09): que posições o CÓDIGO resolve e que posições
  * ainda precisam do modelo.
  *
@@ -90,16 +108,19 @@ const SHORTLIST_TOP_N = 3
  * finalistas por posição. No batch 6249aef2 TODAS as seções chegaram com 3
  * ou menos elegíveis (hero 3, body 2, reviews 3, products 1, footer 3) e a
  * chamada leu 101k chars para devolver a mesma lista que entrou. Posição com
- * `elegiveis.length <= SHORTLIST_TOP_N` é resolvida por código; a chamada
- * ao modelo só acontece quando alguma posição tem mais do que isso.
+ * `elegiveis.length <= limiar` (`limiarSemChamada()`, 5) é resolvida por
+ * código — TODAS as elegíveis viram finalistas — e a chamada ao modelo só
+ * acontece quando alguma posição tem mais do que isso.
  *
  * `elegiveisPorPosicao` ausente (chamador antigo) = comportamento anterior:
  * tudo vai ao modelo. `forcarChamada` (env `CURADOR_SHORTLIST_SEMPRE=1`) é
  * o rollback.
  */
 export interface PlanoDaShortlist {
-  /** Posições resolvidas por código (≤ SHORTLIST_TOP_N elegíveis). */
+  /** Posições resolvidas por código (≤ `limiar` elegíveis). */
   puladas: number[]
+  /** O limiar usado (telemetria). */
+  limiar: number
   /** Há posição que precisa do modelo. */
   chamar: boolean
   /** Posições que o modelo tem de mencionar (as não puladas). */
@@ -112,23 +133,26 @@ export function planejarShortlist(p: {
   sections: string[]
   elegiveisPorPosicao?: Map<number, string[]> | null
   forcarChamada?: boolean
+  /** Default `limiarSemChamada()`. */
+  limiar?: number
 }): PlanoDaShortlist {
+  const limiar = Math.max(SHORTLIST_TOP_N, p.limiar ?? limiarSemChamada())
   const todas = p.sections.map((_, i) => i)
   const elegiveis = new Map<number, Set<string>>()
   for (const [i, ids] of p.elegiveisPorPosicao ?? []) elegiveis.set(i, new Set(ids))
   if (!p.elegiveisPorPosicao || p.forcarChamada) {
-    return { puladas: [], chamar: true, obrigatorias: todas, porCodigo: new Map(), elegiveis }
+    return { puladas: [], limiar, chamar: true, obrigatorias: todas, porCodigo: new Map(), elegiveis }
   }
   const puladas: number[] = []
   const porCodigo = new Map<number, RankedChoice[]>()
   for (const i of todas) {
     const ids = p.elegiveisPorPosicao.get(i)
-    if (!ids || ids.length > SHORTLIST_TOP_N) continue
+    if (!ids || ids.length > limiar) continue
     puladas.push(i)
     if (ids.length > 0) porCodigo.set(i, ids.map((variant_id) => ({ variant_id, motivo: "elegível por contrato (shortlist por código)" })))
   }
   const obrigatorias = todas.filter((i) => !puladas.includes(i))
-  return { puladas, chamar: obrigatorias.length > 0, obrigatorias, porCodigo, elegiveis }
+  return { puladas, limiar, chamar: obrigatorias.length > 0, obrigatorias, porCodigo, elegiveis }
 }
 
 function rankingVazio(sections: string[]): ParsedRanking {
@@ -192,23 +216,40 @@ export function mesclarShortlist(p: {
   return { shortlist, fonte, intersecaoVazia }
 }
 
-export const DEFAULT_CURADOR_SHORTLIST_SYSTEM = `Você é o Curador de Componentes da Convertfy na etapa de SHORTLIST.
-A estrutura e os papéis já foram decididos. Compare TODAS as variantes do índice compacto e selecione até 3 finalistas por posição. Não escolha a vencedora ainda e não invente ids.
+/**
+ * Cauda do USER na chamada de shortlist (14/09).
+ *
+ * Até 14/09 a shortlist tinha um SYSTEM próprio. O cache da Anthropic é
+ * hierárquico — system antes de messages — então dois systems diferentes
+ * faziam o breakpoint do user NUNCA acertar entre a shortlist e a escolha:
+ * o prompt-base de ~55k tokens era pago duas vezes. As duas chamadas agora
+ * compartilham o system do vault; o que muda entre elas vai DEPOIS da
+ * última marca de cache: aqui a tarefa da shortlist, na escolha as notas
+ * das finalistas.
+ */
+export const CAUDA_SHORTLIST_USER = `<tarefa_desta_chamada>
+Etapa de SHORTLIST. A estrutura e os papéis já foram decididos. Nesta chamada você NÃO escolhe a vencedora: para cada posição listada em <posicoes_da_shortlist>, compare TODAS as variantes elegíveis da biblioteca (o índice compacto do system) e selecione até {{shortlist_top_n}} finalistas. As outras posições de <estrutura_do_email> já têm finalistas definidas por código — não as mencione. Não invente ids.
 
-<protocolo>{{protocolo}}</protocolo>
-<indice_compacto>{{catalogo}}</indice_compacto>
-<convivencia>{{convivencias}}</convivencia>
+<posicoes_da_shortlist>
+{{posicoes_shortlist}}
+</posicoes_da_shortlist>
 
-Responda APENAS um array JSON:
+Responda APENAS um array JSON, uma entrada por posição listada, com \`motivo\` de no máximo 12 palavras:
 [{"block_index":0,"escolhas":[{"variant_id":"...","motivo":"encaixe e risco principal"}]}]
-
-Inclua toda posição da estrutura.
 
 ANTES de deixar uma posição com \`escolhas\` vazio, saiba o que acontece: a seção DESAPARECE do e-mail. Ela não cai no template global, não há bloco de reserva, não há preenchimento por código — o documento sai com uma seção a menos e o cliente vê o buraco. Não existe "a posição fica na peça": ou você nomeia uma variante, ou a posição some.
 
 Por isso: incompatibilidade DESEMPATA, nunca elimina sozinha. O que a variante deixa de mostrar (preço, avaliação, um item da grade) é restrição de REDAÇÃO — a copy resolve depois, pondo o preço no subtítulo ou deixando o slot extra vazio. O que ela obriga a INVENTAR (slot de cupom sem oferta, preço riscado sem desconto, prazo sem data real) é que é veto de verdade.
 
-Só devolva \`escolhas\` vazio quando TODA variante da seção obrigaria a inventar um dado que a decisão declara inexistente. Havendo qualquer uma que apenas deixe de mostrar algo, escolha-a e diga na justificativa o que falta e quem cobre.`
+Só devolva \`escolhas\` vazio quando TODA variante da seção obrigaria a inventar um dado que a decisão declara inexistente. Havendo qualquer uma que apenas deixe de mostrar algo, escolha-a e diga na justificativa o que falta e quem cobre.
+</tarefa_desta_chamada>`
+
+/** Cauda do USER na chamada de escolha: as notas completas das finalistas. */
+export const CAUDA_ESCOLHA_USER = `<notas_das_finalistas>
+{{finalistas_notas}}
+</notas_das_finalistas>
+
+Escolha SOMENTE entre as finalistas listadas acima.`
 
 /** Shortlist estrita: nunca aceita variante de outra seção como fallback. */
 export function parseValidatedShortlist(input: {
@@ -420,9 +461,6 @@ export function retomadaLigada(): boolean {
 export const MENSAGEM_RETOMADA_JSON =
   "Devolva agora APENAS o objeto JSON do formato pedido no system — sem texto antes ou depois, sem markdown — cobrindo TODAS as posições de <estrutura_do_email>. Se a resposta anterior foi cortada, complete-a a partir do que já decidiu. Não consulte mais nada."
 
-/** Prefill do assistant na retomada (só provedores Anthropic aceitam). */
-export const PREFILL_RETOMADA_JSON = '{"papeis"'
-
 /**
  * Motivo da retomada, ou null quando a resposta serve. JSON legível com
  * `finish_reason: length` NÃO retoma: o corte veio depois do objeto.
@@ -485,7 +523,43 @@ Responda APENAS o objeto JSON, sem markdown:
 - \`papeis\` traz UM item por posição de <estrutura_do_email>, na mesma ordem e com o mesmo \`block_index\` (0-based); \`escolhas\` usa esses mesmos índices.
 - \`escolhas\` de cada posição traz UM item: a variante escolhida. Mais de um é ignorado — só o primeiro vale.`
 
-export const DEFAULT_CHOOSER_VAULT_USER = `<store>
+/**
+ * User do Curador do vault, em quatro blocos separados por marca de cache
+ * (14/09), na ordem de MENOS para MAIS mutável — é o que faz cada bloco ser
+ * lido do cache pelas chamadas seguintes:
+ *
+ *   1. global + flow — índice do Obsidian, intenção do flow, aprendizados,
+ *      estruturas de referência: iguais para toda loja do mesmo flow;
+ *   2. loja — marca, perfil, objeções, vocabulário, produtos: iguais nos
+ *      4 e-mails da loja;
+ *   3. e-mail — outline, intenção deste e-mail, orientação, revisão, alvo,
+ *      memória (a do e-mail N-1 desta loja — muda por e-mail), notas de
+ *      seção e lacunas (recortadas pelas seções DESTE e-mail), decisão do
+ *      Estruturador, eliminadas, sequência;
+ *   4. cauda (anexada por quem chama, depois da última marca) — a tarefa
+ *      da shortlist ou as notas das finalistas.
+ *
+ * Nenhuma var nem texto mudou de conteúdo — só de lugar. Um bloco que
+ * mudasse de posição sem a marca zeraria a leitura dos seguintes.
+ */
+export const DEFAULT_CHOOSER_VAULT_USER = `<indice_do_vault>
+Pastas do Obsidian sincronizadas (consulta sob demanda, só se quiser conferir uma nota):
+{{indice_vault}}
+</indice_do_vault>
+
+<intencao_do_flow>
+{{intencao_flow}}
+</intencao_do_flow>
+
+<aprendizados>
+{{aprendizados}}
+</aprendizados>
+
+<estruturas_de_referencia>
+{{estruturas_ref}}
+</estruturas_de_referencia>
+${CACHE_PREFIX_MARKER}
+<store>
 - marca: {{brand_name}}
 - nicho: {{nicho}}
 - posicionamento: {{posicionamento}}
@@ -493,6 +567,22 @@ export const DEFAULT_CHOOSER_VAULT_USER = `<store>
 - tom de voz: {{tom_voz}}
 </store>
 
+<perfil_marca>
+{{briefing_marca}}
+</perfil_marca>
+
+<objecoes>
+{{objecoes}}
+</objecoes>
+
+<vocabulario>
+{{vocabulario}}
+</vocabulario>
+
+<top_products>
+{{top_products}}
+</top_products>
+${CACHE_PREFIX_MARKER}
 <outline>
 - objetivo: {{outline_objective}}
 - diretriz: {{outline_guidance}}
@@ -500,31 +590,12 @@ export const DEFAULT_CHOOSER_VAULT_USER = `<store>
 </outline>
 
 <intencao_do_email>
-[do flow]
-{{intencao_flow}}
-
-[deste email]
+[deste email — a intenção do flow está em <intencao_do_flow>]
 {{intencao_email}}
 
 [o email NÃO DEVE — restrições da aba Arquitetura]
 {{outline_restricoes}}
 </intencao_do_email>
-
-<estruturas_de_referencia>
-{{estruturas_ref}}
-</estruturas_de_referencia>
-
-<notas_de_secao>
-{{secoes_notas}}
-</notas_de_secao>
-
-<lacunas_da_biblioteca>
-{{lacunas_biblioteca}}
-</lacunas_da_biblioteca>
-
-<aprendizados>
-{{aprendizados}}
-</aprendizados>
 
 <orientacao_do_coo>
 Instrução direta de quem responde pelo método, escrita no Estúdio. Vale
@@ -538,34 +609,26 @@ biblioteca (não existe variante que não existe).
 {{revisao_humana}}
 </revisao_humana>
 
-<perfil_marca>
-{{briefing_marca}}
-</perfil_marca>
-
 <alvo>
 {{alvo}}
 </alvo>
-
-<objecoes>
-{{objecoes}}
-</objecoes>
-
-<vocabulario>
-{{vocabulario}}
-</vocabulario>
-
-<top_products>
-{{top_products}}
-</top_products>
 
 <memoria>
 {{memoria}}
 </memoria>
 
-<indice_do_vault>
-Pastas do Obsidian sincronizadas (consulta sob demanda, só se quiser conferir uma nota):
-{{indice_vault}}
-</indice_do_vault>
+<aprendizados_do_toque>
+Aprendizados que o vault declarou para ESTE toque (\`serve_a:\`). Os globais do flow estão em <aprendizados>.
+{{aprendizados_do_toque}}
+</aprendizados_do_toque>
+
+<notas_de_secao>
+{{secoes_notas}}
+</notas_de_secao>
+
+<lacunas_da_biblioteca>
+{{lacunas_biblioteca}}
+</lacunas_da_biblioteca>
 
 <decisao_do_estruturador>
 {{estruturador_decisao}}
@@ -584,7 +647,9 @@ anatomia realiza o papel decidido e conversa com o fio.
 {{blocks_json}}
 </estrutura_do_email>
 
-Selecione a variante de cada posição que realiza o papel decidido, diga em \`papeis\` como ela o realiza e justifique cada posição. A sequência não se discute. Responda APENAS o objeto JSON.`
+Selecione a variante de cada posição que realiza o papel decidido, diga em \`papeis\` como ela o realiza e justifique cada posição. A sequência não se discute. Responda APENAS o objeto JSON.
+${CACHE_PREFIX_MARKER}
+`
 
 // ── Parser do contrato ampliado (puro) ──────────────────────────────────
 
@@ -902,6 +967,12 @@ export interface CuradorShadowParams {
   catalogComExtras: BuildCatalogResult
   estruturasRef: EstruturaRefResumo[]
   aprendizados: AprendizadoResumo[]
+  /**
+   * Passo 6: aprendizados separados por toque. `globais` já está em
+   * `aprendizados` (bloco flow, cacheado); `doToque` vai no bloco do
+   * e-mail; `fora` é telemetria.
+   */
+  aprendizadosPorToque?: AprendizadosPorToque
   usageCounts: Map<string, number>
   /** variant_id → block_type (validação das escolhas). */
   typeIndex: Map<string, string>
@@ -1031,9 +1102,9 @@ export async function runCuradorShadow(
    */
   const porChamada: Record<
     string,
-    { tokens_output: number; tokens_input: number; tokens_cache?: number; seg: number } | null
+    { tokens_output: number; tokens_input: number; tokens_cache?: number; tokens_cache_escrita?: number; seg: number } | null
   > = {}
-  const medir = async <T extends { tokensInput: number; tokensOutput: number; cachedTokens?: number }>(
+  const medir = async <T extends { tokensInput: number; tokensOutput: number; cachedTokens?: number; cacheWriteTokens?: number }>(
     etapa: string,
     fn: () => Promise<T>,
   ): Promise<T> => {
@@ -1045,7 +1116,9 @@ export async function runCuradorShadow(
         tokens_output: r.tokensOutput,
         // Quanto do input veio do cache (14/09). Na "escolha" o esperado é o
         // prompt-base inteiro; zero aqui é prefixo que mudou, não economia.
+        // A escrita separada diz se o prefixo foi (re)gravado nesta chamada.
         ...(typeof r.cachedTokens === "number" ? { tokens_cache: r.cachedTokens } : {}),
+        ...(typeof r.cacheWriteTokens === "number" ? { tokens_cache_escrita: r.cacheWriteTokens } : {}),
         seg: Math.round((Date.now() - inicio) / 1000),
       }
       return r
@@ -1074,11 +1147,15 @@ export async function runCuradorShadow(
       ...(tetoDeRelogioDoAgente("assembler_chooser")
         ? { timeoutMs: tetoDeRelogioDoAgente("assembler_chooser")! }
         : {}),
+      // UM system para as duas chamadas: o cache é hierárquico (system antes
+      // de messages) e, com systems diferentes, o prefixo do user nunca
+      // acertava entre a shortlist e a escolha. O que muda entre elas vai
+      // na cauda do user, depois da última marca.
       system_prompt: DEFAULT_CHOOSER_VAULT_SYSTEM,
       user_template: DEFAULT_CHOOSER_VAULT_USER,
       // As duas chamadas (shortlist e escolha) compartilham o prompt-base
-      // inteiro; a escolha só anexa as notas das finalistas DEPOIS do
-      // marcador. Sem isto o user de ~100k chars era pago duas vezes.
+      // inteiro em três blocos (global+flow, loja, e-mail); a cauda de cada
+      // uma vai solta. Sem isto o user de ~100k chars era pago duas vezes.
       cache_user_prefix: true,
     }
 
@@ -1097,6 +1174,9 @@ export async function runCuradorShadow(
       lacunas_biblioteca: lacunasBlock,
       indice_vault: renderIndiceDoVault(p.indiceDoVault ?? { pastas: [] }),
       aprendizados: buildAprendizadosBlock(p.aprendizados),
+      aprendizados_do_toque: p.aprendizadosPorToque?.doToque.length
+        ? buildAprendizadosBlock(p.aprendizadosPorToque.doToque)
+        : "(nenhum aprendizado declarado especificamente para este toque)",
       memoria: `${p.baseVars.memoria ?? ""}\n\n${renderUsageCounts(p.usageCounts, p.extras)}`.trim(),
     }
     const systemVars = {
@@ -1110,18 +1190,22 @@ export async function runCuradorShadow(
       .update(p.catalogComExtras.compact.text)
       .digest("hex")
       .slice(0, 8)
-    const systemResolvido = interpolateSystem(DEFAULT_CURADOR_SHORTLIST_SYSTEM, systemVars)
+    const systemResolvido = interpolateSystem(DEFAULT_CHOOSER_VAULT_SYSTEM, systemVars)
     const segUser = buildSegmentedPrompt(config.user_template, vars, {
       ...p.origins,
       aprendizados: { cls: "vault", rotulo: "Aprendizados — email_learnings" },
+      aprendizados_do_toque: { cls: "vault", rotulo: "Aprendizados deste toque — email_learnings.frontmatter.serve_a" },
       lacunas_biblioteca: { cls: "vault", rotulo: "Lacunas da biblioteca — email_vault_docs (componentes/lacunas)" },
       indice_vault: { cls: "vault", rotulo: "Índice de pastas do Obsidian — file_path das tabelas do vault" },
     }, { parte: "user" })
-    const segSystem = buildInterpolatedSegments(DEFAULT_CURADOR_SHORTLIST_SYSTEM, systemVars, {
+    const segSystem = buildInterpolatedSegments(DEFAULT_CHOOSER_VAULT_SYSTEM, systemVars, {
       catalogo: {
         cls: "biblioteca",
         rotulo: `Índice compacto da biblioteca — ${p.catalogComExtras.total} variantes`,
-        ref: "catalogo",
+        // `catalogo_enxuto`: o resolver compara o sha8 com `catalog.enxuto`
+        // (= `compact.text`); com `catalogo` comparava com o JSON integral
+        // e o segmento saía `stale` em toda run.
+        ref: "catalogo_enxuto",
         sha8: catalogSha8,
       },
       protocolo: { cls: "vault", rotulo: "Protocolo de seleção — email_vault_docs" },
@@ -1131,9 +1215,20 @@ export async function runCuradorShadow(
       segSystem.prompt === systemResolvido ? segSystem.segments : null,
       segUser.segments,
     )
+    // 14/09: a chamada de shortlist só acontece quando alguma posição tem
+    // MAIS de `limiarSemChamada()` elegíveis por contrato. Com menos, todas
+    // as elegíveis viram finalistas por código e a escolha lê as notas de
+    // todas; o resultado do modelo, quando há, é intersectado com as
+    // elegíveis (`mesclarShortlist`).
+    const planoShortlist = planejarShortlist({
+      sections: p.liveSections,
+      elegiveisPorPosicao: p.elegiveisPorPosicao ?? null,
+      forcarChamada: process.env.CURADOR_SHORTLIST_SEMPRE === "1",
+    })
+    const etapas = planoShortlist.chamar ? "shortlist + escolha" : "escolha (shortlist por código)"
     const inputSummary: InputSummaryItem[] = [
       {
-        rotulo: modo === "on" ? "Curador (vault) — shortlist" : "Shadow do Curador — shortlist",
+        rotulo: modo === "on" ? `Curador (vault) — ${etapas}` : `Shadow do Curador — ${etapas}`,
         cls: "sistema",
         valor:
           modo === "on"
@@ -1143,7 +1238,13 @@ export async function runCuradorShadow(
       { rotulo: "Protocolo do vault", cls: "vault", valor: p.vault.protocolo ? "servido" : "AUSENTE (vault não sincronizado)" },
       { rotulo: "Índice compacto + eixos", cls: "biblioteca", valor: `${p.catalogComExtras.total} variantes · eixos em ${p.extras.size} · sha8 ${catalogSha8}` },
       { rotulo: "Momento", cls: "sistema", valor: momento ?? `(não mapeado p/ ${p.flowType})` },
-      { rotulo: "Aprendizados", cls: "vault", valor: `${p.aprendizados.length} servidos` },
+      {
+        rotulo: "Aprendizados",
+        cls: "vault",
+        valor: p.aprendizadosPorToque
+          ? `${p.aprendizados.length} globais · ${p.aprendizadosPorToque.doToque.length} deste toque · ${p.aprendizadosPorToque.fora.length} de outro toque (não servidos)${p.aprendizadosPorToque.avisos.length ? ` · avisos: ${p.aprendizadosPorToque.avisos.join("; ")}` : ""}`
+          : `${p.aprendizados.length} servidos`,
+      },
       {
         rotulo: "Estruturas de referência",
         cls: "vault",
@@ -1189,6 +1290,8 @@ export async function runCuradorShadow(
         // divergência que escondia a causa da resposta vazia.
         teto_shortlist: maxTokens,
         teto_relogio_ms: tetoDeRelogioDoAgente("assembler_chooser"),
+        shortlist_limiar: planoShortlist.limiar,
+        shortlist_chamada: planoShortlist.chamar,
       },
       renderedPrompt: segUser.segments ? segUser.prompt : undefined,
       promptSegments,
@@ -1207,23 +1310,24 @@ export async function runCuradorShadow(
     // `max_tokens` é TETO, não consumo: cortar não poupa um token quando a
     // resposta é curta, só quebra quando ela precisa de um a mais.
     //
-    // 14/09: a chamada só acontece quando alguma posição tem MAIS de
-    // `SHORTLIST_TOP_N` elegíveis por contrato. Com 3 ou menos não há o que
-    // reduzir — o código monta a shortlist daquela posição — e o resultado
-    // do modelo é intersectado com as elegíveis (`mesclarShortlist`).
-    const planoShortlist = planejarShortlist({
-      sections: p.liveSections,
-      elegiveisPorPosicao: p.elegiveisPorPosicao ?? null,
-      forcarChamada: process.env.CURADOR_SHORTLIST_SEMPRE === "1",
-    })
     let shortlistLlm: ParsedRanking | null = null
     const shortlistConsumo = { tokensInput: 0, tokensOutput: 0, costUsd: 0 }
     if (planoShortlist.chamar) {
+      // MESMO system e MESMO prompt-base da escolha; só a cauda muda. A
+      // cauda lista as posições que o modelo tem de decidir — as outras já
+      // vieram do código — e pede `motivo` curto: a saída era o custo.
+      const shortlistVars = {
+        ...vars,
+        shortlist_top_n: String(SHORTLIST_TOP_N),
+        posicoes_shortlist: planoShortlist.obrigatorias
+          .map((i) => `- block_index ${i} (${p.liveSections[i] ?? "?"})`)
+          .join("\n"),
+      }
       const shortlistCall = await medir("shortlist", () =>
         naEtapa("shortlist", () =>
         invokeAgent(
-          { ...config, system_prompt: DEFAULT_CURADOR_SHORTLIST_SYSTEM, max_tokens: maxTokens },
-          vars,
+          { ...config, user_template: `${config.user_template}${CAUDA_SHORTLIST_USER}`, max_tokens: maxTokens },
+          shortlistVars,
           systemVars,
         ),
         ),
@@ -1252,7 +1356,7 @@ export async function runCuradorShadow(
     const finalVars = { ...vars, finalistas_notas: renderFinalistNotes(finalistNotes) }
     const finalConfig = {
       ...config,
-      user_template: `${config.user_template}${CACHE_PREFIX_MARKER}\n\n<notas_das_finalistas>\n{{finalistas_notas}}\n</notas_das_finalistas>\n\nEscolha SOMENTE entre as finalistas listadas acima.`,
+      user_template: `${config.user_template}${CAUDA_ESCOLHA_USER}`,
     }
     let finalCall = await medir("escolha", () =>
       naEtapa("escolha", () => invokeAgent(finalConfig, finalVars, systemVars)),
@@ -1263,11 +1367,13 @@ export async function runCuradorShadow(
     const motivoRetomada = motivoDeRetomada(finalCall.raw, finalCall.finishReason)
     if (retomadaLigada() && motivoRetomada) {
       const retryVars = { ...finalVars, resposta_anterior: finalCall.raw }
-      const retry = await naEtapa("retomada", () =>
-        invokeAgent(
-          { ...finalConfig, user_template: `${finalConfig.user_template}\n\n<resposta_anterior>{{resposta_anterior}}</resposta_anterior>\n${MENSAGEM_RETOMADA_JSON}` },
-          retryVars,
-          systemVars,
+      const retry = await medir("retomada", () =>
+        naEtapa("retomada", () =>
+          invokeAgent(
+            { ...finalConfig, user_template: `${finalConfig.user_template}\n\n<resposta_anterior>{{resposta_anterior}}</resposta_anterior>\n${MENSAGEM_RETOMADA_JSON}` },
+            retryVars,
+            systemVars,
+          ),
         ),
       )
       finalCall = {
@@ -1367,10 +1473,15 @@ export async function runCuradorShadow(
         // Quanto CADA chamada gastou, não só a soma: é o que diz para onde
         // o teto precisa ir na próxima vez.
         consumo_por_chamada: porChamada,
-        // 14/09: posições resolvidas por código (≤ 3 elegíveis por contrato),
-        // origem da shortlist e onde o modelo só apontou eliminadas.
+        // 14/09: posições resolvidas por código (≤ limiar elegíveis por
+        // contrato), origem da shortlist e onde o modelo só apontou
+        // eliminadas.
         shortlist_pulada: planoShortlist.puladas,
+        shortlist_limiar: planoShortlist.limiar,
         shortlist_fonte: mesclaShortlist.fonte,
+        finalistas_por_posicao: Object.fromEntries(
+          Array.from(shortlist.byBlock, ([i, escolhas]) => [i, escolhas.length]),
+        ),
         shortlist_intersecao_vazia: mesclaShortlist.intersecaoVazia,
         elegiveis_por_posicao: Object.fromEntries(Array.from(planoShortlist.elegiveis, ([i, ids]) => [i, ids.size])),
         progressive_disclosure: {
@@ -1413,6 +1524,8 @@ export async function runCuradorShadow(
         // o legado tinha) e o Curador pode consultar o Obsidian.
         estruturador_consumido: estruturadorOn,
         lacunas_servidas: p.vault.lacunas.length,
+        aprendizados_do_toque: p.aprendizadosPorToque?.doToque.map((a) => a.slug) ?? [],
+        aprendizados_descartados_por_toque: p.aprendizadosPorToque?.fora ?? [],
         consultou_vault: res.consultas.length > 0,
         consultas_ao_vault: res.consultas,
         variantes_inicialmente_candidatas: p.catalogComExtras.sections.flatMap((s) => s.variantes.map((v) => v.variant_id)),

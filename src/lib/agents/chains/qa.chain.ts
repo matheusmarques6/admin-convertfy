@@ -846,23 +846,21 @@ export async function runQaAgent(input: RunQaAgentInput): Promise<QaResult> {
     // `html` continua resolvível para prompt customizado LEGADO no DB
     // (até a migration 20261046 zerar), mas os defaults não a usam.
     html,
-    block_views_json: JSON.stringify(input.blockViews ?? [], null, 2),
-    block_contracts_json: JSON.stringify(input.blockContracts ?? [], null, 2),
-    blocks_json: JSON.stringify(blocks, null, 2),
-    briefing_json: JSON.stringify(briefing ?? {}, null, 2),
+    block_views_json: JSON.stringify(input.blockViews ?? []),
+    block_contracts_json: JSON.stringify(input.blockContracts ?? []),
+    blocks_json: JSON.stringify(blocks),
+    briefing_json: JSON.stringify(briefing ?? {}),
     // `top_products` sai do dump da identidade: a fonte é a tabela viva, e
     // servir os dois faria o modelo ler o vazio da identidade como "sem
     // produtos".
-    brand_json: JSON.stringify(brandSemProdutos(brand), null, 2),
+    brand_json: JSON.stringify(brandSemProdutos(brand)),
     top_products_json: JSON.stringify(
       (input.topProducts ?? []).map((p) => ({ name: p.name, price: p.price, url: p.url ?? null })),
-      null,
-      2,
     ),
     briefing_origem: input.briefingOrigem ?? (briefing ? "store_briefings" : "nenhum"),
     blueprint_objective: blueprintObjective || "",
     advisor_max_notes: advisorContext.block,
-    decisao_json: JSON.stringify(decisaoParaQa(input.decisao), null, 2),
+    decisao_json: JSON.stringify(decisaoParaQa(input.decisao)),
     slot_map_json: JSON.stringify(
       (input.slotMap ?? []).map((e) => ({
         block_index: e.block_index,

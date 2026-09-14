@@ -28,6 +28,7 @@
  * + relatório do validador.
  */
 
+import { filtrarPorToque, toqueSlug, vaultPorToqueLigado } from "@/lib/vault/toque"
 import crypto from "crypto"
 import { createAdminClient } from "@/lib/supabase/server"
 import { RESERVA_POS_ESTRUTURADOR_MS, restanteDoOrcamento } from "../fase1-orcamento"
@@ -64,6 +65,7 @@ import {
   buildSystemVars,
   DEFAULT_ESTRUTURADOR_SYSTEM,
   DEFAULT_ESTRUTURADOR_USER,
+  MATERIAL_DO_TOQUE_VAZIO,
   intencaoParaOPrompt,
   normalizarOutput,
   normalizarOutputDetalhado,
@@ -139,6 +141,7 @@ const SYSTEM_ORIGINS: Record<string, SegmentOrigin> = {
 }
 
 export const USER_ORIGINS: Record<string, SegmentOrigin> = {
+  material_do_toque: { cls: "vault", rotulo: "Referências e aprendizados declarados para ESTE toque — email_structure_refs.emails / email_learnings.frontmatter.serve_a" },
   brand_name: { cls: "loja", rotulo: "Dados da loja — client_stores" },
   // Perfil da marca = o dossiê da Pesquisa & Diagnóstico inteiro (01 Perfil
   // da Marca · 02 Sobre a loja · 03 Cliente Ideal · 04 Tom de Comunicação ·
@@ -236,23 +239,41 @@ export interface RunEstruturadorResult {
 
 // ── Cargas ──────────────────────────────────────────────────────────────
 
-async function loadMaterial(flowType: string): Promise<{
+async function loadMaterial(flowType: string, emailNumber: number): Promise<{
   material: MaterialDoFlow
   refsServidas: string[]
+  /**
+   * Bloco `<material_do_toque>` (passo 6): referências e aprendizados que o
+   * vault declarou para ESTE toque, já embrulhados. Ausente = nada
+   * declarado (o template mostra o aviso padrão).
+   */
+  materialDoToque?: string
   aprendizadosServidos: string[]
   vaultCommitSha: string | null
+  /** Passo 6: o que o filtro por toque descartou e avisou (telemetria). */
+  porToque: {
+    ligado: boolean
+    failOpen: boolean
+    refsDoToque: string[]
+    refsDescartadas: string[]
+    aprendizadosDoToque: string[]
+    aprendizadosDescartados: string[]
+    avisos: string[]
+  }
 } | null> {
   const admin = createAdminClient()
   const [intentsRes, refsRes, learningsRes, stateRes] = await Promise.all([
     admin.from("email_intents")
       .select("slug, kind, email_number, body_md")
       .eq("flow_type", flowType).eq("is_active", true),
+    // `emails` diz os toques que a estrutura cobre (obrigatório no parser).
     admin.from("email_structure_refs")
-      .select("slug, body_md")
+      .select("slug, body_md, emails")
       .eq("flow_type", flowType).eq("is_active", true),
-    // Do flow + _global aplicável (aplica_a contém o flow).
+    // Do flow + _global aplicável (aplica_a contém o flow). `frontmatter`
+    // traz o `serve_a` — o sync grava o frontmatter inteiro.
     admin.from("email_learnings")
-      .select("slug, flow_type, aplica_a, body_md")
+      .select("slug, flow_type, aplica_a, body_md, frontmatter")
       .eq("is_active", true)
       .or(`flow_type.eq.${flowType},flow_type.is.null`),
     admin.from("vault_sync_state").select("last_commit_sha").eq("id", "default").maybeSingle(),
@@ -266,16 +287,49 @@ async function loadMaterial(flowType: string): Promise<{
 
   if (refs.length === 0) return null // sem candidatas = sem material p/ decidir
 
+  // Passo 6: o que é GLOBAL fica no system (cacheado entre os 4 irmãos); o
+  // que é DESTE toque vai para o user (`<material_do_toque>`); o que é de
+  // OUTRO toque sai. Fail-open quando nada sobra: serve tudo e marca.
+  const ligado = vaultPorToqueLigado()
+  const filtro = filtrarPorToque({
+    referencias: refs.map((r) => ({ slug: r.slug as string, body: r.body_md as string, emails: r.emails })),
+    aprendizados: learnings.map((l) => ({
+      slug: l.slug as string,
+      body: l.body_md as string,
+      serve_a: (l.frontmatter as Record<string, unknown> | null)?.serve_a,
+    })),
+    flowType,
+    emailNumber,
+    ligado,
+  })
+  const doc = (d: { slug: string; body: string }) => ({ slug: d.slug, body: d.body })
+  const doToque = [
+    ...filtro.referencias.doToque.map((r) => `<referencia slug="${r.slug}">\n${r.body.trim()}\n</referencia>`),
+    ...filtro.aprendizados.doToque.map((a) => `<aprendizado slug="${a.slug}">\n${a.body.trim()}\n</aprendizado>`),
+  ]
+  const servidasRefs = [...filtro.referencias.globais, ...filtro.referencias.doToque]
+  const servidosAprs = [...filtro.aprendizados.globais, ...filtro.aprendizados.doToque]
+
   return {
     material: {
       intencaoFlow: pick(intents, (i) => i.slug === "_flow"),
       progressao: pick(intents, (i) => i.kind === "progressao"),
-      referencias: refs.map((r) => ({ slug: r.slug as string, body: r.body_md as string })),
-      aprendizados: learnings.map((l) => ({ slug: l.slug as string, body: l.body_md as string })),
+      referencias: filtro.referencias.globais.map(doc),
+      aprendizados: filtro.aprendizados.globais.map(doc),
     },
-    refsServidas: refs.map((r) => r.slug as string),
-    aprendizadosServidos: learnings.map((l) => l.slug as string),
+    ...(doToque.length > 0 ? { materialDoToque: doToque.join("\n\n") } : {}),
+    refsServidas: servidasRefs.map((r) => r.slug),
+    aprendizadosServidos: servidosAprs.map((l) => l.slug),
     vaultCommitSha: (stateRes.data?.last_commit_sha as string | null) ?? null,
+    porToque: {
+      ligado,
+      failOpen: filtro.failOpen,
+      refsDoToque: filtro.referencias.doToque.map((r) => r.slug),
+      refsDescartadas: filtro.referencias.fora.map((r) => r.slug),
+      aprendizadosDoToque: filtro.aprendizados.doToque.map((a) => a.slug),
+      aprendizadosDescartados: filtro.aprendizados.fora.map((a) => a.slug),
+      avisos: [...filtro.referencias.avisos, ...filtro.aprendizados.avisos],
+    },
   }
 
   function pick(
@@ -462,7 +516,7 @@ export async function runEstruturador(
 ): Promise<RunEstruturadorResult> {
   const t0 = Date.now()
 
-  const carga = await loadMaterial(input.flowType)
+  const carga = await loadMaterial(input.flowType, input.emailNumber)
   if (!carga) {
     log.info("estruturador.sem_material", { flowType: input.flowType, storeId: input.storeId })
     return { output: null, runId: null, status: "sem_material" }
@@ -504,6 +558,9 @@ export async function runEstruturador(
     ...(tetoDeRelogioDoAgente("estruturador") ? { timeoutMs: tetoDeRelogioDoAgente("estruturador")! } : {}),
     system_prompt: cfgRow?.system_prompt?.trim() || DEFAULT_ESTRUTURADOR_SYSTEM,
     user_template: cfgRow?.user_template?.trim() || DEFAULT_ESTRUTURADOR_USER,
+    // O bloco da loja (perfil + seções disponíveis) vem antes da marca e é
+    // lido do cache pelos outros 3 e-mails do lote; o do e-mail vai solto.
+    cache_user_prefix: true,
   }
 
   const systemVars = buildSystemVars(carga.material)
@@ -545,6 +602,8 @@ export async function runEstruturador(
   const intencaoServida = !input.alvo
 
   const userVars: Record<string, string> = {
+
+    material_do_toque: carga.materialDoToque ?? MATERIAL_DO_TOQUE_VAZIO,
     brand_name: input.brandName,
     top_products: renderTopProducts(input.topProducts),
     pesquisa: input.pesquisa || "(sem pesquisa)",
@@ -590,6 +649,18 @@ export async function runEstruturador(
     },
     { rotulo: "Referências servidas (vault)", cls: "vault", valor: carga.refsServidas.join(", ") },
     { rotulo: "Aprendizados servidos (vault)", cls: "vault", valor: carga.aprendizadosServidos.join(", ") || "(nenhum)" },
+    // Passo 6: o que o toque NÃO recebeu, e por quê — sem esta linha o
+    // filtro seria invisível na tela (é o modo de falha que o vault já teve
+    // com as lacunas: servia "(nenhuma)" e ninguém via).
+    {
+      rotulo: `Vault por toque (${toqueSlug(input.flowType, input.emailNumber)})`,
+      cls: "vault",
+      valor: !carga.porToque.ligado
+        ? "desligado (VAULT_POR_TOQUE=off) — tudo servido como global"
+        : carga.porToque.failOpen
+          ? "FAIL-OPEN: nenhuma referência global nem deste toque — todas servidas"
+          : `deste toque: ${carga.porToque.refsDoToque.join(", ") || "—"} · descartadas (outro toque): ${[...carga.porToque.refsDescartadas, ...carga.porToque.aprendizadosDescartados].join(", ") || "nenhuma"}${carga.porToque.avisos.length ? ` · avisos: ${carga.porToque.avisos.join("; ")}` : ""}`,
+    },
     { rotulo: "Commit do vault", cls: "vault", valor: carga.vaultCommitSha ?? "(desconhecido)" },
     { rotulo: "Seções disponíveis", cls: "sistema", valor: secoesTexto },
     { rotulo: "Estruturas dos outros emails do flow", cls: "sistema", valor: irmasTexto },
@@ -685,6 +756,9 @@ export async function runEstruturador(
 
   let raw = ""
   let tokensIn = 0
+  // Cache de prompt (14/09): lido e escrito, somados nas tentativas.
+  let tokensCache = 0
+  let tokensCacheEscrita = 0
   let tokensOut = 0
   let costUsd = 0
   let ultimoErro: string | null = null
@@ -728,6 +802,8 @@ export async function runEstruturador(
       tokensIn += res.tokensInput
       tokensOut += res.tokensOutput
       costUsd += res.costUsd
+      if (typeof res.cachedTokens === "number") tokensCache += res.cachedTokens
+      if (typeof res.cacheWriteTokens === "number") tokensCacheEscrita += res.cacheWriteTokens
       // O prompt REAL desta tentativa (era JSON.stringify(vars) — 26/08),
       // segmentado por origem. Template custom com {{#if}} → fail-open.
       const segUser = buildSegmentedPrompt(config.user_template, vars, USER_ORIGINS, { parte: "user" })
@@ -810,6 +886,14 @@ export async function runEstruturador(
           motivo_da_desistencia: motivoDaDesistencia,
           auditoria_modo: auditoriaModo,
           incentivo: input.incentivo ?? null,
+          tokens_cache: tokensCache,
+          tokens_cache_escrita: tokensCacheEscrita,
+          vault_por_toque: carga.porToque.failOpen ? "fail_open_sem_referencia" : carga.porToque.ligado ? "on" : "off",
+          refs_do_toque: carga.porToque.refsDoToque,
+          refs_descartadas_por_toque: carga.porToque.refsDescartadas,
+          aprendizados_do_toque: carga.porToque.aprendizadosDoToque,
+          aprendizados_descartados_por_toque: carga.porToque.aprendizadosDescartados,
+          vault_por_toque_avisos: carga.porToque.avisos,
         },
         renderedPrompt: userPromptFinal,
         promptSegments: promptSegmentsFinal,

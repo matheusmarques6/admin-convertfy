@@ -118,4 +118,32 @@ describe("invokeAgent — cache no body e no resultado", () => {
     const msgs = bodyEnviado().messages as Array<{ role: string; content: unknown }>
     expect(msgs[1].content).toBe("base 1")
   })
+
+  it("três marcas = quatro blocos (vault → loja → e-mail → cauda), os três primeiros cacheáveis", async () => {
+    const tpl = `vault${CACHE_PREFIX_MARKER}loja${CACHE_PREFIX_MARKER}email {{x}}${CACHE_PREFIX_MARKER}cauda`
+    await invokeAgent(config({ cache_user_prefix: true, user_template: tpl }), { x: "1" })
+    const msgs = bodyEnviado().messages as Array<{ role: string; content: unknown }>
+    expect(msgs[1].content).toEqual([
+      { type: "text", text: "vault", cache_control: { type: "ephemeral" } },
+      { type: "text", text: "loja", cache_control: { type: "ephemeral" } },
+      { type: "text", text: "email 1", cache_control: { type: "ephemeral" } },
+      { type: "text", text: "cauda" },
+    ])
+  })
+
+  it("os tokens ESCRITOS no cache voltam também — sem eles quatro escritas parecem zero leitura", async () => {
+    fetchMock.mockResolvedValueOnce(
+      resposta({
+        choices: [{ message: { content: "ok" }, finish_reason: "stop" }],
+        usage: {
+          prompt_tokens: 100,
+          completion_tokens: 5,
+          prompt_tokens_details: { cached_tokens: 0, cache_creation_input_tokens: 95 },
+        },
+      }),
+    )
+    const r = await invokeAgent(config(), { x: "1" })
+    expect(r.cachedTokens).toBe(0)
+    expect(r.cacheWriteTokens).toBe(95)
+  })
 })

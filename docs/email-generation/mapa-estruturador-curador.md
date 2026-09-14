@@ -63,8 +63,8 @@ origens em `SYSTEM_ORIGINS`:
 |---|---|---|
 | `<intencao_do_flow>` | `intencoes/{flow}/_flow.md` → `email_intents` | texto inteiro |
 | `<progressao_observada>` | `intencoes/{flow}/_progressao.md` → `email_intents` (kind `progressao`) | texto inteiro |
-| `<referencias>` | **`estruturas/{flow}/*.md`** → `email_structure_refs` | TODOS os arquivos da pasta, cada um embrulhado por slug (`<referencia slug="…">`) |
-| `<aprendizados>` | `aprendizados/{flow}/*.md` + `_global/*.md` com `aplica_a` → `email_learnings` | texto inteiro, embrulhado por slug |
+| `<referencias>` | **`estruturas/{flow}/*.md`** → `email_structure_refs` | **só as GLOBAIS do flow** (`emails: []`), embrulhadas por slug; as declaradas para ESTE toque (`emails: [N]`) vão no user em `<material_do_toque>`; as de outro toque NÃO são servidas (14/09, `lib/vault/toque.ts`; fail-open serve todas quando nada sobra) |
+| `<aprendizados>` | `aprendizados/{flow}/*.md` + `_global/*.md` com `aplica_a` → `email_learnings` | só os globais (`serve_a` ausente ou `[todos]`); `serve_a: [welcome-1]` vai no user; outro toque não é servido |
 | regras fixas | in-code (`DEFAULT_ESTRUTURADOR_SYSTEM`) | precedência (flow > revisão humana > orientação do COO > aprendizados > referências > preferência) · 5 passos · restrições (só seções de `<secoes_disponiveis>`; nunca `header`/`cta`; re-projetar `offer` preservando o mecanismo; `text_only` só como quebra de formato; nunca repetir a sequência de outro email do flow) |
 
 **USER** — `estruturador.service.ts:userVars`, origens em `USER_ORIGINS`
@@ -74,8 +74,11 @@ sem origem):
 | Bloco | Origem | Classe |
 |---|---|---|
 | `<perfil_da_marca>` | nome (`client_stores.store_name`) + dossiê completo da Pesquisa & Diagnóstico (`pesquisaToFullText`: 01 Perfil da Marca · 02 Sobre a loja · 03 Cliente Ideal · 04 Tom de Comunicação · 05 Review dos Anúncios) + Top 5 produtos com preço e link (`renderTopProducts`) | loja |
-| `<email>` | `flow_type` + `email_number` + intenção DESTE email (`email_intents`) | sistema / vault |
 | `<secoes_disponiveis>` | só os NOMES das categorias com variante ativa (`email_component_variants`) | sistema |
+| — marca de cache — | **prefixo estável (14/09)**: os dois blocos acima são iguais nos 4 e-mails da loja e são lidos do cache pelos irmãos; tudo abaixo é deste e-mail | — |
+| `<email>` | `flow_type` + `email_number` + intenção DESTE email (`email_intents`) | sistema / vault |
+| `<decisao_de_objecao>` / `<objecoes_ja_atacadas>` | alvo do Seletor e o que os irmãos anteriores atacaram | upstream |
+| `<material_do_toque>` | referências (`emails: [N]`) e aprendizados (`serve_a: [flow-N]`) declarados para ESTE toque | vault |
 | `<estruturas_dos_outros_emails>` | sequência vigente dos irmãos do flow (última run `success` de cada) | sistema |
 | `<orientacao_do_coo>` | `estruturador_orientacoes` com `agente='estruturador'` (global → flow → email) | curadoria |
 | `<revisao_humana>` | `email_structure_reviews` com `para_estruturador` | curadoria |

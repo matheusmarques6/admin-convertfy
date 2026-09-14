@@ -6329,6 +6329,74 @@ workflow de copy por volta de 18:55 UTC de 14/09 e o log da Vercel em
 nunca chamou). Hipótese: o flow não lê o payload v3.2 (`estrutura_geral:
 null`, `directive`, `campos_omitidos`).
 
+## Prefixo estável de verdade, shortlist por excesso, vault por toque (14/09)
+
+Depois da auditoria abaixo, o levantamento do código e da doc da
+Anthropic derrubou quatro premissas da análise de custo:
+
+1. **System diferente anula o cache do user.** O cache é hierárquico
+   (tools → system → messages); a shortlist tinha system próprio, então o
+   breakpoint do user nunca acertava entre as duas chamadas do Curador.
+   Agora as duas usam `DEFAULT_CHOOSER_VAULT_SYSTEM` e o que muda vai na
+   CAUDA do user (`CAUDA_SHORTLIST_USER` / `CAUDA_ESCOLHA_USER`), depois da
+   última marca.
+2. **A cadeia de formatação nunca cacheou** — `openrouter-invoke.ts:callOnce`
+   mandava o system como string crua. A régua vive em
+   `shared/cache-de-prompt.ts` (`modeloComCacheDePrompt`, `blocosDeCache`:
+   N marcas → N+1 blocos, `cache_control` em todos menos o último, vazio
+   fundido, teto de 3 marcas no user porque o request aceita 4 e o system
+   ocupa 1; `semMarcadores` — a proveniência remove a marca antes de
+   segmentar). Todo step grava `parsed_output.cache`.
+3. **Quatro e-mails em paralelo escrevem o cache quatro vezes** (125%).
+   `shared/gate-de-prefixo.ts` em `invokeAgent`: o primeiro de um prefixo
+   (modelo + system + 1º bloco do user) passa; os demais esperam
+   `CACHE_STAGGER_MS` (15 s) ou o primeiro resolver. Escalonar a fila não
+   serviria: o Curador de cada e-mail começa quando o Estruturador dele
+   termina.
+4. **Prefill está MORTO na família 4.6+** ("returns a 400 error on Claude
+   Sonnet 4.6 and later"). `aceitaPrefill` → `false` para Sonnet/Opus 4.6+,
+   Sonnet/Opus 5, Fable e Mythos; `prefill_usado` era 0 em 30 dias.
+
+Ordem dos blocos do user, do menos ao mais mutável, com marca entre eles:
+Curador `[índice do vault, intenção do flow, aprendizados, estruturas de
+referência] [store, perfil, objeções, vocabulário, produtos] [outline,
+intenção do e-mail, COO, revisão, alvo, memória, notas de seção, lacunas,
+decisão, eliminadas, sequência] [cauda]` — `memoria`, `notas_de_secao` e
+`lacunas` são POR E-MAIL (recorte por `liveSections`, escolhas do e-mail
+N-1), não da loja. Estruturador `[perfil + seções disponíveis] [resto]`;
+Seletor `[loja + catálogo + oferta] [resto]` (o `email_number` saiu do
+bloco da loja). `ref: "catalogo_enxuto"` no segmento do catálogo — com
+`"catalogo"` o resolver comparava com o JSON integral e saía `stale`.
+
+**Shortlist só com excesso de verdade**: `limiarSemChamada()` = 5 (env
+`CURADOR_SHORTLIST_MAX_SEM_CHAMADA`, nunca abaixo de `SHORTLIST_TOP_N`).
+A run de 14/09 tinha {4,2,4,3,2,2} elegíveis e pagou US$ 0,97 para
+escolher 3 de 4 em duas posições — o custo é a SAÍDA (7,7k tokens a US$
+50/M), não a entrada. Até 5, todas viram finalistas e a escolha lê as
+notas completas de todas. Telemetria: `shortlist_limiar`,
+`finalistas_por_posicao`, `tokens_cache_escrita` em
+`consumo_por_chamada` (a retomada também passa pelo `medir`).
+
+**Vault por toque** (`lib/vault/toque.ts`, puro): `emails: [N]` nas
+estruturas (já existia, obrigatório) e `serve_a: [welcome-1]` ou
+`[todos]` nos aprendizados (vocabulário do diagnóstico do vault; o parser
+reprova fora do formato). Global fica no SYSTEM do Estruturador (cacheado
+entre os 4 irmãos); o do toque vai no user em `<material_do_toque>` (e
+`<aprendizados_do_toque>` no Curador); o de outro toque não é servido.
+**Fail-open**: nenhuma referência global nem do toque → serve todas e
+marca `vault_por_toque: fail_open_sem_referencia` (senão `loadMaterial`
+devolveria `null` e o Estruturador seria pulado). Kill-switch
+`VAULT_POR_TOQUE=off`. Telemetria `refs_descartadas_por_toque` e
+`aprendizados_descartados_por_toque`; seletor "O que o toque recebe" na
+aba Conhecimento, pela MESMA régua. Até o time escrever `serve_a:` nas
+notas, todo aprendizado é global — o efeito imediato são as estruturas
+com `emails: [2,3,4]` saindo do welcome-1.
+
+JSON compacto onde é gerado por código (decisão do Estruturador,
+`format-context`, `build-vars`, `qa.chain`); `catalog-builder.json` fica,
+pelo sha8 das runs antigas. Leitura pós-deploy:
+`DIAGNOSTICO_cache_por_chamada.sql`.
+
 ## Cache de prompt de verdade nos agentes que decidem (14/09)
 
 Auditoria do batch 879fe6e4 (`docs`: artifact "Auditoria de custo ·

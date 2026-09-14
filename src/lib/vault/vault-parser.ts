@@ -404,6 +404,16 @@ export function validateNote(
     if (str(fm.tipo) !== "aprendizado") errs.push("`tipo` deveria ser 'aprendizado'")
     if (str(fm.escopo) === "cross-flow" && !Array.isArray(fm.aplica_a))
       errs.push("aprendizado cross-flow sem `aplica_a`")
+    // Passo 6: `serve_a` é lista de `flow-N` ou `[todos]`. Fora do formato
+    // o loader trata como global (nunca esvazia um toque) — mas é ERRO de
+    // cadastro e a nota fica fora até corrigir, como os demais campos.
+    if (fm.serve_a !== undefined && fm.serve_a !== null) {
+      const lista = Array.isArray(fm.serve_a) ? fm.serve_a : [fm.serve_a]
+      const ruins = lista
+        .map((v) => String(v).trim().toLowerCase())
+        .filter((v) => v !== "todos" && !/^[a-z0-9_]+(?:-[a-z0-9_]+)*-\d+$/.test(v))
+      if (ruins.length > 0) errs.push(`\`serve_a\` fora do formato flow-N ou 'todos': ${ruins.join(", ")}`)
+    }
   }
   // componente_doc: deliberadamente permissivo — o vault de componentes tem
   // frontmatters heterogêneos por categoria (variante ≠ eixo ≠ lacuna) e o

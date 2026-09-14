@@ -35,7 +35,7 @@ import { invokeFormatModel, truncou, type FormatChainConfig } from "./format-inv
 import { corteParaStepMecanico } from "../model-capabilities"
 import { OpsParseError, parseOps, type FormatOp } from "../html/apply-patches"
 import { parsePlanoDeCor, type PlanoDeCor } from "../html/plano-de-cor"
-import { attachUsage, withUsage } from "./step-usage"
+import { attachUsage, withUsage, cacheDe } from "./step-usage"
 import { doctrinePromptSegment, withDoctrine } from "../shared/doctrine-packets"
 import {
   ALCADA,
@@ -218,6 +218,9 @@ export interface InvokeColorFormatResult {
   tokensInput: number
   tokensOutput: number
   costUsd: number
+  /** Cache de prompt lido / escrito nesta chamada, quando reportado. */
+  cachedTokens?: number
+  cacheWriteTokens?: number
   renderedPrompt: string
   /** O mesmo prompt marcado por origem; null quando não foi possível cortar. */
   promptSegments: PromptSegment[] | null
@@ -293,6 +296,7 @@ export async function invokeColorFormatChain(input: {
     tokensInput: res.tokensInput,
     tokensOutput: res.tokensOutput,
     costUsd: res.costUsd,
+    ...cacheDe(res),
     renderedPrompt: userMessage,
     promptSegments,
     // A resposta rejeitada viaja no erro: é a única coisa capaz de
@@ -348,6 +352,7 @@ export async function invokeColorFormatChain(input: {
     tokensInput: res.tokensInput,
     tokensOutput: res.tokensOutput,
     costUsd: res.costUsd,
+    ...cacheDe(res),
     renderedPrompt: userMessage,
     promptSegments,
     rawOutput: res.text,

@@ -268,6 +268,8 @@ export async function runSeletor(input: RunSeletorInput): Promise<ObjectionTarge
     ...(tetoDeRelogioDoAgente("seletor") ? { timeoutMs: tetoDeRelogioDoAgente("seletor")! } : {}),
     system_prompt: cfgRow?.system_prompt?.trim() || DEFAULT_SELETOR_SYSTEM,
     user_template: cfgRow?.user_template?.trim() || DEFAULT_SELETOR_USER,
+    // Loja + catálogo antes da marca: lidos do cache pelos irmãos do lote.
+    cache_user_prefix: true,
   }
   const candidatas = candidatasElegiveis(input.catalogo, input.contrato, input.flowType, input.jaAtacadas)
   // O piso de `n_objecoes` cede ao catálogo (ver validarAlvo). Registrado
@@ -325,6 +327,10 @@ export async function runSeletor(input: RunSeletorInput): Promise<ObjectionTarge
   })
 
   let tokensIn = 0
+
+  let tokensCache = 0
+
+  let tokensCacheEscrita = 0
   let tokensOut = 0
   let costUsd = 0
   let raw = ""
@@ -356,6 +362,8 @@ export async function runSeletor(input: RunSeletorInput): Promise<ObjectionTarge
       tokensIn += res.tokensInput
       tokensOut += res.tokensOutput
       costUsd += res.costUsd
+      if (typeof res.cachedTokens === "number") tokensCache += res.cachedTokens
+      if (typeof res.cacheWriteTokens === "number") tokensCacheEscrita += res.cacheWriteTokens
       const seg = buildSegmentedPrompt(config.user_template, vars, SELETOR_ORIGINS, { parte: "user" })
       promptFinal = seg.segments ? seg.prompt : renderImageTemplate(config.user_template, vars)
       segmentsFinal = seg.segments
@@ -424,6 +432,8 @@ export async function runSeletor(input: RunSeletorInput): Promise<ObjectionTarge
             modo_adotado: alvo.modo,
             modo_origem: input.contrato.modo ? "declarado" : "deduzido",
             contrato_origens: input.contrato.origens,
+            tokens_cache: tokensCache,
+            tokens_cache_escrita: tokensCacheEscrita,
           },
         },
         tokensInput: tokensIn,

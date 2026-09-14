@@ -27,6 +27,7 @@
  * pipeline precisa (`normalizarOutput`).
  */
 
+import { CACHE_PREFIX_MARKER } from "../shared/cache-de-prompt"
 import { dispositivoPertenceASecao, ehDispositivo, type Dispositivo } from "../shared/dispositivos"
 import type { RequisitosDuros } from "../shared/field-roles"
 
@@ -481,6 +482,13 @@ export function intencaoParaOPrompt(
   return alvo ? INTENCAO_NAO_SERVIDA : nota
 }
 
+/**
+ * User em dois blocos separados por marca de cache (14/09): o que é da
+ * LOJA (perfil, produtos) e da biblioteca (seções disponíveis) vem antes e
+ * é lido do cache pelos 3 irmãos do lote; o que é deste E-MAIL vem depois.
+ * `<material_do_toque>` (passo 6) traz referências e aprendizados que o
+ * vault declarou para ESTE toque — os globais seguem no system.
+ */
 export const DEFAULT_ESTRUTURADOR_USER = `<perfil_da_marca>
 - marca: {{brand_name}}
 
@@ -490,6 +498,10 @@ Top 5 produtos (nome — preço — link):
 {{top_products}}
 </perfil_da_marca>
 
+<secoes_disponiveis>
+{{secoes_disponiveis}}
+</secoes_disponiveis>
+${CACHE_PREFIX_MARKER}
 <email>
 {{flow_type}} — email #{{email_number}}
 
@@ -504,9 +516,10 @@ Top 5 produtos (nome — preço — link):
 {{objecoes_ja_atacadas}}
 </objecoes_ja_atacadas>
 
-<secoes_disponiveis>
-{{secoes_disponiveis}}
-</secoes_disponiveis>
+<material_do_toque>
+Referências e aprendizados que o vault declarou para ESTE toque (\`emails:\` / \`serve_a:\`). Os globais estão em <referencias> e <aprendizados> do system; o que é de outro toque não foi servido.
+{{material_do_toque}}
+</material_do_toque>
 
 <estruturas_dos_outros_emails>
 {{estruturas_dos_outros_emails}}
@@ -525,6 +538,10 @@ Top 5 produtos (nome — preço — link):
 </auditoria_anterior>
 
 Monte a estrutura deste email para esta loja. Responda APENAS o JSON.`
+
+/** O que vai em `{{material_do_toque}}` quando nada foi declarado para o toque. */
+export const MATERIAL_DO_TOQUE_VAZIO =
+  "(nenhuma referência nem aprendizado declarado especificamente para este toque — os globais estão no system)"
 
 /** O que vai em `{{auditoria_anterior}}` na 1ª tentativa (o bloco nunca some do prompt). */
 export const AUDITORIA_VAZIA = "(primeira tentativa — nada a corrigir)"

@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
         .select("id, flow_type, slug, emails, escopo, amostra, procedencia, secoes, secoes_normalizadas, status, is_active, updated_at")
         .order("flow_type").order("slug"),
       admin.from("email_learnings")
-        .select("id, flow_type, slug, aplica_a, origem_estrutura, autor, status, is_active, updated_at")
+        .select("id, flow_type, slug, aplica_a, origem_estrutura, autor, status, is_active, updated_at, frontmatter")
         .order("flow_type", { nullsFirst: true }).order("slug"),
       admin.from("email_vault_docs")
         .select("kind, grupo, slug, variant_id, frontmatter, body_md, file_path, status, is_active")

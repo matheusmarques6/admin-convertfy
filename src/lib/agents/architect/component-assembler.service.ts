@@ -55,7 +55,7 @@ import {
   buildProtocoloBlock,
   buildSecaoNotasBlock,
   emptyCuradorVaultKnowledge,
-  loadAprendizadosResumo,
+  loadAprendizadosPorToque,
   loadCuradorVaultKnowledge,
   loadCuradorVaultMode,
   loadEstruturaRefsResumo,
@@ -1468,11 +1468,12 @@ export async function assembleStoreReference(
   // narrowing do TS não enxerga closure — leria `null` para sempre.
   const parcialDoVault: { valor: PreferenciasDoVault | null } = { valor: null }
   if (curadorVaultMode === "on") {
-    const [aprendizadosOn, usageCountsOn, indiceDoVault] = await Promise.all([
-      loadAprendizadosResumo(input.flowType),
+    const [aprendizadosPorToqueOn, usageCountsOn, indiceDoVault] = await Promise.all([
+      loadAprendizadosPorToque(input.flowType, input.emailNumber),
       loadVariantUsageCounts(input.storeId),
       loadIndiceDoVault(),
     ])
+    const aprendizadosOn = aprendizadosPorToqueOn.globais
     vaultResultado = await runCuradorShadow({
       storeId: input.storeId,
       flowType: input.flowType,
@@ -1501,6 +1502,7 @@ export async function assembleStoreReference(
       catalogComExtras: catalog,
       estruturasRef: estruturasRefAll,
       aprendizados: aprendizadosOn,
+      aprendizadosPorToque: aprendizadosPorToqueOn,
       usageCounts: usageCountsOn,
       typeIndex,
       aliasIndex,
@@ -1752,10 +1754,11 @@ export async function assembleStoreReference(
   // propósito (promise solta morre com o serverless); falha nunca propaga.
   if (curadorVaultMode === "shadow") {
     const shadowExtras = buildCatalogVaultExtras(vaultKnowledge, eligible)
-    const [aprendizados, usageCounts] = await Promise.all([
-      loadAprendizadosResumo(input.flowType),
+    const [aprendizadosPorToque, usageCounts] = await Promise.all([
+      loadAprendizadosPorToque(input.flowType, input.emailNumber),
       loadVariantUsageCounts(input.storeId),
     ])
+    const aprendizados = aprendizadosPorToque.globais
     const liveRank1 = rank1ByBlock(rankingByBlock)
     await runCuradorShadow({
       storeId: input.storeId,
@@ -1780,6 +1783,7 @@ export async function assembleStoreReference(
       catalogComExtras: buildCatalog(eligible, shadowExtras),
       estruturasRef: estruturasRefAll,
       aprendizados,
+      aprendizadosPorToque,
       usageCounts,
       typeIndex,
       aliasIndex,

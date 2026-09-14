@@ -8,6 +8,7 @@
  */
 
 import Anthropic from "@anthropic-ai/sdk"
+import crypto from "node:crypto"
 
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
@@ -16,6 +17,16 @@ import { RespostaVaziaError } from "../resposta-vazia"
 import { relogioParaChamada } from "../fase1-orcamento"
 import type { AgentType, EmailAgentConfig } from "@/types/email-generation"
 
+import {
+  CACHE_PREFIX_MARKER,
+  aceitaPrefill,
+  blocosDeCache,
+  modeloComCacheDePrompt,
+  semMarcadores,
+  systemContentComCache,
+  userContentComCache,
+} from "../shared/cache-de-prompt"
+import { GateDePrefixo, esperaDoGatePorEnv } from "../shared/gate-de-prefixo"
 import { renderImageTemplate } from "../image/template-renderer"
 import { jsonUtilizavel } from "../shared/json-do-modelo"
 import {
@@ -102,10 +113,11 @@ export interface AgentInvokeConfig {
 }
 
 /**
- * Sentinela que separa, no user, o prefixo cacheável do que muda entre as
- * chamadas. Nunca chega ao modelo: `userContent` a remove.
+ * Sentinela que separa, no user, os blocos cacheáveis. Mora em
+ * `shared/cache-de-prompt.ts` (puro, sem ciclo com `openrouter-invoke.ts`) e
+ * é re-exportada daqui para os consumidores antigos.
  */
-export const CACHE_PREFIX_MARKER = "\u0000<<cfy:cache-prefix>>\u0000"
+export { CACHE_PREFIX_MARKER, aceitaPrefill, modeloComCacheDePrompt }
 
 /**
  * Interpola vars no SYSTEM prompt por substituição LITERAL (story CM-3).
@@ -155,6 +167,29 @@ export async function loadActiveAgentConfig(
   return (data as EmailAgentConfig | null) ?? null
 }
 
+/**
+ * Um gate por processo. A chave é o prefixo que o cache da Anthropic
+ * compara: modelo + system + primeiro bloco do user (ou o user inteiro sem
+ * `cache_user_prefix` — aí só o system é compartilhado, e a chave é ele).
+ */
+const gateDePrefixo = new GateDePrefixo({ esperaMs: esperaDoGatePorEnv() })
+
+function chaveDePrefixo(config: AgentInvokeConfig, userMessage: string): string {
+  const cacheia = modeloComCacheDePrompt(config.model) || !config.model.includes("/")
+  if (!cacheia) return `sem-cache:${config.model}:${crypto.randomUUID()}`
+  const primeiroBloco = config.cache_user_prefix
+    ? (blocosDeCache(userMessage).blocos[0]?.text ?? "")
+    : ""
+  return crypto
+    .createHash("sha1")
+    .update(config.model)
+    .update("\u0000")
+    .update(config.system_prompt)
+    .update("\u0000")
+    .update(primeiroBloco)
+    .digest("hex")
+}
+
 export interface InvokeResult {
   raw: string
   tokensInput: number
@@ -175,6 +210,12 @@ export interface InvokeResult {
   reasoningTokens?: number
   /** Tokens de entrada lidos do cache de prompt, quando o provider reporta. */
   cachedTokens?: number
+  /**
+   * Tokens de entrada ESCRITOS no cache (cobrados a 125%). Uma escrita por
+   * prefixo por lote é o esperado; quatro escritas do mesmo prefixo são a
+   * assinatura dos irmãos disparados no mesmo instante (`gate-de-prefixo`).
+   */
+  cacheWriteTokens?: number
 }
 
 /**
@@ -198,9 +239,22 @@ export async function invokeAgent(
   const resolved: AgentInvokeConfig = systemVars
     ? { ...config, system_prompt: interpolateSystem(config.system_prompt, systemVars) }
     : config
-  const res = resolved.model.includes("/")
-    ? await invokeViaOpenRouter(resolved, userMessage)
-    : await invokeViaAnthropic(resolved, userMessage)
+  // Gate de prefixo: chamadas simultâneas com o mesmo prefixo cacheável
+  // (system + primeiro bloco do user) esperam a primeira ESCREVER o cache,
+  // senão os 4 e-mails do lote escrevem 4 vezes a 125%. Ver
+  // `shared/gate-de-prefixo.ts`.
+  const gate = await gateDePrefixo.entrar(chaveDePrefixo(resolved, userMessage))
+  if (gate.esperouMs > 0) {
+    log.info("cache.gate_esperou", { model: resolved.model, esperouMs: gate.esperouMs })
+  }
+  let res: InvokeResult
+  try {
+    res = resolved.model.includes("/")
+      ? await invokeViaOpenRouter(resolved, userMessage)
+      : await invokeViaAnthropic(resolved, userMessage)
+  } finally {
+    gate.sair()
+  }
 
   // Ponto único dos dois caminhos, e DEPOIS do retry: repetir a chamada com
   // o mesmo teto falharia igual, cobrando de novo. Sem isto o vazio segue
@@ -268,12 +322,17 @@ async function invokeViaAnthropic(
     },
   ]
 
+  // O user segue a MESMA régua do caminho OpenRouter: blocos quando o agente
+  // pediu prefixo, string sem marcador quando não pediu. Antes o marcador
+  // vazava para o modelo neste caminho (id sem barra via config do banco).
+  const user = userContentComCache(userMessage, { ativo: !!config.cache_user_prefix })
+
   const client = new Anthropic({ apiKey, maxRetries: 2, timeout: relogioDesteInvoke(config) })
   const baseReq = {
     model: config.model,
     max_tokens: config.max_tokens,
     system,
-    messages: [{ role: "user" as const, content: userMessage }],
+    messages: [{ role: "user" as const, content: user as string | Anthropic.TextBlockParam[] }],
   }
 
   const res = await client.messages.create(
@@ -305,64 +364,44 @@ async function invokeViaAnthropic(
     tokensOutput: res.usage.output_tokens,
     costUsd: 0, // Anthropic-direto não passa pelo accounting do OpenRouter.
     ...(res.stop_reason ? { finishReason: res.stop_reason } : {}),
+    ...(typeof usage.cache_read_input_tokens === "number"
+      ? { cachedTokens: usage.cache_read_input_tokens }
+      : {}),
+    ...(typeof usage.cache_creation_input_tokens === "number"
+      ? { cacheWriteTokens: usage.cache_creation_input_tokens }
+      : {}),
   }
 }
 
 /**
- * Content do system para o OpenRouter.
- *
- * Modelos Anthropic suportam prompt caching, mas só quando o `cache_control`
- * viaja no content — e para isso o content precisa ser ARRAY, não string. É o
- * que torna o catálogo da biblioteca no system do Curador realmente cacheável
- * (story CM-3): ele é idêntico entre lojas, então da segunda invocação em
- * diante o prefixo vem do cache.
- *
- * Só para `anthropic/*`: os demais provedores ignoram o campo, e alguns
- * rejeitam content em array. Prefixo abaixo do mínimo do modelo (2048 tokens
- * no Sonnet 4.x) é ignorado silenciosamente pela API — marcar é sempre seguro.
+ * Content do system para o OpenRouter: bloco com `cache_control` quando o
+ * modelo cacheia (só `anthropic/*`, com ou sem til). O catálogo da
+ * biblioteca no system do Curador é idêntico entre lojas — da segunda
+ * invocação em diante o prefixo vem do cache (story CM-3). Prefixo abaixo
+ * do mínimo do modelo é ignorado em silêncio pela API — marcar é sempre
+ * seguro. Régua e corte em `shared/cache-de-prompt.ts`.
  */
 function systemContent(config: AgentInvokeConfig): unknown {
-  if (!modeloComCacheDePrompt(config.model)) return config.system_prompt
-  return [
-    {
-      type: "text",
-      text: config.system_prompt,
-      cache_control: { type: "ephemeral" },
-    },
-  ]
-}
-
-/**
- * Modelo Anthropic pelo OpenRouter, com ou sem o til de alias
- * (`~anthropic/claude-fable-latest`). Até 14/09 a régua era `^anthropic/`
- * e o slug com til — o dos três agentes que decidem — nunca casava: o
- * Curador pagava 58k tokens de prefixo repetido a preço cheio em toda
- * geração, e nada acusava, porque o cache só se vê pelo `cached_tokens`.
- */
-export function modeloComCacheDePrompt(model: string): boolean {
-  return /^~?anthropic\//i.test(model)
+  return systemContentComCache(config.system_prompt, { ativo: modeloComCacheDePrompt(config.model) })
 }
 
 /**
  * Content do user para o OpenRouter (puro; exportado para o teste).
  *
  * String crua quando o modelo não cacheia ou o agente não pediu prefixo.
- * Com `cache_user_prefix`: o texto até o `CACHE_PREFIX_MARKER` (ou o user
- * inteiro, sem marcador) vira bloco com `cache_control`; o que vem depois
- * vai num segundo bloco, sem marca. O marcador é REMOVIDO — sentinela no
- * prompt seria lida pelo modelo como conteúdo.
+ * Com `cache_user_prefix`: cada `CACHE_PREFIX_MARKER` corta um bloco, todos
+ * com `cache_control` menos o último (até 3 marcas — 4 breakpoints por
+ * request, um é do system); sem marcador o user inteiro é o prefixo. O
+ * marcador é REMOVIDO — sentinela no prompt seria lida como conteúdo.
  */
 export function userContent(config: AgentInvokeConfig, userMessage: string): unknown {
-  const semMarcador = userMessage.split(CACHE_PREFIX_MARKER).join("")
-  if (!config.cache_user_prefix || !modeloComCacheDePrompt(config.model)) return semMarcador
-  const corte = userMessage.indexOf(CACHE_PREFIX_MARKER)
-  const prefixo = corte >= 0 ? userMessage.slice(0, corte) : userMessage
-  const resto = corte >= 0 ? userMessage.slice(corte + CACHE_PREFIX_MARKER.length) : ""
-  const blocos: Array<Record<string, unknown>> = [
-    { type: "text", text: prefixo, cache_control: { type: "ephemeral" } },
-  ]
-  if (resto) blocos.push({ type: "text", text: resto })
-  return blocos
+  const ativo = !!config.cache_user_prefix && modeloComCacheDePrompt(config.model)
+  if (!ativo) return semMarcadores(userMessage)
+  const r = blocosDeCache(userMessage)
+  if (r.marcasExcedentes > 0) {
+    log.warn("cache_marks_excedidas", { model: config.model, fundidas: r.marcasExcedentes })
+  }
+  return r.blocos
 }
 
 /** Invoca via OpenRouter (OpenAI-compatible chat/completions). */
@@ -471,6 +510,7 @@ async function callOnceArchitect(
       // Quanto do prompt veio do cache — zero com cache marcado é a
       // assinatura de prefixo que mudou entre as chamadas.
       cachedTokens: parsed.cachedTokens ?? null,
+      cacheWriteTokens: parsed.cacheWriteTokens ?? null,
       // Resposta vazia com orçamento cheio: o sinal que faltou na run
       // 5d7396b5 — a telemetria só via "Unexpected end of JSON input".
       emptyText: parsed.text === "",
@@ -485,6 +525,9 @@ async function callOnceArchitect(
         ? { reasoningTokens: parsed.reasoningTokens }
         : {}),
       ...(typeof parsed.cachedTokens === "number" ? { cachedTokens: parsed.cachedTokens } : {}),
+      ...(typeof parsed.cacheWriteTokens === "number"
+        ? { cacheWriteTokens: parsed.cacheWriteTokens }
+        : {}),
     }
   } catch (e) {
     if (ctrl.signal.aborted || (e as Error)?.name === "AbortError") {
@@ -613,11 +656,6 @@ export interface InvokeWithToolsOptions {
   /** Teto de execuções de ferramenta por run. Default 4. */
   maxCalls?: number
   retomada?: RetomadaJsonOptions
-}
-
-/** Provedores que aceitam prefill (mensagem assistant final = continuação). */
-export function aceitaPrefill(model: string): boolean {
-  return /^anthropic\//i.test(model)
 }
 
 interface ChatMessage {
@@ -778,7 +816,7 @@ export async function invokeAgentWithTools(
     : config
   const messages: ChatMessage[] = [
     { role: "system", content: systemContent(resolved) },
-    { role: "user", content: userMessage },
+    { role: "user", content: userContent(resolved, userMessage) },
   ]
   const consultas: ToolCallLog[] = []
   let tokensInput = 0

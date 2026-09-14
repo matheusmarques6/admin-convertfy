@@ -14,7 +14,7 @@
 
 import { logger } from "@/lib/logger"
 import { renderImageTemplate } from "../image/template-renderer"
-import { withUsage } from "./step-usage"
+import { withUsage, cacheDe } from "./step-usage"
 import {
   buildSegmentedPrompt,
   concatSegments,
@@ -162,6 +162,9 @@ export interface InvokeTextFormatResult {
   /** O mesmo prompt marcado por origem; null quando não foi possível cortar. */
   promptSegments: PromptSegment[] | null
   rawOutput: string
+  /** Cache de prompt lido / escrito nesta chamada, quando reportado. */
+  cachedTokens?: number
+  cacheWriteTokens?: number
 }
 
 /**
@@ -262,6 +265,7 @@ export async function invokeTextFormatChain(input: {
       tokensInput: res.tokensInput,
       tokensOutput: res.tokensOutput,
       costUsd: res.costUsd,
+      ...cacheDe(res),
       renderedPrompt: userMessage,
       promptSegments,
     },
@@ -279,6 +283,7 @@ export async function invokeTextFormatChain(input: {
     tokensInput: res.tokensInput,
     tokensOutput: res.tokensOutput,
     costUsd: res.costUsd,
+    ...cacheDe(res),
     renderedPrompt: userMessage,
     promptSegments,
     rawOutput: res.text,

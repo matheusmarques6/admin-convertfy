@@ -116,7 +116,7 @@ import {
 } from "./typography/apply"
 import { renderWhitelistForPrompt } from "./refiner/font-whitelist"
 import { pesoNumerico } from "./html/hero-graft"
-import { attachUsage, usageOf } from "./chains/step-usage"
+import { attachUsage, usageOf, cacheDe, cacheParaRun } from "./chains/step-usage"
 import {
   type InputSummaryItem,
   type PromptSegment,
@@ -2266,6 +2266,9 @@ interface StepAttemptResult<T> {
   tokensInput: number
   tokensOutput: number
   costUsd: number
+  /** Cache de prompt lido / escrito — vai para `parsed_output.cache`. */
+  cachedTokens?: number
+  cacheWriteTokens?: number
   renderedPrompt: string
   /** O mesmo prompt marcado por origem (migration 20261085). */
   promptSegments?: PromptSegment[] | null
@@ -2360,7 +2363,9 @@ async function executeFormatStep<T>(p: {
         promptSegments: r.promptSegments,
         inputSummary: r.inputSummary,
         rawOutput: r.rawOutput,
-        parsedOutput: r.parsed,
+        // `cache` ao lado do parsed: é o único lugar onde se vê se o system
+        // do step (marcado desde 14/09) foi lido do cache ou reescrito.
+        parsedOutput: { ...r.parsed, ...cacheParaRun(r) },
         tokensInput: r.tokensInput,
         tokensOutput: r.tokensOutput,
         costCents: resolveCostCents({
@@ -2368,6 +2373,7 @@ async function executeFormatStep<T>(p: {
           tokensInput: r.tokensInput,
           tokensOutput: r.tokensOutput,
           costUsd: r.costUsd,
+          ...cacheDe(r),
         }),
         durationMs: Date.now() - t0,
         retryCount: priorErrors,
@@ -2426,6 +2432,9 @@ async function executeFormatStep<T>(p: {
                 tokensOutput: usage.tokensOutput,
                 costUsd: usage.costUsd,
               }),
+              // A chamada paga também leu/escreveu cache — no erro é onde
+              // "reescreveu o prefixo inteiro" mais custa explicar.
+              ...(cacheParaRun(usage).cache ? { parsedOutput: cacheParaRun(usage) } : {}),
               ...(usage.renderedPrompt
                 ? { renderedPrompt: usage.renderedPrompt }
                 : {}),
@@ -3210,6 +3219,7 @@ async function runFormattingChain(p: {
             tokensInput: r.tokensInput,
             tokensOutput: r.tokensOutput,
             costUsd: r.costUsd,
+            ...cacheDe(r),
             renderedPrompt: r.renderedPrompt,
           })
         }
@@ -3236,6 +3246,7 @@ async function runFormattingChain(p: {
           tokensInput: r.tokensInput,
           tokensOutput: r.tokensOutput,
           costUsd: r.costUsd,
+          ...cacheDe(r),
           renderedPrompt: r.renderedPrompt,
           promptSegments: r.promptSegments,
           inputSummary: [
@@ -3417,6 +3428,7 @@ async function runFormattingChain(p: {
           tokensInput: r.tokensInput,
           tokensOutput: r.tokensOutput,
           costUsd: r.costUsd,
+          ...cacheDe(r),
           renderedPrompt: r.renderedPrompt,
           promptSegments: r.promptSegments,
           inputSummary: [
@@ -3767,6 +3779,7 @@ async function runFormattingChain(p: {
             tokensInput: r.tokensInput,
             tokensOutput: r.tokensOutput,
             costUsd: r.costUsd,
+            ...cacheDe(r),
             renderedPrompt: r.renderedPrompt,
             promptSegments: r.promptSegments,
             inputSummary: [
@@ -4019,6 +4032,7 @@ async function runFormattingChain(p: {
           tokensInput: r.tokensInput,
           tokensOutput: r.tokensOutput,
           costUsd: r.costUsd,
+          ...cacheDe(r),
           renderedPrompt: r.renderedPrompt,
           promptSegments: r.promptSegments,
           inputSummary: [

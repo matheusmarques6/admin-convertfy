@@ -84,8 +84,10 @@ describe("decisaoCompletaParaCurador", () => {
     const r = decisaoCompletaParaCurador(o)
     const volta = JSON.parse(r) as typeof o
     expect(volta).toEqual(o)
-    // Legível para o modelo: JSON indentado, não uma linha só.
-    expect(r).toContain("\n  \"estrutura\": [")
+    // Compacto (14/09): o JSON viaja nas duas chamadas do Curador e a
+    // indentação era ~20% dos até 24k chars — o modelo lê igual.
+    expect(r).not.toContain("\n  \"estrutura\": [")
+    expect(r).toContain('"estrutura":[')
     expect(r).toContain("troca a categoria pela rotina noturna")
     expect(r).toContain("competiria com a grade")
   })

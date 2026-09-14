@@ -81,7 +81,9 @@ export function estruturaParaPosicoes(
 export const DECISAO_MAX_CHARS = 24_000
 
 export function decisaoCompletaParaCurador(output: EstruturadorOutput): string {
-  const json = JSON.stringify(output, null, 2)
+  // Compacto (14/09): são até 24k chars que viajam nas DUAS chamadas do
+  // Curador; a indentação era ~20% deles e o modelo lê JSON compacto igual.
+  const json = JSON.stringify(output)
   if (json.length <= DECISAO_MAX_CHARS) return json
   return `${json.slice(0, DECISAO_MAX_CHARS)}\n(… decisão truncada em ${DECISAO_MAX_CHARS} caracteres — o restante está na run do Estruturador)`
 }

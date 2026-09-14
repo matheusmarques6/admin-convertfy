@@ -675,7 +675,7 @@ export function buildHeroVars(
       "",
     hero_source: params.grafted ? "library" : "montador",
     hero_variant_schema_json: params.variant?.output_schema
-      ? JSON.stringify(params.variant.output_schema, null, 2)
+      ? JSON.stringify(params.variant.output_schema)
       : "",
     // Regras de design da variante (cadastro). Vão SEMPRE que existirem —
     // diferente do exemplo renderizado, aqui é texto escrito para ser lido
@@ -688,10 +688,10 @@ export function buildHeroVars(
     hero_design_system_block: heroDesignSystemBlock(params.variant?.design_system),
     // ARRAY: todos os blocos da região (hero composta = cupom+logo+hero).
     hero_content_json:
-      heroBlocks.length > 0 ? JSON.stringify(heroBlocks, null, 2) : "[]",
+      heroBlocks.length > 0 ? JSON.stringify(heroBlocks) : "[]",
     // Campos que o merge por example deixou pendentes na região — decide o
     // que o agente PODE remover (lista vazia = remover nada).
-    hero_pending_json: JSON.stringify(params.heroPending ?? [], null, 2),
+    hero_pending_json: JSON.stringify(params.heroPending ?? []),
     hero_image_url: heroImage?.url ?? "",
     hero_image_alt: "",
     // Preenchida pelo chain com o contrato de output — presente aqui só
@@ -737,8 +737,8 @@ export function buildTextFormatVars(
     preheader: ctx.emailRow?.preheader || "",
     objective: ctx.blueprint?.objective || "",
     messaging: ctx.blueprint?.messaging || "",
-    blocks_with_content_json: JSON.stringify(nonHeroBlocks, null, 2),
-    fields_json: JSON.stringify(fields, null, 2),
+    blocks_with_content_json: JSON.stringify(nonHeroBlocks),
+    fields_json: JSON.stringify(fields),
     top_products_json: ctx.topProductsJson,
   }
   return validateVars(TextFormatPromptVarsSchema, vars, "text_format")
@@ -787,7 +787,7 @@ export function buildColorFormatVars(
     niche: extras.niche,
     locale: ctx.locale,
     tones: extras.tones,
-    color_inventory_json: JSON.stringify(inventory, null, 2),
+    color_inventory_json: JSON.stringify(inventory),
     brand_colors: serializeBrandColors(extras.brand),
     // Papéis resolvidos via `identityVars` — o MESMO helper da hero, e não
     // uma segunda lista escrita à mão.
@@ -805,7 +805,7 @@ export function buildColorFormatVars(
     // isto diz ONDE — e é o que torna executável decidir por faixa em vez de
     // por valor. Documento sem marcadores devolve `[]`, e o prompt trata o
     // caso: sem a lista ele não decide ritmo, faz só o trabalho de valor.
-    faixas_json: JSON.stringify(faixas, null, 2),
+    faixas_json: JSON.stringify(faixas),
     // A R2 ("no máximo 3 tons de fundo") é aritmética, e decidir faixa a
     // faixa não a enxerga: em 11/09 o agente manteve dois cinzas com
     // justificativa boa em cada um e a peça saiu com quatro fundos. A conta
