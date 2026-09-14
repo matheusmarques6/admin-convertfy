@@ -383,8 +383,10 @@ describe("runCopyFit", () => {
     const r = await runCopyFit(
       entrada([
         alvo({
+          // Sem fronteira de frase dentro do limite: o aparo por código
+          // (Passo 13, só em `. ! ?`) não tem onde cortar.
           texto:
-            "Each one ships with a lifetime guarantee and real buyer reviews. No guessing required.",
+            "Each one ships with a lifetime guarantee and real buyer reviews with no guessing required",
           max: 76,
           idioma_esperado: "en",
         }),
@@ -477,9 +479,10 @@ describe("runCopyFit", () => {
   // 09/09: o review com idade e cintura era descartado inteiro por 12 chars
   // (`ainda_acima_do_limite`, max 190). Excesso pequeno é aparado na última
   // palavra que cabe — o específico sobrevive.
-  it("modelo erra o teto duas vezes com excesso PEQUENO → aparado por código, via registrada", async () => {
+  it("modelo erra o teto duas vezes com excesso PEQUENO e fronteira de frase → aparado por código, via registrada", async () => {
+    // Passo 13: o aparo é na FRASE. Há um ponto dentro dos 120 chars.
     const original =
-      "I'm 54, 38-inch waist, and these are the first boxers that actually stay put through an eight-hour desk day and a long walk home."
+      "I'm 54, 38-inch waist, and these are the first boxers that actually stay put. Through an eight-hour desk day and a long walk home."
     invokeMock.mockResolvedValue(respostaLLM({ "5.review_2_quote": "x".repeat(250) }))
     const r = await runCopyFit(
       entrada([
@@ -496,21 +499,39 @@ describe("runCopyFit", () => {
     expect((parsed.de_para as Array<Record<string, unknown>>)[0]).toMatchObject({ aceito: true, via: "aparado_por_codigo" })
   })
 
-  it("travessão resolvido por código e coluna comparativa não chamam o modelo", async () => {
+  it("travessão resolvido por código não chama o modelo; coluna comparativa que o aparo resolve também não", async () => {
     const r = await runCopyFit(
       entrada([
         alvo({ id: "2.closing_copy", position: 2, key: "closing_copy", texto: "Feito no Brasil — cada peça é única", max: 60, motivos: ["travessao"], tracos: 1, proposta_por_codigo: "Feito no Brasil, cada peça é única" }),
-        alvo({ id: "2.column_b_item_1", position: 2, key: "column_b_item_1", texto: "Sits low, rolls down by midmorning each day", max: 40, motivos: ["max_len"], tracos: 0, so_codigo: true }),
-        alvo({ id: "2.column_b_item_2", position: 2, key: "column_b_item_2", texto: "Sits low, rolls down by midmorning every single day and never recovers its shape", max: 40, motivos: ["max_len"], tracos: 0, so_codigo: true }),
+        alvo({ id: "2.column_b_item_1", position: 2, key: "column_b_item_1", texto: "Sits low. Rolls down by midmorning each day", max: 40, motivos: ["max_len"], tracos: 0, so_codigo: true }),
       ]),
     )
     expect(invokeMock).not.toHaveBeenCalled()
     expect(r.aceitas.map((a) => [a.key, a.texto])).toEqual([
       ["closing_copy", "Feito no Brasil, cada peça é única"],
-      ["column_b_item_1", "Sits low, rolls down by midmorning each"],
+      ["column_b_item_1", "Sits low."],
     ])
     const parsed = respostaComResultado().parsedOutput as Record<string, unknown>
-    expect(parsed.por_codigo).toMatchObject({ travessao: 1, aparados: 1, comparativas_mantidas: 1, para_o_modelo: 0 })
+    expect(parsed.por_codigo).toMatchObject({ travessao: 1, aparados: 1, comparativas_mantidas: 0, comparativas_para_o_modelo: 0, para_o_modelo: 0 })
+  })
+
+  // Passo 13: a comparativa que o aparo não resolve vai ao MODELO com o par
+  // e a instrução de manter o lado — antes ficava estourada no e-mail.
+  it("coluna comparativa sem fronteira de frase vai ao modelo com o par; recusada duas vezes, fica comparativa_mantida", async () => {
+    invokeMock.mockResolvedValue(respostaLLM({ "2.column_b_item_2": "x".repeat(90) }))
+    const r = await runCopyFit(
+      entrada([
+        alvo({ id: "2.column_b_item_2", position: 2, key: "column_b_item_2", texto: "Sits low, rolls down by midmorning every single day and never recovers its shape", max: 40, motivos: ["max_len"], tracos: 0, so_codigo: true, par: "High rise, stays put all day" }),
+      ]),
+    )
+    expect(invokeMock).toHaveBeenCalledTimes(2)
+    const vars = invokeMock.mock.calls[0][1] as Record<string, string>
+    expect(vars.contrato_json).toContain('"coluna_comparativa": true')
+    expect(vars.contrato_json).toContain("High rise, stays put all day")
+    expect(r.aceitas).toEqual([])
+    const parsed = respostaComResultado().parsedOutput as Record<string, unknown>
+    expect(parsed.por_codigo).toMatchObject({ comparativas_para_o_modelo: 1, comparativas_mantidas: 1 })
+    expect((parsed.de_para as Array<Record<string, unknown>>)[0]).toMatchObject({ aceito: false, motivo: "comparativa_mantida" })
   })
 
   it("o contrato pede alvo abaixo do teto", async () => {
@@ -540,45 +561,6 @@ describe("runCopyFit", () => {
 
 })
 
-describe("runCopyFit — item de lista ausente", () => {
-  const ausente = (): AlvoDeEncurtamento =>
-    alvo({
-      id: "2.column_b_item_6",
-      position: 2,
-      key: "column_b_item_6",
-      label: "column_b_item_6",
-      texto: "",
-      max: 48,
-      motivos: ["ausente"],
-      irmaos: ["Limited or no return window", "Generic ratings with no context"],
-    })
-
-  it("o contrato leva criar_item_da_lista + itens_irmaos e o item criado é aceito", async () => {
-    invokeMock.mockResolvedValue(respostaLLM({ "2.column_b_item_6": "Hidden fees at checkout" }))
-    const r = await runCopyFit(entrada([ausente()]))
-    const vars = invokeMock.mock.calls[0][1] as Record<string, string>
-    expect(vars.contrato_json).toContain('"criar_item_da_lista": true')
-    expect(vars.contrato_json).toContain("Limited or no return window")
-    expect(r.aceitas).toEqual([
-      expect.objectContaining({ key: "column_b_item_6", texto: "Hidden fees at checkout" }),
-    ])
-    const parsed = respostaComResultado().parsedOutput as Record<string, unknown>
-    expect(parsed.com_ausente).toBe(1)
-    expect(parsed.ausentes_preenchidos).toBe(1)
-  })
-
-  it("item que repete um irmão é recusado nas duas passadas e o código NÃO inventa", async () => {
-    invokeMock.mockResolvedValue(
-      respostaLLM({ "2.column_b_item_6": "Limited or no return window" }),
-    )
-    const r = await runCopyFit(entrada([ausente()]))
-    expect(r.aceitas).toEqual([])
-    expect(r.de_para[0]).toMatchObject({ aceito: false, motivo: "igual_a_irmao" })
-    const parsed = respostaComResultado().parsedOutput as Record<string, unknown>
-    expect(parsed.ausentes_preenchidos).toBe(0)
-    expect(parsed.mantidos).toBe(1)
-  })
-})
 
 // ── Resposta vazia = orçamento consumido pelo raciocínio (run 5d7396b5) ──
 

@@ -80,6 +80,10 @@ const schema = z.object({
   dispatch_batch_id: z.string().uuid().optional().nullable(),
   subject: z.string().min(1),
   preheader: z.string().optional().nullable(),
+  // Passo 13: versão do prompt de copy do n8n (variável COPY_PROMPT_VERSION
+  // ecoada no callback). Ausente/vazio vira AVISO na run `copy` — é como se
+  // sabe se o flow que respondeu já leu `directive`/`campos_omitidos`.
+  copy_prompt_version: z.string().optional().nullable(),
   blocks: z.array(
     z.object({
       block_id: z.string().uuid(),
@@ -895,6 +899,11 @@ export async function POST(request: NextRequest) {
               .join(" · "),
       },
       {
+        rotulo: "Versão do prompt (n8n)",
+        cls: "sistema",
+        valor: (body.copy_prompt_version ?? "").trim() || "(não ecoada — flow anterior ao v3.2?)",
+      },
+      {
         rotulo: "Cupom",
         cls: "sistema",
         valor: couponSemCodigo.length > 0
@@ -940,6 +949,12 @@ export async function POST(request: NextRequest) {
         preheader: body.preheader ?? null,
         blocks_written: blocksWritten,
         blocks_total: body.blocks.length,
+        // Passo 13: qual versão do prompt do n8n produziu esta copy. Sem ela
+        // o aviso denuncia o flow antigo — não é issue de QA, é operacional.
+        copy_prompt_version: (body.copy_prompt_version ?? "").trim() || null,
+        ...((body.copy_prompt_version ?? "").trim()
+          ? {}
+          : { avisos: ["copy_prompt_version_ausente: o n8n não ecoou COPY_PROMPT_VERSION — o flow pode ser anterior ao payload v3.2 (directive/campos_omitidos/decisao.proibido)"] }),
         // Validador textual do contrato (14/09) — sempre presente.
         _contrato: contratoCopy,
         contrato: {

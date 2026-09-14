@@ -39,6 +39,7 @@ import type {
 } from "@/types/email-generation"
 import type { BlueprintFieldV2 } from "@/lib/agents/architect/deterministic-blueprint.builder"
 import { buildBlockCopySchema } from "@/lib/email-workspace/block-copy-schema"
+import { dedupeProibicoes } from "@/lib/agents/shared/decisao-do-email"
 import { SEM_INCENTIVO, incentivoDoOutline, type DecisaoDeIncentivo } from "@/lib/agents/objecoes/incentivo"
 import { condicionarOutline } from "@/lib/email-workspace/outline-condicional"
 import { logGenerationRun } from "@/lib/agents/callbacks/telemetry.callback"
@@ -1110,6 +1111,8 @@ export async function dispatchEmailCopyWebhook(
     variant_name: string | null
     motivo: "sem_campo_de_copy" | "sem_variante" | "descartado_na_montagem"
   }> = []
+  // Passo 13: exemplos removidos pela régua de claims, para a run.
+  const exemplosRemovidos: Array<{ email_number: number; position: number; type: string; campo: string; exemplo: string; motivo: string }> = []
   const camposOmitidos: Array<{
     email_number: number
     position: number
@@ -1132,6 +1135,8 @@ export async function dispatchEmailCopyWebhook(
 
   const payload = {
     event: "email_copy.requested" as const,
+    // Passo 13: versão do contrato do payload (docs/email-copy-payload-v2.md).
+    payload_version: "v3.2",
     timestamp: new Date().toISOString(),
     trigger_source: options.triggerSource,
     // Chave aditiva: contexto livre do operador (teste). null fora do teste.
@@ -1310,8 +1315,19 @@ export async function dispatchEmailCopyWebhook(
           decisao: {
             incentivo: incentivoByEmailId.get(e.id) ?? { ...SEM_INCENTIVO },
             insumos_permitidos: alvoByKey.get(key)?.insumos_permitidos ?? [],
+            // Passo 13: as proibições no nível do e-mail, UMA vez e sem os
+            // pares PT/EN da mesma regra. `alvo.proibido_neste_toque` segue
+            // (o flow atual lê dali) — duplicata transitória até o Bruno
+            // migrar o n8n para `decisao`.
+            proibido: dedupeProibicoes(alvoByKey.get(key)?.proibido_neste_toque ?? []),
           },
           estrutura_geral: (() => {
+            // Passo 13: com DECISÃO (alvo do Seletor) a estrutura geral do
+            // outline NÃO viaja — são duas vozes para a mesma peça, e o n8n
+            // obedecia à do outline ("entregue o cupom") por cima da
+            // decisão. Somente-texto continua com o outline: é a única
+            // estrutura que ele tem.
+            if (alvoByKey.has(key) && !textOnly) return null
             // O outline é por FLOW; a decisão de incentivo é por TOQUE (já
             // com o código traduzido/override) e vence o pt-BR do template.
             const o = condicionarOutline(outline, incentivoByEmailId.get(e.id) ?? { ...SEM_INCENTIVO })
@@ -1462,7 +1478,20 @@ export async function dispatchEmailCopyWebhook(
                   // 09/09: papel e requisitos como campos próprios do schema.
                   papel: resolved?.papel ?? null,
                   requisitos: resolved?.requisitos ?? null,
+                  // Passo 13: o exemplo que promete o que a decisão nega sai
+                  // do payload e vira `directive` — o n8n obedece ao exemplo.
+                  incentivo: (() => {
+                    const inc = incentivoByEmailId.get(e.id)
+                    return inc ? { existe: inc.existe, codigo: inc.codigo, valor: inc.valor } : null
+                  })(),
+                  proibido: alvoByKey.get(key)?.proibido_neste_toque ?? [],
                 }),
+                // Passo 13: o que a arbitragem tirou DESTE bloco, nomeado no
+                // próprio bloco — antes só a telemetria sabia.
+                campos_omitidos: allFields.filter((fld) => fld.omitir === true).map((fld) => fld.key),
+              }
+              for (const ex of bloco.schema.exemplos_removidos ?? []) {
+                exemplosRemovidos.push({ email_number: e.number, position: b.position, type: b.block_type, ...ex })
               }
               // Bloco sem NENHUM campo de copy sai do payload. Não é
               // economia de bytes: mandar um bloco vazio junto de um
@@ -1821,6 +1850,12 @@ export async function dispatchEmailCopyWebhook(
       ...(camposOmitidos.length > 0
         ? { campos_omitidos: camposOmitidos.slice(0, 60) }
         : {}),
+      // Passo 13: exemplos que prometiam o que a decisão nega e saíram do
+      // payload (viraram `directive`).
+      ...(exemplosRemovidos.length > 0
+        ? { exemplos_removidos: exemplosRemovidos.slice(0, 60) }
+        : {}),
+      payload_version: "v3.2",
       // Emails que não foram gerados por não sobrar seção nenhuma (MC-2).
       // Ficam marcados `failed` com `failure_reason='sem_secao_montada'`.
       ...(emailsSemSecao.length > 0

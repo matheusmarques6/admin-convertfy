@@ -135,3 +135,31 @@ describe("omitir, papel e requisitos (09/09)", () => {
     expect("requisitos" in schema).toBe(false)
   })
 })
+
+describe("buildBlockCopySchema — Passo 13: o exemplo que promete o que a decisão nega", () => {
+  const campo = { key: "cta_label", label: "CTA", type: "text_short", max_len: 24, example: "SHOP 10% OFF" }
+  it("com incentivo negado, o exemplo sai e vira directive; a remoção fica registrada", () => {
+    const s = buildBlockCopySchema([campo, { key: "headline", type: "text_short", example: "Welcome" }], {
+      incentivo: { existe: false, codigo: null, valor: null },
+      requisitos: { cupom: false, exige: ["falar de caimento"] },
+    })
+    expect(s.campos.cta_label.exemplo).toBeNull()
+    expect(s.campos.cta_label.directive).toContain("Sem oferta")
+    expect(s.campos.cta_label.directive).toContain("falar de caimento")
+    expect(s.campos.headline.exemplo).toBe("Welcome")
+    expect(s.exemplos_removidos).toHaveLength(1)
+    expect(s.exemplos_removidos?.[0]).toMatchObject({ campo: "cta_label", exemplo: "SHOP 10% OFF" })
+  })
+  it("com incentivo de 10%, o exemplo de 10% fica; o de 15% sai", () => {
+    const s = buildBlockCopySchema([campo, { key: "cta_2", type: "text_short", example: "SAVE 15% TODAY" }], {
+      incentivo: { existe: true, codigo: "WELCOME10", valor: "10%" },
+    })
+    expect(s.campos.cta_label.exemplo).toBe("SHOP 10% OFF")
+    expect(s.campos.cta_2.exemplo).toBeNull()
+  })
+  it("sem decisão nada muda (legado)", () => {
+    const s = buildBlockCopySchema([campo], {})
+    expect(s.campos.cta_label.exemplo).toBe("SHOP 10% OFF")
+    expect(s.exemplos_removidos).toBeUndefined()
+  })
+})

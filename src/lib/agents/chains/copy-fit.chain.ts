@@ -103,7 +103,7 @@ function tetoMaximoDe(configurado: number): number {
 }
 const REASONING: AgentInvokeConfig["reasoning"] = { effort: "low" }
 
-const DEFAULT_SYSTEM = `Você corrige copy de email de e-commerce: encurta o que passou do limite da caixa, tira o travessão, reescreve no idioma da loja o campo que voltou na língua errada e cria o item de lista que o gerador pulou.
+const DEFAULT_SYSTEM = `Você corrige copy de email de e-commerce: encurta o que passou do limite da caixa, tira o travessão e reescreve no idioma da loja o campo que voltou na língua errada. Você NUNCA cria campo que veio vazio.
 
 REGRAS
 - Reescreva CADA campo recebido para caber em max_caracteres. O limite é o tamanho real do slot no HTML: passar dele faz o texto vazar da caixa.
@@ -113,7 +113,7 @@ REGRAS
 - Não use reticências nem corte a frase no meio: entregue frase inteira e bem terminada.
 - Não invente informação que não esteja no texto original.
 - Respeite min_caracteres quando existir.
-- ITEM AUSENTE: campo marcado com criar_item_da_lista veio VAZIO do gerador. Escreva UM item novo para a mesma lista, no mesmo idioma, tom, pessoa e tamanho dos itens_irmaos, coerente com a orientacao do campo e com o argumento da lista — sem repetir nem parafrasear nenhum irmão. É a única situação em que você cria texto que não estava no original.
+- COLUNA COMPARATIVA: campo marcado com coluna_comparativa é uma célula de tabela lado a lado; \`par\` é a célula do OUTRO lado da mesma linha. Reescreva mantendo o LADO da comparação — crítica continua crítica, benefício continua benefício; nunca inverta o sentido nem transforme a célula dos concorrentes em elogio. Frase inteira, dentro de max_caracteres.
 - TRAVESSÃO: campo marcado com remover_travessao tem de voltar SEM travessão (—) e SEM meia-risca (–). Não troque o traço por hífen nem por reticências: use vírgula, ponto ou uma conjunção, o que soar natural NO IDIOMA DO TEXTO. Hífen DENTRO de palavra (OBD-II, e-mail, zero-risk) é parte da palavra: não mexa.
 - Campo com remover_travessao e sem encurtar pode ficar um pouco maior que o original, desde que caiba em max_caracteres — tirar o traço às vezes custa uma conjunção.
 
@@ -254,11 +254,10 @@ function contratoDe(alvos: ReadonlyArray<AlvoDeEncurtamento>): string {
       // trocou nos 14 campos — inclusive nos 14 que não tinham a marca.
       // Agora o idioma é UMA declaração no topo, igual para todo campo.
       traduzir_para_o_idioma_da_loja: a.motivos.includes("idioma") || undefined,
-      // Item de lista que o gerador NÃO devolveu (02/09): o modelo cria um
-      // a partir dos irmãos. É a única situação em que o encurtador
-      // escreve o que não estava lá — e o guard cobra que não repita.
-      criar_item_da_lista: a.motivos.includes("ausente") || undefined,
-      itens_irmaos: a.motivos.includes("ausente") ? a.irmaos : undefined,
+      // Passo 13: coluna comparativa vai ao modelo com a célula do outro
+      // lado — a instrução é manter o lado, e o guard cobra o tamanho.
+      coluna_comparativa: a.so_codigo || undefined,
+      par: a.so_codigo ? a.par || undefined : undefined,
       orientacao: a.orientacao || undefined,
     })),
     null,
@@ -412,10 +411,8 @@ export async function runCopyFit(input: CopyFitInput): Promise<CopyFitResult> {
           const idioma = a.motivos.includes("idioma")
             ? ` idioma ${a.idioma_detectado}→${a.idioma_esperado}`
             : ""
-          const ausente = a.motivos.includes("ausente")
-            ? ` ausente (${a.irmaos?.length ?? 0} irmãos)`
-            : ""
-          return `${a.key}${tamanho}${traco}${idioma}${ausente}`
+          const comparativa = a.so_codigo ? " coluna comparativa" : ""
+          return `${a.key}${tamanho}${traco}${idioma}${comparativa}`
         })
         .join(" · "),
     },
@@ -453,6 +450,7 @@ export async function runCopyFit(input: CopyFitInput): Promise<CopyFitResult> {
   // continuar contando — é o número que diz se o prompt está escorregando.
   let traducoesRecusadas = 0
   const viaCodigo = new Map<string, "travessao_por_codigo" | "aparado_por_codigo">()
+  let comparativasParaOModelo = 0
 
   /**
    * Plano B por CÓDIGO para o que o modelo não corrigiu.
@@ -469,7 +467,7 @@ export async function runCopyFit(input: CopyFitInput): Promise<CopyFitResult> {
    */
   const socorrer = (alvos: readonly AlvoDeEncurtamento[]): void => {
     for (const a of alvos) {
-      if (aceitas.has(a.id) || a.so_codigo) continue
+      if (aceitas.has(a.id)) continue
       const socorro = socorroPorCodigo(a)
       if (!socorro) continue
       const veredicto = aceitarReescrita(a.texto, socorro.texto, {
@@ -503,7 +501,12 @@ export async function runCopyFit(input: CopyFitInput): Promise<CopyFitResult> {
         aceitas.set(a.id, { id: a.id, position: a.position, block_id: a.block_id, key: a.key, texto: aparado })
         viaCodigo.set(a.id, "aparado_por_codigo")
       } else {
-        motivos.set(a.id, "comparativa_mantida")
+        // Passo 13: a coluna comparativa que o aparo não resolve vai ao
+        // MODELO com o par e a instrução de manter o lado — antes era
+        // mantida estourada. `comparativa_mantida` fica só para o que o
+        // modelo também não resolver.
+        comparativasParaOModelo++
+        paraOModelo.push(a)
       }
     }
     let pendentes = paraOModelo
@@ -591,6 +594,11 @@ export async function runCopyFit(input: CopyFitInput): Promise<CopyFitResult> {
     // ser descartado inteiro (`ainda_acima_do_limite`, batch 644d86c5).
     // Excesso maior continua como veio do n8n, contado em `mantidos`.
     socorrer(pendentes)
+    // Passo 13: coluna comparativa que nem o aparo nem o modelo resolveram
+    // fica como veio, com o motivo que a tela e o QA já conhecem.
+    for (const a of paraOModelo) {
+      if (a.so_codigo && !aceitas.has(a.id)) motivos.set(a.id, "comparativa_mantida")
+    }
 
     const de_para: DePara[] = input.alvos.map((a) => {
       const ok = aceitas.get(a.id)
@@ -645,7 +653,10 @@ export async function runCopyFit(input: CopyFitInput): Promise<CopyFitResult> {
         por_codigo: {
           travessao: [...viaCodigo.values()].filter((v) => v === "travessao_por_codigo").length,
           aparados: [...viaCodigo.values()].filter((v) => v === "aparado_por_codigo").length,
-          comparativas_mantidas: [...motivos.values()].filter((m) => m === "comparativa_mantida").length,
+          // Passo 13: comparativa que o aparo não resolveu vai ao modelo;
+          // `mantidas` só conta o que ele também não resolveu.
+          comparativas_para_o_modelo: comparativasParaOModelo,
+          comparativas_mantidas: paraOModelo.filter((a) => a.so_codigo && !aceitas.has(a.id)).length,
           para_o_modelo: paraOModelo.length,
         },
         // Travessão: quantos alvos entraram por ele e quantos sobraram no
@@ -669,12 +680,11 @@ export async function runCopyFit(input: CopyFitInput): Promise<CopyFitResult> {
         // devolver o campo em outra língua e o CÓDIGO barrou. Se voltar a
         // subir, é o prompt que está escorregando de novo.
         traducoes_recusadas: traducoesRecusadas,
-        // Itens de lista que o gerador pulou e o modelo criou (02/09). O
-        // que não foi preenchido sai do email pelo merge (badge + linha).
-        com_ausente: input.alvos.filter((a) => a.motivos.includes("ausente")).length,
-        ausentes_preenchidos: de_para.filter(
-          (d) => d.motivos.includes("ausente") && d.aceito,
-        ).length,
+        // Passo 13: a via `ausente` foi REMOVIDA — o encurtador não cria
+        // campo vazio. As chaves ficam em 0 para as queries de diagnóstico
+        // que as leem (deprecated).
+        com_ausente: 0,
+        ausentes_preenchidos: 0,
         de_para,
       },
       tokensInput,
