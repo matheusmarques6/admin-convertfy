@@ -858,11 +858,11 @@ Gates no banco em 14/09: `contrato_estrutural = on`, `contrato_textual =
 shadow`, `auditoria_estruturador = on` (`estruturador_mode`, `seletor_mode`
 e `color_plano_mode` já estavam `on`; `qa_mode = enforce`).
 
-**O que falta para a geração de verificação**: `coupon_codes` está `{}` em
-TODOS os 24 outlines com cupom — a Hero Boxers (inglês) vai sair com
-`BEMVINDO10` e `traducao_faltante: true` até alguém preencher `en` na tela
-de outlines. `coupon_value` também está vazio em todos: sem ele a régua de
-claims não confere percentual (só existência e código).
+**Cupons traduzidos (14/09, depois da execução)**: os 24 outlines ativos com
+cupom receberam `coupon_codes` nos 14 idiomas (tradução literal, ASCII;
+ja/zh/ko = inglês) e `coupon_value` pelo sufixo (ESPECIAL sem valor). Tabela e
+SQL em `supabase/migrations/DADOS_20260914_coupon_codes_traducao.sql`. A Hero
+Boxers (inglês) passa a sair com `WELCOME10` · `10%` · `outline_traduzido`.
 
 ## SEMANA 2 — a falha nomeada vira e-mail certo
 

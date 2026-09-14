@@ -6112,11 +6112,16 @@ posição em 55 chars + fio), nunca a oferta inventada.
 seguem em Fable (os três que DECIDEM). `max_tokens` intocado. Receita na
 seção 14/09 de `TROCAR_modelo_agentes.sql`.
 
-**Pendências declaradas**: `coupon_codes` está `{}` nos 24 outlines com
-cupom (a Hero Boxers sai em pt-BR com aviso até alguém preencher `en`);
-`coupon_value` vazio em todos (a régua de claims não confere percentual sem
-ele); o reenvio ao n8n em `contrato_textual = on` fica para depois da leitura
-em shadow (`DIAGNOSTICO_contrato_textual.sql`).
+**Cupons traduzidos (14/09)**: os 24 outlines ativos com cupom ganharam
+`coupon_codes` nos 14 idiomas além do pt-BR (tradução LITERAL, ASCII, sem
+acento — ja/zh/ko usam o inglês) e `coupon_value` derivado do sufixo
+(`10%`/`12%`/`14%`/`15%`; ESPECIAL fica NULL). Tabela e SQL rodado em
+`supabase/migrations/DADOS_20260914_coupon_codes_traducao.sql`. O código do
+outline é o DEFAULT por idioma; a loja sobrescreve pelo bloco `coupon` do
+e-mail, e o cupom precisa existir na plataforma dela.
+
+**Pendência declarada**: o reenvio ao n8n em `contrato_textual = on` fica
+para depois da leitura em shadow (`DIAGNOSTICO_contrato_textual.sql`).
 
 ---
 
