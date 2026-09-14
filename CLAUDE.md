@@ -6123,6 +6123,81 @@ e-mail, e o cupom precisa existir na plataforma dela.
 **Pendência declarada**: o reenvio ao n8n em `contrato_textual = on` fica
 para depois da leitura em shadow (`DIAGNOSTICO_contrato_textual.sql`).
 
+## Trilha B — gate, lint, dispositivo, tokens, gerador, painel (14/09, migrations 20261147-51)
+
+Seis itens depois da semana 1 do contrato de decisão. Plano em
+`.claude/plans` (sessão) e execução em
+`docs/email-generation/execucao-plano-pipeline-set2026.md` § "Executado —
+Trilha B". O que não pode regredir:
+
+- **B1 · gate de prontidão** (`lib/stores/prontidao.ts`, puro): a loja só
+  entra na fila com pesquisa (5 pilares), produtos, paleta com hex, logo e
+  fontes; avisos (paleta com dois "principal", política sem página, selos
+  vazios, cupom sem tradução, identidade não confirmada) seguem e viram run
+  `gate` `success`. Corta no TOPO do `enqueueDispatchJob` (antes do dedup) e
+  nas rotas manuais (422 `store_not_ready`; `override_motivo` ≥ 10 chars →
+  run `gate_override`). `gate_mode` no banco (`off|shadow|on`), env
+  `EMAIL_GATE_MODE` vence. O gate lê a ÚLTIMA identidade, não só a
+  confirmada — senão a loja fica bloqueada por um clique esquecido.
+- **B2 · lint de envio** (`html/lint-envio.ts` + `html/pos-processador.ts`,
+  puros): roda DEPOIS do strip de marcadores e ANTES do QA; 7 regras
+  bloqueiam (var(--x), img sem src, href morto, texto de example,
+  placeholder [x], contraste, container fora de 600), 8 avisos com auto-fix
+  (styles fundidos, vars resolvidas, comentários fora, MSO = anchor, img
+  vazia removida, alt, ano, line-height ≥ font-size). `lint_mode`
+  (`off|shadow|enforce`, default enforce) no banco; enforce + bloqueante →
+  `failed: lint_<id>` SEM chamar o QA. Prints 600/375 (`render_previews`)
+  pelo serviço de PNG da casa, fail-open, só com ≥ 25 s de orçamento;
+  `next.config.mjs` inclui o Chromium nas rotas que chegam ao runner.
+  **O par MSO só sincroniza dentro da janela** (`<![endif]`, `</tr>` ou o
+  próximo `<!--[if mso]>`): fora dela o botão do Outlook virava o label
+  do bloco vizinho. A régua de largura julga o CONTAINER do documento, não a
+  calha 100%.
+- **B6 · conformidade** (RPC `email_decisao_vs_entrega(uuid[])` +
+  `shared/conformidade.ts`, puro): por posição, pedido × curador ×
+  blueprint × montado × entregue, com o nó responsável na PRIMEIRA
+  fronteira que divergiu. `escolhas[].block_index` do Curador é índice da
+  ESTRUTURA — colapsa sobre `blocks_skipped`, senão a posição resgatada
+  aparece como escolha do Curador. Run sem `_contrato` (anterior ao Passo 8)
+  é validada RETROATIVAMENTE pelo mesmo `violacoesDaEscolha`.
+- **B3 · dispositivo** (`shared/dispositivos.ts`): 22 valores FECHADOS —
+  o código não inventa o 23º ("varredura numerada" é pergunta ao dono do
+  vocabulário). `conflitoDeContrato` elimina por dispositivo ANTES de cupom/
+  cta/itens; variante com `dispositivo` NULL nunca conflita (fail-open) e é
+  a auditoria (`dispositivo_sem_variante`) que denuncia. O backfill das 44
+  (`DADOS_20260914_backfill_dispositivo.sql`) foi APLICADO como proposta
+  reversível; NOT NULL fica para depois da revisão. Lacunas reveladas (zero
+  ativas): `products_grade_preco`, `reviews_2`, `body_faq`, `body_passos`,
+  `hero_apresentacao`.
+- **B5 · tokens de identidade** (`html/identity-tokens.ts`, puro): 11
+  tokens resolvidos no `fitFragment` — a MESMA fronteira do
+  `neutralizeGutterPadding`, pelo MESMO motivo: montagem e enxerto precisam
+  ver o mesmo fragmento. Token sem valor cai no padrão e é REPORTADO
+  (`sem_valor`), nunca fica cru (`{{COR_FUNDO}}` num style viraria
+  `background-color:;` no strip). `color_format` é pulado (`skipped:
+  tokens_de_identidade`) quando todos os blocos são tokenizados; misto → o
+  agente só vê os legados (`blocosExcluidos`) e o `recolor` global que
+  alcançar bloco tokenizado é DESFEITO por marcador (`preservarBlocos`).
+  Papéis de cor fechados (`lib/stores/papeis-de-cor.ts`): `principal|fundo|
+  texto|destaque|superficie`, legado capitalizado normalizado na leitura,
+  422 `paleta_dois_principais` no PATCH. Tokenização de variantes existentes
+  (`identity-tokenize.ts`, heurística) é DIFF para revisão com prévia nas
+  paletas de prova; nada aplicado em produção ainda. `fallbackChainFor`/
+  `pesoNumerico` moram em `html/font-fallback.ts` (ciclo de import).
+- **B4 · gerador de anatomias** (`gerador-anatomia/`): saída em DOIS blocos
+  cercados (```json + ```html — HTML escapado em JSON é onde o modelo erra);
+  `validar-anatomia.ts` (puro) reprova pelo lint, largura, tokens (zero hex/
+  font-family literal), cobertura example↔HTML pelo casador da PRODUÇÃO
+  (`auditVariantCoverage`, só campos de texto; url/image pelo `{{TAG}}`) e
+  contrato do dispositivo (`contratoDoDispositivo`, mesma régua do Curador).
+  Grava `is_active=false, source='gerada'`, `anatomia_slug` único,
+  `geracao_meta` com prévias. Run gravada na loja de REFERÊNCIA (`store_id`
+  é NOT NULL nas runs). Rodada inicial de 12 pendente: exige sessão e chaves.
+- **Telemetria**: agente novo entra no CHECK de `email_generation_runs`
+  (20261147 tem gate/gate_override/lint_envio/gerador_anatomia) E no de
+  `email_agent_configs` (20261151) E em `AGENT_VISUAL`/`PIPELINE_AGENT_ORDER`/
+  grafo do estúdio — `agent-check-sync.test.ts` reprova o que faltar.
+
 ---
 
 *Última atualização: Setembro 2026*

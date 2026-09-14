@@ -864,6 +864,59 @@ ja/zh/ko = inglês) e `coupon_value` pelo sufixo (ESPECIAL sem valor). Tabela e
 SQL em `supabase/migrations/DADOS_20260914_coupon_codes_traducao.sql`. A Hero
 Boxers (inglês) passa a sair com `WELCOME10` · `10%` · `outline_traduzido`.
 
+## Executado — Trilha B (14/09, mesma branch; commits 494eabc → 17a0adf)
+
+Os seis itens da Trilha B (B1 gate · B2 lint/pós-processador/prints · B6
+painel · B3 dispositivo · B5 tokens · B4 gerador) estão em código, testados
+e com as migrations aplicadas em produção (`20261147` gate/lint/runs,
+`20261148` + `20261148b` RPC `email_decisao_vs_entrega`, `20261149`
+colunas de dispositivo/tokens/source, `20261151` config do gerador). Ordem
+executada: B1 → B2 → B6 → B3 → B5 → B4 — B6 antes de B3/B5 porque é ele que
+mede se os dois funcionaram; B4 por último porque consome B2, B3 e B5.
+
+| Item | O que entrou | Onde se lê |
+|---|---|---|
+| B1 | `avaliarProntidao` (5 bloqueios, 5 avisos) + `aplicarGate` no topo do `enqueueDispatchJob` e nas 3 rotas manuais (422 `store_not_ready`; `override_motivo` ≥ 10 chars grava run `gate_override`); card "Prontidão para geração" na aba Produção; gate `gate_mode` (on) no banco | runs `gate`/`gate_override`; `GET /api/admin/stores/[id]/prontidao` |
+| B2 | `lintEnvio` (15 regras, 7 bloqueantes) + `posProcessar` (8 fixes idempotentes) rodando DEPOIS do strip de marcadores e ANTES do QA; prints 600/375 no Storage (`render_previews`); `lint_mode` (enforce) no banco; `failure_reason` `lint_<id>` | run `lint_envio`; miniaturas no cabeçalho da execução |
+| B6 | RPC `email_decisao_vs_entrega(uuid[])` (por posição: pedido · curador · blueprint · montado · entregue · violações com origem) + `montarConformidade` puro (nó responsável na primeira fronteira; validação RETROATIVA quando a run não tem `_contrato`); painel "Conformidade" na execução e KPI agregado nos logs | `GET /api/admin/emails/[id]/conformidade` |
+| B3 | vocabulário fechado de 22 (`shared/dispositivos.ts`; teste compara com o CHECK); `requisitos.dispositivo` no Estruturador (fora da seção = descarte), `dispositivo_ausente`/`dispositivo_sem_variante` na auditoria; `conflitoDeContrato` elimina por dispositivo ANTES de tudo; +150 no custo do resgate; `<secoes_disponiveis>` com contagem por dispositivo; select na aba Componentes; memória de uso por LOJA | `assembler_chooser.eliminadas_por_requisito`; coluna Dispositivo na Conformidade |
+| B5 | 11 tokens resolvidos no `fitFragment` (montagem e enxerto veem o MESMO fragmento); `color_format` pulado (`skipped: tokens_de_identidade`) com todos os blocos tokenizados, misto → agente vê só os legados e `preservarBlocos` desfaz o recolor global; papéis de cor fechados (`principal|fundo|texto|destaque|superficie`, 422 com duas principais); tokenização de variantes existentes com prévia nas paletas Luxe Lift/Innova Bay | `assembler.blocos_tokenizados`; `color_format.blocos_preservados` |
+| B4 | agente `gerador_anatomia` (Sonnet 4.6; 3ª tentativa em `GERADOR_ANATOMIA_MODELO_FINAL`), saída em dois blocos cercados, validador puro (lint + largura + tokens + cobertura example↔HTML pelo casador da produção + contrato do dispositivo), grava `is_active=false, source='gerada'` com prévias | run `gerador_anatomia`; selo roxo na aba Componentes |
+
+**O que DIVERGIU do desenho, e por quê:**
+
+| Item | Desenho | Executado | Motivo |
+|---|---|---|---|
+| B3 backfill | tabela dos 44 entregue para revisão ANTES de aplicar; depois `20261150` NOT NULL | **aplicado** como proposta REVERSÍVEL (`DADOS_20260914_backfill_dispositivo.sql`, confiança por linha; rollback no fim); NOT NULL **não** criado | sem o backfill o filtro por dispositivo é fail-open em 100% da biblioteca e nada do B3 seria medível; a coluna segue nullable e editável na tela — reclassificar é um select |
+| B5 migração das 41 | POST por `ids` após revisão | rota + dialog prontos, **nenhuma variante tokenizada** em produção | inferência errada sai em toda peça que usar a variante; a prévia nas duas paletas existe para a revisão humana, e ela não aconteceu nesta sessão |
+| B4 rodada de 12 | disparada pelo executor, custo somado no commit | **não executada** | exige sessão autenticada na rota e as chaves do ambiente (ausentes no container); o botão "Gerar anatomia" e a rota estão prontos; custo esperado ≤ US$ 0,15 por tentativa |
+| B2 largura | `auditEmailWidth` do documento | régua reescrita para DOCUMENTO (o container, não a calha 100%) | o auditor da biblioteca julga blocos; no e-mail montado a calha 100% é a raiz legítima |
+| B6 | view SQL | RPC (`SECURITY DEFINER`, `service_role`) + módulo puro | o índice `escolhas[].block_index` do Curador é da ESTRUTURA e colapsa sobre `blocks_skipped` — a regra mora numa função, não numa view |
+| Gate B1 | `gate_mode` só no B1 | avisos do batch entram no in-app do `notifyBatchComplete` (template de e-mail tem assinatura fixa) | declarado |
+
+**Medido nesta sessão (sem geração real — a rodada de verificação depende
+do deploy):** fixture do lint = o HTML real do e-mail `bb2ef22d` do batch
+6249aef2 → 11 achados (css_var 3, style 6, comentário 85, mso 1 "DIGITAL
+GIFT CARD" ≠ "BAMBOO BOXERS", img_sem_src 6, anchor_sem_href 4,
+texto_de_example 12, line_height 3, alt 9, ano 2025, container 598px); o
+pós-processador zera 8 e sobram `anchor_sem_href`, `texto_de_example` e
+`largura` — que são de BIBLIOTECA. Conformidade retroativa do mesmo batch:
+com o dispositivo no contrato, 4 posições divergentes (hero_pergunta ×
+hero_apresentacao; body_garantias × body_tese; body_comparacao ×
+body_garantias; products_galeria × products_grade_preco) e 2 conformes.
+Backfill: 44 variantes classificadas, 0 sem `anatomia_slug`; lacunas que
+o backfill REVELA (nenhuma ativa): `products_grade_preco`, `reviews_2`,
+`body_faq`, `body_passos`, `hero_apresentacao` — exatamente as famílias da
+rodada inicial do gerador. Tokenização sobre duas variantes reais (body 3,
+hero 3): 5 tokens inferidos cada, zero conflito, VML e raio acompanham.
+
+**Perguntas para o Bruno (Raia 1), não bloqueiam:** (1) "varredura numerada
+de 3–4 razões" não tem dispositivo entre os 22 — o mais próximo é
+`body_passos`; criar um 23º ou o Estruturador passa a pedir `body_passos`?
+(2) autoria no vault das 22 notas `componentes/eixos/dispositivo/<slug>.md`
+e do campo `dispositivo:` nas 44 notas de variante; (3) revisão da tabela
+de backfill (confiança `baixa` em body 6/8, produtos 2).
+
 ## SEMANA 2 — a falha nomeada vira e-mail certo
 
 ### Passo 11 · A2 parte 1 · Resgate que respeita descartes e preço
