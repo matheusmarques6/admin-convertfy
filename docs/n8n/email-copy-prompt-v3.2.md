@@ -475,6 +475,18 @@ outros três.
 
 ## 9. Como saber que pegou
 
+**Medido em 15/09, 12:43–12:45 UTC (smoke test de dentro do Postgres, `pg_net`,
+payload real de 14/09 com `dispatch_batch_id` falso)**: webhook 200 em
+12:43:49, callback recebido em 12:45:39 (110 s para 38 campos), run `copy`
+`skipped` por `stale_dispatch_batch` com `model = anthropic/claude-sonnet-4.6`
+(só o MONTADOR novo envia `meta.model`), batch falso ecoado e assunto
+"Here's Your 10% Off Code". A peça não foi tocada. Dois defeitos achados e
+corrigidos na rodada 1: `{{ }}` literal no System Message (o n8n avalia
+como expressão vazia — "invalid syntax") e o GERADOR respondendo em prosa
+("I need to write a subject… **Analysis:**") — daí a trava "primeiro
+caractere { e último }" e o Auto-Fix nos parsers.
+
+
 Na run `copy` do admin (Estúdio → Execuções, ou
 `email_generation_runs.parsed_output`): `copy_prompt_version =
 "n8n-v3.2-2026-09-15"`, `desvios_pre_fit` perto de zero (hoje 7,3 por
