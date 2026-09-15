@@ -338,6 +338,24 @@ export interface CapacidadeDaSecao {
   classificadas?: number
   /** Faixa de itens das variantes que têm grade (null = nenhuma tem). */
   itens: { min: number; max: number } | null
+  /**
+   * Faixa de itens POR DISPOSITIVO (15/09).
+   *
+   * A faixa da seção inteira não responde a pergunta que importa: o
+   * Estruturador escolhe um dispositivo E uma faixa de itens, e as duas
+   * podem ser incompatíveis por construção. Medido na Innova (15/09): ele
+   * pediu `reviews_3plus` com `n_itens: {min:2, max:2}` — "três ou mais"
+   * limitado a dois. As três variantes do dispositivo entregam 3 e 4 itens,
+   * então todas foram eliminadas, a seção zerou, a peça reprovou em
+   * `posicao_sem_variante` e a culpa foi atribuída à BIBLIOTECA, que estava
+   * certa. Com a faixa por dispositivo no prompt, o pedido impossível não
+   * nasce; com ela na auditoria, não passa.
+   *
+   * Dispositivo cujas variantes não têm grade nenhuma fica FORA do mapa —
+   * "sem grade" não é faixa, e inventar `{min:0,max:0}` reprovaria pedido
+   * legítimo de quem só quer o bloco.
+   */
+  itens_por_dispositivo?: Record<string, { min: number; max: number }>
   com_preco: number
   com_avaliacao: number
   com_cupom: number
@@ -373,6 +391,7 @@ export function capacidadePorSecao(
       com_credencial: 0,
       com_imagem: 0,
       com_imagem_por_dispositivo: {},
+      itens_por_dispositivo: {},
     })
     cap.variantes++
     if (v.dispositivo) {
@@ -391,6 +410,13 @@ export function capacidadePorSecao(
       cap.itens = cap.itens
         ? { min: Math.min(cap.itens.min, c.n_itens), max: Math.max(cap.itens.max, c.n_itens) }
         : { min: c.n_itens, max: c.n_itens }
+      if (v.dispositivo) {
+        cap.itens_por_dispositivo ??= {}
+        const atual = cap.itens_por_dispositivo[v.dispositivo]
+        cap.itens_por_dispositivo[v.dispositivo] = atual
+          ? { min: Math.min(atual.min, c.n_itens), max: Math.max(atual.max, c.n_itens) }
+          : { min: c.n_itens, max: c.n_itens }
+      }
     }
     if (c.tem_preco) cap.com_preco++
     if (c.tem_avaliacao) cap.com_avaliacao++
@@ -420,8 +446,17 @@ export function renderCapacidade(cap: Record<string, CapacidadeDaSecao>): string
       // classificada diz isso — pedir dispositivo ali é lacuna declarada.
       const disps = Object.entries(c.por_dispositivo ?? {}).sort((a, b) => a[0].localeCompare(b[0]))
       const classificadas = c.classificadas ?? 0
+      // A faixa de itens vai COLADA no dispositivo, e não só na linha da
+      // seção: quem escolhe a forma escolhe a grade junto, e a faixa da
+      // seção inteira deixa passar o pedido que se contradiz sozinho
+      // (`reviews_3plus` com no máximo 2 itens — Innova, 15/09).
+      const comFaixa = ([d, n]: [string, number]) => {
+        const f = (c.itens_por_dispositivo ?? {})[d]
+        if (!f) return `${d} (${n})`
+        return `${d} (${n}, ${f.min === f.max ? `${f.min} ${f.min === 1 ? "item" : "itens"}` : `${f.min}–${f.max} itens`})`
+      }
       const linhaDisp = disps.length > 0
-        ? `  dispositivos: ${disps.map(([d, n]) => `${d} (${n})`).join(", ")}${classificadas < c.variantes ? ` · ${c.variantes - classificadas} sem classificação` : ""}`
+        ? `  dispositivos: ${disps.map(comFaixa).join(", ")}${classificadas < c.variantes ? ` · ${c.variantes - classificadas} sem classificação` : ""}`
         : "  dispositivos: (nenhuma variante classificada — qualquer dispositivo desta seção é lacuna)"
       return `- ${k}: ${partes.join(" · ")}\n${linhaDisp}`
     })

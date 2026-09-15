@@ -39,6 +39,7 @@ export type RegraDaAuditoria =
   | "dispositivo_ausente"
   | "dispositivo_sem_variante"
   | "imagem_sem_cena"
+  | "n_itens_fora_do_dispositivo"
 
 export interface AchadoDaAuditoria {
   regra: RegraDaAuditoria
@@ -244,6 +245,38 @@ export function auditarRequisitos(input: AuditarRequisitosInput): AuditoriaDosRe
       if (r.cta === true && cap.com_cta === 0) fora("CTA")
       if (r.n_itens && cap.itens && (r.n_itens.min > cap.itens.max || r.n_itens.max < cap.itens.min)) {
         fora(`${r.n_itens.min}–${r.n_itens.max} itens (a seção vai de ${cap.itens.min} a ${cap.itens.max})`)
+      }
+    }
+
+    // ── n_itens_fora_do_dispositivo ─────────────────────────────────────
+    //
+    // A régua acima olha a SEÇÃO, e por isso é cega para o pedido que se
+    // contradiz sozinho. Medido na Innova (15/09, batch de 15:49): posição
+    // `reviews` com `dispositivo: reviews_3plus` E `n_itens: {min:2,max:2}`
+    // — "três ou mais" limitado a dois. A seção tinha variante de 2 itens
+    // (as de `reviews_com_credencial`), então `cap.itens` não acusou e a
+    // auditoria devolveu `ok: true`; o filtro então eliminou as SETE
+    // variantes de reviews (`zerou: true`), a posição ficou vazia e a peça
+    // reprovou em `posicao_sem_variante` — com o responsável apontado para
+    // a BIBLIOTECA, que estava certa: ela tem três `reviews_3plus`, e elas
+    // entregam 3 e 4 itens porque é isso que o nome do dispositivo diz.
+    //
+    // Custo do engano: US$ 4,26 e a peça inteira, mais uma cobrança de
+    // curadoria por lacuna que não existe.
+    //
+    // A régua é o DADO, não o vocabulário: nenhuma variante ativa daquele
+    // dispositivo cabe na faixa pedida. Dispositivo sem grade nenhuma fica
+    // fora do mapa e não é julgado — "sem grade" não é faixa.
+    if (r?.dispositivo && r.n_itens && cap) {
+      const faixa = (cap.itens_por_dispositivo ?? {})[r.dispositivo]
+      const temVariante = Boolean((cap.por_dispositivo ?? {})[r.dispositivo])
+      if (faixa && temVariante && (r.n_itens.min > faixa.max || r.n_itens.max < faixa.min)) {
+        duras.push({
+          regra: "n_itens_fora_do_dispositivo",
+          block_index: i,
+          section: p.section,
+          detalhe: `posição ${i + 1} (${p.section}) pede "${r.dispositivo}" com ${r.n_itens.min}–${r.n_itens.max} itens, e toda variante dessa forma entrega ${faixa.min === faixa.max ? faixa.min : `${faixa.min}–${faixa.max}`} — o pedido se contradiz e nenhuma variante sobrevive ao filtro. Ajuste "n_itens" à forma, ou peça outra forma`,
+        })
       }
     }
 

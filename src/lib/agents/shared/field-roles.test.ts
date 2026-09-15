@@ -283,3 +283,48 @@ describe("capacidadePorSecao — com imagem gerada (15/09)", () => {
     expect(txt.split("\n").find((l) => l.startsWith("- footer"))).not.toContain("imagem")
   })
 })
+
+// ── Faixa de itens POR DISPOSITIVO (15/09) ─────────────────────────────
+//
+// A Innova reprovou porque `reviews_3plus` foi pedido com no máximo 2
+// itens: a faixa da SEÇÃO ia de 2 a 4 (por causa das variantes de
+// `reviews_com_credencial`), então nada acusou, e o filtro eliminou as sete
+// variantes de reviews. A faixa por forma é o dado que faltava nos dois
+// lados — no prompt, para o pedido não nascer; na auditoria, para não passar.
+describe("capacidadePorSecao — faixa de itens por dispositivo (15/09)", () => {
+  const tresItens = campos("review_1_body review_2_body review_3_body")
+  const quatroItens = campos("review_1_body review_2_body review_3_body review_4_body")
+  const doisItens = campos("review_1_body review_2_body")
+  const lib = [
+    { block_type: "reviews", output_schema: tresItens, dispositivo: "reviews_3plus" },
+    { block_type: "reviews", output_schema: quatroItens, dispositivo: "reviews_3plus" },
+    { block_type: "reviews", output_schema: doisItens, dispositivo: "reviews_com_credencial" },
+    // Sem grade nenhuma: fica FORA do mapa de faixas, não vira {0,0}.
+    { block_type: "reviews", output_schema: campos("reviews_headline reviews_cta_label"), dispositivo: "reviews_com_credencial" },
+  ]
+  it("a faixa da seção esconde o que a faixa da forma revela", () => {
+    const cap = capacidadePorSecao(lib)
+    expect(cap.reviews.itens).toEqual({ min: 2, max: 4 })
+    expect(cap.reviews.itens_por_dispositivo).toEqual({
+      reviews_3plus: { min: 3, max: 4 },
+      reviews_com_credencial: { min: 2, max: 2 },
+    })
+  })
+  it("variante sem dispositivo não entra no mapa por forma", () => {
+    const cap = capacidadePorSecao([{ block_type: "reviews", output_schema: tresItens }])
+    expect(cap.reviews.itens).toEqual({ min: 3, max: 3 })
+    expect(cap.reviews.itens_por_dispositivo).toEqual({})
+  })
+  it("o render cola a faixa no dispositivo — é o que o Estruturador lê antes de pedir", () => {
+    const txt = renderCapacidade(capacidadePorSecao(lib))
+    expect(txt).toContain("reviews_3plus (2, 3–4 itens)")
+    expect(txt).toContain("reviews_com_credencial (2, 2 itens)")
+  })
+  it("dispositivo sem grade sai sem faixa, e não como zero", () => {
+    const txt = renderCapacidade(
+      capacidadePorSecao([{ block_type: "hero", output_schema: campos("title"), dispositivo: "hero_pergunta" }]),
+    )
+    expect(txt).toContain("hero_pergunta (1)")
+    expect(txt).not.toContain("hero_pergunta (1, 0")
+  })
+})

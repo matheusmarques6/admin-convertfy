@@ -1,4 +1,4 @@
--- DIAGNÓSTICO — Semana 2 do plano de set/2026 (Passos 11, 13, 14, 15, 16) + Passo 19
+-- DIAGNÓSTICO — Semana 2 do plano de set/2026 (Passos 11, 13, 14, 15, 16) + Passo 19 + revisão 15/09
 -- Leitura pós-deploy. Cada bloco responde a uma pergunta do "ficou correto se".
 -- Rodar um bloco por vez no SQL Editor (o MCP devolve só o ÚLTIMO statement).
 
@@ -159,3 +159,51 @@ select coalesce(block_type,'(sem seção)') as secao, count(*) as ativas,
        count(*) filter (where dispositivo is null) as sem_dispositivo,
        string_agg(distinct dispositivo, ', ' order by dispositivo) as dispositivos
 from email_component_variants where is_active group by 1 order by 1;
+
+-- ── 15/09 · pedido que se contradiz: forma × grade ──────────────────────
+-- Posições em que o Estruturador combinou `dispositivo` com uma faixa de
+-- `n_itens` que NENHUMA variante daquela forma entrega. Antes de
+-- `n_itens_fora_do_dispositivo` isto passava calado e a peça reprovava no
+-- fim, em `posicao_sem_variante`, com a culpa na biblioteca.
+with faixa as (
+  select v.dispositivo, v.block_type,
+         min(g.n) as min_itens, max(g.n) as max_itens, count(*) as variantes
+  from email_component_variants v
+  join lateral (
+    select max((regexp_match(c->>'key', '_([0-9]+)_'))[1]::int) as n
+    from jsonb_array_elements(coalesce(v.output_schema,'[]')) c
+  ) g on g.n is not null
+  where v.is_active and v.dispositivo is not null
+  group by 1, 2
+),
+pedidos as (
+  select r.id as run_id, r.created_at, r.store_id,
+         p->>'section' as secao,
+         p->'requisitos'->>'dispositivo' as dispositivo,
+         (p->'requisitos'->'n_itens'->>'min')::int as pede_min,
+         (p->'requisitos'->'n_itens'->>'max')::int as pede_max
+  from email_generation_runs r,
+       lateral jsonb_array_elements(coalesce(r.parsed_output->'estrutura','[]')) p
+  where r.agent = 'estruturador' and r.status = 'success'
+    and r.created_at > now() - interval '30 days'
+)
+select pd.created_at, pd.secao, pd.dispositivo,
+       pd.pede_min || '–' || pd.pede_max as pediu,
+       f.min_itens || '–' || f.max_itens as a_forma_entrega,
+       f.variantes
+from pedidos pd
+join faixa f on f.dispositivo = pd.dispositivo
+where pd.pede_min is not null and pd.pede_max is not null
+  and (pd.pede_min > f.max_itens or pd.pede_max < f.min_itens)
+order by pd.created_at desc;
+
+-- ── 15/09 · execuções manuais pausadas, por idade ───────────────────────
+-- `paused` sem prazo trancava o e-mail (índice `uniq_ege_manual_viva`
+-- cobre running E paused) e o mantinha `rendering` para sempre. O watchdog
+-- agora expira em 12 h; linha acima disso aqui é sinal de cron parado.
+select id, email_id, stopped_at_node,
+       round(extract(epoch from (now() - updated_at))/3600, 1) as horas_pausada,
+       started_at, updated_at
+from email_generation_executions
+where mode = 'manual' and status = 'paused'
+order by updated_at;

@@ -6800,6 +6800,75 @@ cá — errados, a nota é ignorada **em silêncio**. A ficha é gerada do banco
 `resumirContrato` que monta a linha do catálogo, senão a ficha descreveria uma
 peça e o ranking mediria outra.
 
+## O pedido que se contradiz sozinho, e a pausa sem fim (15/09)
+
+Duas revisões da geração de hoje, as duas medidas no banco antes de
+escrever código.
+
+### `reviews_3plus` com no máximo 2 itens
+
+Batch das 15:49 (Innova, welcome 1): a peça rodou inteira, custou **US$
+4,26** e reprovou no QA em `posicao_sem_variante [high/**biblioteca**]`.
+A biblioteca estava CERTA. O Estruturador pediu, na posição 3,
+`dispositivo: reviews_3plus` **com `n_itens: {min:2, max:2}`** — "três ou
+mais" limitado a dois. Medido: as 3 variantes ativas de `reviews_3plus`
+entregam 3 itens; a única de `reviews_com_credencial` entrega 2. O filtro
+eliminou as **sete** variantes de reviews (`zerou: true`), o fail-open
+devolveu todas, o resgate pegou uma e o validador a recusou
+(`resgate_recusado`) — posição vazia, peça reprovada, e a curadoria
+cobrada por uma lacuna que não existe.
+
+**A auditoria do Estruturador rodou (`modo: on`) e devolveu `ok: true`.**
+A régua de `n_itens` olhava a faixa da **seção**, que ia de 2 a 3 por
+causa da variante de credencial: `2 < 2` é falso, nada acusou. O pedido se
+contradiz na combinação FORMA × GRADE, e ninguém olhava para as duas
+juntas.
+
+`CapacidadeDaSecao.itens_por_dispositivo` passa a levar a faixa POR FORMA,
+e ela entra nos dois lados: no `<secoes_disponiveis>` colada ao
+dispositivo (`reviews_3plus (3, 3 itens)`), para o pedido impossível não
+nascer; e na regra dura `n_itens_fora_do_dispositivo`, para não passar. A
+régua é o DADO, não o vocabulário — "nenhuma variante ativa desta forma
+cabe na faixa pedida" —, então ela não depende de alguém ler o nome do
+dispositivo. Forma sem grade cadastrada fica FORA do mapa: "sem grade" não
+é faixa, e inventar `{0,0}` reprovaria quem só quer o bloco. A régua da
+seção FICA, e um teste garante que ela sozinha não pegaria este caso.
+
+### A pausa manual não tinha fim
+
+A execução manual `8658d1a8` estava `paused` no nó `color_format` desde
+10/09 — **cinco dias** — e com ela o e-mail `758f05de` seguia `rendering`
+no banco e "rodando" na tela. `emailsComExecucaoPausada` protege o e-mail
+de TODOS os fronts do watchdog, e o desenho está certo (parar no nó X e
+sair para almoçar não pode devolver `failed:timeout_phase2`); o que
+faltava era o outro lado dele. Pior: `uniq_ege_manual_viva` cobre
+`running` E `paused`, então o e-mail ficava **trancado** — todo disparo
+manual novo tomava 409, para sempre.
+
+`pausa.ts` (puro, 13 testes) tria por idade: **12 h** cobrem um dia de
+trabalho e não atravessam a noite, que é onde "pausado" vira "esquecido".
+A idade sai de `updated_at` (o instante da pausa, pelo trigger com
+`clock_timestamp()`). **Carimbo ilegível conta como VIVA** — expirar no
+escuro derrubaria a proteção justamente onde ela não pôde ser medida. A
+expiração roda dentro de `emailsComExecucaoPausada`, no watchdog: a pausa
+vencida é fechada e o e-mail volta aos fronts na MESMA rodada, sem front
+novo nem cron novo.
+
+Fechada a pausa, o e-mail sai do limbo com o motivo verdadeiro
+(`liberarEmailDaExecucao` → `execucao_manual_cancelada` /
+`execucao_manual_expirada`). Sem isso o **Front 5 o RETOMARIA** dentro de
+25 min — cancelar viraria "continue" — e o Front 3 lhe daria
+`timeout_phase2`, que não foi o que aconteceu. O `html` fica INTACTO: é
+ele que permite ao disparo seguinte retomar com `start_from`. Execução
+`running` fica de fora (pode haver runner em voo, e ele escreve o
+desfecho).
+
+**Limite declarado na perna B do Front 2**: ela exige
+`generation_batch_id` porque `in_progress` também é status LEGACY do Epic
+8/9, e varrer sem batch inventaria falha em e-mail que nunca foi gerado. O
+preço é um zumbi conhecido (um, parado desde 28/08) que pede decisão
+humana, não varredura.
+
 ---
 
 *Última atualização: Setembro 2026*

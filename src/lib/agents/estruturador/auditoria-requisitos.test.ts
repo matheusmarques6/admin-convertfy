@@ -318,3 +318,95 @@ describe("auditarRequisitos — imagem_sem_cena (15/09)", () => {
     expect(b.duras.some((d) => d.regra === "imagem_sem_cena" && d.section === "hero")).toBe(false)
   })
 })
+
+// ── n_itens_fora_do_dispositivo: o caso REAL da Innova (15/09) ──────────
+//
+// Batch das 15:49: posição `reviews` com `dispositivo: reviews_3plus` E
+// `n_itens: {min:2, max:2}`. A biblioteca tinha três `reviews_3plus` (3, 3
+// e 4 itens) e outras de `reviews_com_credencial` com grade menor — então
+// `cap.itens` da SEÇÃO ia de 2 a 4 e a régua de capacidade não acusou nada
+// (`ok: true`, `duras: []`). O filtro então eliminou as SETE variantes de
+// reviews, a posição ficou vazia e a peça reprovou em `posicao_sem_variante`
+// com o dedo apontado para a biblioteca, que estava certa.
+describe("auditarRequisitos — n_itens × dispositivo", () => {
+  const CAP_REVIEWS: Record<string, CapacidadeDaSecao> = {
+    reviews: {
+      ...CAP.reviews,
+      // A seção inteira vai de 2 a 4 — é isso que escondia o erro.
+      itens: { min: 2, max: 4 },
+      por_dispositivo: { reviews_3plus: 3, reviews_com_credencial: 4 },
+      classificadas: 7,
+      itens_por_dispositivo: {
+        reviews_3plus: { min: 3, max: 4 },
+        reviews_com_credencial: { min: 2, max: 2 },
+      },
+    },
+  }
+  const auditar = (requisitos: Record<string, unknown>) =>
+    auditarRequisitos({
+      saida: normalizarOutputDetalhado({
+        estrutura: [{ section: "reviews", papel: "prova", referencia: "r", porque: "p", requisitos }],
+        descartes: [],
+      }).saida,
+      alvo: null,
+      incentivo: null,
+      capacidade: CAP_REVIEWS,
+      secoesDisponiveis: ["reviews"],
+      descartados: [],
+    })
+
+  it("pedir 2 itens de um dispositivo que entrega 3–4 é DURA", () => {
+    const a = auditar({ dispositivo: "reviews_3plus", n_itens: { min: 2, max: 2 } })
+    const d = a.duras.filter((x) => x.regra === "n_itens_fora_do_dispositivo")
+    expect(d).toHaveLength(1)
+    expect(d[0].detalhe).toContain("reviews_3plus")
+    expect(d[0].detalhe).toContain("3–4")
+    expect(a.ok).toBe(false)
+  })
+
+  // A régua da SEÇÃO continua cega para este caso — é por isso que a nova
+  // existe, e este teste é o que impede alguém de "simplificar" removendo-a.
+  it("a régua da seção sozinha NÃO pegaria: 2 cabe na faixa 2–4 da seção", () => {
+    const a = auditar({ dispositivo: "reviews_3plus", n_itens: { min: 2, max: 2 } })
+    expect(a.duras.some((x) => x.regra === "exige_fora_da_capacidade")).toBe(false)
+  })
+
+  it("faixa compatível passa", () => {
+    const a = auditar({ dispositivo: "reviews_3plus", n_itens: { min: 3, max: 3 } })
+    expect(a.duras.filter((x) => x.regra === "n_itens_fora_do_dispositivo")).toEqual([])
+  })
+
+  it("faixa que ENCOSTA na do dispositivo passa — a interseção basta", () => {
+    const a = auditar({ dispositivo: "reviews_3plus", n_itens: { min: 2, max: 3 } })
+    expect(a.duras.filter((x) => x.regra === "n_itens_fora_do_dispositivo")).toEqual([])
+  })
+
+  it("pedir MAIS do que a forma entrega também é dura", () => {
+    const a = auditar({ dispositivo: "reviews_com_credencial", n_itens: { min: 5, max: 6 } })
+    const d = a.duras.filter((x) => x.regra === "n_itens_fora_do_dispositivo")
+    expect(d).toHaveLength(1)
+    expect(d[0].detalhe).toContain("entrega 2")
+  })
+
+  // Dispositivo sem grade nenhuma não tem faixa, e inventar `{0,0}`
+  // reprovaria quem só quer o bloco.
+  it("dispositivo sem grade cadastrada não é julgado", () => {
+    const semGrade: Record<string, CapacidadeDaSecao> = {
+      reviews: { ...CAP_REVIEWS.reviews, itens_por_dispositivo: {} },
+    }
+    const a = auditarRequisitos({
+      saida: normalizarOutputDetalhado({
+        estrutura: [{ section: "reviews", papel: "p", referencia: "r", porque: "p", requisitos: { dispositivo: "reviews_3plus", n_itens: { min: 2, max: 2 } } }],
+        descartes: [],
+      }).saida,
+      alvo: null, incentivo: null, capacidade: semGrade,
+      secoesDisponiveis: ["reviews"], descartados: [],
+    })
+    expect(a.duras.filter((x) => x.regra === "n_itens_fora_do_dispositivo")).toEqual([])
+  })
+
+  it("sem n_itens não há o que contradizer", () => {
+    const a = auditar({ dispositivo: "reviews_3plus" })
+    expect(a.duras.filter((x) => x.regra === "n_itens_fora_do_dispositivo")).toEqual([])
+  })
+})
