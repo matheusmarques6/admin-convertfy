@@ -23,6 +23,7 @@ import { resolveOrgId } from "@/lib/api/resolve-org"
 import { logger } from "@/lib/logger"
 import { normalizeTrackingConfig } from "@/types/form-tracking"
 import { diagnoseQualified } from "@/lib/services/conversion-dispatch.service"
+import { avisoDeValorSemOpcao, valoresForaDasOpcoes } from "@/lib/crm/regra-vs-opcoes"
 import {
   avisoDeCobertura,
   inicioDaJanela,
@@ -126,9 +127,20 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
     // qualifica?". Roda a MESMA função do envio, sem mandar nada.
     const { data: fields } = await admin
       .from("crm_form_fields")
-      .select("id, label")
+      .select("id, label, field_type, options")
       .eq("form_id", formId)
-      .returns<Array<{ id: string; label: string | null }>>()
+      .returns<
+        Array<{ id: string; label: string | null; field_type: string | null; options: unknown }>
+      >()
+
+    // Régua de CADASTRO, antes de qualquer tráfego: valor de regra que o
+    // campo não oferece nunca casa, e o teste contra os cadastros só
+    // responde depois que alguém se cadastrou — e não distingue "ninguém
+    // se encaixou" de "a regra aponta para o vazio". Causa típica: opção
+    // do select renomeada depois que a regra foi montada.
+    const semOpcao = valoresForaDasOpcoes(cfg.qualified_lead, fields ?? [])
+    const avisoRegra = avisoDeValorSemOpcao(semOpcao)
+    if (avisoRegra) blockers.push(avisoRegra)
 
     const { data: subs } = await admin
       .from("crm_form_submissions")
@@ -209,6 +221,9 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
         submissions_checked: submissionTests.length,
         would_qualify: wouldQualify,
         results: submissionTests,
+        // Estruturado ao lado do aviso em `blockers`: a tela aponta a
+        // regra e o valor exatos, em vez de pedir para procurar.
+        valores_sem_opcao: semOpcao,
       },
     })
   } catch (error) {

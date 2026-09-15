@@ -86,6 +86,13 @@ interface Payload {
     submissions_checked: number
     would_qualify: number
     results: SubmissionTest[]
+    /** Valores de regra que o campo não oferece (opção renomeada depois). */
+    valores_sem_opcao?: Array<{
+      regra: number
+      campo_label: string
+      valor: string
+      opcoes: string[]
+    }>
   }
 }
 
@@ -454,6 +461,29 @@ export function ConversionDiagnostics({ formId }: { formId: string }) {
             recentes se enquadram
           </span>
         </div>
+
+        {/* Régua de CADASTRO: vem antes do teste contra os cadastros porque
+            não depende de tráfego — valor que o campo não oferece nunca
+            casa, e é a causa que o teste abaixo não sabe distinguir de
+            "ninguém se encaixou ainda". */}
+        {(data.qualified_test.valores_sem_opcao ?? []).length > 0 && (
+          <ul
+            className="flex flex-col gap-1"
+            style={{
+              border: "1px solid var(--crm-neg)",
+              borderRadius: "var(--crm-radius)",
+              padding: "8px 10px",
+            }}
+          >
+            {(data.qualified_test.valores_sem_opcao ?? []).map((v, i) => (
+              <li key={`${v.regra}-${v.valor}-${i}`} style={{ fontSize: "var(--crm-text-xs)" }}>
+                <strong>{v.campo_label}</strong> compara com{" "}
+                <code style={{ color: "var(--crm-neg)" }}>{v.valor}</code>, que não está entre as
+                opções do campo ({v.opcoes.join(" · ")}). Nenhum cadastro pode responder isso.
+              </li>
+            ))}
+          </ul>
+        )}
 
         {data.qualified_test.submissions_checked === 0 ? (
           <p style={{ fontSize: "var(--crm-text-xs)", color: "var(--crm-gray-500)" }}>
