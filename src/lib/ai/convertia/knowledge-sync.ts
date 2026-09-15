@@ -9,15 +9,23 @@
  * Gatilhos: webhook de push (junto do sync de emails), cron horário de
  * manutenção e botão manual. SHA do HEAD curto-circuita o no-op.
  * Fail-open por arquivo. Nota removida do repo → is_active=false.
- * Embeddings só para notas ATIVAS cujo conteúdo mudou (hash) — lote
- * de 32 por chamada.
+ * Embeddings só para notas ATIVAS cujo conteúdo mudou (hash), em lotes
+ * que respeitam o ORÇAMENTO de caracteres da requisição
+ * (`lotesPorOrcamento`) — o limite do endpoint é por chamada, e o lote
+ * fixo de 32 mandava até 512k chars num POST só.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { logger } from "@/lib/logger"
 import { parseKnowledgeNote, type ParsedKnowledgeNote } from "./knowledge-parse"
-import { EMBEDDING_MODEL, embedTexts, embeddingInput, embeddingsAvailable } from "./knowledge-embeddings"
+import {
+  EMBEDDING_MODEL,
+  embedTexts,
+  embeddingInput,
+  embeddingsAvailable,
+  lotesPorOrcamento,
+} from "./knowledge-embeddings"
 
 const log = logger.child("KnowledgeSync")
 
@@ -305,30 +313,69 @@ export async function embedPending(admin: SupabaseClient, limit = 200): Promise<
   if (!data || data.length === 0) return { embedded: 0, pending: 0, error: null }
   let n = 0
   let falha: string | null = null
-  const BATCH = 32
-  for (let i = 0; i < data.length; i += BATCH) {
-    const slice = data.slice(i, i + BATCH)
-    const { vectors, error: embedError } = await embedTexts(
-      slice.map((r) => embeddingInput({ title: r.title, tags: (r.tags as string[]) ?? [], body: r.body_md })),
-    )
-    if (!vectors) {
-      // Para no primeiro lote que falha (martelar o provedor recusando
-      // não ajuda), mas a causa sobe com o resultado.
+
+  const textos = data.map((r) =>
+    embeddingInput({ title: r.title, tags: (r.tags as string[]) ?? [], body: r.body_md }),
+  )
+
+  const gravar = async (idx: number, v: number[]): Promise<void> => {
+    const { error: e } = await admin
+      .from("ai_knowledge_notes")
+      .update({
+        embedding: JSON.stringify(v),
+        embedding_model: EMBEDDING_MODEL,
+        embedded_at: new Date().toISOString(),
+      })
+      .eq("id", data[idx].id)
+    if (!e) n++
+    else falha = falha ?? `gravação do vetor: ${e.message}`
+  }
+
+  // Os lotes respeitam o orçamento de caracteres da REQUISIÇÃO — o limite
+  // do endpoint é por chamada, e 32 notas grandes num POST estouram tudo.
+  const lotes = lotesPorOrcamento(textos)
+  for (const lote of lotes) {
+    const { vectors, error: embedError } = await embedTexts(lote.map((i) => textos[i]))
+    if (vectors) {
+      if (embedError) falha = embedError
+      for (let j = 0; j < lote.length; j++) {
+        const v = vectors[j]
+        if (v) await gravar(lote[j], v)
+      }
+      continue
+    }
+
+    // Lote recusado. Antes disto o código fazia `break` e devolvia a
+    // causa — e com isso o MESMO lote falhava em toda rodada seguinte,
+    // porque o conjunto de pendentes não muda: as notas dele nunca
+    // entravam na busca semântica (medido em 15/09: as 5 maiores, desde
+    // 09/09). Com mais de um item, tenta um a um para isolar o culpado:
+    // as boas entram e só a recusada fica pendente, com causa.
+    if (lote.length === 1) {
       falha = embedError ?? "o provedor não devolveu vetores"
+      log.warn("embedding recusado para uma nota", { id: data[lote[0]].id, chars: textos[lote[0]].length, causa: falha })
+      continue
+    }
+
+    let algumPassou = false
+    for (const i of lote) {
+      const r = await embedTexts([textos[i]])
+      if (r.vectors?.[0]) {
+        algumPassou = true
+        await gravar(i, r.vectors[0])
+      } else {
+        falha = r.error ?? embedError ?? "o provedor não devolveu vetores"
+        log.warn("embedding recusado para uma nota", { id: data[i].id, chars: textos[i].length, causa: falha })
+      }
+    }
+    // Nenhum item do lote passou sozinho: não é a nota, é o provedor.
+    // Aí sim parar — martelar uma API fora do ar não ajuda.
+    if (!algumPassou) {
+      falha = embedError ?? falha ?? "o provedor não devolveu vetores"
       break
     }
-    if (embedError) falha = embedError
-    for (let j = 0; j < slice.length; j++) {
-      const v = vectors[j]
-      if (!v) continue
-      const { error: e } = await admin
-        .from("ai_knowledge_notes")
-        .update({ embedding: JSON.stringify(v), embedding_model: EMBEDDING_MODEL, embedded_at: new Date().toISOString() })
-        .eq("id", slice[j].id)
-      if (!e) n++
-      else falha = falha ?? `gravação do vetor: ${e.message}`
-    }
   }
+
   if (falha) log.warn("embeddings pendentes não concluídos", { pendentes: data.length, embedados: n, causa: falha })
   return { embedded: n, pending: data.length, error: falha }
 }
