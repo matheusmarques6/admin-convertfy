@@ -121,7 +121,7 @@ function SchemaRow({
           onChange={(e) =>
             onChange({ ...field, max_len: Number(e.target.value) || 0 })
           }
-          title="Máx. caracteres (0 = sem limite)"
+          title="Máx. caracteres. 0 = sem limite — e sem orçamento no prompt de copy e sem alerta de estouro no QA."
           style={{ ...rowInput, width: 80 }}
         />
         <div style={{ width: 100, display: "flex", alignItems: "center" }}>
@@ -133,7 +133,7 @@ function SchemaRow({
         </div>
         {/* Natureza (épico Taguedor): quem produz o valor final. Vazio =
             derivada do tipo (image → imagem gerada; resto → copy). */}
-        <div style={{ width: 170, flexShrink: 0 }} title="Natureza do campo — copy: o n8n escreve · imagem gerada: o agente de imagem cria · asset fixo: a arte da biblioteca fica intacta">
+        <div style={{ width: 170, flexShrink: 0 }} title="Natureza do campo — copy: o n8n escreve e ancora no HTML · imagem gerada: o agente de imagem cria · asset fixo: a arte da biblioteca fica intacta · copy desenhada: o n8n escreve e o agente de imagem desenha dentro da arte (não ocupa lugar no HTML)">
           <EGSelect
             value={field.nature ?? ""}
             onChange={(v) => {
@@ -158,6 +158,7 @@ function SchemaRow({
           value={field.example}
           onChange={(e) => onChange({ ...field, example: e.target.value })}
           placeholder="Exemplo"
+          title="A frase EXATA que está no HTML — é o endereço do campo. Mínimo 4 caracteres."
           style={{ ...rowInput, flex: 1 }}
         />
       </div>
@@ -392,6 +393,31 @@ export function OutputSchemaEditor({
         Campos que a IA gera para este bloco, separados por quem produz o
         valor. Chave técnica, tipo, limite e exemplo alimentam o preview e o
         prompt.
+      </div>
+      {/* A régua que decide se a copy entra no e-mail. Escrita aqui em 15/09
+          porque o cadastro era adivinhado: campo de texto ancora pela FRASE
+          do example, não por tag — e errar isso não dá erro, só deixa a
+          frase de exemplo ir ao cliente. */}
+      <div
+        style={{
+          fontSize: 12,
+          lineHeight: 1.55,
+          color: C.warn,
+          background: C.warnBg,
+          border: `1px solid ${C.warnBorder}`,
+          borderRadius: 6,
+          padding: "9px 11px",
+          fontFamily: F.sans,
+          marginBottom: 16,
+        }}
+      >
+        <strong>O exemplo é o endereço do campo.</strong> Num campo de texto,
+        escreva no <em>Exemplo</em> a frase exata que está no HTML — é assim
+        que a copy encontra o lugar dela. Frase diferente, ou com menos de 4
+        caracteres, e o campo nunca ancora: a copy não entra e o texto de
+        exemplo vai para o cliente. Campos <em>URL</em> e{" "}
+        <em>Imagem</em> são a exceção: endereçam por{" "}
+        <code>{"{{CHAVE_EM_MAIUSCULAS}}"}</code> no atributo.
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
         {grupos.map(({ nature, itens }) => (

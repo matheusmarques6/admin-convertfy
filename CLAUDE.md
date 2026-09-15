@@ -2556,6 +2556,19 @@ por código a partir do HTML canônico) se estende às demais seções.
 
 ## O schema é a base (migration 20261064, jul/2026)
 
+> **SUPERADO EM PARTE (20/08).** A regra abaixo vale hoje só para campos
+> `url` e `image`. Para COPY, a biblioteca nunca adotou `{{TAG}}`: o endereço
+> é a **frase do `example`**, casada por `assignTextAnchors`
+> (`html/copy-merge.ts:1-5`, `html/anchor-match.ts`). Os nomes citados nesta
+> seção também mudaram: `auditSchemaTags`/`schema-tag-coherence.ts` viraram
+> `auditSchemaAnchors`+`auditImageAnchors`+`auditOrphanText` em
+> `email-workspace/schema-example-coherence.ts`; `variantHasPlaceholders`
+> virou `variantIsFillable`; `validateTaggedHtml` e a camada
+> `html_tagged`/`tagging_status` foram REMOVIDAS. Quem cadastra variante deve
+> seguir `docs/email-generation/guia-de-cadastro-de-variante.md` — cadastrar
+> pela regra antiga faz o campo nunca ancorar, em silêncio. O texto abaixo
+> fica como histórico do problema que ele resolveu.
+
 Regra única, sem exceção: **o endereço de um campo no HTML é
 `{{MAIÚSCULA_DA_KEY}}`**. `hero_headline` mora em `{{HERO_HEADLINE}}` e em
 mais lugar nenhum — não existe apelido, tradução por `copyKey` do

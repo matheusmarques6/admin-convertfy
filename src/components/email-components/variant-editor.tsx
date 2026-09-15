@@ -162,6 +162,29 @@ function RenderedStatusNote({
   )
 }
 
+/**
+ * Linha de ajuda sob um campo: o que ele faz e o que acontece se ficar
+ * vazio. Escrita em 15/09 porque o cadastro era adivinhado pelo
+ * placeholder — 28 das 37 variantes ativas estavam sem "quando NÃO usar" e
+ * nenhuma tela dizia o que isso custa. Régua completa em
+ * `docs/email-generation/guia-de-cadastro-de-variante.md`.
+ */
+function Ajuda({ children }: { children: ReactNode }) {
+  return (
+    <div
+      style={{
+        fontSize: 11.5,
+        color: C.g400,
+        fontFamily: F.sans,
+        marginTop: 6,
+        lineHeight: 1.5,
+      }}
+    >
+      {children}
+    </div>
+  )
+}
+
 function Note({
   tone,
   children,
@@ -251,11 +274,17 @@ export function VariantEditor({
       >
         {/* Identificação */}
         <EGCard title="Identificação">
+          <Ajuda>
+            Régua completa de preenchimento em{" "}
+            <code>docs/email-generation/guia-de-cadastro-de-variante.md</code>;
+            a nota do vault em <code>nota-obsidian-como-cadastrar.md</code>.
+          </Ajuda>
           <div
             style={{
               display: "grid",
               gridTemplateColumns: "1fr 1fr",
               gap: 16,
+              marginTop: 14,
             }}
           >
             <div style={{ gridColumn: "1 / -1" }}>
@@ -317,6 +346,13 @@ export function VariantEditor({
                   ...dispositivosDaSecao(draft.block_type).map((d) => ({ value: d, label: `${d} — ${DESCRICAO_DO_DISPOSITIVO[d]}` })),
                 ]}
               />
+              <Ajuda>
+                É por este nome que o Estruturador pede a forma, e é o primeiro
+                filtro do Curador. Sem ele a variante nunca é eliminada por
+                requisito <em>e nunca é pedida</em> — fica invisível para a
+                decisão. Cada dispositivo obriga uma anatomia (quantos itens,
+                se tem preço, cupom ou credencial).
+              </Ajuda>
             </div>
             <div>
               <EGLabel>Slug da anatomia</EGLabel>
@@ -333,6 +369,10 @@ export function VariantEditor({
                 onChange={(v) => set({ description: v })}
                 placeholder="Ex: Bloco amarelo com código de cupom em destaque."
               />
+              <Ajuda>
+                A <strong>primeira frase</strong> vai para o índice que o Curador
+                lê ao escolher o bloco. Vazia, ele rankeia só pelo nome.
+              </Ajuda>
             </div>
             <div style={{ gridColumn: "1 / -1" }}>
               <EGLabel>Descrição detalhada</EGLabel>
@@ -342,6 +382,10 @@ export function VariantEditor({
                 rows={3}
                 placeholder="Notas de implementação, quirks de Outlook, etc."
               />
+              <Ajuda>
+                Só o Curador lê, e só no catálogo completo. Não influencia
+                nenhum agente de formatação.
+              </Ajuda>
             </div>
           </div>
 
@@ -422,6 +466,10 @@ export function VariantEditor({
                 rows={2}
                 placeholder="Ex: Sempre que houver um código promocional para aplicar no checkout."
               />
+              <Ajuda>
+                Vai ao Curador no catálogo completo, junto do &quot;quando não
+                usar&quot;.
+              </Ajuda>
             </div>
             <div>
               <EGLabel>Quando NÃO usar</EGLabel>
@@ -431,6 +479,11 @@ export function VariantEditor({
                 rows={2}
                 placeholder="Ex: Emails calmos de boas-vindas sem oferta explícita."
               />
+              <Ajuda>
+                É o que faz o Curador <strong>descartar pelo motivo certo</strong>,
+                em vez de escolher por eliminação. Falta em 28 das 37 variantes
+                ativas.
+              </Ajuda>
             </div>
             <div>
               <EGLabel>Orientações de copy para a IA</EGLabel>
@@ -440,6 +493,12 @@ export function VariantEditor({
                 rows={2}
                 placeholder="Ex: Headline vende o desconto. Código em CAIXA ALTA sem espaços."
               />
+              <Ajuda>
+                Vira a <strong>diretriz do bloco</strong> no payload de copy — é
+                a única instrução que o fluxo do n8n lê hoje. Vazia, cai na
+                descrição curta; as duas vazias e o bloco sai sem instrução
+                nenhuma.
+              </Ajuda>
             </div>
             <div>
               <EGLabel>Design system</EGLabel>
