@@ -112,7 +112,7 @@ import { variantIsFillable as coherenceVariantIsFillable } from "@/lib/email-wor
 import { assembleDocument, coberturaSuficiente, validateBlockMarkers } from "./assemble-document"
 import type { ValoresDeTokens } from "../html/identity-tokens"
 import { normalizarSecao } from "./repeticao"
-import { descartesEfetivos, menosIncompativel } from "./resgate-de-posicao"
+import { descartesEfetivos, doDispositivoPedido, menosIncompativel } from "./resgate-de-posicao"
 import type { DecisaoDoEmail } from "../shared/decisao-do-email"
 import { bloqueia, loadContratoModes, roda } from "../shared/contrato-mode"
 import { validarEscolhas, violacoesDaEscolha } from "../shared/validadores/escolhas"
@@ -568,9 +568,16 @@ export type AssemblySlot =
  *   - `todas_descartadas`: só havia variantes de dispositivo que a decisão
  *     DESCARTOU (o resgate recusa entrar contra a decisão);
  *   - `resgate_recusado`: a menos incompatível viola a decisão em `high`
- *     (validador estrutural em `on`).
+ *     (validador estrutural em `on`);
+ *   - `dispositivo_indisponivel` (Passo 19, 15/09): a seção tem variante,
+ *     mas nenhuma realiza o dispositivo PEDIDO. É o motivo mais acionável
+ *     dos quatro — diz à curadoria exatamente qual bloco cadastrar.
  */
-export type MotivoDePosicaoSemVariante = "sem_candidata" | "todas_descartadas" | "resgate_recusado"
+export type MotivoDePosicaoSemVariante =
+  | "sem_candidata"
+  | "todas_descartadas"
+  | "resgate_recusado"
+  | "dispositivo_indisponivel"
 
 export interface PosicaoSemVariante {
   block_index: number
@@ -2105,6 +2112,11 @@ export async function assembleStoreReference(
   const descartesDaDecisao = decisao?.descartes ?? []
   let resgatesTentados = 0
   let descartadasPorDispositivo = 0
+  // Passo 19: candidatas fora por realizarem OUTRO dispositivo que não o
+  // pedido. Separado de `descartadasPorDispositivo` porque as duas contagens
+  // pedem ações opostas — descarte é acerto do filtro, "não existe a forma"
+  // é lacuna de biblioteca.
+  let foraDoDispositivo = 0
 
   // O resgate desempata pela MESMA régua do Curador — a menos usada nesta
   // loja (15/09). Antes ele desempatava por "a anatomia mais rica", que
@@ -2133,15 +2145,30 @@ export async function assembleStoreReference(
       // descartado custa Infinity e nunca é a "menos incompatível" (batch
       // 6249aef2: body-4, comparação descartada, entrou por aqui).
       const resgate = menosIncompativel(pool, requisitosPorPosicao[i], section, jaUsadas, descartesDaDecisao)
-      if (resgate) descartadasPorDispositivo += resgate.descartadas_por_dispositivo
-      else if (pool.length > 0) {
-        // Pool não vazio e nenhum resgate = todas custaram Infinity ou já
-        // estavam usadas. O que interessa nomear é o descarte.
-        const efetivos = descartesEfetivos(descartesDaDecisao, requisitosPorPosicao[i])
-        const todasDescartadas = pool.every((c) => c.contrato?.dispositivo && efetivos.has(c.contrato.dispositivo))
-        if (todasDescartadas) {
-          descartadasPorDispositivo += pool.length
-          motivoDaLacuna = "todas_descartadas"
+      if (resgate) {
+        descartadasPorDispositivo += resgate.descartadas_por_dispositivo
+        foraDoDispositivo += resgate.fora_do_dispositivo
+      } else if (pool.length > 0) {
+        // Pool não vazio e nenhum resgate = ninguém do dispositivo pedido,
+        // todas custaram Infinity, ou já estavam usadas. Nomear o motivo é o
+        // que transforma "a seção sumiu" em pedido de cadastro.
+        //
+        // A ordem importa: o dispositivo pedido é o PRIMEIRO corte (Passo
+        // 19), então o descarte só é olhado entre quem sobreviveu a ele —
+        // senão a lacuna diria "descartada" sobre variante que nunca chegou
+        // a ser considerada.
+        const { dentro, fora } = doDispositivoPedido(pool, requisitosPorPosicao[i])
+        if (dentro.length === 0) {
+          foraDoDispositivo += fora
+          motivoDaLacuna = "dispositivo_indisponivel"
+        } else {
+          const efetivos = descartesEfetivos(descartesDaDecisao, requisitosPorPosicao[i])
+          const todasDescartadas = dentro.every((c) => c.contrato?.dispositivo && efetivos.has(c.contrato.dispositivo))
+          if (todasDescartadas) {
+            descartadasPorDispositivo += dentro.length
+            foraDoDispositivo += fora
+            motivoDaLacuna = "todas_descartadas"
+          }
         }
       }
       const candidata = resgate ? byId.get(resgate.variant_id) : undefined
@@ -2418,7 +2445,12 @@ export async function assembleStoreReference(
       resgates: {
         tentados: resgatesTentados,
         recusados_por_dispositivo: descartadasPorDispositivo,
+        // Passo 19: candidatas de OUTRO dispositivo, que antes entravam por
+        // 150 de custo. Número alto aqui com `dispositivo_indisponivel` em
+        // `posicoes_sem_variante` é lacuna de biblioteca, não defeito.
+        fora_do_dispositivo: foraDoDispositivo,
         sem_candidata: posicoesSemVariante.filter((p) => p.motivo === "sem_candidata").length,
+        dispositivo_indisponivel: posicoesSemVariante.filter((p) => p.motivo === "dispositivo_indisponivel").length,
       },
       posicoes_sem_variante: posicoesSemVariante,
       lacuna_biblioteca: lacunaFatal,

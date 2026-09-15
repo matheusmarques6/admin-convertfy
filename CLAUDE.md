@@ -6697,6 +6697,46 @@ a classificação não se sabe se as duas disputam a mesma posição.
 Acompanhamento: `supabase/migrations/DIAGNOSTICO_ofuscamento.sql` — as
 MESMAS queries da medição, com o retrato de 15/09 no cabeçalho.
 
+## O dispositivo pedido é filtro, não preço (Passo 19, 15/09)
+
+O resgate cobrava **150** por dispositivo errado — caro, e finito. Finito é
+o defeito: `filtrarPorRequisitos` é fail-open no CONJUNTO (zerou a seção,
+devolve todas), então posição que pedia `body_garantias` numa seção sem
+nenhuma chegava ao resgate com o pool inteiro, e a "menos incompatível" era
+uma `body_comparacao` — outra FORMA entregue ao cliente no lugar da
+decidida. O fail-open está certo para REDAÇÃO (preço, avaliação: a copy
+compensa) e para não esvaziar a shortlist do Curador; está errado para a
+forma, que é o que a posição É.
+
+`doDispositivoPedido` (`resgate-de-posicao.ts`, puro) tira do pool quem
+realiza dispositivo CONHECIDO e diferente ANTES de pontuar; pool vazio
+devolve `null` e a posição cai com o motivo `dispositivo_indisponivel` — o
+único dos quatro que nomeia o cadastro que falta ("a seção não tem variante
+que realize `body_garantias`"). O preço de 150 saiu: duas regras para a
+mesma coisa e a finita venceria em silêncio. O caminho da ESCOLHA já estava
+coberto (`violacoesDaEscolha` → `conflitoDeContrato` →
+`conflitoDeDispositivo`, `high`); faltava o do resgate, e agora os dois
+usam a MESMA comparação — um `===` local divergiria em caixa e acento, que
+é o engano por apelido que este repo já pagou.
+
+**Variante sem dispositivo cadastrado NÃO é eliminada**, e o número é o
+motivo: **8 das 17 variantes ativas de `hero` têm a coluna NULL** (o
+backfill da B3 subiu como proposta reversível, o NOT NULL não existe). O
+filtro literal do plano (`c.dispositivo === pedido`) apagaria 47% da hero,
+e hero vazia é FATAL desde o Passo 11 — falta de CADASTRO viraria falha de
+geração.
+
+**Medido antes de subir** (30 dias de runs do Estruturador): 250 posições
+sem dispositivo pedido (no-op) e 29 com — todas existentes na biblioteca,
+na própria seção. Nenhuma posição do histórico teria caído: é guarda, não
+mudança de comportamento no tráfego de hoje.
+
+Telemetria SEPARADA na run `assembler`: `fora_do_dispositivo` (candidatas de
+outra forma) e `dispositivo_indisponivel` (posições que caíram) ao lado de
+`recusados_por_dispositivo` — descarte da decisão é acerto do filtro, "não
+existe a forma" é lacuna de biblioteca, e as duas pedem ações opostas da
+curadoria. A proposta do vault já era chaveada por `dispositivo_pedido`.
+
 ---
 
 *Última atualização: Setembro 2026*

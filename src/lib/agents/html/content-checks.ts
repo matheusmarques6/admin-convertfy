@@ -228,7 +228,11 @@ export function computeContentChecks(html: string, opts: ContentCheckOptions = {
         ? "só havia variante de dispositivo que a decisão descartou"
         : p.motivo === "resgate_recusado"
           ? "a menos incompatível violava a decisão"
-          : "nenhuma variante elegível na biblioteca"
+          : // Passo 19: o único motivo que nomeia o cadastro que falta — a
+            // seção existe, a FORMA pedida não. É o que a curadoria lê.
+            p.motivo === "dispositivo_indisponivel"
+            ? `a seção não tem variante que realize ${p.dispositivo_pedido ?? "o dispositivo pedido"}`
+            : "nenhuma variante elegível na biblioteca"
     issues.push({
       type: "posicao_sem_variante",
       severity: "high",

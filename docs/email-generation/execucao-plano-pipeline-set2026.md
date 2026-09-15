@@ -964,6 +964,53 @@ do n8n (`directive`, `campos_omitidos`, `decisao.proibido`,
 `copy_prompt_version`) + export do JSON; Passo 17 (reenvio) após a leitura
 do shadow; cupom só protege quando alguma loja tiver `shopify_access_token`.
 
+## Executado — Passo 19 (15/09, mesma branch)
+
+**O que entrou.** O dispositivo PEDIDO virou filtro em vez de preço.
+`doDispositivoPedido` (puro, exportado) tira do pool quem realiza
+dispositivo CONHECIDO e diferente, antes de pontuar; pool vazio depois do
+filtro devolve `null` e a posição cai com o motivo novo
+`dispositivo_indisponivel`, que é o único dos quatro que nomeia o cadastro
+que falta. O preço de 150 saiu de `custoDeIncompatibilidade`: duas regras
+para a mesma coisa deixariam a finita vencer em silêncio.
+
+**O buraco que isto fecha.** `filtrarPorRequisitos` é fail-open no
+CONJUNTO (zerou a seção, devolve todas). Uma posição que pedia
+`body_garantias` numa seção sem nenhuma chegava ao resgate com o pool
+inteiro, e a "menos incompatível" era uma `body_comparacao` — outra FORMA
+entregue ao cliente no lugar da decidida, por 150 de custo finito. O
+caminho da ESCOLHA já estava coberto (`violacoesDaEscolha` →
+`conflitoDeContrato` → `conflitoDeDispositivo`, `high`); faltava o do
+resgate, e agora os dois usam a MESMA comparação.
+
+**O que DIVERGIU do desenho:** o filtro literal do plano
+(`c.dispositivo === posicao.dispositivo`) não foi escrito. Medido em
+15/09: **8 das 17 variantes ativas de `hero` têm `dispositivo` NULL** — o
+backfill da B3 subiu como proposta reversível e o NOT NULL ainda não
+existe. O literal apagaria 47% da hero, e hero vazia é FATAL desde o
+Passo 11: transformaria falta de CADASTRO em falha de geração. Variante
+não classificada FICA (fail-open, a régua do repo), e a comparação é
+`conflitoDeDispositivo` — um `===` local divergiria em caixa e acento.
+`dispositivoPorNome`/`dispositivo_por_nome` não existiam (o Passo 11 já lia
+a coluna), então não houve o que remover.
+
+**Medido antes de subir (30 dias de runs do Estruturador):** 250 posições
+SEM dispositivo pedido (o filtro é no-op nelas) e 29 COM — `body_tese`,
+`body_garantias`, `footer_nav`, `hero_oferta_cupom`,
+`products_grade_sem_preco`, `reviews_com_credencial`, `reviews_3plus` —,
+**todas existentes na biblioteca, na própria seção**. Nenhuma posição do
+histórico teria caído: a mudança é guarda, não mudança de comportamento no
+tráfego de hoje.
+
+**Onde se lê.** Run `assembler`: `resgates.fora_do_dispositivo` (candidatas
+de outra forma) e `resgates.dispositivo_indisponivel` (posições que caíram
+por isso) — contagens SEPARADAS de `recusados_por_dispositivo`, porque
+descarte da decisão é acerto do filtro e "não existe a forma" é lacuna de
+biblioteca, e as duas pedem ações opostas. A issue do QA passa a dizer "a
+seção não tem variante que realize `<dispositivo>`", e a proposta do vault
+já era chaveada por `dispositivo_pedido` (nada mudou lá). 31 testes no
+módulo.
+
 ## SEMANA 2 — a falha nomeada vira e-mail certo
 
 ### Passo 11 · A2 parte 1 · Resgate que respeita descartes e preço

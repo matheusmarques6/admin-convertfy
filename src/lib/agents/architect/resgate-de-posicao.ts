@@ -71,11 +71,39 @@
  * descarte ali mataria a posição certa. Variante sem dispositivo
  * cadastrado nunca custa `Infinity`: não saber não é violar.
  *
+ * ── O dispositivo pedido é FILTRO, não preço (Passo 19, 15/09) ────────
+ *
+ * Até aqui o dispositivo errado custava 150 — caro, e finito. Finito é o
+ * problema: `filtrarPorRequisitos` é fail-open no CONJUNTO (zerou a seção,
+ * devolve todas), então uma posição que pede `body_garantias` numa seção
+ * onde nenhuma variante o realiza chegava aqui com o pool inteiro, e a
+ * "menos incompatível" era uma `body_comparacao` — outra FORMA, entregue ao
+ * cliente no lugar da decidida. O fail-open está certo para redação (preço,
+ * avaliação: a copy compensa) e para não esvaziar a shortlist do Curador;
+ * está errado para a forma, que é o que a posição É.
+ *
+ * Agora quem realiza dispositivo CONHECIDO e diferente sai do pool antes de
+ * pontuar, e pool vazio devolve `null`: a posição cai e a lacuna sobe
+ * nomeada ("falta `body_garantias` em body"), que é o pedido de cadastro
+ * exato. Por isso o preço de 150 saiu — duas regras para a mesma coisa
+ * deixariam o próximo leitor sem saber qual vence.
+ *
+ * **Variante sem dispositivo cadastrado NÃO é eliminada.** Medido em
+ * produção (15/09): 8 das 17 variantes ativas de `hero` têm a coluna NULL —
+ * o backfill da B3 subiu como proposta reversível e o NOT NULL ainda não
+ * existe. Um filtro literal (`c.dispositivo === pedido`) apagaria 47% da
+ * hero, e hero vazia é FATAL desde o Passo 11 (`lacuna_biblioteca`):
+ * transformaria falta de CADASTRO em falha de geração. A comparação é a de
+ * `conflitoDeDispositivo`, a MESMA do filtro de elegibilidade — reescrever
+ * um `===` aqui divergiria em caixa e acento, que é o engano por apelido
+ * que este repo já pagou.
+ *
  * Módulo PURO: quem escolhe o resgate decide o que vai ao cliente, e um
  * engano aqui é uma seção errada no e-mail de uma marca.
  */
 
 import type { DecisaoDescarte } from "../shared/decisao-do-email"
+import { conflitoDeDispositivo } from "../shared/dispositivos"
 import { conflitoDeContrato, type ContratoResumo, type RequisitosDuros } from "../shared/field-roles"
 
 import { normalizarSecao, podeRepetir } from "./repeticao"
@@ -100,6 +128,30 @@ export interface Resgate {
   custo: number
   /** Candidatas que ficaram de fora por realizar dispositivo DESCARTADO pela decisão. */
   descartadas_por_dispositivo: number
+  /**
+   * Candidatas que ficaram de fora por realizar OUTRO dispositivo que não o
+   * PEDIDO pela posição (Passo 19). É contagem separada da de cima de
+   * propósito: "a decisão recusou esta forma" e "esta forma não é a que a
+   * posição pede" pedem ações opostas da curadoria — a primeira é acerto do
+   * filtro, a segunda é lacuna de biblioteca.
+   */
+  fora_do_dispositivo: number
+}
+
+/**
+ * Candidatas que realizam o dispositivo PEDIDO pela posição (Passo 19).
+ *
+ * Sem pedido, devolve todas. Variante de dispositivo NULL (não classificada)
+ * fica: não saber não é violar — ver o cabeçalho para o número medido.
+ */
+export function doDispositivoPedido<T extends { contrato?: ContratoResumo }>(
+  candidatas: readonly T[],
+  requisitos: RequisitosDuros | null | undefined,
+): { dentro: T[]; fora: number } {
+  const pedido = requisitos?.dispositivo
+  if (!pedido) return { dentro: [...candidatas], fora: 0 }
+  const dentro = candidatas.filter((c) => !conflitoDeDispositivo(c.contrato?.dispositivo, pedido))
+  return { dentro, fora: candidatas.length - dentro.length }
 }
 
 /**
@@ -142,10 +194,10 @@ export function custoDeIncompatibilidade(
   if (c.dispositivo && descartesEfetivos(descartes, r).has(c.dispositivo)) return Infinity
   if (!r) return 0
   let custo = 0
-  // Dispositivo (B3): outra FORMA não realiza o papel — pesa mais que cupom.
-  // Variante sem dispositivo (não classificada) não paga: não saber não é
-  // violar.
-  if (r.dispositivo && c.dispositivo && c.dispositivo !== r.dispositivo) custo += 150
+  // Dispositivo PEDIDO não tem preço (Passo 19): é filtro em
+  // `doDispositivoPedido`, antes de pontuar. Cobrar aqui também seria duas
+  // regras para a mesma coisa, e a finita venceria a outra em silêncio.
+  //
   // Slot de cupom sem oferta: o merge deixa "Use code: [WELCOME-CODE]" no
   // HTML e o e-mail promete um desconto que não existe.
   if (r.cupom === false && c.tem_cupom) custo += 100
@@ -184,8 +236,9 @@ export function custoDeIncompatibilidade(
  * ela nasce lá e este módulo a obedece sem mudar.
  *
  * `null` também quando toda candidata custa `Infinity` (dispositivo
- * descartado): a posição fica sem variante e o chamador decide o desfecho
- * — é preferível a entrar com o que a decisão recusou.
+ * descartado) ou quando nenhuma realiza o dispositivo PEDIDO (Passo 19): a
+ * posição fica sem variante e o chamador decide o desfecho — é preferível a
+ * entrar com o que a decisão recusou, ou com outra forma.
  */
 export function menosIncompativel(
   candidatas: CandidataParaResgate[],
@@ -198,10 +251,16 @@ export function menosIncompativel(
   const pool = repetivel ? candidatas : candidatas.filter((c) => !jaUsadas.has(c.variant_id))
   if (pool.length === 0) return null
 
+  // Passo 19: a FORMA é filtro, não desempate. Quem realiza outro
+  // dispositivo sai antes de pontuar; sem ninguém do dispositivo pedido, a
+  // posição cai e a lacuna sobe com o nome do que falta.
+  const { dentro, fora } = doDispositivoPedido(pool, requisitos)
+  if (dentro.length === 0) return null
+
   // Alvo de itens: o mínimo pedido, senão o máximo, senão indiferente.
   const alvoDeItens = requisitos?.n_itens?.min ?? requisitos?.n_itens?.max ?? null
 
-  const pontuadas = pool
+  const pontuadas = dentro
     .map((c) => ({
       variant_id: c.variant_id,
       custo: custoDeIncompatibilidade(c.contrato, requisitos, descartes),
@@ -244,5 +303,5 @@ export function menosIncompativel(
   const finitas = pontuadas.filter((p) => p.custo !== Infinity)
   if (finitas.length === 0) return null
   const { variant_id, custo, motivo } = finitas[0]
-  return { variant_id, custo, motivo, descartadas_por_dispositivo: descartadas }
+  return { variant_id, custo, motivo, descartadas_por_dispositivo: descartadas, fora_do_dispositivo: fora }
 }
