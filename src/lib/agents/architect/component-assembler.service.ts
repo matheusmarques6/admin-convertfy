@@ -2106,6 +2106,16 @@ export async function assembleStoreReference(
   let resgatesTentados = 0
   let descartadasPorDispositivo = 0
 
+  // O resgate desempata pela MESMA régua do Curador — a menos usada nesta
+  // loja (15/09). Antes ele desempatava por "a anatomia mais rica", que
+  // premia quem tem mais campos e é o oposto da rotação que o protocolo
+  // pede. A consulta só acontece quando há posição vazia: o resgate é a
+  // exceção, não o caminho comum.
+  const precisaResgate = sections.some((_, i) => !chosenById.get(i) || !byId.get(chosenById.get(i)!))
+  const usosPorVariante = precisaResgate
+    ? await loadVariantUsageCounts(input.storeId)
+    : new Map<string, number>()
+
   const slots: AssemblySlot[] = sections.map((section, i) => {
     const label = input.structure[i]?.label ?? section
     const id = chosenById.get(i)
@@ -2115,9 +2125,9 @@ export async function assembleStoreReference(
       // Pool = elegíveis por contrato (fail-open: seção zerada devolve
       // todas). Sem o filtro o resgate podia pôr uma eliminada na posição.
       const elegiveisIds = elegiveisDaPosicao.get(i)
-      const pool = (variantesDaSecao.get(normalizarSecao(section)) ?? []).filter(
-        (c) => !elegiveisIds || elegiveisIds.includes(c.variant_id),
-      )
+      const pool = (variantesDaSecao.get(normalizarSecao(section)) ?? [])
+        .filter((c) => !elegiveisIds || elegiveisIds.includes(c.variant_id))
+        .map((c) => ({ ...c, usos: usosPorVariante.get(c.variant_id) ?? 0 }))
       if (pool.length > 0) resgatesTentados++
       // Os descartes da DECISÃO entram no resgate: variante de dispositivo
       // descartado custa Infinity e nunca é a "menos incompatível" (batch

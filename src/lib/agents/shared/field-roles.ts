@@ -59,6 +59,9 @@ const RE_PRAZO = /(^|_)(deadline|prazo|expires?|expiry|until|countdown|valid_unt
 const RE_AVALIACAO = /(^|_)(rating|stars?|avaliacao|verified)(_|$)/i
 const RE_CREDENCIAL = /(^|_)(credential|role|initial|context)(_|$)/i
 const RE_NOME = /(^|_)(name|author)$/i
+// Slot de logo — `brand_logo`, `logo`, `logo_url`. Não passa por
+// `papelDoCampo` porque não é papel de COPY: é presença de ativo.
+const RE_LOGO = /(^|_)logo(_|$)/i
 
 /**
  * Famílias numeradas. `headline_l1`/`lockup_l2` são LINHAS, não itens —
@@ -120,6 +123,24 @@ export interface ContratoResumo {
   copy: number
   imagens: number
   /**
+   * A FORMA da peça, derivada do MESMO `output_schema` (15/09). O catálogo
+   * publicava cinco booleanos e parava; medido nas 11 famílias com mais de
+   * uma variante ativa, os eixos escritos à mão deixavam três delas
+   * indistinguíveis (`hero_lineup` com UMA tupla para duas variantes), e
+   * estes derivados separam dez das onze. São grátis: saem de um campo que
+   * já é obrigatório e nunca desatualizam.
+   */
+  /** Prazo/validade declarado (`badge_deadline`, `expires_at`). */
+  tem_prazo: boolean
+  /** Preço anterior riscado — a metade "de" do "de/por". */
+  tem_preco_antigo: boolean
+  /** Nome/autor do depoente (reviews). */
+  tem_nome_depoente: boolean
+  /** Slot de logo da marca. */
+  tem_logo: boolean
+  /** Quantos botões a anatomia tem (dois CTAs não são uma grade). */
+  n_ctas: number
+  /**
    * Dispositivo da variante (B3, coluna `email_component_variants.dispositivo`).
    * Não vem do schema — quem monta o catálogo o preenche. `null` = variante
    * ainda não classificada: nunca conflita (fail-open).
@@ -158,6 +179,11 @@ export function resumirContrato(schema: unknown): ContratoResumo {
     n_itens: null,
     copy: 0,
     imagens: 0,
+    tem_prazo: false,
+    tem_preco_antigo: false,
+    tem_nome_depoente: false,
+    tem_logo: false,
+    n_ctas: 0,
   }
   for (const f of campos) {
     const img = ehImagem(f)
@@ -168,6 +194,10 @@ export function resumirContrato(schema: unknown): ContratoResumo {
     if (p.familia && p.indice != null) {
       itens[p.familia] = Math.max(itens[p.familia] ?? 0, p.indice)
     }
+    // O logo é medido ANTES do `continue` abaixo porque ele quase sempre é
+    // um campo de IMAGEM — checá-lo junto dos papéis de copy o deixaria
+    // sempre falso.
+    if (RE_LOGO.test(f.key)) out.tem_logo = true
     // Slot de cupom/preço/avaliação só conta como copy: imagem de fundo do
     // cupom (`coupon_background_image`) não obriga a escrever um código.
     if (img) continue
@@ -176,6 +206,13 @@ export function resumirContrato(schema: unknown): ContratoResumo {
     if (p.preco) out.tem_preco = true
     if (p.avaliacao) out.tem_avaliacao = true
     if (p.credencial) out.tem_credencial = true
+    if (p.prazo) out.tem_prazo = true
+    if (p.preco_antigo) out.tem_preco_antigo = true
+    if (p.nome) out.tem_nome_depoente = true
+    // Botão NUMERADO (`cta_1_label`) conta como botão distinto; o par
+    // label/url do mesmo botão conta UMA vez, senão toda variante com
+    // `cta_url` apareceria com o dobro de CTAs.
+    if (p.cta && !/_url$/i.test(f.key)) out.n_ctas++
   }
   const ns = Object.values(itens).filter((n): n is number => typeof n === "number")
   out.n_itens = ns.length ? Math.max(...ns) : null

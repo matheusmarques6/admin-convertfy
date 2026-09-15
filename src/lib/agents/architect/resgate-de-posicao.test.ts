@@ -16,6 +16,11 @@ function contrato(p: Partial<ContratoResumo> = {}): ContratoResumo {
     n_itens: null,
     copy: 0,
     imagens: 0,
+    tem_prazo: false,
+    tem_preco_antigo: false,
+    tem_nome_depoente: false,
+    tem_logo: false,
+    n_ctas: 0,
     ...p,
   }
 }
@@ -292,5 +297,61 @@ describe("menosIncompativel — os desempates, com a biblioteca REAL de products
   it("sem requisito de grade, a distância não desempata nada", () => {
     const escolha = menosIncompativel(BIBLIOTECA, { cupom: false }, "products")
     expect(escolha).not.toBeNull()
+  })
+})
+
+// O desempate de 15/09. Medido em 45 dias: a variante que serve a tudo
+// nunca colide com requisito positivo, então chegava ao desempate com
+// frequência — e `b.copy - a.copy` a fazia ganhar sempre, por escrito.
+describe("desempate por menor uso", () => {
+  const c = contrato({ copy: 3 })
+  const rica = contrato({ copy: 12 })
+
+  it("entre duas de mesmo custo, vence a MENOS usada nesta loja", () => {
+    const r = menosIncompativel(
+      [
+        { variant_id: "usada", contrato: rica, usos: 40 },
+        { variant_id: "nova", contrato: c, usos: 0 },
+      ],
+      null,
+      "body",
+    )
+    expect(r?.variant_id).toBe("nova")
+  })
+
+  it("uso não atropela custo: a que viola continua atrás mesmo virgem", () => {
+    const r = menosIncompativel(
+      [
+        { variant_id: "serve", contrato: contrato({ tem_preco: true }), usos: 30 },
+        { variant_id: "nao-serve", contrato: contrato({ tem_preco: false }), usos: 0 },
+      ],
+      { preco: true },
+      "products",
+    )
+    expect(r?.variant_id).toBe("serve")
+  })
+
+  it("empate em uso volta à anatomia mais rica — ela tem onde acomodar o que falta", () => {
+    const r = menosIncompativel(
+      [
+        { variant_id: "magra", contrato: c, usos: 2 },
+        { variant_id: "rica", contrato: rica, usos: 2 },
+      ],
+      null,
+      "body",
+    )
+    expect(r?.variant_id).toBe("rica")
+  })
+
+  it("sem `usos` (chamador antigo) todas contam zero e a régua antiga decide", () => {
+    const r = menosIncompativel(
+      [
+        { variant_id: "magra", contrato: c },
+        { variant_id: "rica", contrato: rica },
+      ],
+      null,
+      "body",
+    )
+    expect(r?.variant_id).toBe("rica")
   })
 })

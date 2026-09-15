@@ -6592,5 +6592,112 @@ com a precedência "a cena vence" — sem dado de que o modelo os confunde.
 
 ---
 
+## O catálogo sem ofuscamento: o que a linha diz e o que o desempate lê (15/09)
+
+Pedido: que a variante específica não seja ofuscada pela genérica que serve
+ao mesmo lugar, que acrescentar variante custe pouco, e que as tags
+expressem a peculiaridade de cada peça. Medido em 45 dias de escolhas reais
+(`assembler_chooser`, 37 variantes ativas) antes de escrever código:
+
+| dispositivo | placar | concentração |
+|---|---|---|
+| `footer_nav` | 89 · 0 · 0 | **100%** |
+| `offer_sem_cupom` | 19 · 0 | **100%** |
+| `hero_lineup` | 5 · 0 | **100%** |
+| `hero_oferta_cupom` | 43 · 9 · 8 · 4 · 0 | 67% |
+| `reviews_com_credencial` | 36 · 34 · 10 | 45% (saudável) |
+
+**8 de 37 variantes ativas nunca foram escolhidas.** Duas hipóteses CAÍRAM
+na medição e ficam registradas: "a com menos campos ganha" (0-6 campos:
+média 6,9 escolhas; 13-18: 19,6 — é o oposto) e "o primeiro da lista ganha"
+(falha em 3 de 11 dispositivos). A concentração é total exatamente onde o
+ranking por eixos chega ao EMPATE; onde a `objecao` separa, é saudável.
+
+**A causa dos três 100% é o desempate lendo um ranking de popularidade.**
+`renderUsageCounts` montava a lista A PARTIR das escolhas: quem nunca foi
+escolhido não estava no mapa e **não aparecia** — era ausência, não `0×`. A
+lista saía em ordem DECRESCENTE sob a legenda "a MENOS usada vence em empate
+total": instrução impossível de cumprir, porque a menos usada era a
+invisível. Realimentação positiva pura. Agora ela recebe as ELEGÍVEIS da
+geração (`elegiveisDaGeracao`), completa com `0×`, ordena ASCENDENTE e o
+corte de 60 linhas tira as MAIS usadas — cortar pelo fim removeria as linhas
+que a régua usa. Isto não muda régua nenhuma: faz existir o dado que a régua
+já pedia. O mesmo desempate entrou no resgate (`menosIncompativel`), onde
+`b.copy - a.copy` premiava, por escrito, "a anatomia mais rica"; a contagem
+de campos caiu para último critério (a troca NÃO é para "menos campos", que
+seria o viés oposto inventado).
+
+**A peculiaridade já estava no schema.** `papelDoCampo` reconhecia `prazo`,
+`preco_antigo` e `nome` do depoente, e `resumirContrato` contava `copy` e
+`imagens` — nada chegava ao prompt. Publicá-los (`forma:` e `grades:` na
+linha) torna **10 dos 11** dispositivos 100% distinguíveis, incluindo os três
+de concentração total: `hero_lineup` tinha UMA tupla de eixos para duas
+variantes e vira `copy=3 img=1` × `copy=5 img=2 logo ctas=2`;
+`offer_sem_cupom` vira `3 campos` × `11 campos · 1 imagem · prazo`. Custo:
+~25 chars por variante, no bloco CACHEADO, zero trabalho de curadoria, nunca
+desatualiza. `n_ctas` conta o BOTÃO, não o campo (`cta_1_label` +
+`cta_1_url` é um só), e o logo é medido antes do `continue` que pula imagens
+— ele quase sempre É uma imagem.
+
+**O vazio ficou visível** (`campoDeclarado`): `objeção: (não declara)` nos
+três eixos de topo. `campo()` omitia, e o modelo não distinguia "não se
+compromete com nada" de "não se aplica aqui" — a que declarava saía
+carregando o que declarou, a outra saía curta e limpa. Só esses três:
+`registro vetado: (não declara)` seria ruído, porque não vetar nada é o
+normal.
+
+**`registro_vetado` deixou de ser órfão.** Era impresso no catálogo e a
+regra que o governava morava no passo 5 do protocolo do vault, que
+`semMomento` apaga antes de servir — dado sem regra é o erro que
+`curador-vault.ts:421` diz ter aprendido a não cometer. A regra voltou ao
+system, junto com "(não declara) não é vantagem: overlap ZERO não empata com
+quem declara", e com a ressalva que preserva o passo 3 (se a que não declara
+for a ÚNICA sobrevivente, ela continua sendo escolhida).
+
+**A contrapartida de `proibicao_violada`**: ela só dispara contra variante
+que DECLAROU algo (`proibicaoBateNaVariante` lê `exige_medicao`/`aliviador`),
+então a de eixos vazios era **matematicamente incapaz** de aparecer no
+medidor — e era justamente a escolhida. `generica_sobre_especifica` (rank-1
+que não realiza o aliviador pedido havendo finalista que realiza) e
+`sem_eixos` só MEDEM, e só em posição com 2+ finalistas: cobrar onde havia
+uma candidata seria cobrar do Curador o que é lacuna da biblioteca.
+
+**67% da cauda era material de outro agente.** Medido nas 40 notas ativas:
+6.524 chars em média, sete seções — design system 2.218, direção fotográfica
+1.349 e orientações de copy 796 servem a OUTROS agentes e **já estão no
+banco**, nas colunas `design_system`, `photo_direction` e `copy_guidance`.
+Iam cruas para o Curador, sem `semMomento` nem `semExige`, contrariando o
+system que manda ignorar esses campos. `extratoParaDecisao` (puro) mantém
+frontmatter + as quatro seções de decisão; nota em formato desconhecido volta
+INTEIRA (fail-open — formato novo no vault não pode virar finalista sem
+nota). `NOTA_MAX_CHARS` 12.000 → 3.000 e `CAUDA_MAX_CHARS` de 18.000
+consumido na ORDEM do ranking: quem fica sem nota é a pior colocada, com
+status `sem_orcamento` (≠ `missing`: a variante segue escolhível pela linha
+do catálogo). **Uma finalista sozinha sempre cabe** — o teto por nota a corta
+antes, e um teto de custo não pode criar a lacuna que ele existe para evitar.
+
+**O teto do catálogo mudou de eixo.** Os 15.000 chars no TOTAL eram um
+comentário e um teste sobre fixture sintético (302 chars/linha): a produção
+passou dele em 15/09 — **16.255 chars, 37 variantes, 439 por linha** — e nada
+mediu, avisou ou cortou. Pior, um teto no total é incompatível com uma
+biblioteca que cresce: ele proíbe cadastrar. A medida é
+`charsPorVariante` + `linhasLongas` (`LIMITE_CHARS_POR_VARIANTE` = 600), que
+é o custo MARGINAL — o que precisa ficar barato —, e ela vai à run
+(`catalogo_chars_por_variante`).
+
+**Duplicata virou worklist, não regra.** As duas de `hero_lineup` descrevem
+literalmente a mesma peça; escolher sempre a mesma entre duas iguais está
+CERTO e nada denunciava. `duplicatasPorDispositivo` reusa
+`similaridadeDeDescricao` entre IRMÃS do mesmo dispositivo
+(`LIMIAR_DE_DUPLICATA` = 0,65 — mais alto que o 0,5 de `divergentes`, porque
+lá servir a descrição a mais é inofensivo e aqui o aviso acusa o time),
+aparece na aba Conhecimento e na run. Variante sem dispositivo fica fora: sem
+a classificação não se sabe se as duas disputam a mesma posição.
+
+Acompanhamento: `supabase/migrations/DIAGNOSTICO_ofuscamento.sql` — as
+MESMAS queries da medição, com o retrato de 15/09 no cabeçalho.
+
+---
+
 *Última atualização: Setembro 2026*
 *Versões: Shopify 2024-10, Klaviyo revision 2025-10-15*

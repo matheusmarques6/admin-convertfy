@@ -155,6 +155,20 @@ export function planejarShortlist(p: {
   return { puladas, limiar, chamar: obrigatorias.length > 0, obrigatorias, porCodigo, elegiveis }
 }
 
+/**
+ * Todas as variantes que alguma posição desta geração pode escolher. Sem
+ * `elegiveisPorPosicao` (chamador antigo) devolve `undefined`, e o bloco de
+ * uso volta a ser só o histórico.
+ */
+export function elegiveisDaGeracao(
+  porPosicao?: Map<number, string[]> | null,
+): Set<string> | undefined {
+  if (!porPosicao || porPosicao.size === 0) return undefined
+  const out = new Set<string>()
+  for (const ids of porPosicao.values()) for (const id of ids) out.add(id)
+  return out.size ? out : undefined
+}
+
 function rankingVazio(sections: string[]): ParsedRanking {
   return {
     byBlock: new Map(),
@@ -289,6 +303,12 @@ export function renderFinalistNotes(notes: readonly FinalistNoteResult[]): strin
   return notes.map((note) => {
     if (note.status === "opened") return `<finalista variant_id="${note.variant_id}" caminho="${note.file_path ?? ""}">\n${note.body ?? ""}\n</finalista>`
     if (note.status === "missing") return `<finalista variant_id="${note.variant_id}" status="sem_nota_sincronizada" />`
+    // A nota EXISTE e não coube no orçamento da cauda (15/09). Dizer isso é
+    // diferente de "sem nota": a variante segue escolhível pela linha do
+    // catálogo, que carrega eixos, contrato e forma.
+    if (note.status === "sem_orcamento") {
+      return `<finalista variant_id="${note.variant_id}" status="nota_nao_coube_no_orcamento" caminho="${note.file_path ?? ""}" />`
+    }
     return `<finalista variant_id="${note.variant_id}" status="erro_de_banco" />`
   }).join("\n\n")
 }
@@ -497,7 +517,7 @@ Como decidir, na ordem:
    Sem decisão em <decisao_do_estruturador> (o Estruturador falhou nesta geração): derive o papel de cada posição de <intencao_do_email> e da posição no arco — só nesse caso você escreve o papel; posição que traz \`intencao\` na sequência foi escrita pela pessoa na Arquitetura e ela É o papel daquela posição.
    <lacunas_da_biblioteca> lista o que a biblioteca sabidamente NÃO cobre. Lacuna NÃO elimina: pesa CONTRA no ranking, e quando a escolhida a carrega a \`justificativa\` a nomeia.
    As notas completas das finalistas foram carregadas pelo sistema em <notas_das_finalistas>. Ausência explícita de nota não elimina uma candidata; reduz apenas a evidência disponível. Você não pode escolher variante fora das finalistas.
-2.  O DISPOSITIVO vem primeiro e já foi aplicado por CÓDIGO: cada posição de <decisao_do_estruturador> pede um \`requisitos.dispositivo\` (vocabulário fechado: hero_pergunta, body_tese, products_grade_preco…), e toda variante do catálogo traz o seu em \`contrato.dispositivo\`. Variante de outro dispositivo já está em <eliminadas_por_requisito> e NÃO é candidata — não é critério seu, é filtro. Entre as que sobraram, elimine por ativa/schema (já filtrados do catálogo) e por capacidade (product_slots × produtos com link — a loja não tem como preencher slot de produto que não existe). Elimine também por CONTRATO: o campo \`contrato\` de cada variante diz o que a ANATOMIA obriga a preencher (\`tem_cupom\`, \`tem_cta\`, \`tem_preco\`, \`tem_avaliacao\`, \`n_itens\`). Variante cujo contrato obriga um dado que <alvo> ou <decisao_do_estruturador> dizem NÃO existir — slot de cupom quando não há incentivo ativo, grade de 4 quando o papel pede 2 — é ELIMINADA neste passo, não desempatada: o slot fica no HTML com o texto de exemplo. Isto é diferente de \`proibido neste toque\`, que é restrição de redação e só desempata.  Material — foto, tipografia, tipo de campanha, qualquer ativo que você suponha faltar — não elimina ninguém: a imagem é gerada depois, e adequação de material se resolve no RANKING. Entre os sobreviventes, ENCAIXE PRIMEIRO: quem tem a anatomia que o papel decidido pede fica na frente de quem não tem — variante que não consegue realizar o papel (sem slot de cupom quando o papel entrega cupom; grade de 4 quando o papel pede 2; depoimento sem nome quando o papel pede voz com credencial) fica atrás mesmo que vença em todos os eixos. Depois rankeie por dispositivo (já filtrado — entre as que sobraram é neutro) → objecao → aliviador → profundidade → registro → paleta → papel_na_peca (lexicográfico com degradação: eixo que não separa é neutro). <alvo> traz a objeção que ESTE email ataca, o tipo de risco e o \`aliviador pedido\` — \`vault.objecao\` casa com o eixo equivalente do alvo, \`vault.aliviador\` com o aliviador pedido, \`vault.profundidade\` com a profundidade de prova. Aliviador é vocabulário fechado — não substitua por um "equivalente": prova_de_terceiro não é resolvido por prova_por_volume, e seguranca_de_pagamento não é resolvida por prova social. O \`proibido neste toque\` do alvo é restrição de REDAÇÃO: diz o que a COPY não pode afirmar, e vale para quem escreve o texto, não para a escolha do bloco. Ele NÃO elimina ninguém — "não prometer nota média" não desqualifica o bloco de avaliações, desqualifica a frase. Use-o só como DESEMPATE: entre equivalentes, fica atrás a variante cuja anatomia OBRIGA o item proibido (slot fixo de cupom quando cupom está proibido). Eliminar por proibição de copy esvazia a peça — já aconteceu de sobrar só o rodapé. Aliviador pedido que depende de um ativo da loja (prova_de_terceiro → três reviews distintos) entra na justificativa como "ativo sugerido" — ainda não é veto. Cheque convivência e o orçamento de peso contra as OUTRAS posições (evite pesado/peca-inteira em sequência). Desempate pela chave da nota de seção; empate total entre duplicatas envia e declara isso 
+2.  O DISPOSITIVO vem primeiro e já foi aplicado por CÓDIGO: cada posição de <decisao_do_estruturador> pede um \`requisitos.dispositivo\` (vocabulário fechado: hero_pergunta, body_tese, products_grade_preco…), e toda variante do catálogo traz o seu em \`contrato.dispositivo\`. Variante de outro dispositivo já está em <eliminadas_por_requisito> e NÃO é candidata — não é critério seu, é filtro. Entre as que sobraram, elimine por ativa/schema (já filtrados do catálogo) e por capacidade (product_slots × produtos com link — a loja não tem como preencher slot de produto que não existe). Elimine também por CONTRATO: o campo \`contrato\` de cada variante diz o que a ANATOMIA obriga a preencher (\`tem_cupom\`, \`tem_cta\`, \`tem_preco\`, \`tem_avaliacao\`, \`n_itens\`). Variante cujo contrato obriga um dado que <alvo> ou <decisao_do_estruturador> dizem NÃO existir — slot de cupom quando não há incentivo ativo, grade de 4 quando o papel pede 2 — é ELIMINADA neste passo, não desempatada: o slot fica no HTML com o texto de exemplo. Isto é diferente de \`proibido neste toque\`, que é restrição de redação e só desempata.  Material — foto, tipografia, tipo de campanha, qualquer ativo que você suponha faltar — não elimina ninguém: a imagem é gerada depois, e adequação de material se resolve no RANKING. Entre os sobreviventes, ENCAIXE PRIMEIRO: quem tem a anatomia que o papel decidido pede fica na frente de quem não tem — variante que não consegue realizar o papel (sem slot de cupom quando o papel entrega cupom; grade de 4 quando o papel pede 2; depoimento sem nome quando o papel pede voz com credencial) fica atrás mesmo que vença em todos os eixos. Depois rankeie por dispositivo (já filtrado — entre as que sobraram é neutro) → objecao → aliviador → profundidade → registro → paleta → papel_na_peca (lexicográfico com degradação: eixo que não separa é neutro). <alvo> traz a objeção que ESTE email ataca, o tipo de risco e o \`aliviador pedido\` — \`vault.objecao\` casa com o eixo equivalente do alvo, \`vault.aliviador\` com o aliviador pedido, \`vault.profundidade\` com a profundidade de prova. Aliviador é vocabulário fechado — não substitua por um "equivalente": prova_de_terceiro não é resolvido por prova_por_volume, e seguranca_de_pagamento não é resolvida por prova social. \`registro vetado\` ELIMINA, não desempata: variante cujo registro vetado casa com o registro da marca sai da posição. Esse campo é impresso no catálogo e a regra que o governava morava no passo 5 do protocolo do vault, que é removido antes de ele chegar até você — então ela vale aqui. E \`(não declara)\` num eixo NÃO é vantagem: a variante que não se compromete com objeção, aliviador ou profundidade tem overlap ZERO nesses eixos, não empata com quem declara. Entre uma que realiza o aliviador pedido e uma que não declara nada, a primeira vence PELO EIXO — overlap zero não é segunda opção. (Isto não contradiz o passo 3: se a que não declara for a ÚNICA sobrevivente, ela continua sendo escolhida.) O \`proibido neste toque\` do alvo é restrição de REDAÇÃO: diz o que a COPY não pode afirmar, e vale para quem escreve o texto, não para a escolha do bloco. Ele NÃO elimina ninguém — "não prometer nota média" não desqualifica o bloco de avaliações, desqualifica a frase. Use-o só como DESEMPATE: entre equivalentes, fica atrás a variante cuja anatomia OBRIGA o item proibido (slot fixo de cupom quando cupom está proibido). Eliminar por proibição de copy esvazia a peça — já aconteceu de sobrar só o rodapé. Aliviador pedido que depende de um ativo da loja (prova_de_terceiro → três reviews distintos) entra na justificativa como "ativo sugerido" — ainda não é veto. Cheque convivência e o orçamento de peso contra as OUTRAS posições (evite pesado/peca-inteira em sequência). Desempate pela chave da nota de seção; empate total entre duplicatas envia e declara isso 
 3. SOBREVIVEU, TEM DE SAIR ESCOLHIDA. \`escolhas: []\` é legítimo em UMA situação só: a eliminação do passo 2 zerou a lista. Se alguma candidata sobreviveu ao passo 2, ela é escolhida — mesmo que TODOS os eixos empatem em neutro, mesmo que os eixos dela estejam vazios, mesmo que você não goste de nenhuma. Empate total não é lacuna: o resultado nunca é sorteio — desempate pela chave da nota de seção, depois menor uso em <memoria>, depois menor número no slug. "Nenhum eixo as separa" NUNCA justifica devolver lista vazia.
 4. Zero candidata de verdade NÃO é erro: declare a posição com \`escolhas: []\` e a \`justificativa\` nomeando, candidata por candidata, em que passo e contra qual campo cada uma caiu. Saiba o que acontece em seguida: a posição SOME da peça — não existe template global por bloco, não há reserva, não há preenchimento por código. Se a posição for a hero, ou se mais de uma posição sumir, a geração inteira para. A lacuna nomeada é o sinal para a curadoria cadastrar o bloco que falta.
 
@@ -760,7 +780,31 @@ export interface ProtocolViolation {
     // 09/09: o rank-1 estava na lista de eliminadas por requisito do
     // Estruturador × contrato — o Curador ignorou o filtro.
     | "requisito_violado"
+    // 15/09: a contrapartida de `proibicao_violada`. Aquela só dispara
+    // contra variante que DECLAROU algo (`proibicaoBateNaVariante` lê
+    // `exige_medicao`/`aliviador`), então a que não declara nada é
+    // matematicamente incapaz de aparecer no medidor — e é justamente a
+    // que vinha sendo escolhida. Medido em 45 dias: 8 de 37 variantes
+    // ativas nunca foram escolhidas e três dispositivos concentraram 100%.
+    //
+    // Os dois MEDEM, não eliminam: o shadow existe para saber se o resto
+    // funcionou, e contar acerto como erro corromperia essa contagem.
+    | "generica_sobre_especifica"
+    | "sem_eixos"
   detalhe: string
+}
+
+/** Quantos eixos de decisão a variante declara — 0 = não se compromete. */
+function eixosDeclarados(extra: CatalogVaultExtra | undefined): number {
+  if (!extra) return 0
+  return (
+    (extra.objecao?.length ? 1 : 0) +
+    (extra.aliviador?.length ? 1 : 0) +
+    (extra.profundidade ? 1 : 0) +
+    (extra.registro?.length ? 1 : 0) +
+    (extra.paleta?.length ? 1 : 0) +
+    (extra.papel_na_peca?.length ? 1 : 0)
+  )
 }
 
 /** O que o medidor precisa do alvo do Seletor (fase 4 passa; em shadow só mede). */
@@ -814,6 +858,12 @@ export function measureProtocolViolations(p: {
   contratos?: Map<string, ContratoResumo>
   /** `block_index → (variant_id → motivo)` das eliminadas por requisito — para `requisito_violado`. */
   eliminadasPorRequisito?: Map<number, Map<string, string>>
+  /**
+   * Finalistas de cada posição — o conjunto de que o rank-1 saiu. Sem ele
+   * os dois tipos de 15/09 não são medidos: "escolheu a genérica" só é
+   * afirmável quando existia alternativa NA MESMA posição.
+   */
+  finalistasPorBloco?: Map<number, readonly string[]>
 }): ProtocolViolation[] {
   const out: ProtocolViolation[] = []
   if (p.eliminadasPorRequisito) {
@@ -840,6 +890,43 @@ export function measureProtocolViolations(p: {
       for (const proib of p.alvo.proibicoes) {
         const bate = proibicaoBateNaVariante(proib, p.extras.get(variantId))
         if (bate) out.push({ block_index: block, variant_id: variantId, tipo: "proibicao_violada", detalhe: `"${proib}" × ${bate}` })
+      }
+    }
+  }
+  // Generalidade (15/09). Só onde HOUVE escolha: posição com uma finalista
+  // não teve alternativa, e acusá-la seria cobrar do Curador o que é lacuna
+  // da biblioteca.
+  if (p.finalistasPorBloco) {
+    const slug = (id: string) => p.extras.get(id)?.slug ?? id
+    for (const [block, escolhida] of p.rank1ByBlock) {
+      const finalistas = p.finalistasPorBloco.get(block) ?? []
+      const outras = finalistas.filter((id) => id !== escolhida)
+      if (outras.length === 0) continue
+
+      if (eixosDeclarados(p.extras.get(escolhida)) === 0) {
+        const comEixos = outras.filter((id) => eixosDeclarados(p.extras.get(id)) > 0)
+        if (comEixos.length > 0) {
+          out.push({
+            block_index: block,
+            variant_id: escolhida,
+            tipo: "sem_eixos",
+            detalhe: `escolhida não declara nenhum eixo; ${comEixos.map(slug).join(", ")} declaram`,
+          })
+        }
+      }
+
+      const pedido = p.alvo?.aliviador_pedido
+      if (!pedido) continue
+      const realiza = (id: string) => (p.extras.get(id)?.aliviador ?? []).includes(pedido)
+      if (realiza(escolhida)) continue
+      const especificas = outras.filter(realiza)
+      if (especificas.length > 0) {
+        out.push({
+          block_index: block,
+          variant_id: escolhida,
+          tipo: "generica_sobre_especifica",
+          detalhe: `escolhida não realiza o aliviador pedido (${pedido}); ${especificas.map(slug).join(", ")} realizam`,
+        })
       }
     }
   }
@@ -1177,7 +1264,10 @@ export async function runCuradorShadow(
       aprendizados_do_toque: p.aprendizadosPorToque?.doToque.length
         ? buildAprendizadosBlock(p.aprendizadosPorToque.doToque)
         : "(nenhum aprendizado declarado especificamente para este toque)",
-      memoria: `${p.baseVars.memoria ?? ""}\n\n${renderUsageCounts(p.usageCounts, p.extras)}`.trim(),
+      // As ELEGÍVEIS desta geração entram no bloco de uso com `0×` (15/09):
+      // sem elas, quem nunca foi escolhido não aparecia e o desempate "a
+      // menos usada vence" não tinha como ser cumprido.
+      memoria: `${p.baseVars.memoria ?? ""}\n\n${renderUsageCounts(p.usageCounts, p.extras, elegiveisDaGeracao(p.elegiveisPorPosicao))}`.trim(),
     }
     const systemVars = {
       protocolo: buildProtocoloBlock(p.vault),
@@ -1236,7 +1326,13 @@ export async function runCuradorShadow(
             : `${modelo} · contrato ampliado (ensaio) — saída NÃO consumida`,
       },
       { rotulo: "Protocolo do vault", cls: "vault", valor: p.vault.protocolo ? "servido" : "AUSENTE (vault não sincronizado)" },
-      { rotulo: "Índice compacto + eixos", cls: "biblioteca", valor: `${p.catalogComExtras.total} variantes · eixos em ${p.extras.size} · sha8 ${catalogSha8}` },
+      {
+        rotulo: "Índice compacto + eixos",
+        cls: "biblioteca",
+        // `chars/variante` é a medida que diz se a biblioteca pode crescer
+        // (15/09): o total sobe com o cadastro, o custo marginal não deve.
+        valor: `${p.catalogComExtras.total} variantes · eixos em ${p.extras.size} · ${p.catalogComExtras.compact.charsPorVariante} chars/variante · sha8 ${catalogSha8}`,
+      },
       { rotulo: "Momento", cls: "sistema", valor: momento ?? `(não mapeado p/ ${p.flowType})` },
       {
         rotulo: "Aprendizados",
@@ -1435,6 +1531,9 @@ export async function runCuradorShadow(
       alvo: p.alvoMedicao ?? null,
       contratos: contratosDoCatalogo(p.catalogComExtras.sections),
       eliminadasPorRequisito: indiceDeEliminadas(p.eliminadasPorRequisito ?? []),
+      finalistasPorBloco: new Map(
+        Array.from(shortlist.byBlock, ([block, escolhas]) => [block, escolhas.map((c) => c.variant_id)]),
+      ),
     })
     // Repetição é proibida em toda seção (`podeRepetir` = false, 10/09);
     // `repeticoesPermitidas` devolve sempre vazio e fica só como registro.
@@ -1484,11 +1583,22 @@ export async function runCuradorShadow(
         ),
         shortlist_intersecao_vazia: mesclaShortlist.intersecaoVazia,
         elegiveis_por_posicao: Object.fromEntries(Array.from(planoShortlist.elegiveis, ([i, ids]) => [i, ids.size])),
+        // Custo do índice (15/09): `chars_por_variante` é o que diz se a
+        // biblioteca pode crescer sem encarecer a geração; `linhas_longas`
+        // é cadastro a revisar, não biblioteca grande.
+        catalogo_chars: p.catalogComExtras.compact.chars,
+        catalogo_chars_por_variante: p.catalogComExtras.compact.charsPorVariante,
+        catalogo_linhas_longas: p.catalogComExtras.compact.linhasLongas,
+        // Duas variantes ativas do mesmo dispositivo contando a mesma peça:
+        // escolher sempre a mesma está certo, e é curadoria que resolve.
+        duplicatas_no_dispositivo: p.catalogComExtras.duplicatas,
         progressive_disclosure: {
           initial_variants: p.catalogComExtras.total,
           finalists: res.finalistIds,
           notes_opened: res.finalistNotes.filter((n) => n.status === "opened").map((n) => n.variant_id),
           notes_missing: res.finalistNotes.filter((n) => n.status === "missing").map((n) => n.variant_id),
+          notes_sem_orcamento: res.finalistNotes.filter((n) => n.status === "sem_orcamento").map((n) => n.variant_id),
+          notes_chars: res.finalistNotes.reduce((acc, n) => acc + (n.body?.length ?? 0), 0),
           notes_database_error: res.finalistNotes.filter((n) => n.status === "database_error").map((n) => n.variant_id),
           note_sources: res.finalistNotes.map((n) => ({
             variant_id: n.variant_id,

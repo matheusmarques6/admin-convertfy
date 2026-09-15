@@ -904,17 +904,50 @@ export async function loadVariantUsageCounts(storeId?: string | null, limitRows 
   }
 }
 
-/** Bloco `<uso_por_variante>` da memória — slug do vault quando existir. */
+/** Quantas linhas de uso cabem no bloco — as MENOS usadas primeiro. */
+const USO_MAX_LINHAS = 60
+
+/**
+ * Bloco `<uso_por_variante>` da memória — slug do vault quando existir.
+ *
+ * **A lista inclui as ELEGÍVEIS com `0×`, e sai em ordem CRESCENTE** (15/09).
+ * Antes ela era montada só a partir das escolhas: quem nunca foi escolhido
+ * não estava no mapa e simplesmente **não aparecia** — para o modelo era
+ * ausência, não "0×". Vinha ordenada do mais usado para o menos, sob a
+ * legenda "a MENOS usada vence em empate total": uma instrução impossível de
+ * cumprir, porque a menos usada era justamente a invisível.
+ *
+ * O efeito medido em 45 dias: os três dispositivos em que o ranking por
+ * eixos chega ao EMPATE TOTAL — `footer_nav` (89·0·0), `offer_sem_cupom`
+ * (19·0) e `hero_lineup` (5·0) — concentraram 100% das escolhas no mesmo
+ * bloco. Realimentação positiva pura: quem ganhou uma vez aparece na lista
+ * e ganha sempre; quem nunca ganhou nunca entra nela. Onde a `objecao`
+ * separa, a distribuição é saudável (`reviews_com_credencial`: 36·34·10).
+ *
+ * Isto não muda régua nenhuma — faz existir o dado que a régua já pedia.
+ */
 export function renderUsageCounts(
   counts: Map<string, number>,
   extras?: Map<string, { slug: string }>,
+  /**
+   * Variantes que podem ser escolhidas nesta geração. Sem elas o bloco
+   * volta ao que era: só o histórico, e nenhum `0×`.
+   */
+  elegiveis?: Iterable<string>,
 ): string {
-  if (counts.size === 0) return "<uso_por_variante>\n(sem histórico de uso ainda)\n</uso_por_variante>"
-  const linhas = Array.from(counts.entries())
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 60)
-    .map(([id, n]) => `- ${extras?.get(id)?.slug ?? id}: ${n}×`)
-  return `<uso_por_variante>\nPeças já montadas por variante (desempate: a MENOS usada vence em empate total):\n${linhas.join("\n")}\n</uso_por_variante>`
+  const todas = new Map<string, number>()
+  for (const id of elegiveis ?? []) todas.set(id, 0)
+  for (const [id, n] of counts) todas.set(id, n)
+  if (todas.size === 0) return "<uso_por_variante>\n(sem histórico de uso ainda)\n</uso_por_variante>"
+  const nome = (id: string) => extras?.get(id)?.slug ?? id
+  const linhas = Array.from(todas.entries())
+    // Crescente, e o corte tira as MAIS usadas: quem decide o desempate é
+    // o começo da lista. Cortar pelo fim removeria exatamente as linhas
+    // que a instrução manda usar.
+    .sort((a, b) => a[1] - b[1] || nome(a[0]).localeCompare(nome(b[0])))
+    .slice(0, USO_MAX_LINHAS)
+    .map(([id, n]) => `- ${nome(id)}: ${n}×`)
+  return `<uso_por_variante>\nPeças já montadas por variante, da MENOS para a MAIS usada (desempate: a menos usada vence em empate total). \`0×\` é variante elegível que nunca foi escolhida:\n${linhas.join("\n")}\n</uso_por_variante>`
 }
 
 /** Carrega as referências ativas do flow (fail-open → lista vazia). */

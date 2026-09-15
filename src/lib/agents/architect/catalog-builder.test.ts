@@ -6,7 +6,10 @@ import {
   buildCatalog,
   buildCatalogoEnxuto,
   buildTypeIndex,
+  duplicatasPorDispositivo,
   levantarHigieneDoVault,
+  LIMIAR_DE_DUPLICATA,
+  LIMITE_CHARS_POR_VARIANTE,
   similaridadeDeDescricao,
 } from "./catalog-builder"
 import type { CatalogVaultExtra } from "./catalog-builder"
@@ -95,6 +98,11 @@ describe("buildCatalog", () => {
         tem_preco: false,
         tem_avaliacao: false,
         tem_credencial: false,
+        tem_prazo: false,
+        tem_preco_antigo: false,
+        tem_nome_depoente: false,
+        tem_logo: false,
+        n_ctas: 0,
         itens: {},
         n_itens: null,
         copy: 0,
@@ -474,9 +482,16 @@ describe("buildCatalogoEnxuto", () => {
     expect(linha).toContain("aliviador: incentivo")
     expect(linha).toContain("peso: medio · 900px")
     expect(linha).toContain("convivência: offer-2")
-    // Sem nota no vault: sem os campos do vault, sem ruído de "chave: ".
+    // Sem nota no vault, os TRÊS eixos de topo dizem que não declaram
+    // (15/09). Antes a linha saía curta e limpa, e o modelo não tinha como
+    // distinguir "não se compromete com nada" de "não se aplica aqui" — era
+    // metade do ofuscamento. Os demais eixos seguem omitidos.
     const corpo = r.enxuto.split("\n").find((l) => l.startsWith("- b1"))!
-    expect(corpo).not.toContain("objeção")
+    expect(corpo).toContain("objeção: (não declara)")
+    expect(corpo).toContain("aliviador: (não declara)")
+    expect(corpo).toContain("profundidade: (não declara)")
+    expect(corpo).not.toContain("registro vetado")
+    expect(corpo).not.toContain("paleta")
     expect(corpo).toContain("Bloco de texto.")
   })
 
@@ -494,7 +509,14 @@ describe("buildCatalogoEnxuto", () => {
     const linhas = r.enxuto.split("\n").filter((l) => l.startsWith("- ")).length
     expect(linhas).toBe(r.total)
     for (const sec of r.sections) expect(r.enxuto).toContain(`## ${sec.section} (${sec.variantes.length})`)
-    expect(r.enxuto.length).toBeLessThanOrEqual(15_000)
+    // O que se mede é o custo POR VARIANTE, não o total (15/09). O teto de
+    // 15.000 no total ficava verde aqui (302 chars/linha neste fixture)
+    // enquanto a produção o ultrapassava — 16.255 chars para 37 variantes,
+    // 439 por linha — e proibiria a biblioteca de crescer, que é o
+    // contrário do que se quer.
+    expect(r.compact.charsPorVariante).toBeLessThanOrEqual(LIMITE_CHARS_POR_VARIANTE)
+    expect(r.compact.linhasLongas).toEqual([])
+    expect(r.compact.chars).toBe(r.enxuto.length)
   })
 
   it("é estável: mesma entrada em outra ordem gera o MESMO enxuto", () => {
@@ -562,3 +584,147 @@ describe("buildCatalogoEnxuto — imagem gerada e direção fotográfica (15/09)
   })
 })
 
+
+// ── A forma derivada do schema (15/09) ──────────────────────────────────
+//
+// Medido em 45 dias de escolhas: 8 de 37 variantes ativas NUNCA foram
+// escolhidas, e três dispositivos concentravam 100% num único bloco. Em
+// `hero_lineup` os quatro eixos escritos à mão davam a MESMA tupla para as
+// duas variantes — o catálogo não tinha como diferenciá-las. Os derivados
+// do `output_schema` separam dez dos onze dispositivos com mais de uma
+// variante ativa, e não custam curadoria nenhuma: saem de um campo que já
+// é obrigatório.
+describe("forma derivada do schema", () => {
+  const campo = (key: string, type = "text_short") =>
+    ({ key, type, label: key, max_len: 0, required: false, example: "", guidance: "" }) as never
+
+  it("separa as duas de offer_sem_cupom, que os eixos do vault não separavam", () => {
+    // Caso real: `offer 1` tem 3 campos e nenhuma imagem; `offer 2` tem 11
+    // campos, uma imagem e prazo. O catálogo dizia quase a mesma coisa das
+    // duas, e o placar de 45 dias foi 19 × 0.
+    const offer1 = v("o1", "offer", "offer 1", {
+      description: "Bloco de oferta sem imagem.",
+      output_schema: [campo("offer_headline"), campo("offer_body"), campo("offer_cta_label")],
+    })
+    const offer2 = v("o2", "offer", "offer 2", {
+      description: "Bloco de oferta para data comemorativa.",
+      output_schema: [
+        campo("offer_headline"),
+        campo("offer_eyebrow"),
+        campo("offer_deadline"),
+        campo("offer_discount_value"),
+        campo("offer_cta_label"),
+        campo("offer_background_image", "image"),
+      ],
+    })
+    const r = buildCatalog([offer1, offer2])
+    const l1 = r.enxuto.split("\n").find((l) => l.startsWith("- o1"))!
+    const l2 = r.enxuto.split("\n").find((l) => l.startsWith("- o2"))!
+    expect(l1).toContain("forma: 3 campos")
+    expect(l1).not.toContain("prazo")
+    expect(l2).toContain("1 imagem")
+    expect(l2).toContain("prazo")
+    expect(l1).not.toBe(l2)
+  })
+
+  it("conta o botão uma vez por botão, não por campo do botão", () => {
+    // `cta_1_label` + `cta_1_url` é UM botão. Contar o par dobraria a
+    // contagem de toda variante que declara o destino no schema.
+    const r = buildCatalog([
+      v("h", "hero", "H", {
+        output_schema: [campo("cta_1_label"), campo("cta_1_url", "url"), campo("cta_2_label"), campo("cta_2_url", "url")],
+      }),
+    ])
+    expect(r.sections[0].variantes[0].contrato.n_ctas).toBe(2)
+    expect(r.enxuto).toContain("2 botões")
+  })
+
+  it("um botão só não vira ruído na linha", () => {
+    const r = buildCatalog([v("h", "hero", "H", { output_schema: [campo("cta_label")] })])
+    expect(r.sections[0].variantes[0].contrato.n_ctas).toBe(1)
+    expect(r.enxuto).not.toContain("botões")
+  })
+
+  it("publica TODAS as famílias numeradas, não só product", () => {
+    // A linha dizia `slots: 4` e calava `review: 3` — e é a grade que
+    // decide se a variante realiza o papel ("grade de 4 quando pede 2").
+    const r = buildCatalog([
+      v("r", "reviews", "R", {
+        output_schema: [campo("review_1_text"), campo("review_2_text"), campo("review_3_text"), campo("product_1_name")],
+      }),
+    ])
+    const linha = r.enxuto.split("\n").find((l) => l.startsWith("- r"))!
+    expect(linha).toContain("grades: product 1, review 3")
+  })
+
+  it("nome do depoente, preço riscado e logo entram porque distinguem peças reais", () => {
+    const r = buildCatalog([
+      v("p", "products", "P", {
+        output_schema: [
+          campo("brand_logo", "image"),
+          campo("product_price"),
+          campo("product_price_old"),
+          campo("review_1_name"),
+        ],
+      }),
+    ])
+    const c = r.sections[0].variantes[0].contrato
+    expect(c.tem_logo).toBe(true)
+    expect(c.tem_preco_antigo).toBe(true)
+    expect(c.tem_nome_depoente).toBe(true)
+  })
+})
+
+// ── Duplicata no mesmo dispositivo (15/09) ──────────────────────────────
+describe("duplicatasPorDispositivo", () => {
+  // As duas de `hero_lineup` descrevem literalmente a mesma peça, e o
+  // placar de 45 dias é 5 × 0. Escolher sempre a mesma entre duas
+  // idênticas é o comportamento CERTO — o defeito é de curadoria.
+  const d10 =
+    "Anuncia uma rotina, kit ou linha completa e manda para a coleção. Vive no meio do email, no momento de descoberta e educação, quando o cliente ainda está conhecendo a amplitude do catálogo."
+  const d8 =
+    "Anuncia uma rotina, kit ou linha completa e leva à coleção correspondente. Momento de descoberta e educação: o cliente está conhecendo a amplitude do catálogo."
+
+  it("aponta o par do mesmo dispositivo que conta a mesma peça", () => {
+    const r = buildCatalog([
+      v("a", "hero", "hero section 10", { description: d10, dispositivo: "hero_lineup" }),
+      v("b", "hero", "hero sectiion 8", { description: d8, dispositivo: "hero_lineup" }),
+    ])
+    expect(r.duplicatas).toHaveLength(1)
+    expect(r.duplicatas[0].dispositivo).toBe("hero_lineup")
+    expect(r.duplicatas[0].similaridade).toBeGreaterThanOrEqual(LIMIAR_DE_DUPLICATA)
+  })
+
+  it("peças diferentes do mesmo dispositivo não são duplicata", () => {
+    const r = buildCatalog([
+      v("a", "offer", "offer 1", { description: "Bloco de oferta sem nenhuma imagem, para declarar a condição comercial.", dispositivo: "offer_sem_cupom" }),
+      v("b", "offer", "offer 2", { description: "Oferta de data comemorativa com duas condições sobre foto de cena.", dispositivo: "offer_sem_cupom" }),
+    ])
+    expect(r.duplicatas).toEqual([])
+  })
+
+  it("dispositivos diferentes nunca formam par, por mais parecidas que sejam", () => {
+    const r = buildCatalog([
+      v("a", "hero", "A", { description: d10, dispositivo: "hero_lineup" }),
+      v("b", "body", "B", { description: d10, dispositivo: "body_tese" }),
+    ])
+    expect(r.duplicatas).toEqual([])
+  })
+
+  it("variante sem dispositivo fica fora: não se sabe se disputam a mesma posição", () => {
+    const r = buildCatalog([
+      v("a", "hero", "A", { description: d10 }),
+      v("b", "hero", "B", { description: d10 }),
+    ])
+    expect(r.duplicatas).toEqual([])
+  })
+
+  it("descrição vazia não é duplicata — é cadastro incompleto", () => {
+    // Dois vazios dariam Dice 1 e a lista encheria de par inútil.
+    const r = buildCatalog([
+      v("a", "hero", "A", { description: "", dispositivo: "hero_lineup" }),
+      v("b", "hero", "B", { description: "", dispositivo: "hero_lineup" }),
+    ])
+    expect(duplicatasPorDispositivo(r.sections)).toEqual([])
+  })
+})

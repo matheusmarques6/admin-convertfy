@@ -87,6 +87,12 @@ interface HigieneData {
   }>
   notas_orfas: Array<{ slug: string; variant_id: string | null; nome_no_banco: string | null }>
   variantes_sem_nota: Array<{ variant_id: string; name: string; block_type: string }>
+  duplicatas?: Array<{
+    dispositivo: string
+    a: { variant_id: string; name: string }
+    b: { variant_id: string; name: string }
+    similaridade: number
+  }>
 }
 /**
  * Lacuna da biblioteca proposta pela TELEMETRIA do Curador (09/09): a
@@ -516,10 +522,12 @@ function LacunasPropostasCard({ propostas, onChanged }: { propostas: PropostaRow
 }
 
 function HigieneCard({ higiene }: { higiene: HigieneData }) {
+  const duplicatas = higiene.duplicatas ?? []
   const total =
     higiene.divergentes.length +
     higiene.notas_orfas.length +
-    higiene.variantes_sem_nota.length
+    higiene.variantes_sem_nota.length +
+    duplicatas.length
   return (
     <EGCard>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
@@ -557,6 +565,31 @@ function HigieneCard({ higiene }: { higiene: HigieneData }) {
                     </div>
                     <div style={{ fontFamily: F.sans, fontSize: 12, color: C.g500 }}>
                       <b>cadastro:</b> {d.banco}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {duplicatas.length > 0 && (
+            <div>
+              <div style={{ fontFamily: F.sans, fontSize: 12, fontWeight: 600, color: C.g700, marginBottom: 6 }}>
+                Duas variantes contando a mesma peça ({duplicatas.length})
+              </div>
+              <div style={{ fontFamily: F.sans, fontSize: 12, color: C.g500, marginBottom: 6 }}>
+                Elas disputam a mesma posição e descrevem o mesmo bloco. O
+                Curador escolher sempre a mesma está CERTO — o que decide é
+                desativar uma ou dar a cada uma a sua peculiaridade.
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {duplicatas.map((d) => (
+                  <div key={`${d.a.variant_id}-${d.b.variant_id}`} style={{ borderLeft: `2px solid ${C.warn}`, paddingLeft: 8 }}>
+                    <div style={{ fontFamily: F.mono, fontSize: 12, color: C.g900 }}>
+                      {d.a.name} ↔ {d.b.name}
+                    </div>
+                    <div style={{ fontFamily: F.sans, fontSize: 12, color: C.g400, marginTop: 2 }}>
+                      {d.dispositivo} · semelhança {d.similaridade.toFixed(2)}
                     </div>
                   </div>
                 ))}

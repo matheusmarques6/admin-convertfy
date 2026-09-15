@@ -73,7 +73,7 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: () => ({}),
 }))
 
-import { listarPasta, lerNota, loadFinalistNotes } from "./curador-vault-tools"
+import { extratoParaDecisao, listarPasta, lerNota, loadFinalistNotes } from "./curador-vault-tools"
 
 const nota = (
   file_path: string,
@@ -145,5 +145,149 @@ describe("notas das finalistas em lote", () => {
     expect(result).toHaveLength(2)
     expect(result[0]).toMatchObject({ variant_id: "id-offer-3", status: "opened" })
     expect(result[1]).toEqual({ variant_id: "sem-nota", status: "missing", file_path: null, body: null })
+  })
+
+  // A propriedade "adicionar variante custa pouco" (15/09). Abaixo do
+  // limiar de shortlist TODAS as elegíveis viram finalistas, então sem teto
+  // um grupo de 5 servia 32.620 chars por posição — na CAUDA, que paga
+  // preço cheio em toda geração.
+  it("o orçamento da cauda corta as PIORES colocadas, nunca a primeira", async () => {
+    const grande = "x".repeat(2_900)
+    h.notas = Array.from({ length: 12 }, (_, i) =>
+      nota(`componentes/variantes/body/b${i}.md`, { variant_id: `v${i}`, body_md: grande }),
+    )
+    const ids = Array.from({ length: 12 }, (_, i) => `v${i}`)
+    const result = await loadFinalistNotes(ids)
+    expect(result[0].status).toBe("opened")
+    const cortadas = result.filter((r) => r.status === "sem_orcamento")
+    expect(cortadas.length).toBeGreaterThan(0)
+    // Quem foi cortada é a do FIM da lista, que é a pior do ranking.
+    expect(cortadas.map((r) => r.variant_id)).toEqual(
+      ids.slice(ids.length - cortadas.length),
+    )
+    const servido = result.reduce((acc, r) => acc + (r.body?.length ?? 0), 0)
+    expect(servido).toBeLessThanOrEqual(18_000)
+  })
+
+  it("cortada por orçamento NÃO é o mesmo que sem nota: o caminho fica", async () => {
+    // Ela segue escolhível pela linha do catálogo, que carrega eixos e
+    // forma — dizer "sem nota sincronizada" mandaria corrigir o vault.
+    h.notas = Array.from({ length: 8 }, (_, i) =>
+      nota(`componentes/variantes/body/b${i}.md`, { variant_id: `v${i}`, body_md: "x".repeat(2_900) }),
+    )
+    const result = await loadFinalistNotes(Array.from({ length: 8 }, (_, i) => `v${i}`))
+    const cortada = result.find((r) => r.status === "sem_orcamento")!
+    expect(cortada.file_path).toContain(".md")
+    expect(cortada.body).toBeNull()
+  })
+
+  it("uma finalista sozinha SEMPRE cabe: o teto por nota a corta antes", async () => {
+    // Não existe posição em que a única finalista chegue ao modelo sem
+    // nota — isso seria o teto de custo criando a lacuna que ele deveria
+    // evitar.
+    h.notas = [nota("componentes/variantes/body/b0.md", { variant_id: "v0", body_md: "x".repeat(30_000) })]
+    const [r] = await loadFinalistNotes(["v0"])
+    expect(r.status).toBe("opened")
+    expect(r.body).toContain("nota truncada")
+    expect(r.body!.length).toBeLessThan(3_100)
+  })
+})
+
+// ── O extrato da nota (15/09) ───────────────────────────────────────────
+//
+// Medido nas 40 notas ativas: 6.524 chars em média, sete seções, e 67% do
+// texto (design system 2.218 · direção fotográfica 1.349 · orientações de
+// copy 796) serve a OUTROS agentes e já está no banco. Essa parte fica na
+// CAUDA do prompt, depois do último marcador de cache, e é paga inteira em
+// toda geração.
+describe("extratoParaDecisao", () => {
+  const nota = `---
+status: aprovada
+variant_id: abc
+objecao: [preco-valor]
+---
+
+# Hero 3 — cupom de captação
+
+## Descrição curta
+Hero com cupom em destaque.
+
+## Descrição detalhada
+Dois parágrafos sobre a peça.
+
+## Quando usar
+Quando a loja abre com incentivo.
+
+## Quando não usar
+Quando não há cupom ativo.
+
+## Design system
+Tipografia condensada, 48px, tracking -2%. Duas colunas no desktop.
+
+## Direção fotográfica
+Flat-lay de kit, luz dura, nenhuma mão.
+
+## Orientações de copy para a IA
+Headline em até 6 palavras.
+`
+
+  it("mantém frontmatter, título e as quatro seções de decisão", () => {
+    const e = extratoParaDecisao(nota)
+    expect(e).toContain("objecao: [preco-valor]")
+    expect(e).toContain("# Hero 3 — cupom de captação")
+    expect(e).toContain("## Descrição curta")
+    expect(e).toContain("## Descrição detalhada")
+    expect(e).toContain("## Quando usar")
+    expect(e).toContain("## Quando não usar")
+  })
+
+  it("descarta o que é de outro agente — e já está no banco", () => {
+    const e = extratoParaDecisao(nota)
+    expect(e).not.toContain("Design system")
+    expect(e).not.toContain("Direção fotográfica")
+    expect(e).not.toContain("Orientações de copy")
+    expect(e).not.toContain("Flat-lay")
+    expect(e.length).toBeLessThan(nota.length)
+  })
+
+  it("corta ~2/3 numa nota com as proporções REAIS das 40 do vault", () => {
+    // Médias medidas em 15/09, por seção: design system 2.218 · direção
+    // fotográfica 1.349 · descrição detalhada 969 · orientações de copy 796
+    // · quando não usar 469 · quando usar 396 · descrição curta 288.
+    const enche = (n: number) => "x".repeat(n)
+    const real = [
+      "---\nstatus: aprovada\n---",
+      "# Peça",
+      `## Descrição curta\n${enche(288)}`,
+      `## Descrição detalhada\n${enche(969)}`,
+      `## Quando usar\n${enche(396)}`,
+      `## Quando não usar\n${enche(469)}`,
+      `## Design system\n${enche(2218)}`,
+      `## Direção fotográfica\n${enche(1349)}`,
+      `## Orientações de copy para a IA\n${enche(796)}`,
+    ].join("\n\n")
+    const e = extratoParaDecisao(real)
+    const reducao = 1 - e.length / real.length
+    expect(reducao).toBeGreaterThan(0.6)
+    expect(reducao).toBeLessThan(0.75)
+  })
+
+  it("fail-open: nota em formato desconhecido volta inteira", () => {
+    // Formato novo no vault não pode virar finalista sem nota nenhuma.
+    const outra = "# Peça X\n\nTexto corrido, sem seções."
+    expect(extratoParaDecisao(outra)).toBe(outra)
+  })
+
+  it("nota vazia continua vazia", () => {
+    expect(extratoParaDecisao("")).toBe("")
+    expect(extratoParaDecisao("   ")).toBe("")
+  })
+
+  it("aceita os títulos sem acento", () => {
+    const semAcento = "## Descricao curta\nTexto.\n\n## Quando nao usar\nNunca.\n\n## Design system\nX."
+    const e = extratoParaDecisao(semAcento)
+    expect(e).toContain("Descricao curta")
+    expect(e).toContain("Quando nao usar")
+    expect(e).not.toContain("Design system")
   })
 })

@@ -84,6 +84,13 @@ export interface CandidataParaResgate {
   variant_id: string
   nome?: string
   contrato?: ContratoResumo
+  /**
+   * Quantas peças esta variante já montou nesta loja (15/09). Ausente = 0.
+   * É o mesmo número que o Curador vê em `<uso_por_variante>`: os dois
+   * desempatam pela MESMA régua, senão o resgate desfaz a rotação que o
+   * Curador acabou de fazer.
+   */
+  usos?: number
 }
 
 export interface Resgate {
@@ -202,16 +209,30 @@ export function menosIncompativel(
       // Desempates. Medido em 11/09: quatro variantes de products empatam em
       // custo 3 (todas entregam a grade pedida e nenhuma mostra preço), e
       // escolher por UUID entre elas é sorteio — numa peça que vai ao
-      // cliente. Quem chega mais perto do número de itens pedido vence; em
-      // seguida, a anatomia mais rica, que tem mais onde acomodar o que
-      // falta (o preço entra na linha de apoio que a variante já tem).
+      // cliente. Quem chega mais perto do número de itens pedido vence.
       distancia: alvoDeItens == null ? 0 : Math.abs((c.contrato?.n_itens ?? 1) - alvoDeItens),
+      // Depois, a MENOS usada — a mesma régua do Curador (15/09). Antes
+      // vinha `b.copy - a.copy`, comentado como "a anatomia mais rica, que
+      // tem mais onde acomodar o que falta": um desempate que premia, por
+      // escrito, quem tem mais campos. Como a variante que serve a tudo
+      // nunca colide com requisito positivo, ela chegava ao desempate com
+      // frequência e o ganhava sempre.
+      //
+      // A troca NÃO é para "menos campos", que seria o viés oposto
+      // inventado: é para a rotação que o protocolo do vault já manda
+      // ("vence a menos usada no histórico… rotaciona o criativo em vez de
+      // viciar na mesma peça").
+      usos: c.usos ?? 0,
       copy: c.contrato?.copy ?? 0,
     }))
     .sort(
       (a, b) =>
         a.custo - b.custo ||
         a.distancia - b.distancia ||
+        a.usos - b.usos ||
+        // A anatomia mais rica continua desempatando, agora em último: ela
+        // tem mais onde acomodar o que falta, e entre duas igualmente
+        // pouco usadas isso ainda é o melhor palpite.
         b.copy - a.copy ||
         // Último desempate por id, para a escolha ser estável entre
         // execuções: duas variantes idênticas na régua não podem alternar a

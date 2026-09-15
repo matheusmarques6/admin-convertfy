@@ -79,7 +79,7 @@ export async function GET(request: NextRequest) {
         const docs = (docsRes.data ?? []) as VaultDocRow[]
         const conhecimento = indexVaultDocs(docs)
         const extras = buildCatalogVaultExtras(conhecimento, variantes)
-        const { divergentes } = buildCatalog(variantes, extras)
+        const { divergentes, duplicatas } = buildCatalog(variantes, extras)
         const notas: NotaDeVariante[] = docs
           .filter((d) => d.kind === "variante")
           .map((d) => ({
@@ -91,10 +91,11 @@ export async function GET(request: NextRequest) {
           notas,
           variantes.map((v) => ({ id: v.id, name: v.name, block_type: v.block_type })),
           divergentes,
+          duplicatas,
         )
       } catch (e) {
         log.warn("higiene do vault falhou", e)
-        return { divergentes: [], notas_orfas: [], variantes_sem_nota: [] }
+        return { divergentes: [], notas_orfas: [], variantes_sem_nota: [], duplicatas: [] }
       }
     })()
 

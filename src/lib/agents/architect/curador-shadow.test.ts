@@ -27,6 +27,7 @@ import {
   CAUDA_ESCOLHA_USER,
   planejarShortlist,
   mesclarShortlist,
+  elegiveisDaGeracao,
 } from "./curador-shadow"
 import { RespostaVaziaError } from "../resposta-vazia"
 import { resumirContrato } from "../shared/field-roles"
@@ -403,7 +404,47 @@ describe("rank1ByBlock + blocos da fase 1", () => {
     const extras = new Map([["v1", { slug: "hero-3-cupom-de-captacao" }]])
     const bloco = renderUsageCounts(counts, extras)
     expect(bloco).toContain("hero-3-cupom-de-captacao: 3×")
-    expect(bloco).toContain("MENOS usada")
+    expect(bloco).toContain("a menos usada vence em empate total")
+  })
+
+  // A causa dos três dispositivos com 100% de concentração (15/09): a lista
+  // era montada SÓ a partir das escolhas, então a variante nunca escolhida
+  // não aparecia — e é ela que o desempate manda escolher.
+  it("a elegível nunca escolhida aparece com 0× e vem PRIMEIRO", () => {
+    const counts = new Map([["f1", 89]])
+    const extras = new Map([
+      ["f1", { slug: "footer-1-menu-outline" }],
+      ["f2", { slug: "footer-2-menu-solido" }],
+      ["f4", { slug: "footer-4-dark-mega-menu" }],
+    ])
+    const bloco = renderUsageCounts(counts, extras, ["f1", "f2", "f4"])
+    expect(bloco).toContain("footer-2-menu-solido: 0×")
+    expect(bloco).toContain("footer-4-dark-mega-menu: 0×")
+    const linhas = bloco.split("\n").filter((l) => l.startsWith("- "))
+    expect(linhas[linhas.length - 1]).toContain("footer-1-menu-outline: 89×")
+  })
+
+  it("o corte de 60 linhas tira as MAIS usadas, não as menos", () => {
+    // Cortar pelo fim removeria exatamente as linhas que o desempate usa.
+    const counts = new Map(Array.from({ length: 80 }, (_, i) => [`v${i}`, i + 1] as const))
+    const bloco = renderUsageCounts(counts, undefined, ["novinha"])
+    expect(bloco).toContain("novinha: 0×")
+    expect(bloco).not.toContain("v79: 80×")
+    expect(bloco.split("\n").filter((l) => l.startsWith("- "))).toHaveLength(60)
+  })
+
+  it("sem elegíveis o bloco volta a ser só o histórico", () => {
+    const bloco = renderUsageCounts(new Map([["v1", 2]]), undefined, [])
+    const linhas = bloco.split("\n").filter((l) => l.startsWith("- "))
+    expect(linhas).toEqual(["- v1: 2×"])
+  })
+
+  it("elegiveisDaGeracao achata as posições e descarta o vazio", () => {
+    expect(elegiveisDaGeracao(new Map([[0, ["a", "b"]], [1, ["b", "c"]]]))).toEqual(new Set(["a", "b", "c"]))
+    expect(elegiveisDaGeracao(new Map())).toBeUndefined()
+    expect(elegiveisDaGeracao(null)).toBeUndefined()
+    // Chamador antigo sem o mapa: o bloco não deve inventar `0×`.
+    expect(elegiveisDaGeracao(new Map([[0, []]]))).toBeUndefined()
   })
 
   it("o system carrega protocolo, papéis e zero-elegíveis", () => {
@@ -959,5 +1000,116 @@ describe("shortlist por código quando não há o que rankear (14/09)", () => {
     const forcado = planejarShortlist({ sections, elegiveisPorPosicao: batch, forcarChamada: true })
     expect(forcado.chamar).toBe(true)
     expect(forcado.puladas).toEqual([])
+  })
+})
+
+// ── Generalidade medida (15/09) ─────────────────────────────────────────
+//
+// `proibicao_violada` só dispara contra variante que DECLAROU algo, então a
+// que não declara nada nunca aparecia no medidor — e é ela que vinha sendo
+// escolhida. Estes dois tipos são a contrapartida; MEDEM, não eliminam.
+describe("measureProtocolViolations · generalidade", () => {
+  const extra = (slug: string, over: Partial<CatalogVaultExtra> = {}): CatalogVaultExtra => ({
+    slug,
+    objecao: [],
+    registro: [],
+    registro_vetado: [],
+    paleta: [],
+    papel_na_peca: [],
+    peso: null,
+    convivencia: [],
+    itens: null,
+    aliviador: [],
+    profundidade: null,
+    ...over,
+  })
+
+  const base = {
+    sectionByBlock: new Map([[0, "body"]]),
+    alvo: { aliviador_pedido: "prova_de_terceiro", proibicoes: [] as string[] },
+  }
+
+  it("acusa quando a escolhida não realiza o aliviador pedido e outra finalista realizava", () => {
+    const v = measureProtocolViolations({
+      ...base,
+      rank1ByBlock: new Map([[0, "generica"]]),
+      extras: new Map([
+        ["generica", extra("body-generica")],
+        ["especifica", extra("body-com-prova", { aliviador: ["prova_de_terceiro"] })],
+      ]),
+      finalistasPorBloco: new Map([[0, ["generica", "especifica"]]]),
+    })
+    const g = v.find((x) => x.tipo === "generica_sobre_especifica")
+    expect(g?.variant_id).toBe("generica")
+    expect(g?.detalhe).toContain("body-com-prova")
+  })
+
+  it("não acusa quando a escolhida É a que realiza", () => {
+    const v = measureProtocolViolations({
+      ...base,
+      rank1ByBlock: new Map([[0, "especifica"]]),
+      extras: new Map([
+        ["generica", extra("body-generica")],
+        ["especifica", extra("body-com-prova", { aliviador: ["prova_de_terceiro"] })],
+      ]),
+      finalistasPorBloco: new Map([[0, ["generica", "especifica"]]]),
+    })
+    expect(v.filter((x) => x.tipo === "generica_sobre_especifica")).toEqual([])
+  })
+
+  it("posição com UMA finalista nunca é acusada: não houve escolha", () => {
+    // Cobrar aqui seria cobrar do Curador o que é lacuna da biblioteca.
+    const v = measureProtocolViolations({
+      ...base,
+      rank1ByBlock: new Map([[0, "generica"]]),
+      extras: new Map([["generica", extra("body-generica")]]),
+      finalistasPorBloco: new Map([[0, ["generica"]]]),
+    })
+    expect(v.filter((x) => x.tipo === "generica_sobre_especifica" || x.tipo === "sem_eixos")).toEqual([])
+  })
+
+  it("sem_eixos: escolheu a que não se compromete havendo quem declare", () => {
+    const v = measureProtocolViolations({
+      ...base,
+      alvo: null,
+      rank1ByBlock: new Map([[0, "muda"]]),
+      extras: new Map([
+        ["muda", extra("body-sem-nota")],
+        ["falante", extra("body-com-eixos", { registro: ["premium-editorial"], paleta: ["claro"] })],
+      ]),
+      finalistasPorBloco: new Map([[0, ["muda", "falante"]]]),
+    })
+    expect(v.find((x) => x.tipo === "sem_eixos")?.detalhe).toContain("body-com-eixos")
+  })
+
+  it("todas mudas: não há o que acusar", () => {
+    const v = measureProtocolViolations({
+      ...base,
+      alvo: null,
+      rank1ByBlock: new Map([[0, "a"]]),
+      extras: new Map([["a", extra("a")], ["b", extra("b")]]),
+      finalistasPorBloco: new Map([[0, ["a", "b"]]]),
+    })
+    expect(v.filter((x) => x.tipo === "sem_eixos")).toEqual([])
+  })
+
+  it("sem finalistasPorBloco (chamador antigo) nada de generalidade é medido", () => {
+    const v = measureProtocolViolations({
+      ...base,
+      rank1ByBlock: new Map([[0, "generica"]]),
+      extras: new Map([["generica", extra("body-generica")]]),
+    })
+    expect(v.filter((x) => x.tipo === "generica_sobre_especifica" || x.tipo === "sem_eixos")).toEqual([])
+  })
+})
+
+// A regra de `registro_vetado` era servida como DADO e nunca como regra: a
+// definição morava no passo 5 do protocolo, que `semMomento` remove.
+describe("o system do Curador declara o que fazer com o que serve", () => {
+  it("registro vetado elimina, e (não declara) não é vantagem", () => {
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("registro vetado` ELIMINA")
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("overlap ZERO")
+    // Sem anular o passo 3, que existe contra posição vazia.
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("ÚNICA sobrevivente")
   })
 })
