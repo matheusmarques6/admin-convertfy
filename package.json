@@ -86,6 +86,7 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.5",
     "@playwright/test": "^1.61.1",
+    "@supabase/postgrest-js": "2.99.1",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

@@ -21,7 +21,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { usePermissions } from "@/lib/hooks/use-permissions"
-import { useWorkspace, WORKSPACES, type WorkspaceKey } from "@/hooks/use-workspace"
+import { WORKSPACES, type WorkspaceKey } from "@/hooks/use-workspace"
 import {
   firstAllowedItem,
   workspaceAllowed,
