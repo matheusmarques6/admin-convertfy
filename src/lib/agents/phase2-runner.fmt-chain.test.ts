@@ -1104,3 +1104,56 @@ describe("proveniência dos agentes da fase 2", () => {
     expect(segs.map((sg) => sg.texto).join("")).toBe("PROMPT DA TENTATIVA 1")
   })
 })
+
+// ── As views do QA saem do documento FINAL (15/09) ─────────────────────
+//
+// O QA recebia o `{{html}}` final e views extraídas lá atrás, no fim do
+// `image_format` — três agentes antes (typography, color_format,
+// background_fit) e antes do pós-processador inteiro. Medido na Innova:
+// ele abriu `links_quebrados` sobre ícones sociais que o passo
+// `icones_sem_destino_removidos` já tinha apagado do documento entregue.
+// Com `qa_mode = enforce`, uma issue `high` assim reprova peça boa; e o
+// erro simétrico é pior — o que esses passos INTRODUZEM ficaria invisível
+// na view.
+describe("views do QA × documento entregue", () => {
+  it("ícone social que o pós-processador removeu sai da view junto", async () => {
+    setupExampleCase()
+    // O caso da Innova, reproduzido: um bloco sai da cadeia com ícone
+    // social apontando para o token do vocabulário, que não é destino.
+    // O passo `icones_sem_destino_removidos` apaga a âncora COM a imagem,
+    // e o href não pode sobreviver na view — era daí que vinha o "footer
+    // social media CTAs use placeholder values" sobre um e-mail limpo.
+    ctxExtra.value = {
+      ...ctxExtra.value,
+      referenceHtml: EXAMPLE_REFERENCE.replace(
+        "<!-- cfy:block:2:beneficios:end -->",
+        '<a href="URL_FACEBOOK"><img src="https://cdn/facebook.png" alt="Facebook"></a>\n<!-- cfy:block:2:beneficios:end -->',
+      ),
+    }
+
+    await runPhase2HtmlQa({ storeId: "store1", emailId: "e1" })
+
+    const chamada = vi.mocked(runQaAgent).mock.calls[0]?.[0] as
+      | { html: string; blockViews?: Array<{ cta_hrefs?: string[] }> }
+      | undefined
+    expect(chamada, "runQaAgent não foi chamado").toBeTruthy()
+    const views = chamada!.blockViews ?? []
+    expect(views.length, "sem views não há o que comparar").toBeGreaterThan(0)
+
+    // O documento entregue não tem o ícone — e a view também não.
+    expect(chamada!.html).not.toContain("cdn/facebook.png")
+    const hrefs = views.flatMap((v) => v.cta_hrefs ?? [])
+    expect(hrefs).not.toContain("URL_FACEBOOK")
+    // Invariante geral: todo href que a view mostra existe no documento
+    // que o cliente recebe.
+    for (const h of hrefs) expect(chamada!.html).toContain(h)
+  })
+
+  it("a view não carrega o andaime que o e-mail não tem", async () => {
+    setupExampleCase()
+    await runPhase2HtmlQa({ storeId: "store1", emailId: "e1" })
+    const chamada = vi.mocked(runQaAgent).mock.calls[0]?.[0] as { html: string }
+    // O documento que o QA julga é o mesmo que fica gravado no e-mail.
+    expect(chamada.html).toBe(email().html)
+  })
+})

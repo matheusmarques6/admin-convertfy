@@ -4487,9 +4487,35 @@ export async function runPhase2HtmlQa(
   }
   // O QA e os checks determinísticos julgam o EMAIL, não o andaime: o
   // documento chega da cadeia com os marcadores de bloco (a fronteira de
-  // saída é o persistStage), e aqui eles saem. As views por bloco vêm
-  // separadas, extraídas do documento marcado.
-  let finalHtml = stripCfyBlockMarkers(fmtResult.html)
+  // saída é o persistStage), e o strip acontece DEPOIS do pós-processador,
+  // logo abaixo — `htmlMarcado` é o mesmo documento do cliente, ainda com
+  // os marcadores, e é dele que as views do QA saem.
+  //
+  // ── Por que o strip desceu (15/09) ──────────────────────────────────
+  //
+  // As views eram extraídas lá atrás, no fim do `image_format`, com a
+  // justificativa de que "depois do strip os marcadores somem". Verdade —
+  // mas isso deixava o QA julgando DOIS documentos ao mesmo tempo: o
+  // `{{html}}` final e views de três agentes atrás (typography,
+  // color_format, background_fit) e de todo o pós-processador.
+  //
+  // Medido na Innova (15/09): o QA abriu `links_quebrados` dizendo "footer
+  // social media CTAs use placeholder values instead of real URLs" — e os
+  // ícones sociais NÃO EXISTEM no HTML entregue; o passo 9 do
+  // pós-processador (`icones_sem_destino_removidos`) os tinha removido. A
+  // varredura dos hrefs do documento final devolve 15 links para
+  // `https://innovabay.site` e um `[unsubscribe_link]` (merge tag válida):
+  // zero links quebrados. Com `qa_mode = enforce`, uma issue `high` nessas
+  // condições reprova peça boa — e o erro simétrico é pior: o que esses
+  // três agentes e o pós-processador INTRODUZEM ficaria invisível na view,
+  // que é justamente o que a arquitetura de views existe para o QA ler.
+  //
+  // `posProcessar` preserva `<!-- cfy:… -->` por construção
+  // (`ehMarcadorInterno`), então extrair depois dele é seguro.
+  let htmlMarcado = fmtResult.html
+  // Valor do modo `lint off`, em que o pós-processador não roda: o
+  // documento sai da cadeia direto para o cliente, e as views saem dele.
+  let finalHtml = stripCfyBlockMarkers(htmlMarcado)
 
   // ── Pós-processador + lint de envio (B2, set/2026; código, custo zero) ──
   // Sobre o documento que VAI ao cliente: funde os <style>, resolve var(--x),
@@ -4502,7 +4528,7 @@ export async function runPhase2HtmlQa(
     const lintMode = await resolveLintMode(storeId)
     if (lintMode !== "off") {
       const lintT0 = Date.now()
-      const entrada = finalHtml
+      const entrada = stripCfyBlockMarkers(htmlMarcado)
       const altPorUrl = new Map<string, string>()
       const { data: blocosAlt } = await admin.from("email_blocks").select("content").eq("email_id", emailId)
       for (const b of (blocosAlt ?? []) as Array<{ content?: { images?: Record<string, { url?: string; alt?: string }> } | null }>) {
@@ -4510,10 +4536,14 @@ export async function runPhase2HtmlQa(
       }
       const brandFontes = [ctx.brand?.font_heading, ctx.brand?.font_body].filter((f): f is string => typeof f === "string" && f.trim().length > 0)
       const { data: storeNome } = await admin.from("client_stores").select("store_name").eq("id", storeId).maybeSingle()
-      const pos = posProcessar(entrada, { altPorUrl, altPadrao: (storeNome as { store_name?: string } | null)?.store_name ?? null })
-      const lint = lintEnvio(pos.html, { fontesDaLoja: brandFontes })
+      // O pós-processador roda sobre o documento COM marcadores — ele os
+      // preserva — para que as views do QA saiam do MESMO HTML que o
+      // cliente recebe. O lint mede o documento final, sem andaime.
+      const pos = posProcessar(htmlMarcado, { altPorUrl, altPadrao: (storeNome as { store_name?: string } | null)?.store_name ?? null })
+      htmlMarcado = pos.html
+      const lint = lintEnvio(stripCfyBlockMarkers(htmlMarcado), { fontesDaLoja: brandFontes })
       const bloqueou = lintMode === "enforce" && lint.bloqueia
-      finalHtml = pos.html
+      finalHtml = stripCfyBlockMarkers(htmlMarcado)
       if (pos.aplicados.length > 0 || lint.itens.length > 0) {
         log.info("phase2.lint_envio", { emailId, modo: lintMode, aplicados: pos.aplicados.map((a) => `${a.id}×${a.n}`), lint: resumoDoLint(lint), bloqueou })
       }
@@ -4822,10 +4852,24 @@ export async function runPhase2HtmlQa(
         fields: b.fields,
       })),
     )
-    // F5: views extraídas pela cadeia (com marcadores); resume pós-strip
-    // deixa a lista vazia → fallback por content dos blocos.
+    // F5: as views saem do documento FINAL com marcadores (`htmlMarcado`),
+    // que é o mesmo `finalHtml` mais o andaime — o QA passa a julgar UM
+    // documento só (ver a nota do strip, acima). As da cadeia ficam de
+    // reserva: num resume pós-strip não há marcador para recortar, e aí
+    // valem as que o `image_format` guardou; sem nenhuma, o fallback por
+    // content dos blocos.
+    const viewsDoFinal = buildQaBlockViews(
+      htmlMarcado,
+      (qaBlocks ?? []).map((b: Record<string, unknown>) => ({
+        id: (b.id as string) ?? "",
+        position: (b.position as number) ?? 0,
+        block_type: (b.block_type as string) ?? "unknown",
+      })),
+    )
     const blockViews =
-      fmtResult.qaViews.length > 0
+      viewsDoFinal.length > 0
+        ? viewsDoFinal
+        : fmtResult.qaViews.length > 0
         ? fmtResult.qaViews
         : viewsFromBlocksFallback(
             (qaBlocks ?? []).map((b: Record<string, unknown>) => ({

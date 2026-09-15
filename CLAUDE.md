@@ -6863,6 +6863,35 @@ ele que permite ao disparo seguinte retomar com `start_from`. Execução
 `running` fica de fora (pode haver runner em voo, e ele escreve o
 desfecho).
 
+### O QA julgava dois documentos ao mesmo tempo
+
+Os dois e-mails de hoje trazem `links_quebrados [medium]` — e a varredura
+dos `href` do HTML entregue devolve **15 links para `https://innovabay.site`
+e um `[unsubscribe_link]`** (merge tag válida): zero links quebrados. O QA
+escreveu "footer social media CTAs use placeholder values instead of real
+URLs" sobre ícones sociais que **não existem no e-mail**: o passo 9 do
+pós-processador (`icones_sem_destino_removidos`) já os tinha apagado.
+
+A causa é de ORDEM. O QA recebe `{{html}}` (o documento final) e
+`block_views_json`, e as views eram extraídas no fim do `image_format` —
+**três agentes antes** (typography, color_format, background_fit) e antes
+do pós-processador inteiro. Ele julgava uma mistura de dois documentos. Com
+`qa_mode = enforce`, uma issue `high` nessas condições **reprova peça boa**;
+e o erro simétrico é pior — o que esses passos INTRODUZEM ficaria invisível
+na view, que é exatamente o que a arquitetura de views existe para ele ler.
+
+O strip dos marcadores desceu: `posProcessar` roda sobre o documento COM
+marcadores (ele os preserva por construção, `ehMarcadorInterno`), as views
+saem daí, e só então o `stripCfyBlockMarkers` produz o `finalHtml`. As views
+da cadeia viram RESERVA — num resume pós-strip não há marcador para
+recortar. O lint continua medindo o documento final, sem andaime.
+
+Provado nos dois sentidos: com a ordem antiga o teste falha com
+`expected [ 'URL_FACEBOOK' ] to not include 'URL_FACEBOOK'` (o falso
+positivo reproduzido), com a nova passa. A invariante que ele trava é
+simples: **todo `href` que a view mostra existe no documento que o cliente
+recebe**, e o `html` que o QA julga é byte a byte o que fica gravado.
+
 **Limite declarado na perna B do Front 2**: ela exige
 `generation_batch_id` porque `in_progress` também é status LEGACY do Epic
 8/9, e varrer sem batch inventaria falha em e-mail que nunca foi gerado. O
