@@ -113,6 +113,13 @@ Tudo o que estava nos Google Docs agora viaja em JSON no webhook — escalável,
 
 ## O que o flow precisa ler a partir do payload v3.2 (14/09)
 
+> **15/09 — prompts e variáveis prontos para colar**: `docs/n8n/email-copy-prompt-v3.2.md`
+> (tabela de variáveis, patch do SEPARADOR, nó CONTEXTO DA COPY, system/user do
+> FAZEDOR e do GERADOR, parser, MONTADOR com eco de `dispatch_batch_id` e
+> `copy_prompt_version`). Os três Code nodes foram executados contra o payload
+> real de 14/09 com `$()` mockado; o callback resultante passa no Zod da rota.
+
+
 Contrato completo em `docs/email-copy-payload-v2.md` (§v3.2). Mudanças no
 prompt de copy do n8n (Bruno):
 
