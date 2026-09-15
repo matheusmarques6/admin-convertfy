@@ -6898,6 +6898,52 @@ recebe**, e o `html` que o QA julga é byte a byte o que fica gravado.
 preço é um zumbi conhecido (um, parado desde 28/08) que pede decisão
 humana, não varredura.
 
+## Auditoria de 15/09: conversão íntegra, base cega em cinco notas
+
+Varredura das filas: `crm_webhook_events` 839 `done` (último às 23:30),
+`crm_conversion_events` 29 `sent`, `email_dispatch_jobs` e `ai_chat_jobs`
+fechados — **zero presos, zero falhas**. O `LeadQualificado` voltou a sair
+(11/09, depois da correção do 42P10) e os dois cadastros de hoje
+responderam "R$0 - R$99.000": legitimamente não qualificam.
+
+**A fragilidade que sobrou é de CADASTRO.** A regra do qualificado é
+digitada à mão e o campo é um `select` com opções próprias: renomear uma
+opção no editor deixa a condição apontando para um texto que nenhum lead
+pode responder, e o evento para de sair sem nada acusar — mesma família do
+defeito de 05/08, agora pela porta do cadastro. O diagnóstico da tela já
+roda a avaliação real contra os cadastros recentes, mas isso só responde
+depois que alguém se cadastrou, e não distingue "a regra está certa e
+ninguém se encaixou" de "a regra aponta para o vazio".
+
+`regra-vs-opcoes.ts` (puro, 17 testes) responde antes e sem tráfego. A
+comparação é a MESMA do envio (`normalizeForCompare`) — comparar byte a
+byte acusaria o que lá casa, mandando consertar o que funciona. Só julga
+campo com lista fechada e operador de igualdade (`contains` é fragmento de
+propósito, `gt/lt` comparam número), e campo que sumiu do formulário NÃO
+vira aviso daqui: quem cobra isso é o teste contra os cadastros, e o aviso
+novo fica ao lado dele, não no lugar. Verificado contra produção: os três
+valores da regra existem entre as quatro opções — zero alarme falso.
+
+**A base de conhecimento estava cega em cinco notas.** 256 aprovadas, 251
+com vetor, e as 5 sem são exatamente as cinco MAIORES (12,0k a 43,4k
+chars), paradas desde 09/09. Dois defeitos somados, e os dois fazem a mesma
+nota falhar em toda rodada:
+
+1. `MAX_INPUT_CHARS = 24_000` dizia cortar "com folga" para os 8.192 tokens
+   do modelo — a régua de ~4 chars/token é do INGLÊS; em português
+   acentuado o `cl100k_base` gasta perto de 3, e 24k ficam colados no
+   limite. Agora **16.000**.
+2. O lote era **fixo em 32 itens** e o limite do endpoint é por CHAMADA:
+   32 notas de 16k são 512k chars num POST. O lote inteiro era recusado,
+   inclusive as pequenas que viajavam com as grandes.
+   `lotesPorOrcamento` agrupa por orçamento de caracteres; item maior que o
+   orçamento vai SOZINHO, nunca descartado.
+3. Lote recusado dava `break` em tudo — e como o conjunto de pendentes não
+   muda entre rodadas, aquelas notas nunca entravam. Agora o lote falho é
+   reprocessado **item a item**: as boas entram, só a recusada fica
+   pendente com causa e tamanho no log. Nenhum item passando sozinho =
+   provedor fora do ar, e aí sim para.
+
 ---
 
 *Última atualização: Setembro 2026*
