@@ -9,6 +9,14 @@ import {
 import { advanceColumn } from "@/lib/services/onboarding-pipeline.service"
 import { requireOnboardingPermission } from "@/lib/api/onboarding-permissions"
 
+/**
+ * POST /api/onboardings/[id]/advance
+ *
+ * `send_whatsapp: true` no corpo AUTORIZA a mensagem da coluna de destino ao
+ * cliente. Sem a chave, o onboarding avanca e ninguem e avisado — ver o
+ * comentario de `AdvanceOptions.sendWhatsApp`.
+ */
+
 export const dynamic = "force-dynamic"
 
 export async function POST(
@@ -28,6 +36,8 @@ export async function POST(
     const result = await advanceColumn({
       onboardingId: id,
       actorId: user.id,
+      // Precisa vir `true` do cliente. Corpo sem a chave = avanca calado.
+      sendWhatsApp: body.send_whatsapp === true,
       forceOverride: body.override
         ? {
             justification: body.override.justification,

@@ -1,4 +1,4 @@
--- DIAGNÓSTICO — Semana 2 do plano de set/2026 (Passos 11, 13, 14, 15, 16)
+-- DIAGNÓSTICO — Semana 2 do plano de set/2026 (Passos 11, 13, 14, 15, 16) + Passo 19
 -- Leitura pós-deploy. Cada bloco responde a uma pergunta do "ficou correto se".
 -- Rodar um bloco por vez no SQL Editor (o MCP devolve só o ÚLTIMO statement).
 
@@ -125,3 +125,37 @@ from email_generation_runs
 where agent = 'seletor' and created_at > now() - interval '7 days'
   and (parsed_output->'_seletor'->>'insumos_de_politica')::int > 0
 order by created_at desc;
+
+-- ── Passo 19 · o dispositivo pedido virou filtro (15/09) ────────────────
+-- Candidatas fora por serem de OUTRA forma, e posições que caíram por isso.
+-- `fora_do_dispositivo` alto com `dispositivo_indisponivel` em ZERO é o
+-- esperado: o filtro trabalhou e ainda havia a forma pedida na seção.
+select r.batch_id, r.email_id, r.created_at,
+       r.parsed_output->'resgates'->>'tentados'                 as tentados,
+       r.parsed_output->'resgates'->>'fora_do_dispositivo'      as fora_do_dispositivo,
+       r.parsed_output->'resgates'->>'recusados_por_dispositivo' as recusados_por_descarte,
+       r.parsed_output->'resgates'->>'dispositivo_indisponivel' as caiu_por_falta_da_forma
+from email_generation_runs r
+where r.agent = 'assembler' and r.status = 'success'
+  and r.created_at > now() - interval '14 days'
+  and coalesce(r.parsed_output->'resgates'->>'fora_do_dispositivo', '0') <> '0'
+order by r.created_at desc limit 50;
+
+-- A lacuna NOMEADA: qual dispositivo a decisão pediu e a biblioteca não tem.
+-- Cada linha aqui é um pedido de cadastro (Componentes → Gerar anatomia).
+select p->>'section' as secao, p->>'dispositivo_pedido' as dispositivo_pedido,
+       count(*) as posicoes, max(r.created_at) as ultima_vez
+from email_generation_runs r,
+     lateral jsonb_array_elements(coalesce(r.parsed_output->'posicoes_sem_variante','[]'::jsonb)) p
+where r.agent = 'assembler'
+  and p->>'motivo' = 'dispositivo_indisponivel'
+  and r.created_at > now() - interval '30 days'
+group by 1, 2 order by posicoes desc;
+
+-- Cobertura da biblioteca por seção — é o que decide se o filtro pode
+-- derrubar uma posição. `sem_dispositivo` > 0 é cadastro pendente da B3:
+-- essas variantes passam pelo filtro (fail-open) e mascaram a lacuna.
+select coalesce(block_type,'(sem seção)') as secao, count(*) as ativas,
+       count(*) filter (where dispositivo is null) as sem_dispositivo,
+       string_agg(distinct dispositivo, ', ' order by dispositivo) as dispositivos
+from email_component_variants where is_active group by 1 order by 1;

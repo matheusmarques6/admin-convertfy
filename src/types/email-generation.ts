@@ -723,10 +723,13 @@ export interface ReferenceSlotMapEntry {
   assembled?: boolean
   /**
    * Passo 11: por que a posição ficou sem variante — `sem_candidata`,
-   * `todas_descartadas` (só havia dispositivo que a decisão descartou) ou
-   * `resgate_recusado`. Só em slot `variant_id: null` gravado depois de 14/09.
+   * `todas_descartadas` (só havia dispositivo que a decisão descartou),
+   * `resgate_recusado` ou, desde o Passo 19 (15/09),
+   * `dispositivo_indisponivel` (a seção tem variante, nenhuma realiza o
+   * dispositivo pedido). Só em slot `variant_id: null` gravado depois de
+   * 14/09.
    */
-  motivo?: "sem_candidata" | "todas_descartadas" | "resgate_recusado"
+  motivo?: "sem_candidata" | "todas_descartadas" | "resgate_recusado" | "dispositivo_indisponivel"
   /** Dispositivo que a decisão pedia para a posição vazia. */
   dispositivo_pedido?: string | null
 }

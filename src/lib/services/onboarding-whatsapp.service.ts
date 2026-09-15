@@ -30,7 +30,13 @@ interface Vars {
   store_name: string
   platform_name: string
   form_url: string
-  tutorial_url: string
+  /**
+   * Nome CANONICO: e o que os templates usam (`{{tutorial_link}}`), o que esta
+   * gravado em `operational_pipeline_columns` e o `field_slug` do deliverable.
+   * Chamava-se `tutorial_url` ate 15/09/2026 — nao casava com nenhum template,
+   * entao `{{tutorial_link}}` chegou CRU a cinco clientes.
+   */
+  tutorial_link: string
   briefing_url: string
   /** URL do Figma do preview (deliverable figma_link da coluna preview_producao) */
   figma_link: string
@@ -38,11 +44,36 @@ interface Vars {
   figma_full_link: string
 }
 
-function render(tpl: string, v: Vars): string {
+/**
+ * Troca `{{var}}` pelo valor e DIZ o que nao resolveu.
+ *
+ * Duas formas de faltar, e as duas chegavam ao cliente:
+ *  - chave que nao existe em Vars -> voltava o `{{nome}}` cru;
+ *  - chave que existe e esta vazia -> virava string vazia ("Figma:" orfao).
+ *
+ * Quem decide o que fazer com `faltando` e o chamador. `sendColumnWhatsApp`
+ * nao envia: metade de uma mensagem e pior que mensagem nenhuma, e depois de
+ * enviada nao se desfaz.
+ */
+export function render(
+  tpl: string,
+  v: Vars,
+): { texto: string; faltando: string[] } {
   const dict = v as unknown as Record<string, string>
-  return tpl.replace(/\{\{\s*([a-zA-Z_]+)\s*\}\}/g, (_, k) => {
-    return dict[k] ?? `{{${k}}}`
+  const faltando = new Set<string>()
+  const texto = tpl.replace(/\{\{\s*([a-zA-Z_]+)\s*\}\}/g, (_, k: string) => {
+    const valor = dict[k]
+    if (valor === undefined) {
+      faltando.add(k)
+      return `{{${k}}}`
+    }
+    if (valor.trim() === "") {
+      faltando.add(k)
+      return ""
+    }
+    return valor
   })
+  return { texto, faltando: [...faltando] }
 }
 
 function buildVars(
@@ -70,7 +101,7 @@ function buildVars(
       PLATFORM_LABEL[(store?.platform ?? "other").toLowerCase()] ??
       "sua plataforma",
     form_url: buildFormUrl(onb.form_token, baseUrl),
-    tutorial_url: onb.tutorial_token
+    tutorial_link: onb.tutorial_token
       ? `${baseUrl}/onboarding-help/${onb.tutorial_token}`
       : "",
     briefing_url: buildBriefingUrl(onb.form_token, baseUrl),
@@ -137,10 +168,22 @@ export async function sendColumnWhatsApp(params: {
       : { data: [] }
 
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://admin.convertfy.com"
-    const body = render(
+    const { texto: body, faltando } = render(
       col.whatsapp_template,
       buildVars(onb, client, store, baseUrl, deliverables ?? []),
     )
+
+    // Variavel sem valor NAO vira mensagem. Ate 15/09/2026 virava: cinco
+    // clientes receberam "{{tutorial_link}}" literal e seis mensagens sairam
+    // com a linha "Figma:" vazia.
+    if (faltando.length > 0) {
+      log.error("template incompleto — envio recusado", {
+        onb: onb.id,
+        coluna: col.name,
+        faltando,
+      })
+      return { ok: false, reason: `vars_faltando:${faltando.join(",")}` }
+    }
 
     // Canal WhatsApp default da org (primeiro ativo — cloud OU evolution)
     const { data: channel } = await admin

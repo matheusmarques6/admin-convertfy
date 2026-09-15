@@ -6697,6 +6697,50 @@ a classificação não se sabe se as duas disputam a mesma posição.
 Acompanhamento: `supabase/migrations/DIAGNOSTICO_ofuscamento.sql` — as
 MESMAS queries da medição, com o retrato de 15/09 no cabeçalho.
 
+## O dispositivo pedido é filtro, não preço (Passo 19, 15/09)
+
+O resgate cobrava **150** por dispositivo errado — caro, e finito. Finito é
+o defeito: `filtrarPorRequisitos` é fail-open no CONJUNTO (zerou a seção,
+devolve todas), então posição que pedia `body_garantias` numa seção sem
+nenhuma chegava ao resgate com o pool inteiro, e a "menos incompatível" era
+uma `body_comparacao` — outra FORMA entregue ao cliente no lugar da
+decidida. O fail-open está certo para REDAÇÃO (preço, avaliação: a copy
+compensa) e para não esvaziar a shortlist do Curador; está errado para a
+forma, que é o que a posição É.
+
+`doDispositivoPedido` (`resgate-de-posicao.ts`, puro) tira do pool quem
+realiza dispositivo CONHECIDO e diferente ANTES de pontuar; pool vazio
+devolve `null` e a posição cai com o motivo `dispositivo_indisponivel` — o
+único dos quatro que nomeia o cadastro que falta ("a seção não tem variante
+que realize `body_garantias`"). O preço de 150 saiu: duas regras para a
+mesma coisa e a finita venceria em silêncio. O caminho da ESCOLHA já estava
+coberto (`violacoesDaEscolha` → `conflitoDeContrato` →
+`conflitoDeDispositivo`, `high`); faltava o do resgate, e agora os dois
+usam a MESMA comparação — um `===` local divergiria em caixa e acento, que
+é o engano por apelido que este repo já pagou.
+
+**Variante sem dispositivo cadastrado NÃO é eliminada**, e o número é o
+motivo: **8 das 17 variantes ativas de `hero` têm a coluna NULL** (o
+backfill da B3 subiu como proposta reversível, o NOT NULL não existe). O
+filtro literal do plano (`c.dispositivo === pedido`) apagaria 47% da hero,
+e hero vazia é FATAL desde o Passo 11 — falta de CADASTRO viraria falha de
+geração. **As 8 foram classificadas horas depois e hoje a biblioteca tem
+ZERO ativas sem dispositivo** (ver a seção seguinte); a guarda fica porque o
+NOT NULL continua não existindo e a próxima variante nasce NULL de novo — o
+que a torna barata é o preço de 75 em `custoDeIncompatibilidade`, que impede
+a não classificada de vencer quem acerta no desempate por menor uso.
+
+**Medido antes de subir** (30 dias de runs do Estruturador): 250 posições
+sem dispositivo pedido (no-op) e 29 com — todas existentes na biblioteca,
+na própria seção. Nenhuma posição do histórico teria caído: é guarda, não
+mudança de comportamento no tráfego de hoje.
+
+Telemetria SEPARADA na run `assembler`: `fora_do_dispositivo` (candidatas de
+outra forma) e `dispositivo_indisponivel` (posições que caíram) ao lado de
+`recusados_por_dispositivo` — descarte da decisão é acerto do filtro, "não
+existe a forma" é lacuna de biblioteca, e as duas pedem ações opostas da
+curadoria. A proposta do vault já era chaveada por `dispositivo_pedido`.
+
 ## Oito heroes sem etiqueta (15/09)
 
 Entraram 8 hero sections novas, todas ativas, **sem dispositivo e sem nota**
@@ -6722,9 +6766,12 @@ Só a 17 e a 18 são hero de verdade.
    com quem acerta o dispositivo, e aí decidia o desempate por **menor uso**
    instalado no mesmo dia. Medido: numa posição que pede `hero_pergunta`, a
    `hero section 9` (25 escolhas em 45 dias) perdia para a `hero section 13`
-   (e-mail inteiro de Black Friday, 0 escolhas). **Correção: +75** — metade
-   dos 150 do dispositivo errado. Não vira `Infinity`: não saber continua
-   não sendo violar.
+   (e-mail inteiro de Black Friday, 0 escolhas). **Correção: +75.** É o par
+   do filtro do Passo 19 (seção acima), não uma segunda regra para a mesma
+   coisa: dispositivo ERRADO sai do pool antes de pontuar, dispositivo
+   AUSENTE fica — de propósito, senão falta de cadastro viraria falha de
+   geração — e paga. Finito, nunca `Infinity`: não saber continua não sendo
+   violar.
 
 **Classificação aplicada** (15/09): `hero_oferta_cupom` para 11, 12, 13, 14 e
 15; `hero_apresentacao` para 16, 17 e 18 — que deixou de ser dispositivo sem
