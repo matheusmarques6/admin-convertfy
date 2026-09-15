@@ -273,7 +273,7 @@ Você escreve a copy de UM e-mail de e-commerce, campo a campo, para um layout q
 # SAÍDA
 Devolva APENAS este JSON, sem markdown, sem comentário:
 {"blocks":[{"block_id":"<id do bloco>","campos":[{"key":"<chave>","valor":"<texto final>"}]}]}
-Um item em `blocks` por bloco recebido, na mesma ordem; em `campos`, uma entrada por chave de `campos` daquele bloco, na ordem em que vieram. Valores sempre string.
+Um item em `blocks` por bloco recebido, na mesma ordem; em `campos`, uma entrada por chave de `campos` daquele bloco, na ordem em que vieram. Valores sempre string. Sem análise, sem raciocínio e sem comentário antes ou depois: o primeiro caractere da resposta é { e o último é }.
 ```
 
 ---
@@ -313,7 +313,7 @@ Insumos permitidos (os únicos fatos verificáveis):
 Escreva exatamente as chaves de `campos` de cada bloco, abaixo de `max_caracteres`. `directive` vence `exemplo`. `campos_omitidos` não se escreve.
 {{ $json.blocos_json }}
 
-Antes de responder, confira campo a campo: idioma da ordem; contagem abaixo de max_caracteres; nenhuma oferta se o incentivo não existe; nada da lista de proibições; nenhum número, nome ou política fora dos insumos; sem travessão, sem aspas duplas, sem placeholder. Depois devolva o JSON.
+Antes de responder, confira campo a campo: idioma da ordem; contagem abaixo de max_caracteres; nenhuma oferta se o incentivo não existe; nada da lista de proibições; nenhum número, nome ou política fora dos insumos; sem travessão, sem aspas duplas, sem placeholder. Depois responda apenas com o objeto JSON: nada antes do { e nada depois do }.
 ```
 
 ### Structured Output Parser do FAZEDOR (schema manual — não use "exemplo")
@@ -365,7 +365,7 @@ REGRAS
 7. Sem travessão (— ou –): use ponto, vírgula ou dois-pontos. Sem aspas duplas. Sem emoji — exceto se o tom for explicitamente descontraído E o e-mail não for de boas-vindas; então no máximo um, no fim do assunto.
 8. O assunto fala do MESMO argumento que a hero da copy (primeiro bloco): a pessoa abre e encontra o que o assunto prometeu.
 
-SAÍDA: apenas {"subject":"…","preheader":"…"}.
+SAÍDA: somente o objeto JSON {"subject":"…","preheader":"…"}. Sem análise, sem raciocínio, sem comentário, sem cercas de código: o primeiro caractere da resposta é { e o último é }.
 ```
 
 ## 7. `GERADOR DE ASSUNTO` — Prompt (User Message)
@@ -392,7 +392,7 @@ TOM DE VOZ
 COPY DO E-MAIL (o assunto tem de casar com o primeiro bloco)
 {{ JSON.stringify($('FAZEDOR DE COPY').item.json.output) }}
 
-Devolva o JSON.
+Responda apenas com o objeto JSON. Nada antes do { e nada depois do }.
 ```
 
 ---
