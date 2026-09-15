@@ -31,9 +31,7 @@ import { validateTemplateVariables, buildTemplateBodyComponents, type TemplateFo
 import {
   sendInstagramMessage,
   replyToInstagramComment,
-  type InstagramChannelConfig,
 } from "@/lib/services/instagram-graph.service"
-import { resolveAndHealInstagramChannel } from "@/lib/services/instagram-activity.service"
 import { clearCrmThreadNotifications } from "@/lib/services/crm-inbox-notification.service"
 
 const log = logger.child("CrmInboxSend")

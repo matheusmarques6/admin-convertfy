@@ -387,6 +387,60 @@ export async function finalizarExecucao(
   if (error) log.error("execucao.finalizar_falhou", { executionId, status, error })
 }
 
+/** Estados em que o e-mail está a meio caminho, sem ninguém trabalhando nele. */
+const ESTADOS_INTERMEDIARIOS = ["rendering", "image_done", "qa_running"] as const
+
+/**
+ * Fechada a pausa, o e-mail não pode ficar no meio do caminho.
+ *
+ * `stop_after` deixa o e-mail em `rendering`, e é isso que o watchdog
+ * respeita enquanto a pausa vale. Quando ela termina — por cancelamento
+ * humano ou por prazo — sobra um e-mail em estado intermediário que ninguém
+ * vai terminar, e deixá-lo assim tem dois custos medidos:
+ *
+ *   • a tela continua dizendo "rodando" sobre uma geração que acabou;
+ *   • o **Front 5 do watchdog o RETOMA** (janela 15–25 min sobre
+ *     `rendering_started_at`), fazendo o pipeline seguir sozinho exatamente
+ *     de onde o operador mandou parar. Cancelar viraria "continue".
+ *
+ * Então o e-mail sai daqui com o motivo verdadeiro, e não com o
+ * `timeout_phase2` que o Front 3 lhe daria 25 min depois. O `html` NÃO é
+ * tocado: é ele que permite ao disparo seguinte retomar com `start_from`.
+ *
+ * Só mexe em estado INTERMEDIÁRIO — e-mail que já chegou a `ready` ou
+ * `failed` tem desfecho próprio, e sobrescrevê-lo apagaria o que aconteceu.
+ */
+export async function liberarEmailDaExecucao(
+  emailId: string,
+  failureReason: string,
+): Promise<boolean> {
+  try {
+    const admin = createAdminClient()
+    const nowIso = new Date().toISOString()
+    const { data, error } = await admin
+      .from("email_flow_emails")
+      .update({
+        status: "failed",
+        failure_reason: failureReason,
+        failed_at: nowIso,
+        updated_at: nowIso,
+      })
+      .eq("id", emailId)
+      .in("status", [...ESTADOS_INTERMEDIARIOS])
+      .select("id")
+    if (error) throw error
+    const liberou = (data ?? []).length > 0
+    if (liberou) log.info("execucao.email_liberado", { emailId, failureReason })
+    return liberou
+  } catch (err) {
+    // Fail-open: a execução já foi fechada, e o watchdog volta a enxergar o
+    // e-mail na próxima rodada — pior desfecho é o `timeout_phase2` de
+    // sempre, não um e-mail preso.
+    log.warn("execucao.liberar_email_falhou", { emailId, err })
+    return false
+  }
+}
+
 /** Grava o batch da copy na execução, quando ele nasce. */
 export async function vincularBatch(
   executionId: string,

@@ -52,6 +52,17 @@ import {
 } from "@/lib/agents/generation-notify.service"
 import { logger } from "@/lib/logger"
 import { getConfirmedBrandStoreIds } from "@/lib/agents/html/brand-guards"
+import {
+  finalizarExecucao,
+  liberarEmailDaExecucao,
+} from "@/lib/agents/execucao/execution.service"
+import {
+  descreverIdadeDaPausa,
+  idadeDaPausa,
+  MOTIVO_PAUSA_EXPIRADA,
+  triarPausas,
+  type ExecucaoPausada,
+} from "@/lib/agents/execucao/pausa"
 
 const log = logger.child("EmailGenWatchdog")
 
@@ -75,6 +86,12 @@ const PHASE2_TIMEOUT_MIN = Number(process.env.WATCHDOG_PHASE2_TIMEOUT_MIN ?? 25)
  * de geracao travada, e a distincao esta no status da EXECUCAO, nao no do
  * e-mail.
  *
+ * **A pausa tem prazo** (`pausa.ts`, 15/09). A protecao sem fim deixava o
+ * e-mail refem de quem pausou e nao voltou: medido, uma pausa de CINCO DIAS
+ * segurando o e-mail em `rendering` e trancando `uniq_ege_manual_viva`
+ * contra todo disparo novo. Vencida, a execucao e fechada aqui mesmo e o
+ * e-mail cai de volta nos fronts de sempre, na MESMA rodada.
+ *
  * Fail-open com lista VAZIA: sem a migration (ou com o banco fora) o
  * watchdog volta ao comportamento de sempre. Devolver "tudo pausado" no
  * erro seria pior — desligaria o watchdog inteiro por causa de uma
@@ -85,12 +102,34 @@ async function emailsComExecucaoPausada(): Promise<string[]> {
     const admin = createAdminClient()
     const { data, error } = await admin
       .from("email_generation_executions")
-      .select("email_id")
+      .select("id, email_id, updated_at, started_at")
       .eq("mode", "manual")
       .eq("status", "paused")
       .limit(200)
     if (error) throw error
-    return (data ?? []).map((r: { email_id: string }) => r.email_id)
+
+    const { vivas, expiradas } = triarPausas((data ?? []) as ExecucaoPausada[])
+    for (const p of expiradas) {
+      // Fechar e-mail a e-mail, e nao em lote: uma pausa que falha ao
+      // fechar nao pode levar as outras junto, e o e-mail dela continua
+      // protegido (fica fora de `vivas`, mas volta na proxima rodada).
+      const idade = idadeDaPausa(p)
+      await finalizarExecucao(p.id, "cancelled", MOTIVO_PAUSA_EXPIRADA)
+      // O e-mail sai do limbo com o motivo VERDADEIRO. Deixá-lo para o
+      // Front 3 daria `timeout_phase2` a uma geração que ninguém tentou
+      // terminar — e, pior, o Front 5 poderia retomá-la antes disso.
+      const emailLiberado = await liberarEmailDaExecucao(
+        p.email_id,
+        "execucao_manual_expirada",
+      )
+      log.warn("watchdog.pausa_expirada", {
+        executionId: p.id,
+        emailId: p.email_id,
+        pausada: idade != null ? descreverIdadeDaPausa(idade) : "(sem carimbo)",
+        emailLiberado,
+      })
+    }
+    return vivas.map((p) => p.email_id)
   } catch (err) {
     log.warn("watchdog.pausadas_indisponivel", { err })
     return []
@@ -312,6 +351,15 @@ async function failCopySemCallback(thresholdIso: string): Promise<number> {
     rows.push(...((dataA ?? []) as Row[]))
   }
 
+  // Perna B — legado sem `copy_started_at` (geracoes anteriores a 14/09).
+  //
+  // LIMITE DECLARADO: exige `generation_batch_id`. `in_progress` tambem e
+  // status LEGACY do Epic 8/9 (Klaviyo), e ha e-mails nele que nunca
+  // entraram em geracao nenhuma — marca-los `copy_timeout` inventaria uma
+  // falha que nao houve. O preco e um zumbi conhecido: e-mail `in_progress`,
+  // sem batch e sem carimbo, fica fora de todos os fronts (medido em 15/09:
+  // um, parado desde 28/08). Sao linhas que precisam de decisao humana
+  // (regerar ou arquivar), nao de varredura automatica.
   let qB = admin
     .from("email_flow_emails")
     .update(patch)

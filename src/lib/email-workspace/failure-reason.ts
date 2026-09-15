@@ -49,6 +49,11 @@ const FAILURE_REASON_LABELS: Record<string, string> = {
   lint_placeholder_colchete: "Lint: placeholder entre colchetes visivel",
   lint_contraste_botao_container: "Lint: label do botao ilegivel sobre o fundo (< 4.5:1)",
   lint_largura_container: "Lint: container fora de 600px",
+  // Execução manual (Estúdio): parou no nó pedido e a pausa foi encerrada —
+  // pelo operador ou pelo prazo. O HTML do estágio fica gravado, então um
+  // disparo novo retoma de onde parou.
+  execucao_manual_cancelada: "Execucao manual cancelada — a geracao parou no no pedido",
+  execucao_manual_expirada: "Execucao manual pausada foi abandonada — o e-mail voltou ao watchdog",
   qa_timeout: "Timeout no QA",
   max_attempts_exceeded: "Numero maximo de tentativas excedido",
   brand_incomplete: "Loja sem identidade visual completa (cores e/ou logo)",

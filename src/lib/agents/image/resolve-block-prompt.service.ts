@@ -29,11 +29,10 @@ import { buildImagePromptWithSegments } from "@/lib/agents/image/prompt-vars-bui
 import type { PromptSegment } from "@/lib/agents/shared/prompt-provenance"
 import { loadTopProducts } from "@/lib/agents/top-products"
 import { loadEffectiveBlueprint } from "@/lib/agents/architect/blueprint-loader"
-import {
-  DEFAULT_IMAGE_PROMPT_TEMPLATE,
-  renderImagePrompt,
-} from "@/lib/agents/chains/image.chain"
-import { renderImageTemplate } from "@/lib/agents/image/template-renderer"
+// Só o template default: quem RENDERIZA é `buildImagePromptWithSegments`
+// (ver o cabeçalho — o caminho é um só, e importar os renderers aqui
+// convidaria a montar o prompt de novo, em paralelo).
+import { DEFAULT_IMAGE_PROMPT_TEMPLATE } from "@/lib/agents/chains/image.chain"
 import {
   resolveAspectForField,
   blockAspectFromBlueprint,
