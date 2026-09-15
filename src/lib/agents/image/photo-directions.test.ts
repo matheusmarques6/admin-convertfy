@@ -226,3 +226,32 @@ describe("sanitizePhotoDirection — tabela de layout cai inteira", () => {
     expect(r.tabelas_removidas).toBe(0)
   })
 })
+
+// 15/09: a ficha de arquivo da hero-3 (Innova Bay) passava pelo teto de 12
+// palavras da linha e chegava ao modelo como "Proporção 2:3 — slot de,
+// ativo final. ou, full-bleed. Gerar em 2:3 na altura de e cortar de
+// largura, de cada lado, para chegar ao ativo final." A oração é julgada
+// sozinha: a que virou ficha ou ficou pendurada num conectivo sai; a regra
+// da foto na mesma linha fica.
+describe("sanitizePhotoDirection — oração quebrada pela medida cai, a vizinha fica (15/09)", () => {
+  it("a linha real da hero-3 cai inteira (todas as orações eram ficha)", () => {
+    const d =
+      "Proporção 2:3 — slot de 598 × 949px, ativo final 1196 × 1898px (2x). JPG q80 ou WebP, < 300 KB, full-bleed. " +
+      "Gerar em 2:3 na altura de 1898px (1265 × 1898) e cortar 69px de largura, 35px de cada lado, para chegar ao ativo final."
+    const r = sanitizePhotoDirection([d, "Composição. Flat-lay em ângulo alto."].join("\n"))
+    expect(r.texto).toBe("Composição. Flat-lay em ângulo alto.")
+    expect(r.linhas_removidas).toBe(1)
+  })
+  it("na mesma linha, a oração de ficha sai e a regra da foto fica", () => {
+    const d = "Ativo final 1196 × 1898px (2x), exportar em WebP. O terço superior (0–480px) tem que estar fora de foco e uniforme, numa cor só."
+    const r = sanitizePhotoDirection(d)
+    expect(r.texto).toBe("O terço superior tem que estar fora de foco e uniforme, numa cor só.")
+    expect(r.linhas_removidas).toBe(0)
+    expect(r.medidas_removidas).toBe(1)
+  })
+  it("oração que termina em conectivo pendurado sai; 'de,' no meio fica (decisão de 03/09)", () => {
+    const d = "Gerar a foto na altura de 1898px. Círculo da foto de Ø304px, centralizado horizontalmente, com o topo a 24px da borda."
+    const r = sanitizePhotoDirection(d)
+    expect(r.texto).toBe("Círculo da foto de, centralizado horizontalmente, com o topo a da borda.")
+  })
+})

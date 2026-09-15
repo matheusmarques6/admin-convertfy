@@ -230,3 +230,56 @@ describe("n_itens null conta como 1 item; elegíveis por posição (14/09)", () 
     expect(e.get(0)).toEqual(["p9", "p4"])
   })
 })
+
+// ── Cena × direção da variante (15/09, Innova Bay · Welcome 1) ───────────
+//
+// A hero-3 diz "Nenhuma mão, nenhuma pessoa"; o Estruturador pediu "mão
+// adulta encaixando o plug". As duas iam ao MESMO prompt de imagem e o
+// modelo fazia o híbrido. O conflito é decidido aqui, onde a variante
+// ainda pode ser trocada.
+describe("conflitoDeContrato — cena decidida × direção fotográfica (15/09)", () => {
+  const CENA = "produto real plugado numa tomada de parede, luz natural, mão adulta encaixando o plug"
+  const semGente = { ...resumirContrato(HERO_3), direcao: { rascunho: false, proibe_pessoa: true } }
+  const livre = { ...resumirContrato(HERO_9), direcao: { rascunho: false, proibe_pessoa: false } }
+  const rascunho = { ...resumirContrato(HERO_9), direcao: { rascunho: true, proibe_pessoa: false } }
+  it("direção que veta pessoa colide com cena que exige mão", () => {
+    expect(conflitoDeContrato(semGente, { imagem: CENA })).toMatch(/proíbe pessoa\/mão/)
+    expect(conflitoDeContrato(livre, { imagem: CENA })).toBeNull()
+  })
+  it("rascunho, direção não lida ou cena sem gente: nunca colide", () => {
+    expect(conflitoDeContrato(rascunho, { imagem: CENA })).toBeNull()
+    expect(conflitoDeContrato(resumirContrato(HERO_3), { imagem: CENA })).toBeNull()
+    expect(conflitoDeContrato(semGente, { imagem: "produto na tomada, luz natural" })).toBeNull()
+    expect(conflitoDeContrato(semGente, { imagem: null })).toBeNull()
+  })
+  it("entra no filtro por posição: a hero sem gente sai quando há alternativa; fail-open sem ela", () => {
+    const r = filtrarPorRequisitos(
+      [{ variant_id: "h3", contrato: semGente }, { variant_id: "h9", contrato: livre }],
+      { imagem: CENA },
+    )
+    expect(r.elegiveis.map((v) => v.variant_id)).toEqual(["h9"])
+    expect(filtrarPorRequisitos([{ variant_id: "h3", contrato: semGente }], { imagem: CENA }).zerou).toBe(true)
+  })
+})
+
+describe("capacidadePorSecao — com imagem gerada (15/09)", () => {
+  const lib = [
+    { block_type: "hero", output_schema: HERO_3, dispositivo: "hero_oferta_cupom" },
+    { block_type: "hero", output_schema: HERO_9, dispositivo: "hero_apresentacao" },
+    { block_type: "body", output_schema: BODY_4, dispositivo: "body_comparacao" },
+    { block_type: "body", output_schema: campos("section_title section_copy cta_label"), dispositivo: "body_tese" },
+    { block_type: "body", output_schema: campos("glass_title glass_subtitle glass_cta_label glass_composition_image:image"), dispositivo: "body_tese" },
+  ]
+  it("conta por seção e por dispositivo", () => {
+    const cap = capacidadePorSecao(lib)
+    expect(cap.hero.com_imagem).toBe(2)
+    expect(cap.hero.com_imagem_por_dispositivo).toEqual({ hero_oferta_cupom: 1, hero_apresentacao: 1 })
+    expect(cap.body.com_imagem).toBe(2)
+    expect(cap.body.com_imagem_por_dispositivo).toEqual({ body_comparacao: 1, body_tese: 1 })
+  })
+  it("o render diz onde a cena é obrigatória; seção sem imagem não fala disso", () => {
+    const txt = renderCapacidade(capacidadePorSecao([...lib, { block_type: "footer", output_schema: campos("legal") }]))
+    expect(txt).toContain("- hero: 2 variantes · com preço: 0 · com avaliação: 0 · com cupom: 1 · com CTA: 2 · com imagem gerada: 2 (decida \"imagem\" nessas)")
+    expect(txt.split("\n").find((l) => l.startsWith("- footer"))).not.toContain("imagem")
+  })
+})

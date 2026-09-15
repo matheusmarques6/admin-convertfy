@@ -22,6 +22,7 @@
 
 import type { EmailComponentVariant } from "@/types/email-generation"
 import { resumirContrato, type ContratoResumo } from "../shared/field-roles"
+import { lerDirecao } from "../image/direcao-fotografica"
 
 /**
  * Extras do VAULT de componentes para uma variante (curador-vault, 31/08):
@@ -354,6 +355,15 @@ export function buildCompactCatalog(sections: ReadonlyArray<CatalogSection>): Co
         campo("paleta", e.axes.paleta),
         campo("papel", e.axes.papel_na_peca),
         campo("anatomia", anatomia),
+        // Slot de imagem GERADA declarado (15/09): o Curador leu "cards de
+        // vidro" como cards de TEXTO — a composição fotográfica de 600×850
+        // não aparecia em lugar nenhum da linha.
+        campo(
+          "imagem",
+          c.imagens > 0
+            ? `${c.imagens} slot${c.imagens === 1 ? "" : "s"} de imagem gerada${c.direcao == null ? " · sem direção fotográfica" : c.direcao.rascunho ? " · direção fotográfica EM RASCUNHO" : c.direcao.proibe_pessoa ? " · direção veta pessoa/mão" : ""}`
+            : null,
+        ),
         campo("slots", c.itens.product && c.itens.product > 0 ? c.itens.product : null),
         campo("itens", e.axes.itens),
         campo("peso", e.axes.peso),
@@ -409,7 +419,14 @@ function toEntry(
     // B3: o dispositivo viaja DENTRO do contrato — assim `conflitoDeContrato`
     // o compara em todos os lugares (elegíveis, eliminação, resgate,
     // validadores) sem um segundo mapa que pudesse divergir.
-    contrato: { ...resumirContrato(v.output_schema), ...(v.dispositivo ? { dispositivo: v.dispositivo } : {}) },
+    contrato: {
+      ...resumirContrato(v.output_schema),
+      ...(v.dispositivo ? { dispositivo: v.dispositivo } : {}),
+      // 15/09: o que a direção fotográfica diz (rascunho / veta pessoa) —
+      // é o que permite eliminar a variante cuja direção contradiz a cena
+      // decidida, em vez de mandar as duas ao prompt de imagem.
+      direcao: (v.photo_direction ?? "").trim() ? lerDirecao(v.photo_direction) : null,
+    },
   }
   if (extra) {
     entry.vault = {

@@ -38,6 +38,7 @@ export type RegraDaAuditoria =
   | "descarte_sem_dispositivo"
   | "dispositivo_ausente"
   | "dispositivo_sem_variante"
+  | "imagem_sem_cena"
 
 export interface AchadoDaAuditoria {
   regra: RegraDaAuditoria
@@ -205,6 +206,27 @@ export function auditarRequisitos(input: AuditarRequisitosInput): AuditoriaDosRe
           detalhe: `posição ${i + 1} (${p.section}) pede "${r.dispositivo}" e a biblioteca não tem variante ativa desse dispositivo (tem: ${Object.keys(cap.por_dispositivo ?? {}).join(", ") || "nenhuma classificada"})`,
         }
         if (secaoClassificada) duras.push(achado)
+        else avisos.push(achado)
+      }
+    }
+    // Cena da foto (15/09): posição com slot de imagem gerada e "imagem"
+    // vazio saiu com a MESMA foto do hero (Innova Bay, batch b6c478d3 — o
+    // agente de imagem recebeu produto âncora + cenário genérico e nada
+    // mais). Dura quando TODA variante do dispositivo (ou da seção, sem
+    // dispositivo) tem imagem: a cena é certa de faltar. Aviso quando só
+    // parte tem — o Curador ainda pode escolher uma sem foto.
+    if (r && cap && !r.imagem) {
+      const disp = r.dispositivo && (cap.por_dispositivo ?? {})[r.dispositivo] ? r.dispositivo : null
+      const total = disp ? (cap.por_dispositivo ?? {})[disp] : cap.variantes
+      const comImagem = disp ? (cap.com_imagem_por_dispositivo ?? {})[disp] ?? 0 : cap.com_imagem ?? 0
+      if (comImagem > 0) {
+        const achado: AchadoDaAuditoria = {
+          regra: "imagem_sem_cena",
+          block_index: i,
+          section: p.section,
+          detalhe: `posição ${i + 1} (${p.section}${disp ? ` · ${disp}` : ""}) sem "requisitos.imagem" — ${comImagem === total ? "toda variante" : `${comImagem} de ${total} variantes`} dessa ${disp ? "forma" : "seção"} tem foto gerada, e sem cena decidida ela sai com a mesma foto do hero`,
+        }
+        if (comImagem === total) duras.push(achado)
         else avisos.push(achado)
       }
     }

@@ -33,6 +33,10 @@ CFY_PRIMARY_BRIEF — PHOTOGRAPHIC DIRECTION OF THIS COMPONENT. YOUR MAIN SOURCE
 Written for this exact component by the person who designed it. It decides HOW the photograph is made: setting, light, distance, angle, lens feel, whether a person appears and what they do, depth, colour treatment, and which area stays clean for copy. Shoot to satisfy it. Nothing below may contradict it. Empty means no direction was written: then compose from CFY_THIS_FRAME and CFY_SUPPORT only, and do not invent a scene beyond what the slot brief says.
 {PHOTO_DIRECTION}
 
+CFY_OTHER_FRAMES — WHAT THE OTHER PHOTOGRAPHS OF THIS EMAIL ALREADY SHOW. Do not repeat them.
+Each position of the email tells a different moment of the same story. The scenes below are already taken by other images; this frame must show something else (another moment, another distance, another gesture), never the same product in the same setting again. Empty means no other scene was decided.
+{OUTRAS_CENAS}
+
 CFY_THIS_FRAME — THE ONE IMAGE YOU ARE MAKING NOW. Second source, same weight as the direction for this frame.
 One call = one image. The slot below is the field of the component this image fills: what it shows ("especificidade"), where it sits in the piece ("onde_fica"), its exact size, which text areas the HTML will write on top of it, and what the other images of the same block already show. When it says this image is DEPENDENT of another, keep the session and change the frame. NEVER render any of this text.
 {IMAGE_SLOTS}

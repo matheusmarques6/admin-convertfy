@@ -6523,6 +6523,60 @@ erro no fio, e é no fio que ele é visível antes de doer. As três causas
 estavam nos logs há meses, cada uma com a UI degradando bem o bastante para
 ninguém reclamar.
 
+
+## Duas fotos iguais no mesmo e-mail: a cena que ninguém decidiu (15/09, migration 20261155)
+
+Innova Bay · Welcome 1 (batch b6c478d3): hero e "Works or just an ad?"
+saíram com o MESMO produto na MESMA parede. Não era uma imagem para os
+dois — são dois slots, duas runs independentes. Medido run a run:
+
+- **Hero**: o Estruturador decidiu "mão adulta encaixando o plug" e a
+  variante (`hero section 3`, flat-lay de kit) diz "nenhuma mão, nenhuma
+  pessoa". As duas iam ao MESMO prompt; o modelo fez o híbrido.
+- **Body 2** (`body 8 - cards vidro`): `requisitos.imagem: null` (ninguém
+  decidiu a cena), a direção cadastrada era RASCUNHO ("Pendente da
+  referência… aguardando o PNG") servida como "YOUR MAIN SOURCE", e o
+  Curador leu "cards de vidro" como cards de TEXTO (a composição
+  fotográfica de 600×850 não aparecia na linha do catálogo). Sem cena e
+  sem direção sobrou o insumo do hero: produto âncora + cenário genérico.
+- Nenhuma run de imagem sabia o que a anterior mostrou.
+
+O que mudou, na fronteira certa:
+
+1. **Cena obrigatória onde há foto gerada** (`auditoria-requisitos.ts`,
+   regra `imagem_sem_cena`): `<secoes_disponiveis>` passa a dizer "com
+   imagem gerada: N" (`CapacidadeDaSecao.com_imagem[_por_dispositivo]`);
+   posição sem `imagem` é DURA quando toda variante da forma tem foto,
+   aviso quando só parte. O prompt do Estruturador pede uma frase concreta
+   por posição e OUTRO momento da história em cada uma.
+2. **`OUTRAS_CENAS` / `CFY_OTHER_FRAMES`** (`prompt-vars-builder.ts` +
+   template in-code + migration no template do banco): as cenas decididas
+   das outras posições vão ao prompt de imagem com a ordem "não repita".
+   Vazio quando nenhuma outra posição tem cena — template idêntico ao de
+   antes. Origem `upstream`, custo zero (vem do blueprint).
+3. **Cena × direção decide no Curador** (`image/direcao-fotografica.ts`,
+   puro, 8 testes; `conflitoDeContrato` lê `RequisitosDuros.imagem` contra
+   `ContratoResumo.direcao`): direção que veta pessoa/mão elimina a
+   variante quando a cena exige gente. Régua estreita (só termos de
+   gente — "sem sombra dura" não é proibição de pessoa); direção ausente
+   ou rascunho NUNCA colide (fail-open). A linha do catálogo enxuto
+   declara `imagem: N slot(s) de imagem gerada · direção EM RASCUNHO /
+   veta pessoa/mão / sem direção`.
+4. **Rascunho conta como ausente**: `ehDirecaoEmRascunho` no builder →
+   `PHOTO_DIRECTION` vazia + `PHOTO_DIRECTION_AUSENTE` (o bloco "no
+   direction was written" do template assume) + `PHOTO_DIRECTION_RASCUNHO`
+   na telemetria. O editor da variante avisa. Era a ÚNICA variante ativa
+   nesse estado; a direção da body 8 continua por escrever (dado).
+5. **Medida apagada sem frase quebrada** (`sanitizePhotoDirection`): a
+   ORAÇÃO é julgada sozinha — ficha de arquivo, quase nada sobrando ou
+   conectivo pendurado no FIM sai; a vizinha fica. "de," no meio continua
+   (decisão de 03/09). A linha real da hero-3 ("slot de, ativo final. ou,
+   full-bleed…") cai inteira.
+
+**Limite declarado**: o conflito cena × direção só cobre pessoa/mão. Outros
+eixos (estúdio × ambiente real, produto único × kit) seguem indo ao prompt
+com a precedência "a cena vence" — sem dado de que o modelo os confunde.
+
 ---
 
 *Última atualização: Setembro 2026*

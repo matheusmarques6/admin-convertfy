@@ -281,3 +281,40 @@ describe("dispositivo (B3)", () => {
     expect(a.duras.map((d) => d.regra).sort()).toEqual(["dispositivo_ausente", "valor_descartado"])
   })
 })
+
+// ── imagem_sem_cena (15/09, Innova Bay · Welcome 1, batch b6c478d3) ──────
+//
+// A posição da tese (body_tese) saiu com `imagem: null`; a variante
+// escolhida tinha slot de imagem e a foto repetiu a do hero. A auditoria
+// passa a cobrar a cena onde a biblioteca tem foto gerada.
+describe("auditarRequisitos — imagem_sem_cena (15/09)", () => {
+  const capComImagem: Record<string, CapacidadeDaSecao> = {
+    ...CAP,
+    hero: { ...CAP.hero, com_imagem: 9, por_dispositivo: { hero_apresentacao: 2 }, classificadas: 2, com_imagem_por_dispositivo: { hero_apresentacao: 2 } },
+    // body_tese: 2 variantes, 1 com imagem → aviso; body_garantias: 1 de 1 → dura.
+    body: {
+      ...CAP.body,
+      com_imagem: 2,
+      por_dispositivo: { body_tese: 2, body_garantias: 1 },
+      classificadas: 3,
+      com_imagem_por_dispositivo: { body_tese: 1, body_garantias: 1 },
+    },
+  }
+  it("posição sem cena onde TODA variante da forma tem foto é dura; onde só parte tem, é aviso", () => {
+    const a = base({ capacidade: capComImagem })
+    const duras = a.duras.filter((d) => d.regra === "imagem_sem_cena")
+    const avisos = a.avisos.filter((d) => d.regra === "imagem_sem_cena")
+    // fixture: hero e products têm imagem; body_tese, body_garantias, reviews e footer não.
+    expect(duras.map((d) => d.section)).toEqual(["body"])
+    expect(duras[0].detalhe).toContain("body_garantias")
+    expect(duras[0].detalhe).toContain("toda variante")
+    expect(avisos).toHaveLength(1)
+    expect(avisos[0].detalhe).toContain("1 de 2 variantes")
+  })
+  it("seção sem foto gerada não cobra cena; posição COM cena passa", () => {
+    const a = base({ capacidade: CAP })
+    expect([...a.duras, ...a.avisos].filter((d) => d.regra === "imagem_sem_cena")).toEqual([])
+    const b = base({ capacidade: capComImagem })
+    expect(b.duras.some((d) => d.regra === "imagem_sem_cena" && d.section === "hero")).toBe(false)
+  })
+})

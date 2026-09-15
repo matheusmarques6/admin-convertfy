@@ -55,6 +55,7 @@ import {
 } from "./cores-da-marca"
 import type { AspectKey } from "./aspect-ratio"
 import type { ImageMode } from "./mode-resolution"
+import { ehDirecaoEmRascunho } from "./direcao-fotografica"
 
 export interface ImagePromptVarsInput {
   brand: StoreBrandIdentity | null
@@ -244,9 +245,16 @@ export function buildImagePromptVars(input: ImagePromptVarsInput): Record<string
   // Briefing do fotógrafo DESTE bloco: sai da variante que o Montador casou
   // a ele. É input principal do prompt — nicho, posicionamento e paleta
   // passam a ser contexto de apoio.
-  const photoDirectionCru = (
+  const photoDirectionCadastrada = (
     input.photoDirectionByVariant?.[(bpBlock?.variant_id ?? "").trim()] ?? ""
   ).trim()
+  // 15/09: direção em RASCUNHO ("Pendente da referência… aguardando o PNG",
+  // body 8 da Innova Bay) ia ao modelo como fonte principal. Conta como
+  // ausente — o template já tem o bloco "no direction was written", que
+  // manda compor só pelo slot e não inventar cena. A telemetria diz que
+  // era rascunho, para a biblioteca ser cobrada.
+  const photoDirectionRascunho = photoDirectionCadastrada.length > 0 && ehDirecaoEmRascunho(photoDirectionCadastrada)
+  const photoDirectionCru = photoDirectionRascunho ? "" : photoDirectionCadastrada
   // 09/09: o cadastro das variantes descreve a arte com os hex da PEÇA DE
   // REFERÊNCIA e os nomeia com o papel da paleta ("#2A4439 (cor
   // primária)"). Como a direção é a fonte principal do prompt, o modelo
@@ -277,6 +285,22 @@ export function buildImagePromptVars(input: ImagePromptVarsInput): Record<string
   // Papel da posição como campo próprio (09/09) — o purpose concatena a
   // "Forma (variante)", que é prosa de layout, não direção de cena.
   const papelDaPosicao = ((bpBlock as { papel?: string | null } | undefined)?.papel ?? "").trim()
+  // 15/09: as cenas JÁ decididas para as outras posições. Cada run de
+  // imagem era independente e nada dizia à segunda o que a primeira
+  // mostra — hero e body da Innova Bay saíram com o mesmo produto na mesma
+  // parede. Vem da decisão do Estruturador gravada no blueprint (custo
+  // zero); posição sem cena decidida não entra (não se inventa o que a
+  // outra foto mostra).
+  const outrasCenas = (blueprint?.blocks ?? [])
+    .map((b, idx) => ({ b, idx }))
+    .filter(({ b, idx }) => idx !== (input.blockPosition != null ? input.blockPosition - 1 : -1) && b !== bpBlock)
+    .map(({ b, idx }) => {
+      const req = (b as { requisitos?: { imagem?: unknown } | null }).requisitos
+      const cena = req && typeof req === "object" && typeof req.imagem === "string" ? req.imagem.trim() : ""
+      return cena ? `- position ${idx + 1} (${b.type}): ${cena}` : ""
+    })
+    .filter(Boolean)
+    .join("\n")
 
   // Um slot por chamada: o buildImageSlots emite só a seção do campo alvo
   // (`fieldKey`), mas recebe o schema INTEIRO do bloco — as `areas_de_texto`
@@ -344,6 +368,11 @@ export function buildImagePromptVars(input: ImagePromptVarsInput): Record<string
     // O flag segue a direção ORIGINAL: o aviso de cor não faz uma variante
     // sem direção passar a ter uma.
     PHOTO_DIRECTION_AUSENTE: photoDirectionCru ? "" : "true",
+    // A direção cadastrada era rascunho e foi tratada como ausente (15/09).
+    PHOTO_DIRECTION_RASCUNHO: photoDirectionRascunho ? "true" : "",
+    // O que as outras fotos deste e-mail já mostram — este quadro é outro
+    // momento. Vazio quando nenhuma outra posição tem cena decidida.
+    OUTRAS_CENAS: outrasCenas,
     EMAIL_ASSUNTO: blueprint?.subject_hint?.trim() ?? "",
 
     // Perfil da marca (enxuto — tom/persona/diferencial/slogan/restrições
@@ -439,6 +468,7 @@ export const BOOLEAN_LIKE_VARS = new Set([
   "product_ref",
   "image_overlay_reserve_bottom",
   "PHOTO_DIRECTION_AUSENTE",
+  "PHOTO_DIRECTION_RASCUNHO",
 ])
 
 // ── Proveniência das vars do prompt de imagem (migration 20261085) ──────
@@ -493,7 +523,9 @@ export const IMAGE_VAR_ORIGINS: Record<string, SegmentOrigin> = {
   CORES_TRADUZIDAS: IMG_CODIGO,
   CORES_DE_REFERENCIA: IMG_CODIGO,
   INTENCAO_VISUAL: { cls: "upstream", rotulo: "Intenção visual da posição — requisitos.imagem do Estruturador" },
+  OUTRAS_CENAS: { cls: "upstream", rotulo: "Cenas das outras posições — requisitos.imagem do Estruturador" },
   PHOTO_DIRECTION_AUSENTE: IMG_CODIGO,
+  PHOTO_DIRECTION_RASCUNHO: IMG_CODIGO,
   IMAGE_SLOTS: { cls: "biblioteca", rotulo: "Direção de arte por slot — schema da variante" },
   IMAGE_BRIEF: IMG_BLUEPRINT,
   blueprint_purpose: IMG_BLUEPRINT,

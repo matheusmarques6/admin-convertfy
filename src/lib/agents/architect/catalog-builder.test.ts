@@ -99,6 +99,8 @@ describe("buildCatalog", () => {
         n_itens: null,
         copy: 0,
         imagens: 0,
+        // 15/09: sem direção fotográfica cadastrada, nada foi lido.
+        direcao: null,
       },
     })
   })
@@ -521,3 +523,42 @@ describe("buildCatalogoEnxuto", () => {
     expect(r.compact.text).not.toContain("texto longo que não pode vazar")
   })
 })
+
+// ── 15/09: o slot de imagem gerada e o estado da direção aparecem na linha ─
+//
+// O Curador leu "body 8 - cards vidro" como cards de TEXTO: a composição
+// fotográfica de 600×850 não aparecia em lugar nenhum do índice, e a
+// direção era rascunho ("Pendente da referência… aguardando o PNG").
+describe("buildCatalogoEnxuto — imagem gerada e direção fotográfica (15/09)", () => {
+  const schemaImg = [
+    { key: "glass_title", type: "text_short" },
+    { key: "glass_subtitle", type: "text_short" },
+    { key: "glass_composition_image", type: "image" },
+  ] as never
+  it("declara o slot, o rascunho e o veto a pessoa; sem imagem a linha não fala disso", () => {
+    const txt = buildCatalogoEnxuto(
+      buildCatalog([
+        v("b8", "body", "body 8 - cards vidro", { output_schema: schemaImg, photo_direction: "Pendente da referência. Aguardando o PNG." } as never),
+        v("h3", "hero", "hero 3", { output_schema: schemaImg, photo_direction: "Flat-lay. Nenhuma mão, nenhuma pessoa." } as never),
+        v("b2", "body", "body 2 - textos", { output_schema: [{ key: "t", type: "text_short" }] as never }),
+        v("b9", "body", "body 9 - sem direção", { output_schema: schemaImg, photo_direction: null } as never),
+      ]).sections,
+    )
+    expect(txt).toContain("body 8 - cards vidro")
+    expect(txt).toMatch(/body 8[^\n]*imagem: 1 slot de imagem gerada · direção fotográfica EM RASCUNHO/)
+    expect(txt).toMatch(/hero 3[^\n]*imagem: 1 slot de imagem gerada · direção veta pessoa\/mão/)
+    expect(txt).toMatch(/body 9[^\n]*imagem: 1 slot de imagem gerada · sem direção fotográfica/)
+    expect(txt.split("\n").find((l) => l.includes("body 2 - textos"))).not.toContain("imagem:")
+  })
+  it("o contrato tipado carrega a leitura da direção; ausente fica null", () => {
+    const cat = buildCatalog([
+      v("h3", "hero", "hero 3", { output_schema: schemaImg, photo_direction: "Nenhuma mão, nenhuma pessoa." } as never),
+      v("h9", "hero", "hero 9", { output_schema: schemaImg }),
+    ])
+    const h3 = cat.sections[0].variantes.find((e) => e.variant_id === "h3")!
+    const h9 = cat.sections[0].variantes.find((e) => e.variant_id === "h9")!
+    expect(h3.contrato.direcao).toEqual({ rascunho: false, proibe_pessoa: true })
+    expect(h9.contrato.direcao).toBeNull()
+  })
+})
+

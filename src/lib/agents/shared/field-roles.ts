@@ -99,6 +99,8 @@ export function papelDoCampo(key: string): PapelDoCampo {
   }
 }
 
+import { conflitoCenaDirecao } from "../image/direcao-fotografica"
+
 /** Resumo do contrato de uma variante — o que a anatomia obriga. */
 export interface ContratoResumo {
   /** Campos com `required:true` (raro na biblioteca; fica por honestidade). */
@@ -123,6 +125,13 @@ export interface ContratoResumo {
    * ainda não classificada: nunca conflita (fail-open).
    */
   dispositivo?: string | null
+  /**
+   * O que a direção fotográfica cadastrada DIZ (15/09, `image/direcao-
+   * fotografica.ts`): rascunho ("Pendente da referência…") e veto a
+   * pessoa/mão. Não vem do schema — o catálogo preenche de
+   * `photo_direction`. Ausente = não lida: nunca conflita.
+   */
+  direcao?: { rascunho: boolean; proibe_pessoa: boolean } | null
 }
 
 type CampoMinimo = { key?: unknown; type?: unknown; nature?: unknown; required?: unknown }
@@ -186,6 +195,8 @@ export interface RequisitosDuros {
   n_itens?: { min?: number | null; max?: number | null } | null
   preco?: boolean | null
   avaliacao?: boolean | null
+  /** Cena decidida para a posição (`requisitos.imagem`) — cruza com a direção da variante. */
+  imagem?: string | null
 }
 
 /** Motivo pelo qual um contrato colide com os requisitos; null = compatível. */
@@ -195,6 +206,13 @@ export function conflitoDeContrato(c: ContratoResumo, r: RequisitosDuros | null 
   // o papel por definição — o resto do contrato nem é olhado.
   const disp = conflitoDeDispositivo(c.dispositivo, r.dispositivo)
   if (disp) return disp
+  // Cena × direção (15/09): a hero-3 diz "nenhuma mão, nenhuma pessoa" e o
+  // Estruturador pediu "mão adulta encaixando o plug". Até aqui as duas iam
+  // ao MESMO prompt de imagem e o modelo fazia o híbrido; o lugar de
+  // decidir é aqui, onde a variante ainda pode ser trocada. Direção
+  // ausente/rascunho nunca colide.
+  const cena = conflitoCenaDirecao(r.imagem, c.direcao)
+  if (cena) return cena
   if (r.cupom === false && c.tem_cupom) return "tem slot de cupom e a decisão nega cupom"
   if (r.cupom === true && !c.tem_cupom) return "não tem slot de cupom e a decisão exige cupom"
   // `cta: false` com anatomia que TEM botão NÃO é conflito de anatomia: o
@@ -288,6 +306,10 @@ export interface CapacidadeDaSecao {
   com_cupom: number
   com_cta: number
   com_credencial: number
+  /** Variantes com slot de imagem GERADA (15/09) — onde o Estruturador tem de decidir a cena. */
+  com_imagem?: number
+  /** Idem, por dispositivo: a cena é obrigatória quando TODAS as variantes do dispositivo têm imagem. */
+  com_imagem_por_dispositivo?: Record<string, number>
 }
 
 /**
@@ -312,12 +334,21 @@ export function capacidadePorSecao(
       com_cupom: 0,
       com_cta: 0,
       com_credencial: 0,
+      com_imagem: 0,
+      com_imagem_por_dispositivo: {},
     })
     cap.variantes++
     if (v.dispositivo) {
       cap.classificadas = (cap.classificadas ?? 0) + 1
       cap.por_dispositivo ??= {}
       cap.por_dispositivo[v.dispositivo] = (cap.por_dispositivo[v.dispositivo] ?? 0) + 1
+    }
+    if (c.imagens > 0) {
+      cap.com_imagem = (cap.com_imagem ?? 0) + 1
+      if (v.dispositivo) {
+        cap.com_imagem_por_dispositivo ??= {}
+        cap.com_imagem_por_dispositivo[v.dispositivo] = (cap.com_imagem_por_dispositivo[v.dispositivo] ?? 0) + 1
+      }
     }
     if (c.n_itens != null) {
       cap.itens = cap.itens
@@ -344,6 +375,9 @@ export function renderCapacidade(cap: Record<string, CapacidadeDaSecao>): string
       if (c.itens) partes.push(c.itens.min === c.itens.max ? `${c.itens.max} itens` : `${c.itens.min}–${c.itens.max} itens`)
       partes.push(`com preço: ${c.com_preco}`, `com avaliação: ${c.com_avaliacao}`, `com cupom: ${c.com_cupom}`, `com CTA: ${c.com_cta}`)
       if (c.com_credencial > 0) partes.push(`com credencial do depoente: ${c.com_credencial}`)
+      // Onde há imagem gerada, "imagem" deixa de ser opcional (15/09): a
+      // posição sem cena saiu com a mesma foto do hero.
+      if ((c.com_imagem ?? 0) > 0) partes.push(`com imagem gerada: ${c.com_imagem} (decida "imagem" nessas)`)
       // Dispositivos com variante ATIVA nesta seção (B3): é a lista de onde o
       // Estruturador escolhe `requisitos.dispositivo`. Seção sem nenhuma
       // classificada diz isso — pedir dispositivo ali é lacuna declarada.

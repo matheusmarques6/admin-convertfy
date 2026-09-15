@@ -43,6 +43,7 @@ import {
   EMAIL_WIDTH,
   enforceEmailWidth,
 } from "@/lib/email-workspace/email-width"
+import { ehDirecaoEmRascunho } from "@/lib/agents/image/direcao-fotografica"
 
 /** Rascunho editável de variante (strings vazias no lugar de null). */
 export interface VariantDraft {
@@ -497,6 +498,18 @@ export function VariantEditor({
                 que área deixar limpa para a copy. O que MOSTRAR continua
                 vindo do briefing do bloco.
               </div>
+              {draft.photo_direction.trim() &&
+                ehDirecaoEmRascunho(draft.photo_direction) && (
+                  <div style={{ marginTop: 10 }}>
+                    <EGNotice tone="warn">
+                      <strong>Direção fotográfica em rascunho.</strong> Texto
+                      que começa com &quot;Pendente&quot;/&quot;aguardando&quot;
+                      não vai ao agente de imagem: a variante gera como se não
+                      tivesse direção nenhuma (compõe só pelo slot). Escreva a
+                      direção ou desative a variante até lá.
+                    </EGNotice>
+                  </div>
+                )}
             </div>
             <div
               style={{
