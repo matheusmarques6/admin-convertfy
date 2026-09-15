@@ -711,12 +711,51 @@ describe("duplicatasPorDispositivo", () => {
     expect(r.duplicatas).toEqual([])
   })
 
-  it("variante sem dispositivo fica fora: não se sabe se disputam a mesma posição", () => {
+  // Este teste afirmava o contrário ("variante sem dispositivo fica fora")
+  // e era ele que mantinha o defeito vivo: quem não tem etiqueta concorre em
+  // TODA posição da seção, então é ali que a duplicata dela pesa. Medido em
+  // 15/09, com as 8 heroes novas ainda sem classificação: duas delas
+  // descrevem a mesma decisão de uso e o detector não as via.
+  it("duas sem dispositivo na mesma seção formam par, agrupadas pela seção", () => {
     const r = buildCatalog([
       v("a", "hero", "A", { description: d10 }),
-      v("b", "hero", "B", { description: d10 }),
+      v("b", "hero", "B", { description: d8 }),
+    ])
+    expect(r.duplicatas).toHaveLength(1)
+    expect(r.duplicatas[0].dispositivo).toBe("sem dispositivo · hero")
+  })
+
+  it("sem dispositivo em seções diferentes não forma par", () => {
+    const r = buildCatalog([
+      v("a", "hero", "A", { description: d10 }),
+      v("b", "body", "B", { description: d10 }),
     ])
     expect(r.duplicatas).toEqual([])
+  })
+
+  it("classificada e não classificada não formam par: os grupos são outros", () => {
+    const r = buildCatalog([
+      v("a", "hero", "A", { description: d10, dispositivo: "hero_lineup" }),
+      v("b", "hero", "B", { description: d8 }),
+    ])
+    expect(r.duplicatas).toEqual([])
+  })
+
+  it("lista a variante ativa sem dispositivo, com a seção", () => {
+    const r = buildCatalog([
+      v("a", "hero", "hero section 13", { description: d10 }),
+      v("b", "hero", "hero section 3", { description: d8, dispositivo: "hero_oferta_cupom" }),
+    ])
+    expect(r.compact.naoClassificadas).toEqual([
+      { variant_id: "a", name: "hero section 13", section: "hero" },
+    ])
+  })
+
+  it("biblioteca inteira classificada devolve lista vazia", () => {
+    const r = buildCatalog([
+      v("a", "hero", "A", { description: d10, dispositivo: "hero_lineup" }),
+    ])
+    expect(r.compact.naoClassificadas).toEqual([])
   })
 
   it("descrição vazia não é duplicata — é cadastro incompleto", () => {

@@ -6697,6 +6697,62 @@ a classificação não se sabe se as duas disputam a mesma posição.
 Acompanhamento: `supabase/migrations/DIAGNOSTICO_ofuscamento.sql` — as
 MESMAS queries da medição, com o retrato de 15/09 no cabeçalho.
 
+## Oito heroes sem etiqueta (15/09)
+
+Entraram 8 hero sections novas, todas ativas, **sem dispositivo e sem nota**
+— as outras 37 da biblioteca tinham as duas coisas. O cadastro estava bom
+(passam no `variantIsFillable`, HTML em 600px, schema casando), e é
+justamente por isso que o defeito era invisível.
+
+**Seis das oito são o e-mail INTEIRO**, não uma abertura: as descrições
+abrem com "E-mail inteiro de…" (contador, oferta, cupom, corpo, botão numa
+peça só). Cadastradas como `hero`, elas vão para a posição 1 e as posições
+2–6 continuam sendo montadas embaixo — dois e-mails empilhados, com dois
+cupons. O eixo que diria isso é `papel_na_peca: peca-inteira` e mora na NOTA
+do vault; sem nota o Curador não sabe, sem dispositivo o código não filtra.
+Só a 17 e a 18 são hero de verdade.
+
+**Três regras certas que, juntas, premiavam quem não tem etiqueta:**
+
+1. `conflitoDeDispositivo` é fail-open — variante sem dispositivo nunca é
+   eliminada e concorre em TODA posição da seção.
+2. `capacidadePorSecao` só conta as classificadas — o Estruturador nunca
+   consegue pedi-la. Ela **custa e não compete**.
+3. `custoDeIncompatibilidade` não cobrava nada dela, então ela EMPATAVA em 0
+   com quem acerta o dispositivo, e aí decidia o desempate por **menor uso**
+   instalado no mesmo dia. Medido: numa posição que pede `hero_pergunta`, a
+   `hero section 9` (25 escolhas em 45 dias) perdia para a `hero section 13`
+   (e-mail inteiro de Black Friday, 0 escolhas). **Correção: +75** — metade
+   dos 150 do dispositivo errado. Não vira `Infinity`: não saber continua
+   não sendo violar.
+
+**Classificação aplicada** (15/09): `hero_oferta_cupom` para 11, 12, 13, 14 e
+15; `hero_apresentacao` para 16, 17 e 18 — que deixou de ser dispositivo sem
+variante ativa. Pool de hero: 10 · 3 · 2 · 2. Só `hero_oferta_cupom` passa do
+limiar de 5 e liga a chamada de shortlist; separar as seis peças inteiras do
+pool de hero a zeraria (decisão pendente do dono).
+
+**Custo**: a linha do catálogo é cacheada (~US$ 0,001 por chamada com as 8) —
+é a propriedade "acrescentar variante custa pouco" funcionando. O custo real
+é a chamada de shortlist que passa a existir: ~US$ 0,10 por e-mail, **1–3%**
+dos US$ 3,10–8,20 de uma peça.
+
+**O que ficou visível**: `CompactCatalog.naoClassificadas` sobe na telemetria
+do `assembler_chooser` e aparece na aba Conhecimento; `duplicatasPorDispositivo`
+passou a comparar também as **não classificadas da mesma seção** (era onde as
+8 estavam, e duas delas — 13 e 15 — descrevem a mesma decisão de uso); e o
+editor avisa ao ter variante ativa sem dispositivo. O teste que afirmava
+"variante sem dispositivo fica fora" foi corrigido: era ele que mantinha o
+detector cego.
+
+**Hand-off para o vault** (`ficha-do-vault.ts`, puro, 12 testes): o agente do
+Obsidian não enxerga o admin, e `variant_id`, nome exato e schema moram só de
+cá — errados, a nota é ignorada **em silêncio**. A ficha é gerada do banco
+(botão "Ficha para o vault" no editor; as 8 em
+`docs/email-generation/handoff-heroes-15-09.md`) e deriva a forma da MESMA
+`resumirContrato` que monta a linha do catálogo, senão a ficha descreveria uma
+peça e o ranking mediria outra.
+
 ---
 
 *Última atualização: Setembro 2026*

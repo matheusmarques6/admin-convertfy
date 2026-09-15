@@ -1592,6 +1592,11 @@ export async function runCuradorShadow(
         // Duas variantes ativas do mesmo dispositivo contando a mesma peça:
         // escolher sempre a mesma está certo, e é curadoria que resolve.
         duplicatas_no_dispositivo: p.catalogComExtras.duplicatas,
+        // Variante ativa sem `dispositivo` (15/09): concorre em toda posição
+        // da seção pelo fail-open e nunca é pedida, porque a capacidade só
+        // conta as classificadas. Custa e não compete — e até aqui só
+        // aparecia numa linha dentro do prompt do Estruturador.
+        nao_classificadas: p.catalogComExtras.compact.naoClassificadas,
         progressive_disclosure: {
           initial_variants: p.catalogComExtras.total,
           finalists: res.finalistIds,

@@ -137,3 +137,32 @@ where r.agent = 'assembler_chooser'
   and jsonb_array_length(coalesce(r.parsed_output->'duplicatas_no_dispositivo','[]'::jsonb)) > 0
 order by r.created_at desc
 limit 5;
+
+-- ── 7. Variante ATIVA sem dispositivo (15/09) ───────────────────────────
+-- O pior estado da biblioteca e o único que ninguém enxergava: o filtro é
+-- fail-open, então ela nunca é eliminada e concorre em TODA posição da
+-- seção; e `capacidadePorSecao` só conta as classificadas, então o
+-- Estruturador nunca consegue pedi-la. Custa e não compete — e no resgate
+-- ganhava o desempate por ter zero usos (corrigido: +75 quando a posição
+-- pede dispositivo).
+--
+-- Retrato de 15/09, ANTES: 8 de 45 ativas — as 8 heroes cadastradas naquele
+-- dia. DEPOIS de classificar: 0.
+select block_type, count(*) as ativas_sem_dispositivo,
+       string_agg(name, ', ' order by name) as quais
+from email_component_variants
+where is_active and dispositivo is null
+group by block_type
+order by 2 desc;
+
+-- Pool efetivo por dispositivo de hero: é ele que cruza o limiar de 5 da
+-- shortlist (`limiarSemChamada`). Em 15/09, depois de classificar:
+-- hero_oferta_cupom 10 · hero_apresentacao 3 · hero_lineup 2 · hero_pergunta 2.
+-- Acima de 5 a chamada ao modelo LIGA para o e-mail inteiro.
+select block_type, coalesce(dispositivo, '(sem dispositivo)') as dispositivo,
+       count(*) as variantes,
+       case when count(*) > 5 then 'chama o modelo' else 'resolve no código' end as shortlist
+from email_component_variants
+where is_active
+group by block_type, dispositivo
+order by block_type, count(*) desc;

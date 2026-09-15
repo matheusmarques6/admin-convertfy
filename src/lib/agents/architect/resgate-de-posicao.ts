@@ -69,7 +69,9 @@
  * descartou um ITEM da referência, "política de devolução em linguagem
  * simples", e a normalização carimbou o dispositivo da família). Aplicar o
  * descarte ali mataria a posição certa. Variante sem dispositivo
- * cadastrado nunca custa `Infinity`: não saber não é violar.
+ * cadastrado nunca custa `Infinity`: não saber não é violar — mas custa
+ * 75 quando a posição PEDE um dispositivo, senão ela empata com quem
+ * acerta e ganha no desempate por menor uso (ver `custoDeIncompatibilidade`).
  *
  * Módulo PURO: quem escolhe o resgate decide o que vai ao cliente, e um
  * engano aqui é uma seção errada no e-mail de uma marca.
@@ -143,9 +145,19 @@ export function custoDeIncompatibilidade(
   if (!r) return 0
   let custo = 0
   // Dispositivo (B3): outra FORMA não realiza o papel — pesa mais que cupom.
-  // Variante sem dispositivo (não classificada) não paga: não saber não é
-  // violar.
   if (r.dispositivo && c.dispositivo && c.dispositivo !== r.dispositivo) custo += 150
+  // Variante NÃO CLASSIFICADA numa posição que PEDE dispositivo: metade do
+  // custo de estar errado (15/09). Não saber continua não sendo violar — o
+  // fail-open de `conflitoDeDispositivo` é deliberado e nada aqui vira
+  // `Infinity` —, mas custo ZERO a fazia EMPATAR com quem acerta, e aí
+  // decidia o desempate seguinte, que desde 15/09 é o MENOR USO. Medido no
+  // mesmo dia, com as 8 heroes novas ainda sem etiqueta: numa posição que
+  // pede `hero_pergunta`, a `hero section 9` (a certa, 25 escolhas em 45
+  // dias) empatava em 0 com a `hero section 13` (um e-mail inteiro de Black
+  // Friday, 0 escolhas) e PERDIA a posição para ela. As duas regras estão
+  // certas isoladamente; junta-las sem este custo premiava quem não tem
+  // etiqueta exatamente por não ter.
+  if (r.dispositivo && !c.dispositivo) custo += 75
   // Slot de cupom sem oferta: o merge deixa "Use code: [WELCOME-CODE]" no
   // HTML e o e-mail promete um desconto que não existe.
   if (r.cupom === false && c.tem_cupom) custo += 100

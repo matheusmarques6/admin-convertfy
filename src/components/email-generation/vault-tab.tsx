@@ -93,6 +93,7 @@ interface HigieneData {
     b: { variant_id: string; name: string }
     similaridade: number
   }>
+  nao_classificadas?: Array<{ variant_id: string; name: string; section: string }>
 }
 /**
  * Lacuna da biblioteca proposta pela TELEMETRIA do Curador (09/09): a
@@ -523,11 +524,13 @@ function LacunasPropostasCard({ propostas, onChanged }: { propostas: PropostaRow
 
 function HigieneCard({ higiene }: { higiene: HigieneData }) {
   const duplicatas = higiene.duplicatas ?? []
+  const naoClassificadas = higiene.nao_classificadas ?? []
   const total =
     higiene.divergentes.length +
     higiene.notas_orfas.length +
     higiene.variantes_sem_nota.length +
-    duplicatas.length
+    duplicatas.length +
+    naoClassificadas.length
   return (
     <EGCard>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
@@ -565,6 +568,32 @@ function HigieneCard({ higiene }: { higiene: HigieneData }) {
                     </div>
                     <div style={{ fontFamily: F.sans, fontSize: 12, color: C.g500 }}>
                       <b>cadastro:</b> {d.banco}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {naoClassificadas.length > 0 && (
+            <div>
+              <div style={{ fontFamily: F.sans, fontSize: 12, fontWeight: 600, color: C.g700, marginBottom: 6 }}>
+                Variante ativa sem dispositivo ({naoClassificadas.length})
+              </div>
+              <div style={{ fontFamily: F.sans, fontSize: 12, color: C.g500, marginBottom: 6 }}>
+                O filtro por dispositivo é fail-open: sem ele a variante nunca
+                é eliminada e concorre em TODA posição da seção. E como a
+                capacidade só conta as classificadas, o Estruturador nunca
+                consegue pedi-la. Ela custa e não compete — e ainda ganha o
+                desempate do resgate por ter zero usos. Classifique na aba
+                Componentes.
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {naoClassificadas.map((v) => (
+                  <div key={v.variant_id} style={{ borderLeft: `2px solid ${C.warn}`, paddingLeft: 8 }}>
+                    <div style={{ fontFamily: F.mono, fontSize: 12, color: C.g900 }}>{v.name}</div>
+                    <div style={{ fontFamily: F.sans, fontSize: 12, color: C.g400, marginTop: 2 }}>
+                      seção {v.section}
                     </div>
                   </div>
                 ))}

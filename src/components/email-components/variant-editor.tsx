@@ -13,7 +13,7 @@
 import { useMemo, useState, type ReactNode } from "react"
 
 import { classifyRenderedHtml } from "@/lib/agents/shared/rendered-classify"
-import { Check, ChevronDown, ChevronRight, Pencil } from "lucide-react"
+import { Check, ChevronDown, ChevronRight, Copy, Pencil } from "lucide-react"
 import type {
   ComponentOutputField,
 } from "@/types/email-generation"
@@ -24,6 +24,7 @@ import {
 } from "@/lib/agents/shared/component-dimensions"
 import { COMPONENT_CATEGORIES } from "@/lib/agents/shared/component-categories"
 import { DESCRICAO_DO_DISPOSITIVO, dispositivosDaSecao } from "@/lib/agents/shared/dispositivos"
+import { fichasDoLote } from "@/lib/email-workspace/ficha-do-vault"
 import { C, F, egInputStyle } from "@/components/email-generation/ui/eg-theme"
 import {
   EGBtn,
@@ -181,6 +182,74 @@ function Ajuda({ children }: { children: ReactNode }) {
       }}
     >
       {children}
+    </div>
+  )
+}
+
+/**
+ * "Ficha para o vault" (15/09) — o agente que escreve as notas no Obsidian
+ * não enxerga o admin, e é aqui que moram o `variant_id`, o nome exato e o
+ * schema. Errados na nota, ela é ignorada **em silêncio**: nada em log, nada
+ * em tela, e o Curador segue escolhendo a variante sem nenhum eixo.
+ *
+ * A ficha sai de `fichasDoLote`, que deriva a forma da MESMA `resumirContrato`
+ * que monta a linha do catálogo — as duas não podem divergir.
+ */
+function FichaDoVaultBotao({
+  draft,
+  selfId,
+}: {
+  draft: VariantDraft
+  selfId: string | null
+}) {
+  const [copiado, setCopiado] = useState(false)
+  const ficha = useMemo(
+    () =>
+      fichasDoLote(
+        [
+          {
+            id: selfId ?? "(salve a variante para ter o id)",
+            name: draft.name,
+            block_type: draft.block_type,
+            description: draft.description,
+            dispositivo: draft.dispositivo || null,
+            output_schema: draft.output_schema,
+          },
+        ],
+        new Date().toLocaleDateString("pt-BR"),
+      ),
+    [selfId, draft.name, draft.block_type, draft.description, draft.dispositivo, draft.output_schema],
+  )
+  return (
+    <div>
+      <EGBtn
+        variant="secondary"
+        disabled={!selfId}
+        title={
+          selfId
+            ? "Copia a ficha desta variante para colar no Obsidian"
+            : "Salve a variante primeiro: a ficha precisa do variant_id"
+        }
+        onClick={() => {
+          void navigator.clipboard?.writeText(ficha).then(
+            () => {
+              setCopiado(true)
+              setTimeout(() => setCopiado(false), 2200)
+            },
+            () => setCopiado(false),
+          )
+        }}
+        style={{ height: 30, padding: "0 12px", fontSize: 12 }}
+      >
+        <Copy size={13} />
+        {copiado ? "Copiada" : "Ficha para o vault"}
+      </EGBtn>
+      <Ajuda>
+        O que o agente do Obsidian precisa e não tem como descobrir: o
+        <code> variant_id</code>, o nome exato no banco, a forma derivada do
+        schema e os vocabulários fechados dos eixos. Sem isso, a nota é
+        ignorada sem nenhum aviso.
+      </Ajuda>
     </div>
   )
 }
@@ -353,6 +422,17 @@ export function VariantEditor({
                 decisão. Cada dispositivo obriga uma anatomia (quantos itens,
                 se tem preço, cupom ou credencial).
               </Ajuda>
+              {draft.is_active && !draft.dispositivo && (
+                <div style={{ marginTop: 8 }}>
+                  <EGNotice tone="warn">
+                    Esta variante está ATIVA e sem dispositivo. Ela vai concorrer
+                    em toda posição de <b>{draft.block_type}</b> (o filtro é
+                    fail-open) e o Estruturador nunca vai conseguir pedi-la — e no
+                    resgate ela ganha o desempate por ter zero usos. Classifique
+                    antes de escrever a nota do vault.
+                  </EGNotice>
+                </div>
+              )}
             </div>
             <div>
               <EGLabel>Slug da anatomia</EGLabel>
@@ -373,6 +453,9 @@ export function VariantEditor({
                 A <strong>primeira frase</strong> vai para o índice que o Curador
                 lê ao escolher o bloco. Vazia, ele rankeia só pelo nome.
               </Ajuda>
+            </div>
+            <div style={{ gridColumn: "1 / -1" }}>
+              <FichaDoVaultBotao draft={draft} selfId={selfId ?? null} />
             </div>
             <div style={{ gridColumn: "1 / -1" }}>
               <EGLabel>Descrição detalhada</EGLabel>

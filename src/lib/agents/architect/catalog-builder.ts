@@ -240,6 +240,18 @@ export interface CompactCatalog {
   charsPorVariante: number
   /** Linha acima de `LIMITE_CHARS_POR_VARIANTE` — cadastro a revisar. */
   linhasLongas: Array<{ variant_id: string; chars: number }>
+  /**
+   * Variante ATIVA sem `dispositivo` (15/09). É o pior estado possível na
+   * biblioteca e o único que ninguém enxergava: o filtro por dispositivo é
+   * fail-open, então ela nunca é eliminada e concorre em TODA posição da
+   * seção; e `capacidadePorSecao` só conta as classificadas, então o
+   * Estruturador nunca consegue pedi-la. Ela custa e não compete.
+   *
+   * O único lugar que dizia isso era uma linha dentro do prompt do
+   * Estruturador ("· N sem classificação"), que nenhuma pessoa lê. Agora
+   * sobe na telemetria do `assembler_chooser` e aparece na aba Conhecimento.
+   */
+  naoClassificadas: Array<{ variant_id: string; name: string; section: string }>
 }
 
 /**
@@ -347,8 +359,13 @@ export function duplicatasPorDispositivo(
   const porDispositivo = new Map<string, CatalogEntry[]>()
   for (const sec of sections) {
     for (const e of sec.variantes) {
-      const d = e.contrato.dispositivo
-      if (!d) continue
+      // Sem dispositivo, o grupo é a SEÇÃO (15/09). Pular a não classificada
+      // deixava justamente o grupo mais suspeito invisível: as 8 heroes que
+      // entraram naquele dia sem etiqueta incluíam duas que descrevem a
+      // mesma decisão de uso ("data comemorativa + oferta única + cupom"),
+      // e o detector não as via. Quem não tem etiqueta concorre em toda
+      // posição da seção, então é ali que a duplicata dela pesa.
+      const d = e.contrato.dispositivo ?? `sem dispositivo · ${sec.section}`
       const arr = porDispositivo.get(d) ?? []
       arr.push(e)
       porDispositivo.set(d, arr)
@@ -540,12 +557,16 @@ export function buildCompactCatalog(sections: ReadonlyArray<CatalogSection>): Co
     })
     .filter((l) => l.chars > LIMITE_CHARS_POR_VARIANTE)
     .sort((a, b) => b.chars - a.chars)
+  const naoClassificadas = entries
+    .filter((e) => !e.requirements.dispositivo)
+    .map((e) => ({ variant_id: e.variant_id, name: e.title, section: e.section }))
   return {
     entries,
     text,
     chars: text.length,
     charsPorVariante: entries.length ? Math.round(text.length / entries.length) : 0,
     linhasLongas,
+    naoClassificadas,
   }
 }
 
@@ -703,6 +724,11 @@ export interface HigieneDoVault {
   notas_orfas: NotaOrfa[]
   variantes_sem_nota: VarianteSemNota[]
   /**
+   * Variante ativa sem `dispositivo` — concorre em toda posição da seção e
+   * nunca é pedida. Vem do `compact.naoClassificadas`.
+   */
+  nao_classificadas?: Array<{ variant_id: string; name: string; section: string }>
+  /**
    * Duas variantes ATIVAS do mesmo dispositivo contando a mesma peça
    * (15/09). Não é defeito de código: a escolha sempre recair na mesma é o
    * comportamento certo quando as duas são iguais. É trabalho de curadoria.
@@ -728,6 +754,7 @@ export function levantarHigieneDoVault(
   variantesAtivas: { id: string; name: string; block_type: string }[],
   divergentes: DivergenciaDeCatalogo[],
   duplicatas: DuplicataNoDispositivo[] = [],
+  nao_classificadas: Array<{ variant_id: string; name: string; section: string }> = [],
 ): HigieneDoVault {
   const ativas = new Map(variantesAtivas.map((v) => [v.id, v]))
   const comNota = new Set<string>()
@@ -749,5 +776,5 @@ export function levantarHigieneDoVault(
     .filter((v) => !comNota.has(v.id))
     .map((v) => ({ variant_id: v.id, name: v.name, block_type: v.block_type }))
 
-  return { divergentes, notas_orfas, variantes_sem_nota, duplicatas }
+  return { divergentes, notas_orfas, variantes_sem_nota, duplicatas, nao_classificadas }
 }

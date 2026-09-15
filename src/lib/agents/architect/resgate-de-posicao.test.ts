@@ -355,3 +355,52 @@ describe("desempate por menor uso", () => {
     expect(r?.variant_id).toBe("rica")
   })
 })
+
+describe("variante não classificada não empata com quem acerta o dispositivo", () => {
+  // Medido em 15/09, no dia em que as 8 heroes novas entraram sem
+  // `dispositivo`: `hero section 9` é a hero de pergunta (25 escolhas em 45
+  // dias) e `hero section 13` é um e-mail INTEIRO de Black Friday, recém
+  // cadastrado e ainda sem etiqueta (0 escolhas). Sem o custo de 75 as duas
+  // empatavam em 0 e o desempate por MENOR USO entregava a abertura de um
+  // welcome para a peça de Black Friday.
+  const PEDE_PERGUNTA = {
+    dispositivo: "hero_pergunta" as const,
+    cta: true,
+    cupom: null,
+    preco: null,
+    avaliacao: null,
+    n_itens: null,
+  }
+  const hero9 = contrato({ dispositivo: "hero_pergunta", copy: 4 })
+  const hero13 = contrato({ dispositivo: null, tem_cupom: true, copy: 7 })
+
+  it("a não classificada custa 75; a que acerta o dispositivo custa 0", () => {
+    expect(custoDeIncompatibilidade(hero9, PEDE_PERGUNTA)).toBe(0)
+    expect(custoDeIncompatibilidade(hero13, PEDE_PERGUNTA)).toBe(75)
+  })
+
+  it("a hero de pergunta vence, mesmo com 25 usos contra 0", () => {
+    const escolha = menosIncompativel(
+      [
+        { variant_id: "hero-13", contrato: hero13, usos: 0 },
+        { variant_id: "hero-9", contrato: hero9, usos: 25 },
+      ],
+      PEDE_PERGUNTA,
+      "hero",
+    )
+    expect(escolha?.variant_id).toBe("hero-9")
+  })
+
+  it("sem dispositivo PEDIDO, a não classificada não paga nada", () => {
+    const semPedido = { ...PEDE_PERGUNTA, dispositivo: undefined }
+    expect(custoDeIncompatibilidade(hero13, semPedido)).toBe(0)
+  })
+
+  it("75 é menos que os 150 do dispositivo errado — não saber não é violar", () => {
+    const heroOferta = contrato({ dispositivo: "hero_oferta_cupom" })
+    expect(custoDeIncompatibilidade(heroOferta, PEDE_PERGUNTA)).toBe(150)
+    expect(custoDeIncompatibilidade(hero13, PEDE_PERGUNTA)).toBeLessThan(
+      custoDeIncompatibilidade(heroOferta, PEDE_PERGUNTA),
+    )
+  })
+})
