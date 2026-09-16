@@ -6944,6 +6944,104 @@ nota falhar em toda rodada:
    pendente com causa e tamanho no log. Nenhum item passando sozinho =
    provedor fora do ar, e aí sim para.
 
+## Só envelhece quem pode ser renovado (16/09)
+
+Medido: 55 linhas de `store_revenue_summary` no rótulo 30d, **54
+sincronizadas minutos antes e UMA de 02/09** — Cronos Alemã,
+`sync_status: 'ok'`, 8.567,63 EUR, e nenhuma credencial de plataforma de
+e-mail (a chave foi removida depois daquela data).
+
+A lista que o refresh percorre é filtrada por credencial
+(`ANY_EMAIL_PLATFORM_FILTER`); a que media a idade do cache **não era**.
+A loja ficava fora de toda passada de sync e continuava ancorando o
+`oldestFetchedAt`: idade de 13 dias contra um teto de 1 hora, `isStale`
+verdadeiro PARA SEMPRE. O banner "cache desatualizado" nunca apagava, o
+`needsSync` disparava a sincronização automática em toda abertura da
+tela, ela segurava o lock, e o clique em "Sincronizar agora" voltava
+`alreadyRunning`. É a segunda metade do "clico em sincronizar e ele não
+sincroniza" — a primeira (uma passada não cobria a carteira) foi
+corrigida antes e está de pé; o que faltava era a linha que está **fora**
+da carteira.
+
+`lib/dashboard/frescor.ts` (puro, 11 testes): linha que nenhuma passada
+alcança não fica velha, fica **órfã** — outra coisa, com outra ação
+(reconectar a chave ou desativar a loja). O que a desqualifica como
+âncora não é a idade, é não ter como ser renovada, então a órfã recente
+também sai da conta; ela só vira AVISO passada a mesma hora do
+`ADMIN_STALENESS_MS`, senão chave removida há dez minutos seria alarme
+falso. Sem carimbo de coleta é declarado como tal, nunca vira idade
+inventada. Erro ao ler a lista de lojas trata todas como renováveis —
+erro de query não pode inventar carteira órfã.
+
+**O valor dela continua nos cards**, de propósito: descartá-lo derrubaria
+o faturamento total em ~R$ 53 mil sem explicação na tela, que é pior que
+contar um número antigo e DIZER que ele é antigo. Daí o bloco próprio no
+dashboard, separado do "não sincronizam" — o último sync destas deu
+certo; o que falta é chave para haver um próximo. Efeito medido na âncora
+do 30d: de 02/09 19:29 para 15/09 21:45. De quebra a contagem de lojas
+saiu do `count: 'exact'` em caminho quente — a mesma consulta traz os
+ids, que é o conjunto que o frescor precisa.
+
+**Fuso das lojas, auditado e declarado**: das 64 ativas, 10 estão sem
+`timezone` — e são exatamente as 10 **sem credencial nenhuma** (nem
+e-mail, nem Shopify). As 54 com credencial têm fuso, procedência do fuso
+e procedência da moeda **em 100%**: a cura automática do sync (set/2026)
+funcionou. Não há defeito de código aqui, e não há fonte de onde puxar:
+é pendência de dado, sem consumidor — para essas lojas nenhuma janela de
+plataforma é montada.
+
+## Central de Campanhas: 16 ciclos, zero sugestões (16/09)
+
+Medido antes de escrever código: **16 ciclos, NENHUMA sugestão**. Quinze
+presos em `generating` para sempre; o único com desfecho (#11, 10/08)
+fechou por saldo da conta, causa já superada. E `campaign_ai_runs` sem
+uma linha `kind='suggestions'` desde 10/08 — o gerador, que é o produto,
+nunca chega a ser chamado. Três causas empilhadas, nenhuma visível.
+
+**1. A captura de tendências roda em SÉRIE, sem relógio**, num cron de
+`maxDuration = 300`: 81 s de média por cluster (máximo 199 s) × 7 países
+= ~568 s. A função morre no meio toda semana, por construção, e quem é
+morto pelo runtime não roda `catch` nem `finally` — daí o ciclo
+`generating` e o lock com `finished_at` ANTERIOR ao `started_at`.
+Tendência é enriquecimento; sugestão é o entregável, e é ela que tem de
+caber: `orcamentoDaCaptura` (`lib/campaign-central/ciclo-saude.ts`, puro,
+18 testes) reserva o tempo da geração, e `cabeMaisUmCluster` só começa o
+que TERMINA dentro do orçamento — a conta é sobre terminar, porque quem
+estoura mata a função inteira. O que não coube entra na FRENTE na semana
+seguinte (`ordemDaCaptura`: quem esperou mais vai primeiro, nunca
+capturado no topo), que é a lição do backfill de avatar — com ordem fixa
+e lote menor que a fila, a cauda nunca é alcançada. A duração típica do
+próximo cluster é o pior caso já visto NESTA execução, com piso na média
+medida.
+
+**2. O teto de 4.096 tokens corta a resposta.** As 20 runs
+`invalid_output` desde 17/08 têm `tokens_output` = 4.096 cravado e
+`raw_output` terminando no meio de uma palavra. `retry-teto` — o módulo
+da casa, escrito para o Seletor e o Estruturador, descido ao `copy_fit`
+em 15/09 — é a **terceira ocorrência da mesma família** e nunca tinha
+chegado aqui. Para ele funcionar, `finish_reason`/`stop_reason` passou a
+ser propagado: o provedor já mandava e o código **lia no tipo e
+descartava**, então a causa chegava ao banco como "JSON parse falhou em
+todos os candidatos", que descreve o sintoma e esconde o motivo. Foi o
+que fez este diagnóstico custar um mês.
+
+**3. Ciclo preso não era varrido por ninguém.** A varredura
+(`ciclosInterrompidos`, teto de 15 min) roda no início do ciclo novo —
+único ponto que sempre executa — e é fail-open. Sem carimbo de criação o
+ciclo NÃO é fechado: afirmar que morreu sem poder medir a idade é
+inventar desfecho, e o engano apagaria o "gerando" de uma execução viva.
+
+De quebra, a run passou a gravar o modelo REALMENTE chamado — gravava a
+constante `TRENDS_MODEL` enquanto a chamada usava `cfg.model`, então com
+a config em `moonshotai/kimi-k3` toda a telemetria dizia
+`claude-sonnet-4-6`. É a armadilha do `onMeta.modelUsed`: comparar
+modelos vira ficção quando a run registra o pedido em vez do servido.
+
+Dado corrigido em produção: teto das trends 4096 → **8192**, 13 ciclos
+pendurados fechados com motivo declarado, 2 locks mortos liberados.
+Medição e acompanhamento em
+`supabase/migrations/DIAGNOSTICO_central_de_campanhas.sql`.
+
 ---
 
 *Última atualização: Setembro 2026*
