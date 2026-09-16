@@ -73,7 +73,7 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: () => ({}),
 }))
 
-import { extratoParaDecisao, loadFinalistNotes } from "./curador-vault-tools"
+import { extratoParaDecisao, loadFinalistNotes, aplicarOrcamentoDaCauda, carregarNotasDasFinalistas, CAUDA_MAX_CHARS } from "./curador-vault-tools"
 
 const nota = (
   file_path: string,
@@ -153,6 +153,81 @@ describe("notas das finalistas em lote", () => {
     expect(r.status).toBe("opened")
     expect(r.body).toContain("nota truncada")
     expect(r.body!.length).toBeLessThan(3_100)
+  })
+})
+
+// ── O orçamento como peça separada (16/09, preparação do leque) ─────────
+//
+// Medido nas 11 runs com telemetria de notas (11–15/09): 10 a 15 finalistas
+// por e-mail, 59.794 a 84.908 chars de nota pedidos. Com o teto do e-mail
+// INTEIRO, esses 18.000 chars são repartidos na ordem — as primeiras
+// posições levam tudo e as últimas ficam sem nota nenhuma. No leque o
+// mesmo número passa a valer por POSIÇÃO, e é essa separação que estes
+// testes travam.
+
+describe("aplicarOrcamentoDaCauda", () => {
+  const nota3k = (id: string) => ({
+    variant_id: id,
+    status: "opened" as const,
+    file_path: `componentes/variantes/body/${id}.md`,
+    body: "x".repeat(2_900),
+  })
+
+  it("é PURA: não muta o que recebe", () => {
+    const entrada = [nota3k("v0"), nota3k("v1")]
+    const antes = JSON.stringify(entrada)
+    aplicarOrcamentoDaCauda(entrada, 1_000)
+    expect(JSON.stringify(entrada)).toBe(antes)
+  })
+
+  it("o mesmo teto reparte entre 12 notas e cabe para 3 — é o que o leque compra", () => {
+    // A chamada única serve as 12 de um e-mail e corta a cauda; a chamada
+    // por posição serve as 3 daquela posição e não corta nenhuma.
+    const doEmail = aplicarOrcamentoDaCauda(Array.from({ length: 12 }, (_, i) => nota3k(`v${i}`)))
+    expect(doEmail.filter((n) => n.status === "sem_orcamento").length).toBeGreaterThan(0)
+
+    const daPosicao = aplicarOrcamentoDaCauda([nota3k("v9"), nota3k("v10"), nota3k("v11")])
+    expect(daPosicao.every((n) => n.status === "opened")).toBe(true)
+    // As três últimas do e-mail são justamente as que ficavam sem nota.
+    expect(doEmail.slice(-3).every((n) => n.status === "sem_orcamento")).toBe(true)
+  })
+
+  it("nota que não cabe NÃO libera a vaga para uma menor depois dela", () => {
+    // Servir a 3ª porque ela é curta e negar a 2ª inverteria o ranking em
+    // silêncio.
+    const entrada = [
+      { variant_id: "a", status: "opened" as const, file_path: "a.md", body: "x".repeat(600) },
+      { variant_id: "b", status: "opened" as const, file_path: "b.md", body: "x".repeat(600) },
+      { variant_id: "c", status: "opened" as const, file_path: "c.md", body: "x".repeat(10) },
+    ]
+    const out = aplicarOrcamentoDaCauda(entrada, 700)
+    expect(out.map((n) => n.status)).toEqual(["opened", "sem_orcamento", "sem_orcamento"])
+  })
+
+  it("não mexe em missing nem em database_error", () => {
+    const out = aplicarOrcamentoDaCauda(
+      [
+        { variant_id: "a", status: "missing", file_path: null, body: null },
+        { variant_id: "b", status: "database_error", file_path: null, body: null, error: "boom" },
+      ],
+      0,
+    )
+    expect(out.map((n) => n.status)).toEqual(["missing", "database_error"])
+  })
+})
+
+describe("carregarNotasDasFinalistas", () => {
+  it("corta por nota e NÃO aplica o orçamento da cauda", async () => {
+    // Quem reparte é `aplicarOrcamentoDaCauda`, porque no leque o eixo é a
+    // posição. Se a consulta cortasse, o leque leria o banco uma vez e
+    // receberia a cauda já repartida pelo e-mail inteiro.
+    h.notas = Array.from({ length: 12 }, (_, i) =>
+      nota(`componentes/variantes/body/b${i}.md`, { variant_id: `v${i}`, body_md: "x".repeat(2_900) }),
+    )
+    const cru = await carregarNotasDasFinalistas(Array.from({ length: 12 }, (_, i) => `v${i}`))
+    expect(cru.every((n) => n.status === "opened")).toBe(true)
+    const total = cru.reduce((acc, n) => acc + (n.body?.length ?? 0), 0)
+    expect(total).toBeGreaterThan(CAUDA_MAX_CHARS)
   })
 })
 

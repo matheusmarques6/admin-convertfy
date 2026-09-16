@@ -35,7 +35,7 @@ const TABELA_COMPONENTES = "email_vault_docs"
 const NOTA_MAX_CHARS = 3_000
 
 /**
- * Teto do conjunto de notas servido numa chamada.
+ * Teto do conjunto de notas servido em UMA chamada.
  *
  * A cauda fica DEPOIS do último marcador de cache e paga preço cheio em
  * toda geração — e abaixo do limiar de shortlist TODAS as elegíveis viram
@@ -46,8 +46,27 @@ const NOTA_MAX_CHARS = 3_000
  *
  * Quem não couber fica com a linha do catálogo, que desde 15/09 carrega a
  * forma derivada do schema — não é ausência, é menos detalhe.
+ *
+ * **"Uma chamada" é o eixo, e ele muda de significado com o leque.** No
+ * caminho de hoje a chamada é o E-MAIL INTEIRO, e aí o teto reparte 18.000
+ * chars entre todas as posições, **na ordem** — as primeiras levam tudo e
+ * as últimas ficam sem nota. Medido nas 11 runs com telemetria de notas
+ * (11–15/09): 10 a 15 finalistas por e-mail, **59.794 a 84.908 chars** de
+ * nota pedidos, maior nota 9.036. O teto e o `NOTA_MAX_CHARS` entraram em
+ * 15/09 19:02 e a última run do banco é de 15/09 15:49, então **nenhuma
+ * run mediu o corte ainda** (`sem_orcamento` = 0 em 11 de 11 porque o teto
+ * não existia). Com eles, as 13 notas de um e-mail típico caem para
+ * 13×3.000 = 39.000 pedidos contra 18.000 disponíveis: ~metade rebaixada,
+ * e a metade das ÚLTIMAS posições.
+ *
+ * No leque a chamada é UMA POSIÇÃO, e o mesmo número deixa de repartir: as
+ * 2–5 finalistas daquela posição cabem folgadas, e o teto volta a ser o que
+ * ele existe para ser — rede contra cadastro que cresce, não corte. É por
+ * isso que a consulta e o orçamento estão separados abaixo
+ * (`carregarNotasDasFinalistas` + `aplicarOrcamentoDaCauda`): o leque lê o
+ * banco UMA vez e aplica o orçamento por posição.
  */
-const CAUDA_MAX_CHARS = 18_000
+export const CAUDA_MAX_CHARS = 18_000
 
 
 /**
@@ -113,11 +132,48 @@ export interface FinalistNoteResult {
 }
 
 /**
- * Carrega as notas das finalistas em UMA consulta. A shortlist já foi
- * validada contra o catálogo ativo; por isso o modelo não escolhe caminhos
- * nem ganha uma ferramenta de navegação na etapa final.
+ * Aplica o orçamento da cauda a notas JÁ carregadas. Pura.
+ *
+ * Consome na ORDEM recebida, que é a do ranking, e **para na primeira que
+ * não cabe**: dali para a frente todas saem `sem_orcamento`, mesmo as
+ * curtas. Era o contrário até 16/09 — o laço pulava a que estourava e
+ * seguia servindo as menores —, e isso fazia o orçamento premiar nota
+ * CURTA em vez de nota bem colocada: a 5ª aparecia com evidência e a 4ª
+ * não. Como o modelo lê "tem nota" como mais evidência, era o critério do
+ * ranking sendo invertido pelo tamanho do texto, em silêncio. A propriedade
+ * que fica é simples de enunciar e de conferir: a evidência degrada na
+ * ordem do ranking, nunca fora dela.
+ *
+ * Separada de `carregarNotasDasFinalistas` porque o leque lê o banco uma
+ * vez, para todas as posições, e reparte o orçamento POR posição.
  */
-export async function loadFinalistNotes(
+export function aplicarOrcamentoDaCauda(
+  notas: readonly FinalistNoteResult[],
+  teto: number = CAUDA_MAX_CHARS,
+): FinalistNoteResult[] {
+  let orcamento = teto
+  let estourou = false
+  return notas.map((nota) => {
+    if (nota.status !== "opened" || !nota.body) return { ...nota }
+    if (estourou || nota.body.length > orcamento) {
+      estourou = true
+      return { ...nota, status: "sem_orcamento" as const, body: null }
+    }
+    orcamento -= nota.body.length
+    return { ...nota }
+  })
+}
+
+/**
+ * Carrega as notas das finalistas em UMA consulta, cortadas por
+ * `NOTA_MAX_CHARS` e **sem** orçamento de cauda — quem aplica o orçamento é
+ * `aplicarOrcamentoDaCauda`, porque no leque ele é por posição.
+ *
+ * A shortlist já foi validada contra o catálogo ativo; por isso o modelo
+ * não escolhe caminhos nem ganha uma ferramenta de navegação na etapa
+ * final.
+ */
+export async function carregarNotasDasFinalistas(
   variantIds: readonly string[],
 ): Promise<FinalistNoteResult[]> {
   const ids = Array.from(new Set(variantIds.filter(Boolean)))
@@ -144,24 +200,12 @@ export async function loadFinalistNotes(
   const byId = new Map(
     ((data ?? []) as Array<{ variant_id: string; file_path: string; body_md: string }>).map((row) => [row.variant_id, row]),
   )
-  let orcamento = CAUDA_MAX_CHARS
   return ids.map((variant_id) => {
     const row = byId.get(variant_id)
     if (!row) return { variant_id, status: "missing" as const, file_path: null, body: null }
     const extrato = extratoParaDecisao(row.body_md ?? "")
     const cortada =
       extrato.length <= NOTA_MAX_CHARS ? extrato : `${extrato.slice(0, NOTA_MAX_CHARS)}\n(… nota truncada)`
-    // O orçamento é consumido na ORDEM das finalistas, que é a do ranking:
-    // quem é servida sem nota é a pior colocada, não a primeira.
-    if (cortada.length > orcamento) {
-      return {
-        variant_id,
-        status: "sem_orcamento" as const,
-        file_path: row.file_path,
-        body: null,
-      }
-    }
-    orcamento -= cortada.length
     return {
       variant_id,
       status: "opened" as const,
@@ -169,4 +213,14 @@ export async function loadFinalistNotes(
       body: cortada,
     }
   })
+}
+
+/**
+ * O caminho de hoje: carrega e aplica o orçamento do e-mail inteiro numa
+ * chamada só. O leque usa as duas peças separadas.
+ */
+export async function loadFinalistNotes(
+  variantIds: readonly string[],
+): Promise<FinalistNoteResult[]> {
+  return aplicarOrcamentoDaCauda(await carregarNotasDasFinalistas(variantIds))
 }
