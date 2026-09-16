@@ -31,7 +31,7 @@
 
 import { comHistorico, novoId, textosGuia, trocarTipoFrame } from "./documento"
 import { FAMILIAS, familiaDe, ritmoDeFundos, tracoDe } from "./familias"
-import { camposDaIdentidade, reconciliarCampos } from "./campos-da-identidade"
+import { camposDaIdentidade, reconciliarCampos, type DesenhoDeCampos } from "./campos-da-identidade"
 import { tipoDesenhaImagem } from "./referencia-para-documento"
 import { ST_TEMPLATES } from "./templates"
 import type { DocFrame, Documento, FrameTipo, Template } from "./types"
@@ -78,11 +78,11 @@ export function formatosParaOTipo(templateIdAtual: string, tipo: FrameTipo): Sli
   return slidesDeOutrosMoldes(templateIdAtual).flatMap((g) => g.slides.filter((s) => s.tipo === tipo))
 }
 
-function frameImportado(s: SlideImportavel, cartaoPerfil: boolean): DocFrame {
+function frameImportado(s: SlideImportavel, desenho: DesenhoDeCampos): DocFrame {
   // Os campos são os da IDENTIDADE DE DESTINO, não os do molde de origem:
   // a capa da Manchete tem subtítulo e o cartão de perfil não o desenha — o
   // texto-guia nasceria invisível.
-  const campos = camposDaIdentidade(cartaoPerfil, s.tipo)
+  const campos = camposDaIdentidade(desenho, s.tipo)
   return {
     frameId: novoId("f"),
     tipo: s.tipo,
@@ -107,7 +107,7 @@ export function posicaoPadrao(doc: Documento): number {
 /** Insere um slide de outro molde no documento. */
 export function importarSlide(doc: Documento, s: SlideImportavel, posicao?: number): Documento {
   const pos = Math.max(0, Math.min(posicao ?? posicaoPadrao(doc), doc.frames.length))
-  const nf = frameImportado(s, tracoDe(familiaDe(doc)).cartaoPerfil)
+  const nf = frameImportado(s, tracoDe(familiaDe(doc)))
   const frames = [...doc.frames]
   frames.splice(pos, 0, nf)
   return comHistorico(
@@ -139,7 +139,7 @@ export function aplicarSlideNoFrame(doc: Documento, i: number, s: SlideImportave
   const comTipo = atual.tipo === s.tipo ? doc : trocarTipoFrame(doc, i, s.tipo)
   const f = comTipo.frames[i]
   const trDoc = tracoDe(familiaDe(doc))
-  const { campos, textos } = reconciliarCampos(f, camposDaIdentidade(trDoc.cartaoPerfil, s.tipo), { caixaDeDestaque: trDoc.caixaDeDestaque })
+  const { campos, textos } = reconciliarCampos(f, camposDaIdentidade(trDoc, s.tipo), { caixaDeDestaque: trDoc.caixaDeDestaque })
   const slot = (s.slotsImagem && tipoDesenhaImagem(s.tipo) ? 1 : 0) as 0 | 1
   return comHistorico(
     {

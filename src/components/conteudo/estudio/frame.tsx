@@ -20,6 +20,7 @@ import type { CSSProperties, MouseEvent as ReactMouseEvent, PointerEvent as Reac
 import { SLIDE, clarear, fundoEscuro, gradienteCss, hex6 } from "@/lib/conteudo/brand"
 import { familiaDe, tracoDe } from "@/lib/conteudo/familias"
 import { POST_CORES, medidasPost, posePost, subidaOptica } from "@/lib/conteudo/formato-post"
+import { THREAD, THREAD_CORES, THREAD_PESO_CORPO, temBarraDeMetadados } from "@/lib/conteudo/formato-thread"
 import { MANCHETE, corDoTituloManchete, fatoresDaEscada, linhasDoTitulo } from "@/lib/conteudo/formato-manchete"
 import { fitFactor, limiteDe } from "@/lib/conteudo/limites"
 import { partesDestacadas, textoLimpo } from "@/lib/conteudo/rich"
@@ -165,7 +166,7 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
   // Margem lateral da IDENTIDADE. A casa usa 80; a Manchete respira mais
   // (135 medidos na referência), e é essa folga que faz a peça ler como
   // editorial em vez de card cheio até a borda.
-  const ML = S(tr.logoNoTopo ? MANCHETE.margem : 80)
+  const ML = S(tr.cartaoThread ? THREAD.margem : tr.logoNoTopo ? MANCHETE.margem : 80)
   /**
    * A cor do TÍTULO pode não ser a tinta do corpo. Na Manchete ele sai no
    * azul do destaque sobre o claro e no creme sobre o escuro — medido na
@@ -637,6 +638,108 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
   let body: ReactNode
   if (slideInteiro) {
     body = imgSlot({ inset: 0 })
+  } else if (tr.cartaoThread) {
+    // Cartão de THREAD. Dois desenhos: o cartão claro (barra de metadados,
+    // autoria e o fio de parágrafos com a foto no meio) e o FECHO preto,
+    // que tem avatar, `@handle` e a frase — e mais nada.
+    const fechoPreto = f.tipo === "cta"
+    const tinta = fechoPreto ? "#FFFFFF" : THREAD_CORES.tinta
+    const cinza = fechoPreto ? "rgba(255,255,255,0.62)" : THREAD_CORES.metadado
+    const comImagem = Boolean(img) || f.slotsImagem > 0
+    const avatarRedondo = (tam: number) =>
+      oc.avatar ? null : bk.avatar ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={bk.avatar} alt="" crossOrigin="anonymous" style={{ width: S(tam), height: S(tam), borderRadius: "50%", objectFit: "cover", flexShrink: 0, display: "block" }} />
+      ) : (
+        // Sem foto vale a INICIAL, como no cartão de perfil. Um círculo
+        // cinza chapado lê como imagem que não carregou — e é o que a
+        // prateleira mostra, onde nenhum molde tem avatar.
+        <span
+          style={{
+            width: S(tam),
+            height: S(tam),
+            borderRadius: "50%",
+            background: fechoPreto ? "rgba(255,255,255,0.16)" : "#E7E9EC",
+            color: fechoPreto ? "rgba(255,255,255,0.82)" : THREAD_CORES.metadado,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontFamily: tr.fonteTitulo,
+            fontSize: S(tam * 0.42),
+            fontWeight: 700,
+            flexShrink: 0,
+          }}
+        >
+          {(bk.brandName2 || bk.brandName || "?").replace("@", "").charAt(0).toUpperCase()}
+        </span>
+      )
+    body = (
+      <>
+        {/* Barra de metadados: `@handle` · marca · copyright, cada um com o
+            seu interruptor de visibilidade (os mesmos Campos globais). No
+            fecho preto ela não entra: ali a marca já aparece na autoria. */}
+        {temBarraDeMetadados(f.tipo) && (
+          <div
+            style={{
+              position: "absolute",
+              left: ML,
+              right: ML,
+              top: S(off + THREAD.metaTopo),
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: S(16),
+              fontFamily: tr.fonteMeta,
+              fontSize: S(THREAD.metaTexto),
+              color: cinza,
+              whiteSpace: "nowrap",
+            }}
+          >
+            <span>{oc.brandName ? "" : bk.brandName}</span>
+            <span>{oc.brandName2 ? "" : bk.brandName2}</span>
+            <span>{oc.copyright ? "" : bk.copyright}</span>
+          </div>
+        )}
+        {fechoPreto ? (
+          <>
+            <div style={{ position: "absolute", left: ML, right: ML, top: S(off + THREAD.fechoTopo), display: "flex", alignItems: "center", gap: S(THREAD.avatarGap) }}>
+              {avatarRedondo(THREAD.avatar)}
+              {!oc.brandName && <span style={{ fontFamily: tr.fonteMeta, fontSize: S(THREAD.handle), color: "rgba(255,255,255,0.82)" }}>{bk.brandName}</span>}
+            </div>
+            <div style={{ position: "absolute", left: ML, right: ML, top: "50%", transform: "translateY(-50%)" }}>
+              {T("titulo", { fontFamily: tr.fonteTitulo, fontWeight: 700, fontSize: THREAD.fechoTexto, color: tinta, lineHeight: 1.26 })}
+            </div>
+          </>
+        ) : (
+          <div style={{ position: "absolute", left: ML, right: ML, top: S(off + THREAD.autoriaTopo), bottom: S(off + THREAD.metaTopo) }}>
+            <div style={{ display: "flex", alignItems: "center", gap: S(THREAD.avatarGap) }}>
+              {avatarRedondo(THREAD.avatar)}
+              <span style={{ minWidth: 0, lineHeight: 1.16 }}>
+                {!oc.brandName2 && (
+                  <span style={{ display: "flex", alignItems: "center", gap: S(10) }}>
+                    <span style={{ fontFamily: tr.fonteTitulo, fontSize: S(THREAD.nome), fontWeight: 700, color: tinta, whiteSpace: "nowrap" }}>{bk.brandName2}</span>
+                    {/* O selo é chrome da INTERFACE simulada, como a barra de
+                        metadados e o handle — não é a paleta da peça. Preso ao
+                        `destaque` do documento ele viraria vermelho quando
+                        alguém trocasse a cor global, e nenhuma rede faz isso. */}
+                    {!oc.verificado && bk.verificado && <IconSelo s={S(THREAD.nome * 0.62)} cor={THREAD_CORES.metadado} />}
+                  </span>
+                )}
+                {!oc.brandName && <span style={{ display: "block", fontFamily: tr.fonteMeta, fontSize: S(THREAD.handle), color: cinza, whiteSpace: "nowrap" }}>{bk.brandName}</span>}
+              </span>
+            </div>
+            {/* O FIO: `titulo` é o que vem antes da foto e `corpo` o que vem
+                depois. É assim que o cartão de thread quebra o parágrafo em
+                volta da imagem — sem o corte a foto ia parar no fim. */}
+            {T("titulo", { fontFamily: tr.fonteCorpo, fontWeight: THREAD_PESO_CORPO, fontSize: THREAD.corpo, color: tinta, lineHeight: THREAD.corpoEntrelinha, marginTop: S(THREAD.autoriaGap) })}
+            {comImagem && (
+              <div style={{ position: "relative", height: S(460), marginTop: S(THREAD.imagemGap) }}>{imgSlot({ inset: 0, borderRadius: S(THREAD.imagemRaio) })}</div>
+            )}
+            {T("corpo", { fontFamily: tr.fonteCorpo, fontWeight: THREAD_PESO_CORPO, fontSize: THREAD.corpo, color: tinta, lineHeight: THREAD.corpoEntrelinha, marginTop: S(comImagem ? THREAD.imagemGap : THREAD.paragrafoGap) })}
+          </div>
+        )}
+      </>
+    )
   } else if (tr.cartaoPerfil) {
     // Print de tweet: UM desenho para todo tipo de frame. A pose vem da
     // imagem (com print abre no topo, só texto fica no centro óptico), e as
@@ -965,7 +1068,7 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
       {/* O rodapé de marca é das famílias da casa. Na Manchete quem carrega
           a marca é o ícone no topo, e repetir handle e copyright embaixo
           devolveria a peça para a cara de card de rede social. */}
-      {!slideInteiro && !tr.cartaoPerfil && !tr.logoNoTopo && brandRow}
+      {!slideInteiro && !tr.cartaoPerfil && !tr.cartaoThread && !tr.logoNoTopo && brandRow}
       {!slideInteiro && logoTopo(f.tipo === "capa")}
       {zonas && (
         <>
@@ -977,7 +1080,7 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
           </div>
         </>
       )}
-      {tr.cartaoPerfil || tr.logoNoTopo ? null : tr.barraProgresso ? (
+      {tr.cartaoPerfil || tr.cartaoThread || tr.logoNoTopo ? null : tr.barraProgresso ? (
         !slideInteiro && progresso
       ) : (
         <span style={{ position: "absolute", bottom: S(off + 52), right: S(80), fontSize: S(22), color: numeroClaro ? "rgba(255,255,255,0.65)" : meta, fontFamily: tr.fonteMeta, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>

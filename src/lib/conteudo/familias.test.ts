@@ -73,15 +73,13 @@ describe("família visual", () => {
   })
 
   it("sem alternância, o fundo vem do TIPO: capa, prova e CTA no gradiente", () => {
-    for (const key of Object.keys(FAMILIAS) as FamiliaVisual[]) {
-      if (FAMILIAS[key].traco.alternaFundo) continue
-      // O print de tweet é a exceção declarada: lá TODO slide tem o mesmo
-      // preto, e um gradiente na capa denuncia que a peça não é uma
-      // captura de tela (coberto em `formato-post.test.ts`).
-      if (FAMILIAS[key].traco.cartaoPerfil) continue
-      // A Manchete é a outra exceção: peça clara com os escuros por
-      // POSIÇÃO (coberto em `familia-manchete.test.ts`).
-      if (FAMILIAS[key].traco.respiroEscuro) continue
+    // A lista é DECLARADA, não derivada por exclusão. Antes ela era "todas
+    // menos as exceções que eu lembrei", e uma família nova entrava no laço
+    // sem ninguém decidir — reprovando por um motivo que não é o do teste.
+    // Cada exceção tem cobertura própria: `formato-post.test.ts`,
+    // `familia-manchete.test.ts` e `familia-thread.test.ts`.
+    const DA_CASA: FamiliaVisual[] = ["padrao", "editorial"]
+    for (const key of DA_CASA) {
       expect(fundoPadraoDaFamilia(key, "capa", 0)).toBe("gradiente")
       expect(fundoPadraoDaFamilia(key, "prova", 4)).toBe("gradiente")
       expect(fundoPadraoDaFamilia(key, "cta", 6)).toBe("gradiente")

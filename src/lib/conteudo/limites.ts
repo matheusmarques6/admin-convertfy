@@ -5,6 +5,7 @@
  */
 
 import { limitePost } from "./formato-post"
+import { LIMITES_THREAD } from "./formato-thread"
 import { LIMITES_MANCHETE } from "./formato-manchete"
 import { textoLimpo } from "./rich"
 import type { Campo, DocFrame, FamiliaVisual, FrameTipo, Limites } from "./types"
@@ -40,6 +41,10 @@ export function limiteDe(tipo: FrameTipo, campo: Campo, familia?: FamiliaVisual 
   // `true` e receber a régua do tipo, em silêncio.
   const f: FamiliaVisual | undefined = familia === true ? "post" : familia === false ? undefined : familia
   if (f === "post" || f === "post-largo") return limitePost(campo)
+  if (f === "thread") {
+    const lt = LIMITES_THREAD[campo]
+    if (typeof lt === "number") return lt
+  }
   if (f === "manchete") {
     const lim = LIMITES_MANCHETE[campo]
     if (typeof lim === "number") return lim

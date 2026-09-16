@@ -17,6 +17,7 @@
 
 import { CORES_PADRAO, GRADIENTE_PADRAO, SLIDE } from "./brand"
 import { POST_CORES, type EstiloPost } from "./formato-post"
+import { THREAD_CORES } from "./formato-thread"
 import { MANCHETE_CORES } from "./formato-manchete"
 import { paletaDeUmaCor, tintaSobre, type Paleta } from "./paleta"
 import type { Documento, FamiliaVisual, FrameTipo, Gradiente } from "./types"
@@ -132,6 +133,14 @@ export interface TracoFamilia {
    * `cartaoPerfil`; as medidas moram em `formato-post.ts`.
    */
   estiloPost?: EstiloPost
+  /**
+   * O slide é um CARTÃO DE THREAD: barra de metadados no topo, bloco de
+   * autoria e um FIO de parágrafos com foto no meio. É primo do
+   * `cartaoPerfil` (os dois simulam a mesma rede) e igualmente exclusivo
+   * com ele — um slide não pode ser captura de post E peça editorial ao
+   * mesmo tempo. Medidas em `formato-thread.ts`.
+   */
+  cartaoThread: boolean
 }
 
 export interface Familia {
@@ -226,6 +235,7 @@ export function alternadoDaPaleta(p: Paleta): Omit<Familia, "key" | "nome" | "de
       barraProgresso: true,
       alternaFundo: true,
       cartaoPerfil: false,
+      cartaoThread: false,
       assinaturaNoSlide: true,
       reguaSobCorpo: false,
       respiroEscuro: false,
@@ -267,6 +277,7 @@ export const FAMILIAS: Record<FamiliaVisual, Familia> = {
       barraProgresso: false,
       alternaFundo: false,
       cartaoPerfil: false,
+      cartaoThread: false,
       assinaturaNoSlide: true,
       reguaSobCorpo: false,
       respiroEscuro: false,
@@ -314,6 +325,7 @@ export const FAMILIAS: Record<FamiliaVisual, Familia> = {
       barraProgresso: false,
       alternaFundo: false,
       cartaoPerfil: false,
+      cartaoThread: false,
       assinaturaNoSlide: true,
       reguaSobCorpo: false,
       respiroEscuro: false,
@@ -328,6 +340,52 @@ export const FAMILIAS: Record<FamiliaVisual, Familia> = {
     nome: "Alternado",
     descricao: "Claro e escuro alternados, filete no topo e barra de progresso; paleta derivada de uma cor só.",
     ...alternadoDaPaleta(paletaDeUmaCor(COR_PRIMARIA_PADRAO)),
+  },
+  thread: {
+    key: "thread",
+    nome: "Thread",
+    descricao: "Cartão de thread: barra de metadados no topo, autoria com avatar e um fio de parágrafos com foto no meio. Fecho preto.",
+    cores: {
+      hook: THREAD_CORES.tinta,
+      destaque: THREAD_CORES.tinta,
+      metadado: THREAD_CORES.metadado,
+      "fundo-bloco": "#F1F2F4",
+    },
+    // Como na `post`, o gradiente existe porque o tipo pede e o formato
+    // não o usa: o cartão é branco chapado e o fecho é preto chapado.
+    gradiente: { de: THREAD_CORES.cartao, meio: THREAD_CORES.cartao, ate: THREAD_CORES.cartao, angulo: 160 },
+    fundoClaro: THREAD_CORES.cartao,
+    fundoEscuro: THREAD_CORES.preto,
+    cta: { fundo: THREAD_CORES.preto, cor: "#FFFFFF" },
+    traco: {
+      fonteTitulo: FONTE_POST,
+      fonteGancho: FONTE_POST,
+      fonteCorpo: FONTE_POST,
+      fonteMeta: FONTE_POST,
+      fonteAnotacao: FONTE_MANUSCRITA,
+      tituloCaixaAlta: false,
+      tituloPeso: 700,
+      tituloTracking: "-0.01em",
+      tituloEntrelinha: 1.28,
+      corpoItalico: false,
+      cta: "pilula",
+      raio: 10,
+      anotacaoRotacao: -3,
+      ganchoFator: 1,
+      ganchoCor: "tinta",
+      barraTopo: false,
+      barraProgresso: false,
+      alternaFundo: false,
+      cartaoPerfil: false,
+      cartaoThread: true,
+      assinaturaNoSlide: false,
+      reguaSobCorpo: false,
+      respiroEscuro: false,
+      escadaNoTitulo: false,
+      caixaDeDestaque: false,
+      tituloDestacado: false,
+      logoNoTopo: false,
+    },
   },
   post: {
     key: "post",
@@ -366,6 +424,7 @@ export const FAMILIAS: Record<FamiliaVisual, Familia> = {
       barraProgresso: false,
       alternaFundo: false,
       cartaoPerfil: true,
+      cartaoThread: false,
       assinaturaNoSlide: true,
       reguaSobCorpo: false,
       respiroEscuro: false,
@@ -410,6 +469,7 @@ export const FAMILIAS: Record<FamiliaVisual, Familia> = {
       barraProgresso: false,
       alternaFundo: false,
       cartaoPerfil: true,
+      cartaoThread: false,
       assinaturaNoSlide: true,
       reguaSobCorpo: false,
       respiroEscuro: false,
@@ -464,6 +524,7 @@ export const FAMILIAS: Record<FamiliaVisual, Familia> = {
       barraProgresso: false,
       alternaFundo: false,
       cartaoPerfil: false,
+      cartaoThread: false,
       // O ícone pequeno no topo substitui a assinatura completa: a peça
       // parece um editorial, e avatar com nome e handle a devolveria para
       // a cara de post de rede social.
@@ -478,17 +539,30 @@ export const FAMILIAS: Record<FamiliaVisual, Familia> = {
   },
 }
 
-export const FAMILIA_OPCOES: Array<[FamiliaVisual, string]> = [
-  ["padrao", FAMILIAS.padrao.nome],
-  ["editorial", FAMILIAS.editorial.nome],
-  ["alternado", FAMILIAS.alternado.nome],
-  ["post", FAMILIAS.post.nome],
-  ["post-largo", FAMILIAS["post-largo"].nome],
-  ["manchete", FAMILIAS.manchete.nome],
-]
+/**
+ * As identidades que o seletor oferece — derivadas de `FAMILIAS`, na ordem
+ * em que elas são declaradas lá.
+ *
+ * Era a TERCEIRA lista escrita à mão da mesma família de defeito (as outras
+ * duas: `ehFamilia` e o `recalcula` de `aplicarFamilia`). Aqui o preço era
+ * peculiar: a identidade nova existia no tipo, no mapa e no molde — a peça
+ * nascia certa ao escolher o molde — e simplesmente **não podia ser
+ * escolhida** em Marca → Identidade visual nem no diálogo de criação, sem
+ * erro nenhum e sem nada na tela dizendo que faltava uma opção.
+ */
+export const FAMILIA_OPCOES: Array<[FamiliaVisual, string]> = (Object.keys(FAMILIAS) as FamiliaVisual[]).map((k) => [k, FAMILIAS[k].nome])
 
+/**
+ * Deriva de `FAMILIAS`, nunca de uma lista escrita à mão.
+ *
+ * A versão anterior enumerava os nomes num `||` encadeado, e uma família
+ * nova ficava de fora dele: `familiaDe` caía no padrão **em silêncio**, o
+ * documento nascia com a identidade errada e nada em teste ou tela dizia
+ * por quê. Foi o que aconteceu ao acrescentar a Thread, que já existia no
+ * tipo, no mapa e no molde.
+ */
 export function ehFamilia(v: unknown): v is FamiliaVisual {
-  return v === "padrao" || v === "editorial" || v === "alternado" || v === "post" || v === "post-largo" || v === "manchete"
+  return typeof v === "string" && Object.prototype.hasOwnProperty.call(FAMILIAS, v)
 }
 
 export function familiaDe(doc: Pick<Documento, "familia">): FamiliaVisual {
@@ -523,6 +597,10 @@ export function fundoPadraoDaFamilia(
   // quatro parecerem capturas da mesma tela. Gradiente na capa quebraria a
   // ilusão no primeiro slide.
   if (f.traco.cartaoPerfil) return f.fundoClaro
+  // Cartão de thread: todo slide é o MESMO branco — é o que faz os oito
+  // parecerem a mesma peça — e o FECHO é preto. Na referência ele é o
+  // único slide escuro, e é o contraste que o marca como fim do fio.
+  if (f.traco.cartaoThread) return tipo === "cta" ? f.fundoEscuro : f.fundoClaro
   // Manchete: peça CLARA com a capa preta e UM preto no meio — o slide do
   // problema, onde a tensão mora. Lido dos cinco slides da referência.
   // Sem saber o total não dá para achar o meio, e aí só a capa é escura:
@@ -655,16 +733,27 @@ export function aplicarFamilia(doc: Documento, nova: FamiliaVisual): Documento {
   // Recalcular também ao entrar ou sair do print de tweet: lá o fundo é o
   // MESMO preto em todo slide, e trocar cor por cor deixaria o "gradiente"
   // da capa intacto — o degradê sutil que denuncia que não é uma captura.
-  const recalcula = de.traco.alternaFundo !== para.traco.alternaFundo || de.traco.cartaoPerfil !== para.traco.cartaoPerfil || de.traco.respiroEscuro !== para.traco.respiroEscuro
-  const ehPadraoDaAntiga = (v: string) => v === de.fundoClaro || v === de.fundoEscuro || v === "gradiente"
+  // Quem decide se recalcula é o RESULTADO, não uma lista de traços.
+  // A versão anterior enumerava `alternaFundo`/`cartaoPerfil`/
+  // `respiroEscuro`, e uma família nova ficava de fora dela: o cartão de
+  // thread herdava o "gradiente" que a casa põe na capa e no fecho, então
+  // o fecho preto da referência nascia BRANCO com texto branco — invisível,
+  // sem erro nenhum. Comparar os dois padrões não tem como envelhecer.
   const fundoPorFrame: Record<string, string> = { ...doc.fundoPorFrame }
   doc.frames.forEach((f, i) => {
     const valor = doc.fundoPorFrame[f.frameId]
     if (valor === undefined) return
-    if (recalcula) {
-      if (ehPadraoDaAntiga(valor)) fundoPorFrame[f.frameId] = fundoPadraoDaFamilia(nova, f.tipo, i, doc.frames.length)
+    const padraoAntigo = fundoPadraoDaFamilia(atual, f.tipo, i, doc.frames.length)
+    const padraoNovo = fundoPadraoDaFamilia(nova, f.tipo, i, doc.frames.length)
+    // Fundo que ainda é o padrão da antiga vira o padrão da nova.
+    if (valor === padraoAntigo) {
+      fundoPorFrame[f.frameId] = padraoNovo
       return
     }
+    // Fora do padrão POSICIONAL, a cor chapada ainda pode ser a paleta da
+    // antiga (documento montado por outro caminho): claro vira claro,
+    // escuro vira escuro. O que não é nem um nem outro foi pintado à mão
+    // e continua onde o usuário o pôs.
     fundoPorFrame[f.frameId] = valor === de.fundoClaro ? para.fundoClaro : valor === de.fundoEscuro ? para.fundoEscuro : valor
   })
 
@@ -683,10 +772,11 @@ export function aplicarFamilia(doc: Documento, nova: FamiliaVisual): Documento {
   // família a desenha, então trocar de identidade pode ter de tirá-la (ou
   // devolvê-la) mesmo quando o cartão de perfil não muda.
   const desenho = { caixaDeDestaque: para.traco.caixaDeDestaque }
-  const mesmoConjunto = de.traco.cartaoPerfil === para.traco.cartaoPerfil && de.traco.caixaDeDestaque === para.traco.caixaDeDestaque
+  const mesmoConjunto =
+    de.traco.cartaoPerfil === para.traco.cartaoPerfil && de.traco.cartaoThread === para.traco.cartaoThread && de.traco.caixaDeDestaque === para.traco.caixaDeDestaque
   const frames = mesmoConjunto
     ? doc.frames
-    : doc.frames.map((f) => ({ ...f, ...reconciliarCampos(f, camposDaIdentidade(para.traco.cartaoPerfil, f.tipo), desenho) }))
+    : doc.frames.map((f) => ({ ...f, ...reconciliarCampos(f, camposDaIdentidade(para.traco, f.tipo), desenho) }))
 
   return { ...doc, familia: nova, cores, gradiente, fundoPorFrame, cta, frames }
 }

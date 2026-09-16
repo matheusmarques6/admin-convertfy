@@ -238,6 +238,11 @@ const ESTILO_POR_FAMILIA: Record<FamiliaVisual, string> = {
   // CAPTURA DE TELA, não uma cena fotografada. Pedir foto de estúdio ali
   // devolveria justamente o que o formato não usa.
   post: "A imagem é uma CAPTURA DE TELA nítida (página, painel ou app) sobre fundo claro, com as bordas retas e o conteúdo legível — não é fotografia. Sem cena, sem pessoas, sem objeto físico.",
+  // O cartão de THREAD é uma peça editorial clara: a imagem dele ilustra o
+  // parágrafo, não simula captura. Pedir print ali (como na `post`)
+  // devolveria um retângulo de interface no meio de um texto corrido.
+  thread:
+    "Direção editorial clara: imagem sobre fundo claro e neutro, luz difusa, composição calma e horizontal, um assunto só. Ela ILUSTRA o parágrafo — não é captura de tela e não tem interface, texto nem gráfico desenhado dentro.",
   // O formato largo mostra FOTO de bastidor (o lugar, o evento, a pessoa),
   // não captura de tela: é a prova de que a história aconteceu.
   "post-largo":

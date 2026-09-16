@@ -25,14 +25,28 @@
 
 import { aceitaCampoOpcional, preservarCamposOpcionais } from "./campos"
 import { camposPost } from "./formato-post"
+import { camposThread } from "./formato-thread"
 import { camposDoTipo } from "./templates"
 import type { Campo, DocFrame, FrameTipo } from "./types"
 
 /** Campos de texto que podem receber um parágrafo migrado, em ordem. */
 const TEXTO_LONGO: Campo[] = ["corpo", "subtitulo"]
 
-export function camposDaIdentidade(cartaoPerfil: boolean, tipo: FrameTipo): Campo[] {
-  return cartaoPerfil ? camposPost(tipo) : camposDoTipo(tipo)
+/**
+ * Qual DESENHO a identidade usa. Três hoje: o cartão de perfil (print de
+ * tweet), o cartão de thread e o desenho da casa, onde o conjunto vem do
+ * tipo do frame. Entra como objeto e não como booleano porque um terceiro
+ * desenho não cabe num `sim/não` — e o booleano antigo faria o cartão de
+ * thread herdar o conjunto do print, com `botao` fantasma no fecho.
+ */
+export interface DesenhoDeCampos {
+  cartaoPerfil: boolean
+  cartaoThread: boolean
+}
+
+export function camposDaIdentidade(desenho: DesenhoDeCampos, tipo: FrameTipo): Campo[] {
+  if (desenho.cartaoThread) return camposThread(tipo)
+  return desenho.cartaoPerfil ? camposPost(tipo) : camposDoTipo(tipo)
 }
 
 export interface CamposReconciliados {

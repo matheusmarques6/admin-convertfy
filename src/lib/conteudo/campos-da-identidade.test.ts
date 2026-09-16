@@ -6,6 +6,10 @@ import type { DocFrame, Documento } from "./types"
 
 /** Identidade que NÃO desenha a caixa de destaque (todas menos a Manchete). */
 const CASA = { caixaDeDestaque: false }
+/** Desenhos de campo: cartão de perfil, cartão de thread e o da casa. */
+const POST = { cartaoPerfil: true, cartaoThread: false }
+const CASA_D = { cartaoPerfil: false, cartaoThread: false }
+const THREAD_D = { cartaoPerfil: false, cartaoThread: true }
 const COM_CAIXA = { caixaDeDestaque: true }
 
 const frame = (o: Partial<DocFrame> = {}): DocFrame => ({
@@ -21,53 +25,67 @@ const frame = (o: Partial<DocFrame> = {}): DocFrame => ({
 
 describe("camposDaIdentidade", () => {
   it("o cartão de perfil desenha título e corpo — nunca subtítulo", () => {
-    expect(camposDaIdentidade(true, "capa")).toEqual(["titulo", "corpo"])
-    expect(camposDaIdentidade(true, "texto")).toEqual(["titulo", "corpo"])
-    expect(camposDaIdentidade(true, "cta")).toContain("botao")
+    expect(camposDaIdentidade(POST, "capa")).toEqual(["titulo", "corpo"])
+    expect(camposDaIdentidade(POST, "texto")).toEqual(["titulo", "corpo"])
+    expect(camposDaIdentidade(POST, "cta")).toContain("botao")
   })
 
   it("fora dele vale o conjunto do tipo", () => {
-    expect(camposDaIdentidade(false, "capa")).toEqual(["titulo", "subtitulo"])
-    expect(camposDaIdentidade(false, "cta")).toEqual(["titulo", "subtitulo", "botao"])
+    expect(camposDaIdentidade(CASA_D, "capa")).toEqual(["titulo", "subtitulo"])
+    expect(camposDaIdentidade(CASA_D, "cta")).toEqual(["titulo", "subtitulo", "botao"])
+  })
+})
+
+describe("camposDaIdentidade · cartão de thread", () => {
+  it("o fio desenha título e corpo — o parágrafo antes e o depois da foto", () => {
+    expect(camposDaIdentidade(THREAD_D, "texto")).toEqual(["titulo", "corpo"])
+    expect(camposDaIdentidade(THREAD_D, "capa")).toEqual(["titulo", "corpo"])
+  })
+
+  it("o FECHO preto desenha só a frase — `botao` ali seria campo fantasma", () => {
+    expect(camposDaIdentidade(THREAD_D, "cta")).toEqual(["titulo"])
+    // O cartão de PERFIL desenha o botão no fecho; herdar o conjunto dele
+    // era o defeito que o objeto (em vez do booleano) fecha.
+    expect(camposDaIdentidade(POST, "cta")).toContain("botao")
   })
 })
 
 describe("reconciliarCampos", () => {
   it("o parágrafo MIGRA para o campo que fica em vez de sumir da tela", () => {
-    const r = reconciliarCampos(frame(), camposDaIdentidade(true, "capa"), CASA)
+    const r = reconciliarCampos(frame(), camposDaIdentidade(POST, "capa"), CASA)
     expect(r.campos).toEqual(["titulo", "corpo"])
     expect(r.textos.titulo).toBe("Afirmação")
     expect(r.textos.corpo).toBe("o parágrafo de apoio")
   })
 
   it("é simétrico: ida e volta devolve o texto ao campo de origem", () => {
-    const ida = reconciliarCampos(frame(), camposDaIdentidade(true, "capa"), CASA)
-    const volta = reconciliarCampos({ tipo: "capa", ...ida }, camposDaIdentidade(false, "capa"), CASA)
+    const ida = reconciliarCampos(frame(), camposDaIdentidade(POST, "capa"), CASA)
+    const volta = reconciliarCampos({ tipo: "capa", ...ida }, camposDaIdentidade(CASA_D, "capa"), CASA)
     expect(volta.textos.subtitulo).toBe("o parágrafo de apoio")
     expect(volta.textos.titulo).toBe("Afirmação")
   })
 
   it("não sobrescreve texto que já existe no campo de destino", () => {
     const f = frame({ campos: ["titulo", "subtitulo", "corpo"], textos: { titulo: "T", subtitulo: "vai sair", corpo: "já escrito" } })
-    const r = reconciliarCampos(f, camposDaIdentidade(true, "capa"), CASA)
+    const r = reconciliarCampos(f, camposDaIdentidade(POST, "capa"), CASA)
     expect(r.textos.corpo).toBe("já escrito")
   })
 
   it("campo vazio não migra nada", () => {
-    const r = reconciliarCampos(frame({ textos: { titulo: "T", subtitulo: "   " } }), camposDaIdentidade(true, "capa"), CASA)
+    const r = reconciliarCampos(frame({ textos: { titulo: "T", subtitulo: "   " } }), camposDaIdentidade(POST, "capa"), CASA)
     expect(r.textos.corpo).toBe("")
   })
 
   it("gancho e anotação sobrevivem, como em toda troca", () => {
     const f = frame({ tipo: "texto", campos: ["titulo", "corpo", "gancho"], textos: { titulo: "T", corpo: "c", gancho: "a linha que prepara" } })
-    const r = reconciliarCampos(f, camposDaIdentidade(true, "texto"), CASA)
+    const r = reconciliarCampos(f, camposDaIdentidade(POST, "texto"), CASA)
     expect(r.campos).toContain("gancho")
     expect(r.textos.gancho).toBe("a linha que prepara")
   })
 
   it("a caixa de destaque SAI ao entrar numa identidade que não a desenha — e o texto fica guardado", () => {
     const f = frame({ tipo: "texto", campos: ["titulo", "corpo", "destaque"], textos: { titulo: "T", corpo: "c", destaque: "a frase da caixa" } })
-    const r = reconciliarCampos(f, camposDaIdentidade(false, "texto"), CASA)
+    const r = reconciliarCampos(f, camposDaIdentidade(CASA_D, "texto"), CASA)
     expect(r.campos).not.toContain("destaque")
     // Apagar seria perder copy na troca de identidade.
     expect(r.textos.destaque).toBe("a frase da caixa")
@@ -75,20 +93,20 @@ describe("reconciliarCampos", () => {
 
   it("e VOLTA escrita para quem retorna à identidade que a desenha", () => {
     const f = frame({ tipo: "texto", campos: ["titulo", "corpo", "destaque"], textos: { titulo: "T", corpo: "c", destaque: "a frase da caixa" } })
-    const saiu = reconciliarCampos(f, camposDaIdentidade(false, "texto"), CASA)
-    const voltou = reconciliarCampos({ tipo: "texto", ...saiu }, camposDaIdentidade(false, "texto"), COM_CAIXA)
+    const saiu = reconciliarCampos(f, camposDaIdentidade(CASA_D, "texto"), CASA)
+    const voltou = reconciliarCampos({ tipo: "texto", ...saiu }, camposDaIdentidade(CASA_D, "texto"), COM_CAIXA)
     expect(voltou.campos).toContain("destaque")
     expect(voltou.textos.destaque).toBe("a frase da caixa")
   })
 
   it("caixa vazia não volta: campo em branco é ruído no painel", () => {
     const f = frame({ tipo: "texto", campos: ["titulo", "corpo"], textos: { titulo: "T", corpo: "c", destaque: "   " } })
-    expect(reconciliarCampos(f, camposDaIdentidade(false, "texto"), COM_CAIXA).campos).not.toContain("destaque")
+    expect(reconciliarCampos(f, camposDaIdentidade(CASA_D, "texto"), COM_CAIXA).campos).not.toContain("destaque")
   })
 
   it("a capa não recebe a caixa nem com texto guardado — ali ela competiria com o título", () => {
     const f = frame({ campos: ["titulo", "subtitulo"], textos: { titulo: "T", subtitulo: "s", destaque: "sobrou de um slide de texto" } })
-    expect(reconciliarCampos(f, camposDaIdentidade(false, "capa"), COM_CAIXA).campos).not.toContain("destaque")
+    expect(reconciliarCampos(f, camposDaIdentidade(CASA_D, "capa"), COM_CAIXA).campos).not.toContain("destaque")
   })
 })
 

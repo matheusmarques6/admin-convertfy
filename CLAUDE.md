@@ -7781,5 +7781,88 @@ vez de nota bem colocada.
 
 ---
 
+## Estúdio — família "Thread": o formato era a lacuna, não o construtor (set/2026)
+
+Pedido: copiar o "Template Twitter" do construtor da referência (quatro
+prints) **e** dizer o que a plataforma deles tem que a nossa não tem. A
+segunda metade foi conferida painel a painel e a resposta é **nada**:
+seletor de template, colar-e-aplicar (placeholder idêntico), campos globais
+com olhinhos, "Clique em um texto no slide para editar estilo" (mesma
+frase), slots de mídia numerados com "N de M slots", cores globais, fundo
+por slide, liga/desliga do CTA, 9:16|4:5 com a mesma explicação, histórico,
+grade de frames com menu ⋮, zoom, alta fidelidade e exportação PNG/JPG em
+ZIP — tudo já existia, e daqui ainda saem o banco de imagens da org, a
+geração pela ConvertIA, a colagem de duas fotos e o motor editorial. **A
+lacuna era o FORMATO**, e é ele que a família `thread` + o molde
+`molde-thread` entregam. De/para completo em
+`docs/conteudo/formatos/thread.md`.
+
+**Não é variação do print de tweet.** A `post` simula UM post; a `thread`
+simula peça EDITORIAL com cara de thread: cartão **branco**, barra de
+metadados no topo (`@handle` · marca · copyright), bloco de autoria, e um
+fio de parágrafos com foto no meio — `titulo` é o parágrafo ANTES da foto e
+`corpo` o de DEPOIS. O fecho é um slide **preto** com avatar, handle e a
+frase sozinha; `camposThread("cta")` devolve só `titulo`, porque `botao` ali
+seria campo fantasma (o cartão de perfil desenha botão no fecho, e herdar o
+conjunto dele era o defeito que `DesenhoDeCampos` — objeto, não booleano —
+fecha). `temBarraDeMetadados` tira a barra do fecho: repetir a marca no
+slide que existe para deixar uma frase sozinha é o contrário do formato.
+
+**As medidas saem do print, e a conta fica no código**: o cartão mede 459 px
+de tela para uma peça de 1080, ou seja `ESCALA_DO_PRINT = 0,425`, e `doTela()`
+converte. Procedência declarada — mesma classe das duas famílias de print,
+um degrau abaixo de ter o arquivo.
+
+**A fonte é decisão de procedência, não de gosto** (a pergunta do usuário:
+"está simulando um post, qual seria a fonte ideal?"). Chirp, do X, é
+proprietária e não pode ser embarcada; a própria aplicação declara a pilha
+`Segoe UI, Roboto, Helvetica, Arial` — todas **grotescas** —, e Inter é a
+grotesca livre mais próxima em proporção, já self-hosted, que mantém a
+exportação DETERMINÍSTICA. As três famílias de print usam a MESMA pilha:
+simulam a mesma interface, e o que as separa é a métrica. **Poppins saiu do
+repo** por isto: é geométrica (Futura), `a` de um andar e bojo circular —
+nenhuma interface social usa isso no corpo, e é esse detalhe que faz a peça
+ler como "montada num gerador". O **peso** também é medido:
+`THREAD_PESO_CORPO = 600`, porque na referência o fio é semibold e com 400 o
+cartão perde a ênfase que marca o argumento.
+
+**Duas listas escritas à mão descartavam a família nova em silêncio** — o
+padrão de falha desta parte do código, agora com teste em cada porta:
+
+1. `ehFamilia` era um `||` à mão; `thread` caía em `padrao` e a prateleira
+   mostrava a peça errada (foi `previa-de-template.test.ts` que pegou).
+   Agora deriva de `FAMILIAS`.
+2. `aplicarFamilia` decidia recalcular o fundo por uma LISTA de traços
+   (`alternaFundo`/`cartaoPerfil`/`respiroEscuro`) e `cartaoThread` ficou
+   fora: o fecho herdava o "gradiente" da casa e saía **branco com texto
+   branco** — invisível, sem erro nenhum. A decisão passou a ser pelo
+   RESULTADO (compara o padrão posicional antigo com o novo), o que vale
+   para toda identidade futura sem ninguém lembrar de editar a lista.
+3. `FAMILIA_OPCOES` — a terceira, e a de preço mais peculiar: a identidade
+   existia INTEIRA (tipo, mapa, molde) e a peça nascia certa ao escolher o
+   molde, mas ela **não podia ser escolhida** em Marca → Identidade visual
+   nem no diálogo de criação. Agora deriva de `FAMILIAS`, na ordem em que
+   elas são declaradas lá.
+
+**Limites próprios** (`LIMITES_THREAD`): o fio chega a quatro parágrafos na
+referência, e o limite do TIPO — desenhado para afirmação curta — encolheria
+a letra sem necessidade.
+
+**O chrome da interface não é a paleta da peça**: o selo verificado estava
+preso a `doc.cores.destaque` — trocar a cor global do documento o deixaria
+vermelho, e nenhuma rede faz isso; virou constante da família, como a `post`
+já fazia. E avatar sem foto passou a mostrar a INICIAL: círculo cinza chapado
+lê como imagem que não carregou, e era o que a PRATELEIRA exibia (é lá que
+nenhum molde tem avatar).
+
+*Verificado renderizando*: a capa quebra a linha IDÊNTICA à referência, o
+slide 2 casa com o terceiro print, e o fecho só ficou certo depois de
+`fechoTexto` 46 → 52, porque a quebra saía uma palavra depois — defeito que
+nenhum teste pegaria. As quatro capas da prateleira foram renderizadas
+juntas: cada molde aparece na identidade que ele dá, que era a queixa da
+thumb que "não condiz com a realidade".
+
+---
+
 *Última atualização: Setembro 2026*
 *Versões: Shopify 2024-10, Klaviyo revision 2025-10-15*

@@ -86,6 +86,33 @@ export const ST_TEMPLATES: Template[] = [
     ],
   },
   {
+    id: "molde-thread",
+    nome: "Thread comentada",
+    etapaFunil: "meio",
+    descricao: "Nove cartões de thread: capa, sete passos do fio com foto no meio e o fecho preto. Use com a identidade Thread.",
+    cor: "#111111",
+    familia: "thread",
+    frames: [
+      // Nove slides, como a referência: a capa abre o fio, sete passos o
+      // desenvolvem e o fecho preto deixa uma frase sozinha. Cada passo é
+      // `titulo` (o que vem antes da foto) + `corpo` (o que vem depois) —
+      // é assim que o cartão de thread quebra o parágrafo em volta da
+      // imagem, e é o que o renderer desenha.
+      fr("f1", "capa", "Capa", 1, TC),
+      fr("f2", "texto", "Slide 2", 1, TC),
+      fr("f3", "texto", "Slide 3", 1, TC),
+      fr("f4", "texto", "Slide 4", 1, TC),
+      fr("f5", "texto", "Slide 5", 1, TC),
+      fr("f6", "texto", "Slide 6", 1, TC),
+      fr("f7", "texto", "Slide 7", 1, TC),
+      fr("f8", "texto", "Slide 8", 1, TC),
+      // O fecho NÃO tem slot de imagem: na referência ele é preto com uma
+      // frase e mais nada, e o painel de Mídia diz isso ("o frame 9 não
+      // tem slot de imagem neste template").
+      fr("f9", "cta", "CTA", 0, ["titulo"]),
+    ],
+  },
+  {
     id: "molde-manchete",
     nome: "Tese em manchete",
     etapaFunil: "meio",
@@ -173,6 +200,7 @@ export function variantesDoTipo(tipo: FrameTipo, cartaoPerfil = false): Array<[V
  * dashboard lê. Tirá-las apagaria o histórico junto com a prateleira.
  */
 export const ST_MOLDE_KEY: Record<string, MoldeKey> = {
+  "Thread comentada": "Thread",
   Turbo: "Turbo",
   "MEC papel-por-papel": "MEC",
   "Benchmark de marca": "Benchmark",
