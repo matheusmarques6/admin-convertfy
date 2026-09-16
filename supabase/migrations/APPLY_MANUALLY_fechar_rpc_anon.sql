@@ -116,6 +116,29 @@ from pg_proc p
 join pg_namespace ns on ns.oid = p.pronamespace
 where ns.nspname = 'public';
 
+-- ── O advisor `function_search_path_mutable` foi medido e DISPENSADO ──
+--
+-- 45 das 102 `SECURITY DEFINER` não fixam `search_path`, e o advisor
+-- aponta isso como risco de sequestro de resolução de nomes. Para
+-- sequestrar, o atacante precisa CRIAR um objeto num schema que venha
+-- antes no `search_path` — e medido em 16/09, **nenhum papel da API pode
+-- criar nada**: `anon`, `authenticated`, `service_role` e `authenticator`
+-- têm CREATE negado tanto em `public` quanto no banco (não podem sequer
+-- criar schema).
+--
+--   select r.rolname,
+--     has_schema_privilege(r.rolname,'public','CREATE')            as cria_em_public,
+--     has_database_privilege(r.rolname, current_database(),'CREATE') as cria_schema
+--   from pg_roles r
+--   where r.rolname in ('anon','authenticated','service_role','authenticator');
+--
+-- Com o vetor fechado, um `ALTER FUNCTION ... SET search_path` em 45
+-- funções de produção é risco puro: função que dependa de `extensions`
+-- (pgcrypto, pgvector) ou de `auth` passa a não resolver, e a quebra
+-- aparece em runtime. Se algum dia um papel ganhar CREATE, a conta
+-- inverte e o certo é fixar — com `public, extensions, pg_temp`, não só
+-- `public`.
+--
 -- ── Rollback ─────────────────────────────────────────────────────────
 -- Se algum fluxo público quebrar, o nome da função aparece no erro do
 -- PostgREST ("permission denied for function X"). Reabra SÓ ela, e
