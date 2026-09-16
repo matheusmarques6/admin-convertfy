@@ -26,6 +26,13 @@ import { captureTrends } from "./trends.service"
 import { getSettings } from "./settings.service"
 import { callAnthropicJson } from "./anthropic-client"
 import { aiSuggestionsOutputSchema, type AiSuggestion } from "@/lib/validations/campaign-central"
+import {
+  MOTIVO_CICLO_INTERROMPIDO,
+  avisoDeCapturaParcial,
+  ciclosInterrompidos,
+  orcamentoDaCaptura,
+  type CicloEmAndamento,
+} from "@/lib/campaign-central/ciclo-saude"
 import type { AttentionStore, BenchmarkEmail, CampaignTrend } from "@/types/campaign-central"
 
 const log = logger.child("CampaignSuggestionEngine")
@@ -34,6 +41,20 @@ const LOCK_NAME = "campaign_suggestions_cycle"
 const LOCK_STALE_MINUTES = 10
 const DEFAULT_MAX_CONCURRENT_CLUSTERS = 3
 const CYCLE_DAYS = 7
+
+/**
+ * O relógio da função — o `maxDuration = 300` do cron, com folga para a
+ * escrita final e a resposta.
+ */
+const ORCAMENTO_DO_CICLO_MS = 280_000
+/**
+ * O que fica reservado para gerar as sugestões e fechar o ciclo.
+ *
+ * Tendência é enriquecimento; sugestão é o produto. Medido em 16/09: a
+ * captura comia a função inteira e `campaign_ai_runs` não tinha UMA linha
+ * `kind='suggestions'` desde 10/08 — 16 ciclos, zero sugestões.
+ */
+const RESERVA_PARA_SUGESTOES_MS = 150_000
 
 export interface RunCycleResult {
   cycleId: string | null
@@ -92,6 +113,59 @@ async function releaseLock(admin: ReturnType<typeof createAdminClient>): Promise
     .from("cron_locks")
     .update({ is_running: false, finished_at: new Date().toISOString() })
     .eq("lock_name", LOCK_NAME)
+}
+
+/**
+ * Fecha os ciclos que ficaram pendurados em `generating`.
+ *
+ * Fail-open: falhar aqui não pode impedir o ciclo novo de rodar — o
+ * pendurado é ruído na tela, o ciclo novo é o produto.
+ */
+async function fecharCiclosInterrompidos(
+  admin: ReturnType<typeof createAdminClient>,
+  orgId: string,
+): Promise<void> {
+  try {
+    const { data, error } = await admin
+      .from("campaign_cycles")
+      .select("id, number, status, created_at")
+      .eq("org_id", orgId)
+      .eq("status", "generating")
+      .order("created_at", { ascending: false })
+      .limit(100)
+    if (error || !data?.length) return
+
+    const presos = ciclosInterrompidos(
+      (data as Array<{ id: string; number: number | null; status: string; created_at: string | null }>).map(
+        (c): CicloEmAndamento => ({
+          id: c.id,
+          number: c.number,
+          status: c.status,
+          createdAt: c.created_at,
+        }),
+      ),
+    )
+    if (presos.length === 0) return
+
+    await admin
+      .from("campaign_cycles")
+      .update({
+        status: "failed",
+        error: MOTIVO_CICLO_INTERROMPIDO,
+        generated_at: new Date().toISOString(),
+      })
+      .in(
+        "id",
+        presos.map((c) => c.id),
+      )
+    log.warn("cycle.interrompidos_fechados", {
+      orgId,
+      quantos: presos.length,
+      numeros: presos.map((c) => c.number),
+    })
+  } catch (err) {
+    log.warn("cycle.varredura_falhou", { error: err instanceof Error ? err.message : String(err) })
+  }
 }
 
 async function loadAgentConfig(
@@ -188,8 +262,17 @@ export async function runSuggestionCycle(params: {
     }
   }
 
+  const t0Ciclo = Date.now()
   let cycleId: string | null = null
   try {
+    // Ciclo que morreu no meio não fecha sozinho: quem é morto pelo
+    // runtime não roda `catch` nem `finally`. Medido em 16/09: 15 dos 16
+    // ciclos presos em `generating`, o mais novo de dois dias antes, e a
+    // tela mostrando "gerando…" desde então. A varredura acontece aqui
+    // porque é o único ponto que sempre roda — e roda ANTES de criar o
+    // ciclo novo, senão ele mesmo apareceria na lista.
+    await fecharCiclosInterrompidos(admin, orgId)
+
     const now = new Date()
     const today = now.toISOString().slice(0, 10)
     const rangeEnd = new Date(now.getTime() + CYCLE_DAYS * 86_400_000)
@@ -292,10 +375,19 @@ export async function runSuggestionCycle(params: {
       const trendClusters = Array.from(nichesByCountry.entries()).map(
         ([country, niches]) => ({ country, niches: Array.from(niches) }),
       )
-      const captured = await captureTrends({
+      const { trends: captured, adiados } = await captureTrends({
         orgId,
         cycleId,
         clusters: trendClusters,
+        // O relógio da captura, com a reserva da geração intocada. Sem
+        // ele, 7 países em série a 81 s de média atravessavam os 300 s
+        // do cron e a função morria ANTES de gerar qualquer sugestão —
+        // que é o produto. Ver `lib/campaign-central/ciclo-saude`.
+        orcamentoMs: orcamentoDaCaptura(
+          ORCAMENTO_DO_CICLO_MS,
+          RESERVA_PARA_SUGESTOES_MS,
+          Date.now() - t0Ciclo,
+        ),
       })
       // Filtra risk_flag='high' antes de injetar no prompt das sugestões
       trends = captured.filter((t) => t.risk_flag !== "high")
@@ -306,6 +398,14 @@ export async function runSuggestionCycle(params: {
             ...contextSnapshot,
             trends_count: captured.length,
             trends_risk_high: captured.length - trends.length,
+            // Declarado no ciclo, não só no log: sem isto, "4 países" e
+            // "7 países" produzem o mesmo ciclo na tela.
+            trends_adiados: adiados,
+            trends_aviso: avisoDeCapturaParcial({
+              total: trendClusters.length,
+              feitos: trendClusters.length - adiados.length,
+              adiados,
+            }),
           },
         })
         .eq("id", cycleId)
