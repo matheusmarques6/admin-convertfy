@@ -176,6 +176,10 @@ const ESTILO_POR_FAMILIA: Record<FamiliaVisual, string> = {
   // não captura de tela: é a prova de que a história aconteceu.
   "post-largo":
     "Foto real de bastidor, como quem registrou o momento com o celular: luz do ambiente, enquadramento espontâneo, nada de estúdio nem de banco de imagens. É a prova visual da história que o texto conta.",
+  // A peça é um bloco preto: a foto é a ÚNICA fonte de luz do slide, e o
+  // brilho azul em volta dela é desenhado por código (não deve vir na
+  // imagem, senão a borda sai duas vezes).
+  neon: "Foto de alto contraste sobre fundo escuro, com luz dura recortando o objeto e sombras profundas — o assunto acende no meio do preto. Sem fundo claro, sem cena de casa, sem moldura ou borda brilhante na própria imagem.",
 }
 
 function blocoReferencias(porQueFunciona?: string[]): string {

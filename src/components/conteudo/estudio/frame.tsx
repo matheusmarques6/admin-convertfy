@@ -17,7 +17,7 @@
  */
 
 import type { CSSProperties, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react"
-import { SLIDE, clarear, fundoEscuro, gradienteCss, hex6 } from "@/lib/conteudo/brand"
+import { SLIDE, brilhoCor, clarear, fundoEscuro, gradienteCss, hex6 } from "@/lib/conteudo/brand"
 import { familiaDe, tracoDe } from "@/lib/conteudo/familias"
 import { POST_CORES, medidasPost, posePost, subidaOptica } from "@/lib/conteudo/formato-post"
 import { fitFactor, limiteDe } from "@/lib/conteudo/limites"
@@ -98,7 +98,9 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
   const escuro = fundoEscuro(fundo)
   const bg = fundo === "gradiente" ? gradienteCss(doc.gradiente) : fundo
   const fg = escuro ? "#FFFFFF" : doc.cores.hook
-  const fg2 = escuro ? "rgba(255,255,255,0.82)" : SLIDE.textoApoioClaro
+  // A tinta de apoio no fundo CLARO pode ser da família (`cores.apoio`):
+  // a azul-marinho da casa num bloco preto-e-azul não é a mesma peça.
+  const fg2 = escuro ? "rgba(255,255,255,0.82)" : (doc.cores.apoio ?? SLIDE.textoApoioClaro)
   const meta = escuro ? "rgba(255,255,255,0.7)" : doc.cores.metadado
   const S = (v: number) => v * scale
   const img = f.imagens.slot1
@@ -314,6 +316,7 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
   )
 
   const avatarRow = (dark: boolean) =>
+    tr.assinaturaNoSlide &&
     !oc.avatar && (
       <div style={{ display: "flex", alignItems: "center", gap: S(14), marginBottom: S(30) }}>
         {bk.avatar ? (
@@ -429,6 +432,10 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
           overflow: "hidden",
           cursor: interactive ? "pointer" : "default",
           outline: imgSel && imgSel.frameId === f.frameId ? `${Math.max(1, S(3))}px dashed ${SLIDE.selecao}` : "none",
+          // Brilho neon: a foto ACENDE sobre o bloco preto. Fica fora do
+          // `overflow: hidden` porque `box-shadow` desenha para fora da
+          // caixa — é por isso que ele não some com o recorte da imagem.
+          ...(tr.brilhoImagem ? { boxShadow: `0 0 ${S(tr.brilhoImagem)}px ${brilhoCor(doc.cores.destaque ?? SLIDE.destaque, 0.45)}` } : {}),
           ...style,
         }}
       >
@@ -625,6 +632,20 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
         )}
       </div>
     )
+  } else if (f.tipo === "capa" && tr.brilhoImagem > 0 && (img || f.slotsImagem > 0)) {
+    // Capa das famílias em que a foto ACENDE: ela é um bloco recortado com
+    // brilho, não o fundo do slide. Sangrar a foto de borda a borda aqui
+    // apagaria o brilho (não há preto em volta para ele aparecer) e o véu
+    // escuro por cima faria o oposto do que o formato quer — a foto é a
+    // única fonte de luz da peça.
+    body = (
+      <div style={{ position: "absolute", left: S(80), right: S(80), top: S(off + 150), bottom: S(off + 130), display: "flex", flexDirection: "column" }}>
+        <div style={{ flex: 1, position: "relative", marginBottom: S(78) }}>{imgSlot({ inset: 0, borderRadius: S(tr.raio) })}</div>
+        {gancho(58, fg2)}
+        {T("titulo", { ...cond, fontSize: 104, color: fg })}
+        {T("subtitulo", { ...serif, fontSize: 40, color: fg2, marginTop: S(26), lineHeight: 1.3 })}
+      </div>
+    )
   } else if (f.tipo === "capa") {
     body = (
       <>
@@ -708,10 +729,16 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
               // editorial, onde a peça imita papel, não interface.
               ...(tr.cta === "pilula"
                 ? { border: `${Math.max(1, S(2))}px solid ${doc.cta.cor}`, letterSpacing: "0.02em" }
-                : { boxShadow: `0 ${S(12)}px ${S(40)}px rgba(0,0,0,0.3)` }),
+                : tr.cta === "bloco"
+                  ? // Caixa sólida: canto quase reto, texto condensado em
+                    // caixa alta e nada de sombra. Na Neon ela é um elemento
+                    // do DESENHO — o bloco de cor que fecha a peça —, não um
+                    // botão imitando interface.
+                    { borderRadius: S(10), padding: `${S(34)}px ${S(56)}px`, fontFamily: tr.fonteTitulo, fontWeight: tr.tituloPeso, textTransform: "uppercase" as const, letterSpacing: "0.01em", fontSize: S(46) }
+                  : { boxShadow: `0 ${S(12)}px ${S(40)}px rgba(0,0,0,0.3)` }),
             }}
           >
-            <IconInbox s={S(30)} />
+            <IconInbox s={S(tr.cta === "bloco" ? 38 : 30)} />
             {f.textos.botao || doc.cta.texto}
           </div>
         )}
@@ -724,6 +751,11 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
         {avatarRow(escuro)}
         {gancho(52, fg2, variante === "c" ? "center" : "left")}
         {T("titulo", { ...cond, fontSize: 96, color: fg, textAlign: variante === "c" ? "center" : "left" })}
+        {/* Régua entre a afirmação e o argumento: no slide sem foto não há
+            outro corte, e os dois blocos de texto se colam. */}
+        {tr.reguaSobCorpo && (f.textos.corpo ?? "").trim() ? (
+          <div style={{ width: S(140), height: S(8), background: escuro ? corDestaque : doc.cores.destaque, marginTop: S(40), borderRadius: S(4), ...(variante === "c" ? { marginLeft: "auto", marginRight: "auto" } : {}) }} />
+        ) : null}
         {T("corpo", { ...serif, fontSize: 42, color: fg2, marginTop: S(36), lineHeight: 1.35, textAlign: variante === "c" ? "center" : "left" })}
         {anotacao(44, variante === "c" ? "left" : "right")}
       </>

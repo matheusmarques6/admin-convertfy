@@ -38,8 +38,37 @@ export interface TracoFamilia {
   tituloEntrelinha: number
   /** O corpo é itálico serif (padrão) ou sans regular (editorial)? */
   corpoItalico: boolean
-  /** Botão sólido com sombra, ou pílula clara com borda. */
-  cta: "botao" | "pilula"
+  /**
+   * Botão sólido com sombra, pílula clara com borda, ou BLOCO: retângulo
+   * sólido de canto quase reto com o texto condensado em caixa alta — o
+   * "caixa azul" da identidade Neon, que é parte do desenho e não um botão
+   * de interface.
+   */
+  cta: "botao" | "pilula" | "bloco"
+  /**
+   * Brilho em volta da foto, na cor de destaque, em px da base 1080 (0 =
+   * sem brilho). É o que faz a imagem "acender" sobre o preto na Neon; nas
+   * outras famílias a foto é chapada e o brilho seria enfeite.
+   */
+  brilhoImagem: number
+  /**
+   * Régua curta entre o título e o corpo nos slides de texto. Separa a
+   * afirmação do argumento quando não há foto para fazer esse corte — é o
+   * filete do slide de respiro da Neon.
+   */
+  reguaSobCorpo: boolean
+  /**
+   * A peça inteira é escura, com UM slide claro de respiro no meio. Não é
+   * a alternância do Alternado (claro/escuro a cada passo): aqui o claro é
+   * o corte único que dá fôlego antes do fecho, e o resto é bloco preto.
+   */
+  respiroClaro: boolean
+  /**
+   * Cada slide repete avatar + nome acima do título. É a assinatura das
+   * famílias da casa; na Neon o rodapé de marca já carrega o handle, e
+   * repeti-lo colado no título só duplica a mesma informação.
+   */
+  assinaturaNoSlide: boolean
   /** Raio do slot de imagem e dos cartões, na base 1080. */
   raio: number
   /** Inclinação da anotação manuscrita, em graus. */
@@ -130,6 +159,21 @@ const FONTE_POST = "'Inter Slides', Inter, 'Segoe UI', Roboto, Helvetica, Arial,
 const FONTE_POST_LARGO = FONTE_POST
 
 /**
+ * Paleta da identidade Neon.
+ *
+ * O preto não é `#000`: preto puro chapa e come o brilho da foto, que é o
+ * elemento do formato. O claro não é `#FFF` pelo motivo simétrico — o
+ * slide de respiro tem de parecer papel ao lado do bloco preto, não um
+ * furo de luz.
+ */
+const NEON = {
+  preto: "#0A0A0A",
+  claro: "#F2F2F2",
+  eletrico: "#3B5BFD",
+  tinta: "#FFFFFF",
+} as const
+
+/**
  * A família Alternado inteira sai de UMA cor: é o que permite a mesma peça
  * ficar com a cara de cada cliente sem pedir sete campos de cor a quem só
  * sabe a cor do logo. A primária nunca vira fundo de texto — ela é accent,
@@ -171,6 +215,10 @@ export function alternadoDaPaleta(p: Paleta): Omit<Familia, "key" | "nome" | "de
       barraProgresso: true,
       alternaFundo: true,
       cartaoPerfil: false,
+      assinaturaNoSlide: true,
+      brilhoImagem: 0,
+      reguaSobCorpo: false,
+      respiroClaro: false,
     },
   }
 }
@@ -205,6 +253,10 @@ export const FAMILIAS: Record<FamiliaVisual, Familia> = {
       barraProgresso: false,
       alternaFundo: false,
       cartaoPerfil: false,
+      assinaturaNoSlide: true,
+      brilhoImagem: 0,
+      reguaSobCorpo: false,
+      respiroClaro: false,
     },
   },
   editorial: {
@@ -245,6 +297,10 @@ export const FAMILIAS: Record<FamiliaVisual, Familia> = {
       barraProgresso: false,
       alternaFundo: false,
       cartaoPerfil: false,
+      assinaturaNoSlide: true,
+      brilhoImagem: 0,
+      reguaSobCorpo: false,
+      respiroClaro: false,
     },
   },
   alternado: {
@@ -290,6 +346,10 @@ export const FAMILIAS: Record<FamiliaVisual, Familia> = {
       barraProgresso: false,
       alternaFundo: false,
       cartaoPerfil: true,
+      assinaturaNoSlide: true,
+      brilhoImagem: 0,
+      reguaSobCorpo: false,
+      respiroClaro: false,
       estiloPost: "post",
     },
   },
@@ -327,7 +387,63 @@ export const FAMILIAS: Record<FamiliaVisual, Familia> = {
       barraProgresso: false,
       alternaFundo: false,
       cartaoPerfil: true,
+      assinaturaNoSlide: true,
+      brilhoImagem: 0,
+      reguaSobCorpo: false,
+      respiroClaro: false,
       estiloPost: "post-largo",
+    },
+  },
+  neon: {
+    key: "neon",
+    nome: "Neon",
+    descricao: "Bloco preto, título condensado em caixa alta alternando azul elétrico e branco, foto com brilho e caixa sólida no fecho.",
+    cores: {
+      // `hook` é a TINTA sobre o claro (no escuro o renderer usa branco).
+      // Com branco aqui, o título do slide de respiro sumia no fundo claro
+      // — o mesmo defeito que a Alternado pagou, achado renderizando.
+      hook: NEON.preto,
+      destaque: NEON.eletrico,
+      apoio: "#2E2E2E",
+      metadado: "#8A8A8A",
+      "fundo-bloco": "#141414",
+    },
+    // Um azul muito escuro entrando no preto: é o fundo da capa quando
+    // alguém pede gradiente, e continua lendo como bloco preto de longe.
+    gradiente: { de: "#0E1330", meio: "#080A18", ate: NEON.preto, angulo: 165 },
+    // O CLARO aqui é o slide de respiro, não o fundo dominante — quem
+    // decide o ritmo é `respiroClaro` em `fundoPadraoDaFamilia`.
+    fundoClaro: NEON.claro,
+    fundoEscuro: NEON.preto,
+    cta: { fundo: NEON.eletrico, cor: "#FFFFFF" },
+    traco: {
+      fonteTitulo: FONTE_CONDENSADA,
+      fonteGancho: FONTE_SANS,
+      fonteCorpo: FONTE_SANS,
+      fonteMeta: FONTE_SANS,
+      fonteAnotacao: FONTE_MANUSCRITA,
+      tituloCaixaAlta: true,
+      // Mais pesada e mais fechada que a da casa: o título é um bloco de
+      // massa, e é o espaço APERTADO entre as linhas que faz a massa.
+      tituloPeso: 800,
+      tituloTracking: "-0.005em",
+      tituloEntrelinha: 0.88,
+      corpoItalico: false,
+      cta: "bloco",
+      // Canto arredondado da foto, não do cartão: a peça é chapada e o
+      // único elemento com raio é a imagem.
+      raio: 28,
+      anotacaoRotacao: -3,
+      ganchoFator: 0.9,
+      ganchoCor: "destaque",
+      barraTopo: false,
+      barraProgresso: false,
+      alternaFundo: false,
+      cartaoPerfil: false,
+      assinaturaNoSlide: false,
+      brilhoImagem: 90,
+      reguaSobCorpo: true,
+      respiroClaro: true,
     },
   },
 }
@@ -338,10 +454,11 @@ export const FAMILIA_OPCOES: Array<[FamiliaVisual, string]> = [
   ["alternado", FAMILIAS.alternado.nome],
   ["post", FAMILIAS.post.nome],
   ["post-largo", FAMILIAS["post-largo"].nome],
+  ["neon", FAMILIAS.neon.nome],
 ]
 
 export function ehFamilia(v: unknown): v is FamiliaVisual {
-  return v === "padrao" || v === "editorial" || v === "alternado" || v === "post" || v === "post-largo"
+  return v === "padrao" || v === "editorial" || v === "alternado" || v === "post" || v === "post-largo" || v === "neon"
 }
 
 export function familiaDe(doc: Pick<Documento, "familia">): FamiliaVisual {
@@ -376,6 +493,14 @@ export function fundoPadraoDaFamilia(
   // quatro parecerem capturas da mesma tela. Gradiente na capa quebraria a
   // ilusão no primeiro slide.
   if (f.traco.cartaoPerfil) return f.fundoClaro
+  // Neon: bloco preto do começo ao fim, com UM slide claro de respiro no
+  // meio. Sem saber o total não dá para achar o meio — e aí a peça fica
+  // toda escura, que é o certo: inventar a posição do respiro colocaria o
+  // corte no lugar errado, e um corte no lugar errado é pior que nenhum.
+  if (f.traco.respiroClaro) {
+    if (total !== undefined && total >= 4 && indice === Math.floor(total / 2)) return f.fundoClaro
+    return f.fundoEscuro
+  }
   if (f.traco.alternaFundo) {
     if (tipo === "capa") return "gradiente"
     if (tipo === "cta") return f.fundoClaro
@@ -402,7 +527,10 @@ export function fundoPadraoDaFamilia(
 export function ritmoDeFundos(doc: Documento): Documento {
   const fam = familiaDe(doc)
   const f = FAMILIAS[fam]
-  if (!f.traco.alternaFundo) return doc
+  // Vale para toda família cujo fundo é função da POSIÇÃO — a alternância
+  // do Alternado e o respiro único da Neon. Inserir um slide no meio
+  // desloca os seguintes nas duas.
+  if (!f.traco.alternaFundo && !f.traco.respiroClaro) return doc
 
   const ehPadrao = (v: string) => v === f.fundoClaro || v === f.fundoEscuro || v === "gradiente"
   let mudou = false
@@ -477,6 +605,13 @@ export function aplicarFamilia(doc: Documento, nova: FamiliaVisual): Documento {
   for (const [chave, valorNovo] of Object.entries(para.cores)) {
     if (doc.cores[chave] === undefined || doc.cores[chave] === de.cores[chave]) cores[chave] = valorNovo
   }
+  // Cor que só a família ANTERIOR declara tem de SAIR, senão ela sobrevive
+  // à troca e pinta na identidade seguinte: o `apoio` cinza da Neon ficaria
+  // no corpo dos slides claros da casa, sem ninguém ter escolhido isso.
+  // Só o que ainda é o padrão da antiga — cor posta à mão continua.
+  for (const [chave, valorAntigo] of Object.entries(de.cores)) {
+    if (para.cores[chave] === undefined && doc.cores[chave] === valorAntigo) delete cores[chave]
+  }
 
   const gradiente = mesmoGradiente(doc.gradiente, de.gradiente) ? { ...para.gradiente, angulo: doc.gradiente.angulo } : doc.gradiente
 
@@ -487,7 +622,7 @@ export function aplicarFamilia(doc: Documento, nova: FamiliaVisual): Documento {
   // Recalcular também ao entrar ou sair do print de tweet: lá o fundo é o
   // MESMO preto em todo slide, e trocar cor por cor deixaria o "gradiente"
   // da capa intacto — o degradê sutil que denuncia que não é uma captura.
-  const recalcula = de.traco.alternaFundo !== para.traco.alternaFundo || de.traco.cartaoPerfil !== para.traco.cartaoPerfil
+  const recalcula = de.traco.alternaFundo !== para.traco.alternaFundo || de.traco.cartaoPerfil !== para.traco.cartaoPerfil || de.traco.respiroClaro !== para.traco.respiroClaro
   const ehPadraoDaAntiga = (v: string) => v === de.fundoClaro || v === de.fundoEscuro || v === "gradiente"
   const fundoPorFrame: Record<string, string> = { ...doc.fundoPorFrame }
   doc.frames.forEach((f, i) => {

@@ -55,6 +55,7 @@ export const CT_MOLDE_COR: Record<MoldeKey, string> = {
   Lista: "#B45309",
   Bastidor: "#374151",
   Post: "#0D0D0D",
+  Neon: "#3B5BFD",
 }
 
 export const CT_PILAR_COR: Record<Pilar, string> = {
@@ -104,6 +105,21 @@ export function clarear(cor: string, fracao: number): string {
     return Math.round(v + (255 - v) * k)
   }
   return `#${[0, 1, 2].map((i) => canal(i).toString(16).padStart(2, "0")).join("")}`.toUpperCase()
+}
+
+/**
+ * A mesma cor com transparência — para o brilho em volta da foto.
+ *
+ * `box-shadow` precisa de alfa: a cor chapada faria uma borda dura em vez
+ * de um halo. Cor que não é hexadecimal de 6 dígitos volta INTEIRA, sem
+ * alfa: melhor um brilho forte demais que um `rgba(NaN)`, que o browser
+ * descarta em silêncio e apaga o elemento do desenho.
+ */
+export function brilhoCor(cor: string, alfa: number): string {
+  const h = hex6(cor)
+  if (!h) return cor
+  const c = (i: number) => parseInt(h.slice(i * 2, i * 2 + 2), 16)
+  return `rgba(${c(0)}, ${c(1)}, ${c(2)}, ${Math.max(0, Math.min(1, alfa))})`
 }
 
 /** Fundo escuro? (gradiente da marca é sempre escuro). */

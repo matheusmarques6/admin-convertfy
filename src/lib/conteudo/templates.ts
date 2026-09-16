@@ -137,6 +137,27 @@ export const ST_TEMPLATES: Template[] = [
     ],
   },
   {
+    id: "molde-neon",
+    nome: "Oferta em neon",
+    etapaFunil: "fundo",
+    descricao: "Bloco preto com título condensado, foto acesa e caixa sólida no fecho. Use com a identidade Neon.",
+    cor: "#3B5BFD",
+    familia: "neon",
+    frames: [
+      // A capa é a afirmação em massa condensada sobre a foto acesa: o
+      // slide inteiro é título, e a foto entra como luz, não como ilustração.
+      fr("f1", "capa", "Afirmação", 1, CAPA),
+      fr("f2", "texto", "Promessa", 1, TC),
+      fr("f3", "texto", "Prova", 1, TC),
+      // O RESPIRO: o único slide claro da peça. A posição importa — é
+      // `fundoPadraoDaFamilia` que o acha pelo meio da sequência, então
+      // mover este frame muda qual slide respira.
+      fr("f4", "texto", "Respiro", 0, TC),
+      fr("f5", "texto", "Oferta", 1, TC),
+      fr("f6", "cta", "Chamada", 0, CTA),
+    ],
+  },
+  {
     id: "molde-bastidor",
     nome: "Bastidor",
     etapaFunil: "fundo",
@@ -185,6 +206,7 @@ export const ST_MOLDE_KEY: Record<string, MoldeKey> = {
   Bastidor: "Bastidor",
   "Print de post": "Post",
   "História em posts": "Post",
+  "Oferta em neon": "Neon",
 }
 
 export function moldeKeyDoTemplate(t: Template): MoldeKey {

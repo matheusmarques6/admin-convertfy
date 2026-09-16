@@ -7337,6 +7337,54 @@ imagem clara no slot, apareceu que a captura parava a 2,1% da borda
 inferior contra ~1,2% da referência — daí `rodape` separado do `topo`: é o
 quase-corte que faz o slide parecer um print, não um card com moldura.
 
+## Estúdio — a prévia do template e a identidade Neon (16/09, migration 20261157)
+
+**A prateleira de templates mostrava a peça errada.** Os três construtores
+de prévia (`template-card`, "Meus templates" na home e no diálogo) montavam
+o documento com `novoDocumento`/`documentoDeEstrutura`, que nascem na
+família PADRÃO, e nenhum chamava `aplicarFamilia` — enquanto escolher o
+molde APLICA a identidade que ele pressupõe (`Template.familia` +
+`setFamilia`). O "Print de post" (preto, cartão de perfil, sem contador)
+aparecia como slide azul da casa e o clique entregava outra coisa. Não
+quebrava teste: os dois documentos são válidos, só de identidades
+diferentes. Regra em `previa-de-template.ts` (puro, 11 testes) com a cascata
+declarada — **o que foi GRAVADO com o template > o que o molde base
+pressupõe > a padrão**. Derivar do molde não basta: a identidade é escolha
+da PEÇA, e dois templates do mesmo molde base podem ter capas opostas, daí
+`MeuTemplate.familia` persistido (degrada com retry sem a coluna nos três
+verbos). A legenda do card pousa no campo que a capa DESENHA (`subtitulo`
+nas famílias da casa, `corpo` no cartão de perfil — escrever no errado fazia
+a descrição sumir em silêncio) e a prévia da home recebe o brand kit, senão
+o cartão de perfil sai com avatar vazio.
+
+**A fonte de quem simula um post é a da PLATAFORMA.** O X usa Chirp
+(proprietária, não embarcável) e declara a pilha `Segoe UI, Roboto,
+Helvetica, Arial`; os apps nativos entregam SF Pro/Roboto — todas grotescas.
+Inter é o substituto livre apontado nas comparações, já é self-hosted e
+mantém a exportação determinística (fonte de sistema faria o PNG mudar de
+máquina para máquina). **Poppins saiu**: é geométrica (Futura), com `a` de
+um andar só e bojo circular — nenhuma interface social usa isso no corpo do
+post, e é esse detalhe que faz a peça ler como card de Canva. As duas
+famílias de print passam a usar a mesma pilha, o que é o certo: elas simulam
+a MESMA interface, e o que as separa é a métrica. Os arquivos, os
+`@font-face` e as entradas da exportação foram removidos juntos.
+
+**Identidade `neon`** (`docs/conteudo/formatos/neon.md`): bloco preto com
+título condensado em caixa alta alternando azul elétrico e branco (pelo
+`**palavra**` que já existia), foto recortada com brilho, **um** slide claro
+de respiro no meio (`respiroClaro` — não é a alternância do Alternado) e
+caixa sólida no fecho (`cta: "bloco"`). `ritmoDeFundos` passou a valer para
+toda família cujo fundo é função da POSIÇÃO, senão inserir um slide deixava
+o respiro preso ao anterior. Renderizando apareceram: título BRANCO
+invisível no slide claro (`cores.hook` é a tinta sobre o claro — mesmo
+defeito que a Alternado pagou) e a capa sangrando a foto com véu, que mata o
+brilho; e o teste pegou o terceiro — `aplicarFamilia` não REMOVIA a cor que
+só a família anterior declara, então o `apoio` cinza da Neon sobrevivia à
+troca e ia pintar o corpo dos slides claros da casa. **Limite declarado: as
+medidas da Neon vêm da DESCRIÇÃO do formato, não do arquivo da referência** —
+ao contrário das duas famílias de print, que têm tabela de/para medida pixel
+a pixel.
+
 ---
 
 *Última atualização: Setembro 2026*

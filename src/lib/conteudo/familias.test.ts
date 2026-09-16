@@ -79,6 +79,9 @@ describe("família visual", () => {
       // preto, e um gradiente na capa denuncia que a peça não é uma
       // captura de tela (coberto em `formato-post.test.ts`).
       if (FAMILIAS[key].traco.cartaoPerfil) continue
+      // A Neon é a outra exceção: bloco preto do começo ao fim, com UM
+      // slide claro de respiro (coberto em "identidade Neon", abaixo).
+      if (FAMILIAS[key].traco.respiroClaro) continue
       expect(fundoPadraoDaFamilia(key, "capa", 0)).toBe("gradiente")
       expect(fundoPadraoDaFamilia(key, "prova", 4)).toBe("gradiente")
       expect(fundoPadraoDaFamilia(key, "cta", 6)).toBe("gradiente")
