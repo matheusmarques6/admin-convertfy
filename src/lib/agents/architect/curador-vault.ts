@@ -105,6 +105,49 @@ export async function loadCuradorVaultMode(storeId: string): Promise<CuradorVaul
   }
 }
 
+/**
+ * Leque do Curador (migration 20261158): uma chamada por POSIÇÃO.
+ *   off → o caminho de hoje: uma chamada, o e-mail inteiro.
+ *   on  → o leque decide a peça.
+ *
+ * **Sem `shadow`**: rodar o laço em paralelo pagaria o Curador duas vezes
+ * por geração de cliente e gravaria uma segunda run `assembler_chooser`,
+ * que a RPC do Estúdio (DISTINCT ON por e-mail × bucket) esconderia. Medir
+ * é rodar a bancada da Fase 1a com o gate em `on` e voltar para `off` — ela
+ * custa o Curador sozinho. Valor no enum que nenhum código executa é a
+ * armadilha que este repo já pagou três vezes.
+ *
+ * Fail-open para `off`, como o `curador_vault_mode` e ao contrário do
+ * `loadMontadorMode`, que devolve `on` na falha de leitura e discorda do
+ * default da própria migration. Aqui errar para o lado do caminho de hoje
+ * é barato; trocar a forma do prompt por causa de um timeout no Postgres
+ * não é.
+ */
+export type CuradorLequeMode = "off" | "on"
+
+export async function loadCuradorLequeMode(storeId: string): Promise<CuradorLequeMode> {
+  try {
+    const admin = createAdminClient()
+    const { data: store } = await admin
+      .from("client_stores")
+      .select("org_id")
+      .eq("id", storeId)
+      .maybeSingle()
+    const orgId = (store as { org_id?: string | null } | null)?.org_id
+    if (!orgId) return "off"
+    const { data, error } = await admin
+      .from("email_generation_settings")
+      .select("curador_leque_mode")
+      .eq("org_id", orgId)
+      .maybeSingle()
+    if (error) return "off" // coluna ausente (migration 20261158 não aplicada)
+    const mode = (data as { curador_leque_mode?: string | null } | null)?.curador_leque_mode
+    return mode === "on" ? "on" : "off"
+  } catch {
+    return "off"
+  }
+}
+
 export type MontadorMode = "off" | "on"
 
 /**

@@ -57,6 +57,7 @@ import {
   emptyCuradorVaultKnowledge,
   loadAprendizadosPorToque,
   loadCuradorVaultKnowledge,
+  loadCuradorLequeMode,
   loadCuradorVaultMode,
   loadEstruturaRefsResumo,
   loadVariantUsageCounts,
@@ -1117,6 +1118,11 @@ export async function assembleStoreReference(
   // comportamento vivo é o de sempre (o shadow roda em call paralelo).
   // Fail-open em tudo: sem sync/tabela/coluna, degrada para 'off'.
   const curadorVaultMode = await loadCuradorVaultMode(input.storeId)
+  // Leque (migration 20261158). Lido INCONDICIONALMENTE e UMA vez por peça,
+  // e descido por parâmetro para as N iterações: pendurá-lo num loader
+  // condicional faria o gate nascer desligado em silêncio quando a condição
+  // não se desse. Nasce `off`.
+  const curadorLequeMode = await loadCuradorLequeMode(input.storeId)
   // Orientações do COO ao CURADOR (migration 20261111). Fail-open no
   // loader: sem a coluna `agente`, volta vazio e o prompt declara ausência.
   const orientacoesCurador = await loadOrientacoes("curador")
@@ -1544,6 +1550,7 @@ export async function assembleStoreReference(
       candidatasImpreenchiveis: excludedUntagged,
       decisaoPorPosicao: recorteDoEstruturador.posicoes,
       fioDoEstruturador: recorteDoEstruturador.fio,
+      lequeOn: curadorLequeMode === "on",
       liveViolations: [],
       liveRank1: new Map(),
       baseInputSummary: chooserInputSummary,

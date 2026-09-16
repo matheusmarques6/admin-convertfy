@@ -36,6 +36,7 @@ vi.mock("../callbacks/telemetry.callback", () => ({
 
 import { runCuradorShadow, type CuradorShadowParams } from "./curador-shadow"
 import { missingTelemetryKeys } from "../shared/telemetry-contract"
+import { comOrcamentoDeFase1 } from "@/lib/agents/fase1-orcamento"
 import type { BuildCatalogResult } from "./catalog-builder"
 import { buildCompactCatalog } from "./catalog-builder"
 import type { CuradorVaultKnowledge } from "./curador-vault"
@@ -350,5 +351,31 @@ describe("o contrato de telemetria do caminho do vault", () => {
       }),
     )
     expect(missingTelemetryKeys("assembler_chooser", telemetria().parsedOutput)).toEqual([])
+  })
+})
+
+describe("a guarda de orçamento do leque", () => {
+  it("janela apertada: o leque NÃO começa, e o motivo é dito", async () => {
+    // A régua é conservadora e usa um número já medido: se não cabe nem o
+    // custo típico de UMA chamada do Curador, N chamadas não começam.
+    invokeAgent.mockResolvedValue(chamada(JSON.stringify({ papeis: [], escolhas: [] })))
+    await comOrcamentoDeFase1(5_000, () => runCuradorShadow(params()))
+    expect(telemetria().parsedOutput.leque).toBeNull()
+    expect(String(telemetria().parsedOutput.leque_indisponivel)).toContain("sem_janela")
+  })
+
+  it("janela folgada: roda normalmente", async () => {
+    const ids = ["h1", "b1", "f1"]
+    invokeAgent.mockImplementation(async () => chamada(respostaDe(ids.shift()!)))
+    await comOrcamentoDeFase1(900_000, () => runCuradorShadow(params()))
+    expect(telemetria().parsedOutput.leque).not.toBeNull()
+    expect(telemetria().parsedOutput.leque_indisponivel).toBeNull()
+  })
+
+  it("FORA da janela (sem orçamento aberto) o leque roda — a bancada não tem relógio de fila", async () => {
+    const ids = ["h1", "b1", "f1"]
+    invokeAgent.mockImplementation(async () => chamada(respostaDe(ids.shift()!)))
+    await runCuradorShadow(params())
+    expect(telemetria().parsedOutput.leque).not.toBeNull()
   })
 })

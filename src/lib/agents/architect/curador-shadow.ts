@@ -59,7 +59,11 @@ import {
   type PosicaoDoLeque,
   type ResultadoDoLeque,
 } from "./curador-leque"
-import { tetoDeRelogioDoAgente } from "@/lib/agents/fase1-orcamento"
+import {
+  custoTipicoDoAgente,
+  restanteDoOrcamento,
+  tetoDeRelogioDoAgente,
+} from "@/lib/agents/fase1-orcamento"
 import { usageOf } from "@/lib/agents/chains/step-usage"
 import { RespostaVaziaError } from "@/lib/agents/resposta-vazia"
 import { parseCuratorRanking, type ParsedRanking, type RankedChoice } from "./curator-ranking.parser"
@@ -1381,6 +1385,29 @@ export async function runCuradorShadow(
       } catch (e) {
         lequeIndisponivel = e instanceof Error ? e.message : String(e)
         log.warn("leque.prompt_indisponivel", { motivo: lequeIndisponivel })
+      }
+    }
+    // Guarda de ENTRADA do leque contra o relógio da fase 1.
+    //
+    // A régua é conservadora e usa um número JÁ MEDIDO: se o restante da
+    // janela não cobre nem o custo típico de UMA chamada do Curador, o
+    // leque — que faz N — não tem por que começar. Estimar "N × custo de
+    // uma posição" seria chute: a chamada do leque é menor que a do e-mail
+    // inteiro e ninguém mediu quanto.
+    //
+    // O caso "cabe uma, não cabem seis" fica coberto pela degradação por
+    // POSIÇÃO: `invokeAgent` lança quando a janela acaba, o `try` do laço
+    // transforma isso em posição vazia com motivo `orcamento_esgotado`, e a
+    // régua de fracasso do caller decide o desfecho. Desistir do leque
+    // inteiro por causa dele seria abrir mão de quatro posições que
+    // caberiam.
+    if (lequeUser !== null) {
+      const restante = restanteDoOrcamento()
+      const piso = custoTipicoDoAgente("assembler_chooser", maxTokens)
+      if (restante !== null && restante < piso) {
+        lequeIndisponivel = `sem_janela: restam ${Math.round(restante / 1000)}s e o piso é ${Math.round(piso / 1000)}s`
+        lequeUser = null
+        log.warn("leque.sem_janela", { restanteMs: restante, pisoMs: piso })
       }
     }
     const usarLeque = lequeUser !== null
