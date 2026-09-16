@@ -7080,6 +7080,41 @@ cujos índices dependem delas.
 SQL idempotente, com a lista de exceções (hoje VAZIA, e isso foi medido)
 e o rollback, em `supabase/migrations/APPLY_MANUALLY_fechar_rpc_anon.sql`.
 
+**`function_search_path_mutable` foi medido e DISPENSADO**: 45 das 102
+não fixam `search_path`, mas sequestrar a resolução de nomes exige CRIAR
+objeto num schema à frente na busca — e `anon`, `authenticated`,
+`service_role` e `authenticator` têm CREATE negado em `public` **e** no
+banco. Com o vetor fechado, alterar 45 funções de produção é risco puro
+(função que dependa de `extensions` ou `auth` passa a não resolver, em
+runtime). Se algum papel ganhar CREATE, a conta inverte — e aí o valor é
+`public, extensions, pg_temp`, não só `public`.
+
+## A coalescência parou de duplicar, mas não consolidou (16/09, migration 20261156)
+
+`upsert_onboarding_stuck_notifications` (do incidente das 17.611 não
+lidas) faz UPDATE primeiro e INSERT só quando nada foi tocado — está
+correta e PARA de criar duplicatas. O que ela nunca fez foi consolidar as
+que já existiam: o UPDATE alcança TODAS as cópias do par, devolve
+`ROW_COUNT = 3`, e as três são renovadas com `created_at = now()` a cada
+rodada do cron. **Nunca envelhecem e nunca somem.**
+
+Medido: 905 não lidas para **307 pares** (usuário × onboarding), com 297
+pares tendo cópias gravadas no MESMO instante ao microssegundo — a
+assinatura de linha legada renovada em bloco, não de uma notificação por
+dia. O retorno da função também mentia: somava 3 onde tocou um par só.
+
+Índice único PARCIAL pelos DOIS lados — só a não lida disputa a
+unicidade (a lida é histórico e pode repetir) e a chave do JSONB é
+literal, que é o que permite ao índice ser usado. A função passa a TRATAR
+o 23505 em vez de só tentar evitá-lo: adotar o que passou primeiro é o
+padrão desde a 20261119 e a 20261132, e **checar antes sem tratar o
+conflito depois é exatamente o padrão que duplica**. Aplicado: 905 → 307.
+
+Fica declarado o que NÃO foi mexido: `onboarding_column_change` (374) e
+`onboarding_briefing_ready` (295) são notificações de EVENTO, não de
+estado — repetição ali é legítima, e coalescê-las esconderia evento. O
+que falta nesses dois é política de retenção, que é decisão de produto.
+
 ---
 
 *Última atualização: Setembro 2026*
