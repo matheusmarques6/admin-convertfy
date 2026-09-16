@@ -7454,6 +7454,40 @@ a maioria é retry `error` → `success`), e o caminho do cron tem **1 job em 30
 dias** — tudo vem passando pela aba Teste, que já tinha janela. Os defeitos
 eram reais; nenhum estava queimando dinheiro esta semana.
 
+
+## A via B falava a identidade da casa em toda peça (16/09)
+
+Depois das três famílias novas, o prompt de imagem por slide
+(`prompt-slide.ts`) continuava descrevendo a anatomia do azul da casa —
+a única parte já sensível à família eram as FONTES. Achados, todos por
+LER a saída do módulo, não por teste:
+
+- **Contradição direta na Post**: o texto base abre com "fotografia real ou
+  3D fotorrealista" e a direção da família diz "não é fotografia, é uma
+  captura de tela"; a cena por papel pedia "objeto, ambiente ou gesto" e a
+  mesma direção proíbe os dois; e a linha `- Fundo:` da casa mandava uma
+  SEGUNDA cor de fundo depois de a anatomia já ter declarado o preto. Três
+  pares de instruções opostas no mesmo prompt — o modelo obedece a uma ao
+  acaso. `ESTILO_SUBSTITUI` e `CENA_DA_FAMILIA` declaram quem substitui a
+  base em vez de somar a ela; o `- Fundo:` sai no cartão de perfil.
+- **`**palavra**` ia CRU para o modelo** — é notação nossa (o renderer a
+  pinta na cor de destaque) e o modelo escreveria os asteriscos dentro da
+  imagem. Agora a copy vai limpa e o realce vira instrução de cor
+  (`notaDeDestaque`). Vale para as três famílias que usam o realce.
+- **O fundo do prompt divergia do renderer**: frame sem entrada em
+  `fundoPorFrame` virava "gradiente" no prompt e `SLIDE.fundoClaro` na
+  peça. O prompt descrevia um fundo que a peça não teria.
+- **A anatomia do cartão de perfil** (avatar, nome com selo, `@handle`,
+  texto, captura, pílula do CTA) sai das MEDIDAS de `formato-post.ts`, e o
+  prompt declara explicitamente que NÃO há rodapé de marca nem contador —
+  pedi-los faria o modelo desenhar o que denuncia que não é uma captura.
+- Véu, raio do card, régua sob o título, forma do CTA (pílula · botão ·
+  **caixa**) e a foto como BLOCO onde ela acende passaram a vir do traço.
+
+**E o caminho "a partir de inspiração" criava na família errada**: a prévia
+ao lado já mostrava a identidade escolhida e o `criar` não chamava
+`comFamilia` — o mesmo defeito da prateleira de templates, no outro botão.
+
 ---
 
 *Última atualização: Setembro 2026*

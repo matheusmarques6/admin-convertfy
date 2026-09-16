@@ -268,7 +268,11 @@ export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, meuTemplat
         return
       }
       if (caminho === "inspiracao") {
-        let d = documentoDeEstrutura(nome.trim(), perfil, estrutura, { templateBase: inspiracao?.templateSugerido, brandKit: kit })
+        // A identidade escolhida VALE aqui como nos outros caminhos: sem
+        // `comFamilia` a prévia ao lado mostrava a peça preta e o clique
+        // entregava a azul da casa — o mesmo defeito que a prévia do
+        // template tinha na prateleira.
+        let d = comFamilia(documentoDeEstrutura(nome.trim(), perfil, estrutura, { templateBase: inspiracao?.templateSugerido, brandKit: kit }))
         d.frames[0].textos.titulo = nome.trim()
         d = comHistorico(d, `Criado a partir de inspiração (fidelidade ${Math.round(inspiracao?.fidelidade ?? 0)}%)`)
         onCriado({

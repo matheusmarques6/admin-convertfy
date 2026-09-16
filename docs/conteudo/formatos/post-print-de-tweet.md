@@ -208,3 +208,29 @@ carrossel exportado em duas máquinas sai diferente.
 arredondada, letras levemente irregulares) que nenhuma substituta reproduz.
 A peça fica no gênero certo, não idêntica ao pixel — e isso é um limite da
 licença, não do desenho.
+
+---
+
+# A via B: o prompt de imagem do formato
+
+O prompt de cada slide é montado a partir da FAMÍLIA. No cartão de perfil
+isso muda tudo, e descrever a anatomia da casa ali entregaria o oposto do
+formato:
+
+- **A foto NÃO é fundo.** Ela é uma peça recortada abaixo do texto, com
+  margem própria — no híbrido e no completo. A capa não sangra.
+- **A anatomia é a da captura**: fundo `#0D0D0D`, avatar redondo, nome em
+  700 com o selo azul, `@handle` no mesmo corpo em cinza, o texto embaixo —
+  com as medidas de `formato-post.ts`, convertidas do print.
+- **Sem rodapé de marca e sem contador.** Pedi-los faria o modelo desenhar
+  justamente o que denuncia que a peça não é uma captura de tela.
+- **O fundo é declarado UMA vez.** A linha `- Fundo:` da casa sairia com
+  outra cor, e duas instruções de fundo no mesmo prompt fazem o modelo
+  escolher uma ao acaso.
+- **A direção de arte SUBSTITUI a da casa** (`ESTILO_SUBSTITUI`): o texto
+  base abre com "fotografia real" e a direção do formato diz "não é
+  fotografia, é uma captura de tela". Pela mesma razão a **cena** vem da
+  família (`CENA_DA_FAMILIA`) — a cena por papel fala de objeto e gesto, que
+  a direção do formato proíbe.
+- **`**palavra**` nunca vai cru**: é notação nossa, e o modelo escreveria os
+  asteriscos dentro da imagem. Vira instrução de cor.

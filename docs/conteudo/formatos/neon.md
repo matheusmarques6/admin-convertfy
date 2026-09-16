@@ -73,6 +73,16 @@ Neon tem — sobrevivia à troca e ia pintar o corpo dos slides claros da casa.
 Agora a cor que só a família anterior declarava **sai** na troca, desde que
 ainda seja o padrão dela; cor posta à mão fica.
 
+## A via B conhece a identidade
+
+O prompt de imagem de cada slide (`prompt-slide.ts`) é montado a partir da
+FAMÍLIA, não da casa: no híbrido a foto é declarada como **bloco recortado**
+(sangrar apagaria o brilho, que precisa de fundo em volta para existir), o
+véu e o card usam a cor e o raio da identidade, a régua entre título e corpo
+só é pedida onde a família a desenha, e o CTA sai como **caixa sólida**. O
+`**palavra**` não vai cru para o modelo — ele viraria asterisco dentro da
+imagem; vira instrução de cor.
+
 ## Limite declarado, e é o principal
 
 **As medidas desta identidade NÃO foram tiradas da referência.** As duas

@@ -21,11 +21,13 @@
  * Puro: nada de rede nem de React. Quem grava é o painel do editor.
  */
 
-import { fundoEscuro } from "./brand"
-import { FAMILIAS, familiaDe, tracoDe } from "./familias"
+import { SLIDE, fundoEscuro } from "./brand"
+import { POST_CORES, medidasPost, posePost } from "./formato-post"
+import { FAMILIAS, familiaDe, tracoDe, type TracoFamilia } from "./familias"
 import type { PapelFrame } from "./editorial/papeis"
 import { PAPEL_LABEL } from "./editorial/papeis"
 import { limiteDe } from "./limites"
+import { partesDestacadas, textoLimpo } from "./rich"
 import type { Campo, DocFrame, Documento, FamiliaVisual, FrameTipo, Gradiente, ModoImagem, VarianteLayout } from "./types"
 
 /** Tipos cujo renderer tem lugar para uma imagem sem cobrir o texto. */
@@ -100,13 +102,38 @@ function nomeDaFonte(pilha: string): string {
   return primeira.replace(/^['"]|['"]$/g, "")
 }
 
+/**
+ * O fundo como o RENDERER o resolve: frame sem entrada no mapa cai no
+ * claro da casa (`doc.fundoPorFrame[id] ?? SLIDE.fundoClaro`), não em
+ * gradiente — o prompt descrevia um fundo que a peça não teria.
+ */
 function descreverFundo(fundo: string | undefined, g: Gradiente): string {
-  if (!fundo || fundo === "gradiente") return `gradiente diagonal (${g.angulo}°) de ${g.de} passando por ${g.meio} até ${g.ate}`
+  if (fundo === undefined) return descreverFundo(SLIDE.fundoClaro, g)
+  if (fundo === "gradiente") return `gradiente diagonal (${g.angulo}°) de ${g.de} passando por ${g.meio} até ${g.ate}`
   return `cor sólida ${fundo}${fundoEscuro(fundo) ? " (fundo escuro, texto claro)" : " (fundo claro, texto escuro)"}`
 }
 
+/**
+ * A copy do campo SEM os marcadores de realce.
+ *
+ * `**palavra**` é notação NOSSA: o renderer a desenha na cor de destaque,
+ * e mandá-la crua ao modelo faria ele escrever os asteriscos dentro da
+ * imagem. O realce vira instrução própria (`notaDeDestaque`).
+ */
 function texto(frame: DocFrame, campo: Campo): string {
-  return (frame.textos[campo] ?? "").trim()
+  return textoLimpo((frame.textos[campo] ?? "").trim())
+}
+
+/** As palavras marcadas com `**`, para o modelo pintá-las. */
+function notaDeDestaque(frame: DocFrame, campos: Campo[], cor: string): string {
+  const marcadas = campos.flatMap((c) =>
+    partesDestacadas((frame.textos[c] ?? "").trim())
+      .filter((p) => p.destaque)
+      .map((p) => p.texto.trim())
+      .filter(Boolean),
+  )
+  if (!marcadas.length) return ""
+  return `- ${marcadas.length === 1 ? "A palavra" : "As palavras"} ${marcadas.map((m) => `«${m}»`).join(", ")} ${marcadas.length === 1 ? "sai" : "saem"} na cor de destaque ${cor}, no MESMO tamanho e peso do resto da linha — o restante do texto na cor indicada acima.`
 }
 
 /** Cena sugerida pelo papel narrativo — o que a imagem tem de MOSTRAR. */
@@ -136,13 +163,27 @@ const CENA_POR_TIPO: Record<FrameTipo, string> = {
  * Onde o texto vai ficar por cima, no híbrido — o modelo precisa deixar
  * essa área calma (menos detalhe, contraste baixo), senão a copy some.
  */
-function areaReservada(tipo: FrameTipo, variante: VarianteLayout): string {
+function areaReservada(tipo: FrameTipo, variante: VarianteLayout, tr?: TracoFamilia): string {
+  // O cartão de perfil (print de post) não tem foto de fundo: a imagem é
+  // uma peça RECORTADA embaixo do texto, com margem própria. Pedir foto
+  // sangrada aqui devolveria justamente o que o formato não usa.
+  if (tr?.cartaoPerfil) {
+    return "A imagem entra como uma peça recortada de cantos levemente arredondados ABAIXO do texto, com margem lateral própria — ela não ocupa o slide inteiro nem fica atrás de letra nenhuma. Assunto centralizado, bordas retas, nada cortado."
+  }
+  // Onde a foto ACENDE (brilho por código em volta dela), ela é sempre um
+  // bloco recortado: sangrar apagaria o brilho, que precisa de fundo em
+  // volta para existir.
+  if (tr?.brilhoImagem) {
+    return tipo === "capa"
+      ? "A imagem entra como um bloco recortado de cantos arredondados na METADE SUPERIOR do slide, sobre fundo quase preto; o título fecha embaixo dela. Fundo do próprio assunto escuro, sem moldura nem borda luminosa desenhada na imagem."
+      : "A imagem entra como um bloco recortado de cantos arredondados na METADE INFERIOR do slide, abaixo do título e do corpo, sobre fundo quase preto. Sem moldura nem borda luminosa desenhada na imagem."
+  }
   if (tipo === "capa") {
     if (variante === "b") return "A imagem ocupa o slide inteiro. O TÍTULO vai centralizado; deixe o centro do quadro calmo e escureça levemente da metade para baixo."
     if (variante === "c") return "A imagem ocupa o slide inteiro. O TÍTULO vai no terço SUPERIOR; deixe essa faixa calma e o assunto visual no terço inferior."
     return "A imagem ocupa o slide inteiro. O TÍTULO vai no terço INFERIOR; deixe essa faixa calma e mais escura, e o assunto visual no centro/terço superior."
   }
-  if (tipo === "prova") return "A imagem ocupa o slide inteiro e recebe um véu azul-escuro por cima com a citação centralizada: textura e contraste valem mais que cor; sem ponto focal no centro."
+  if (tipo === "prova") return "A imagem ocupa o slide inteiro e recebe um véu escuro por cima com a citação centralizada: textura e contraste valem mais que cor; sem ponto focal no centro."
   if (tipo === "texto") {
     if (variante === "b") return "A imagem entra em um card de cantos arredondados na METADE SUPERIOR do slide; o título e o corpo ficam embaixo dela. Assunto centralizado, sem elementos cortados nas bordas."
     return "A imagem entra em um card de cantos arredondados na METADE INFERIOR do slide, abaixo do título e do corpo. Assunto centralizado, sem elementos cortados nas bordas."
@@ -157,6 +198,38 @@ function paleta(cores: Record<string, string>): string {
 }
 
 const ESTILO_BASE = "Estética editorial premium, fotografia real ou 3D fotorrealista, luz natural suave, profundidade de campo, sem cara de banco de imagens, sem pessoas olhando para a câmera, sem marca d'água."
+
+/**
+ * Famílias cuja direção de arte SUBSTITUI a base em vez de somar a ela.
+ *
+ * O `ESTILO_BASE` abre com "fotografia real"; a direção da Post diz "não é
+ * fotografia, é uma captura de tela". As duas no mesmo prompt são uma
+ * contradição direta, e o modelo obedece a uma das duas ao acaso.
+ */
+const ESTILO_SUBSTITUI: Partial<Record<FamiliaVisual, true>> = { post: true }
+
+/**
+ * Cena PRÓPRIA da família, quando o meio dela não é fotografia.
+ *
+ * As cenas da casa (por papel ou por tipo) descrevem objeto, ambiente e
+ * gesto — na Post isso contradiz a própria direção ("sem cena, sem objeto
+ * físico"), e o papel narrativo não tem como mudar o que uma captura de
+ * tela é. Só a família que declara aqui ignora a cena da casa; nas demais
+ * o papel continua mandando.
+ */
+const CENA_DA_FAMILIA: Partial<Record<FamiliaVisual, string>> = {
+  post: "a tela que o post comenta — uma página, um painel ou um app, enquadrado de frente, nítido e com o conteúdo plausível",
+}
+
+export function cenaDoSlide(familia: FamiliaVisual, papel: PapelFrame | null, tipo: FrameTipo): string {
+  return CENA_DA_FAMILIA[familia] ?? (papel ? CENA_POR_PAPEL[papel] : CENA_POR_TIPO[tipo])
+}
+
+/** A direção de arte da cena: base da casa + família, ou só a família. */
+function estiloDaCena(familia: FamiliaVisual): string {
+  const dela = ESTILO_POR_FAMILIA[familia]
+  return ESTILO_SUBSTITUI[familia] ? dela : `${ESTILO_BASE} ${dela}`
+}
 
 /**
  * A identidade visual muda a direção de arte, não só a paleta: a família
@@ -203,7 +276,7 @@ function promptHibrido(ctx: ContextoPrompt): string {
   const { frame, doc, indice, total } = ctx
   const variante = frame.variante ?? "a"
   const papel = ctx.papel ?? null
-  const cena = papel ? CENA_POR_PAPEL[papel] : CENA_POR_TIPO[frame.tipo]
+  const cena = cenaDoSlide(familiaDe(doc), papel, frame.tipo)
   const copy = cabecalhoCopy(frame)
   const linhas = [
     `Imagem para o slide ${indice + 1} de ${total} de um carrossel do Instagram, ${dimensoes(doc.proporcaoExport)}.`,
@@ -213,19 +286,60 @@ function promptHibrido(ctx: ContextoPrompt): string {
     copy ? `O slide diz: ${copy}.` : `O slide ainda não tem texto; a imagem carrega a ideia sozinha.`,
     `${papel ? `Papel deste slide na narrativa: ${PAPEL_LABEL[papel].toLowerCase()}. ` : ""}Mostre ${cena}.`,
     ``,
-    areaReservada(frame.tipo, variante),
+    areaReservada(frame.tipo, variante, tracoDe(familiaDe(doc))),
     ``,
-    `${ESTILO_BASE} ${ESTILO_POR_FAMILIA[familiaDe(doc)]} Paleta: ${paleta(doc.cores)}.`.replace(/\s+/g, " "),
+    `${estiloDaCena(familiaDe(doc))} Paleta: ${paleta(doc.cores)}.`.replace(/\s+/g, " "),
   ]
   const refs = blocoReferencias(ctx.porQueFunciona)
   if (refs) linhas.push(refs.trimEnd())
   return linhas.join("\n").replace(/\n{3,}/g, "\n\n").trim()
 }
 
+/**
+ * Anatomia do cartão de perfil (o print de post): UM desenho para todo
+ * tipo de frame, com as medidas da referência convertidas para a base do
+ * canvas. Descrever aqui a anatomia da casa faria o modelo desenhar
+ * cabeçalho de marca e contador — justamente o que denuncia que a peça
+ * não é uma captura de tela.
+ */
+function anatomiaCartaoPerfil(ctx: ContextoPrompt, tr: TracoFamilia): string[] {
+  const { frame, doc } = ctx
+  const comImagem = Boolean(frame.imagens.slot1) || frame.slotsImagem > 0
+  const m = medidasPost(posePost(comImagem, frame.variante), frame.tipo, tr.estiloPost)
+  const bk = doc.brandKit
+  const fonte = nomeDaFonte(tr.fonteCorpo)
+  const t = texto(frame, "titulo")
+  const c = texto(frame, "corpo")
+  const linhas: string[] = [
+    `Captura de tela de um post: fundo ${POST_CORES.fundo} (quase preto) do topo ao rodapé, margem lateral de ${m.margem} px, nada de moldura nem de sombra.`,
+    `- Cabeçalho: foto de perfil redonda de ${m.avatar} px${bk.brandName2 ? `, e ao lado "${bk.brandName2}"` : ""} em ${fonte} peso 700, ${m.nome} px, branco${bk.verificado ? `, com um selo verificado azul (${POST_CORES.selo}) de ${m.selo} px ao lado do nome` : ""}${bk.brandName ? `; logo abaixo "${bk.brandName}" no MESMO corpo, peso normal, em cinza ${POST_CORES.handle}` : ""}.`,
+  ]
+  if (t) linhas.push(`- ${m.gapCabecalho} px abaixo do cabeçalho, uma linha em NEGRITO: "${t}"`)
+  if (c) linhas.push(`- ${t ? `${m.gapTitulo} px abaixo dela` : `${m.gapCabecalho} px abaixo do cabeçalho`}, o texto do post em ${fonte} peso normal, ${m.texto} px, entrelinha ${m.entrelinha.toFixed(2).replace(".", ",")}, branco, alinhado à esquerda: "${c}"`)
+  if (comImagem) {
+    linhas.push(
+      m.gapGaleria > 0
+        ? `- Embaixo, uma colagem de DUAS fotos lado a lado, cantos de ${m.raioImagem} px e ${m.gapGaleria} px entre elas, ocupando da margem de ${m.margemImagem} px até a outra.`
+        : `- Embaixo, a captura em si: cantos de ${m.raioImagem} px, margem lateral de ${m.margemImagem} px, descendo até quase a borda inferior (${m.rodape} px).`,
+    )
+  }
+  // O botão é a ÚNICA coisa que o último slide tem a mais no formato
+  // (`camposPost`): sem esta linha o modelo desenharia a chamada sem ela.
+  const botao = texto(frame, "botao") || (doc.cta.mostrar ? doc.cta.texto.trim() : "")
+  if (frame.tipo === "cta" && botao) {
+    linhas.push(`- ${m.gapCabecalho} px abaixo do texto, uma pílula clara (${doc.cta.fundo} com texto ${doc.cta.cor}, ~${Math.round(m.texto * 0.78)} px, ícone de caixa de mensagens à esquerda) com o texto "${botao}".`)
+  }
+  linhas.push(`- SEM rodapé de marca, SEM contador de slides, SEM filete: a peça imita uma captura de tela.`)
+  const destaque = notaDeDestaque(frame, ["titulo", "corpo"], doc.cores.destaque ?? POST_CORES.selo)
+  if (destaque) linhas.push(destaque)
+  return linhas
+}
+
 /** Anatomia do tipo de frame, para o modelo desenhar o slide como o renderer desenharia. */
 function anatomia(ctx: ContextoPrompt): string[] {
   const { frame, doc, indice, total } = ctx
   const tr = tracoDe(familiaDe(doc))
+  if (tr.cartaoPerfil) return anatomiaCartaoPerfil(ctx, tr)
   const titulo = `${nomeDaFonte(tr.fonteTitulo)}${tr.tituloCaixaAlta ? "" : " (caixa normal, não caixa alta)"}`
   const apoio = nomeDaFonte(tr.fonteGancho)
   const meta = nomeDaFonte(tr.fonteMeta)
@@ -237,7 +351,11 @@ function anatomia(ctx: ContextoPrompt): string[] {
 
   switch (frame.tipo) {
     case "capa":
-      linhas.push(`Capa: fotografia ocupando o slide inteiro com um degradê azul-escuro (#041366) da metade para baixo.`)
+      linhas.push(
+        tr.brilhoImagem
+          ? `Capa: a fotografia é um BLOCO recortado de cantos ${tr.raio} px na metade superior, com brilho ${doc.cores.destaque} em volta, sobre fundo ${descreverFundo(doc.fundoPorFrame[frame.frameId], doc.gradiente)}; o título fecha embaixo dela.`
+          : `Capa: fotografia ocupando o slide inteiro com um degradê ${doc.gradiente.ate} da metade para baixo.`,
+      )
       linhas.push(T(`Título em ${titulo}, peso ${tr.tituloPeso}, ${tr.tituloCaixaAlta ? "CAIXA ALTA, " : ""}branco, ~104 px, alinhado à esquerda no terço inferior`, t))
       linhas.push(T(`Subtítulo em ${apoio} itálico, branco a 88%, ~40 px, logo abaixo do título`, s))
       break
@@ -248,7 +366,7 @@ function anatomia(ctx: ContextoPrompt): string[] {
       linhas.push(T(`Frase de apoio em ${apoio} itálico, ~48 px, largura máxima 860 px`, c))
       break
     case "prova":
-      linhas.push(`Slide de prova: fotografia de fundo coberta por um véu azul-escuro (#041366 a 75–92%), com uma citação centralizada.`)
+      linhas.push(`Slide de prova: fotografia de fundo coberta por um véu ${doc.gradiente.ate} a 75–92%, com uma citação centralizada.`)
       linhas.push(`- Aspas de abertura gigantes (~200 px) em ${apoio}, brancas a 35%, acima do texto.`)
       linhas.push(T(`Citação em ${titulo}, peso 800, CAIXA ALTA, branca, ~92 px`, t))
       linhas.push(T(`Fonte/atribuição em ${apoio} itálico, branca a 82%, ~40 px`, c))
@@ -261,7 +379,7 @@ function anatomia(ctx: ContextoPrompt): string[] {
       linhas.push(`- Número "${String(n).padStart(2, "0")}" em ${titulo}, peso 800, ~140 px, na cor de destaque ${doc.cores.destaque}, com "${frame.tipo === "mec" ? "papel" : "item"} de ${meio}" ao lado em ${meta}, caixa alta, espaçado.`)
       linhas.push(T(`Título em ${titulo}, peso 800, CAIXA ALTA, ~88 px`, t))
       linhas.push(T(`Corpo em ${meta}, peso 500, ~40 px, entrelinha 1,4`, c))
-      linhas.push(`- Abaixo do texto, um card de cantos arredondados (28 px) com a imagem da cena.`)
+      linhas.push(`- Abaixo do texto, um card de cantos arredondados (${tr.raio} px) com a imagem da cena.`)
       break
     }
     case "cta": {
@@ -269,22 +387,43 @@ function anatomia(ctx: ContextoPrompt): string[] {
       linhas.push(`Slide de chamada: tudo centralizado no meio do slide, fundo escuro.`)
       linhas.push(T(`Título em ${titulo}, peso 800, CAIXA ALTA, branco, ~112 px`, t))
       linhas.push(T(`Subtítulo em ${apoio} itálico, branco a 88%, ~42 px`, s))
-      if (botao) linhas.push(`- Pílula (raio total, ${doc.cta.fundo} com texto ${doc.cta.cor}, ~34 px em ${meta} peso 700, ícone de caixa de mensagens à esquerda) com o texto "${botao}".`)
+      if (botao) {
+        const forma =
+          tr.cta === "bloco"
+            ? `Caixa sólida de cantos quase retos (${doc.cta.fundo} com texto ${doc.cta.cor}, ~46 px em ${titulo}, CAIXA ALTA`
+            : tr.cta === "pilula"
+              ? `Pílula clara de borda fina (${doc.cta.fundo} com texto ${doc.cta.cor}, ~34 px em ${meta} peso 700`
+              : `Pílula sólida com sombra (${doc.cta.fundo} com texto ${doc.cta.cor}, ~34 px em ${meta} peso 700`
+        linhas.push(`- ${forma}, ícone de caixa de mensagens à esquerda) com o texto "${botao}".`)
+      }
       break
     }
     default: {
       const variante = frame.variante ?? "a"
       linhas.push(`Slide de texto: margens de 80 px, conteúdo alinhado à ${variante === "c" ? "centro" : "esquerda"} a partir de 180 px do topo.`)
-      linhas.push(T(`Título em ${titulo}, peso 800, CAIXA ALTA, ~96 px`, t))
-      linhas.push(T(`Corpo em ${apoio} itálico, ~42 px, entrelinha 1,35`, c))
-      if (variante !== "c") linhas.push(`- ${variante === "b" ? "Acima" : "Abaixo"} do texto, um card de cantos arredondados (28 px) com a imagem da cena.`)
+      linhas.push(T(`Título em ${titulo}, peso ${tr.tituloPeso}, ${tr.tituloCaixaAlta ? "CAIXA ALTA, " : ""}~96 px`, t))
+      if (tr.reguaSobCorpo && c) linhas.push(`- Entre o título e o corpo, uma régua horizontal curta (140×8 px) na cor de destaque ${doc.cores.destaque}.`)
+      linhas.push(T(`Corpo em ${apoio}${tr.corpoItalico ? " itálico" : ""}, ~42 px, entrelinha 1,35`, c))
+      if (variante !== "c") linhas.push(`- ${variante === "b" ? "Acima" : "Abaixo"} do texto, um card de cantos arredondados (${tr.raio} px) com a imagem da cena.`)
     }
   }
+  const destaque = notaDeDestaque(frame, ["titulo", "subtitulo", "corpo"], doc.cores.destaque ?? "#4E62D8")
+  if (destaque) linhas.push(destaque)
   return linhas.filter(Boolean)
 }
 
+/**
+ * Rodapé de marca + contador — quando a família desenha um.
+ *
+ * Vazio no cartão de perfil (a peça imita uma captura, e o rodapé da casa
+ * é o que denuncia que não é uma) e barra no lugar do "N/M" nas famílias
+ * que a declaram: pedir as duas coisas faria o modelo desenhar o número
+ * duas vezes.
+ */
 function rodapeDeMarca(ctx: ContextoPrompt): string {
   const { doc, indice, total } = ctx
+  const tr = tracoDe(familiaDe(doc))
+  if (tr.cartaoPerfil) return ""
   const bk = doc.brandKit
   const oc = doc.ocultos
   const partes: string[] = []
@@ -292,28 +431,39 @@ function rodapeDeMarca(ctx: ContextoPrompt): string {
   if (!oc.brandName && bk.brandName) partes.push(`"${bk.brandName}"`)
   if (!oc.brandName2 && bk.brandName2) partes.push(`"${bk.brandName2}"`)
   const esquerda = partes.length ? `à esquerda ${partes.join(", ")} em ${nomeDaFonte(tracoDe(familiaDe(doc)).fonteMeta)}` : "à esquerda nada"
-  return `Rodapé: ${esquerda}; à direita o contador "${indice + 1}/${total}"${!oc.copyright && bk.copyright ? ` e "${bk.copyright}"` : ""}, tudo pequeno (~26 px).`
+  const direita = tr.barraProgresso
+    ? `à direita uma barra de progresso fina com ${Math.round(((indice + 1) / Math.max(1, total)) * 100)}% preenchida e o contador "${indice + 1}/${total}" ao lado`
+    : `à direita o contador "${indice + 1}/${total}"`
+  return `Rodapé: ${esquerda}; ${direita}${!oc.copyright && bk.copyright ? ` e "${bk.copyright}"` : ""}, tudo pequeno (~26 px).`
 }
 
 function promptCompleto(ctx: ContextoPrompt): string {
   const { frame, doc, indice, total } = ctx
   const papel = ctx.papel ?? null
-  const cena = papel ? CENA_POR_PAPEL[papel] : CENA_POR_TIPO[frame.tipo]
+  const cena = cenaDoSlide(familiaDe(doc), papel, frame.tipo)
   const fam = FAMILIAS[familiaDe(doc)]
-  const fundo =
-    frame.tipo === "capa" || frame.tipo === "prova" || frame.tipo === "cta"
-      ? "a fotografia descrita abaixo, escurecida"
-      : `${descreverFundo(doc.fundoPorFrame[frame.frameId], doc.gradiente)} (identidade "${fam.nome}")`
+  const rodape = rodapeDeMarca(ctx)
+  const tr = tracoDe(familiaDe(doc))
+  // Só nas famílias em que a foto SANGRA o fundo é a própria fotografia.
+  // No cartão de perfil e onde a foto acende, ela é um bloco recortado e o
+  // fundo continua sendo o do slide — dizer o contrário faria o modelo
+  // cobrir o slide inteiro com a imagem.
+  const fotoDeFundo = !tr.cartaoPerfil && !tr.brilhoImagem && (frame.tipo === "capa" || frame.tipo === "prova" || frame.tipo === "cta")
+  const fundo = fotoDeFundo
+    ? "a fotografia descrita abaixo, escurecida"
+    : `${descreverFundo(doc.fundoPorFrame[frame.frameId], doc.gradiente)} (identidade "${fam.nome}")`
   const linhas = [
     `Desenhe o slide ${indice + 1} de ${total} de um carrossel do Instagram, INTEIRO, ${dimensoes(doc.proporcaoExport)}${ctx.templateNome ? `, molde "${ctx.templateNome}"` : ""}.`,
     ``,
     `O texto abaixo entra EXATAMENTE como está escrito — em português, com os acentos, sem traduzir, resumir, corrigir ou acrescentar uma palavra. Se não couber, reduza o tamanho da fonte, nunca o texto.`,
     ``,
     ...anatomia(ctx),
-    `- Fundo: ${fundo}.`,
-    `- ${rodapeDeMarca(ctx)}`,
+    // O cartão de perfil já abre declarando o fundo da captura; repetir
+    // aqui manda DUAS cores de fundo no mesmo prompt.
+    ...(tr.cartaoPerfil ? [] : [`- Fundo: ${fundo}.`]),
+    ...(rodape ? [`- ${rodape}`] : []),
     ``,
-    `Imagem da cena: ${cena}. ${ESTILO_BASE} ${ESTILO_POR_FAMILIA[familiaDe(doc)]} Paleta: ${paleta(doc.cores)}.`.replace(/\s+/g, " "),
+    `Imagem da cena: ${cena}. ${estiloDaCena(familiaDe(doc))} Paleta: ${paleta(doc.cores)}.`.replace(/\s+/g, " "),
     ``,
     `Todo texto deve estar nítido e legível; nenhuma outra palavra, logotipo ou marca d'água além do que está listado.`,
   ]
