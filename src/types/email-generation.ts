@@ -724,12 +724,22 @@ export interface ReferenceSlotMapEntry {
   /**
    * Passo 11: por que a posição ficou sem variante — `sem_candidata`,
    * `todas_descartadas` (só havia dispositivo que a decisão descartou),
-   * `resgate_recusado` ou, desde o Passo 19 (15/09),
-   * `dispositivo_indisponivel` (a seção tem variante, nenhuma realiza o
-   * dispositivo pedido). Só em slot `variant_id: null` gravado depois de
-   * 14/09.
+   * `resgate_recusado`, `dispositivo_indisponivel` (Passo 19, 15/09: a
+   * seção tem variante, nenhuma realiza o dispositivo pedido) ou
+   * `orcamento_esgotado` (leque, 16/09: a chamada daquela posição não
+   * aconteceu — relógio, rede, provedor). Só em slot `variant_id: null`
+   * gravado depois de 14/09.
+   *
+   * O último é separado dos outros de propósito: falta de tempo NÃO é
+   * lacuna de biblioteca, e tratá-la como tal manda a curadoria cadastrar
+   * um bloco para resolver um timeout.
    */
-  motivo?: "sem_candidata" | "todas_descartadas" | "resgate_recusado" | "dispositivo_indisponivel"
+  motivo?:
+    | "sem_candidata"
+    | "todas_descartadas"
+    | "resgate_recusado"
+    | "dispositivo_indisponivel"
+    | "orcamento_esgotado"
   /** Dispositivo que a decisão pedia para a posição vazia. */
   dispositivo_pedido?: string | null
 }

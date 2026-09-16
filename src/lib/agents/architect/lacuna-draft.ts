@@ -145,6 +145,10 @@ export function agregarLacunas(
     for (const p of run.posicoesSemVariante ?? []) {
       const secao = (p.section ?? "").trim().toLowerCase()
       if (!secao) continue
+      // Chamada que não aconteceu (leque) não é pauta de curadoria: ela
+      // pediria um bloco novo para resolver um timeout, e o balde ficaria
+      // cheio justamente no dia em que o provedor esteve instável.
+      if (p.motivo === "orcamento_esgotado") continue
       // Com dispositivo pedido a lacuna tem nome: é o que se cadastra.
       if (p.dispositivo_pedido) {
         const flow = (p.flow_type ?? "").trim().toLowerCase() || "flow"

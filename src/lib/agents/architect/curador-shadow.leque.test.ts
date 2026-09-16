@@ -35,6 +35,7 @@ vi.mock("../callbacks/telemetry.callback", () => ({
 }))
 
 import { runCuradorShadow, type CuradorShadowParams } from "./curador-shadow"
+import { missingTelemetryKeys } from "../shared/telemetry-contract"
 import type { BuildCatalogResult } from "./catalog-builder"
 import { buildCompactCatalog } from "./catalog-builder"
 import type { CuradorVaultKnowledge } from "./curador-vault"
@@ -316,5 +317,38 @@ describe("o leque dentro do runCuradorShadow", () => {
     const consumo = telemetria().parsedOutput.consumo_por_chamada as Record<string, { tokens_output: number }>
     expect(Object.keys(consumo).sort()).toEqual(["posicao_0", "posicao_1", "posicao_2"])
     expect(consumo.posicao_1.tokens_output).toBe(50)
+  })
+})
+
+describe("o contrato de telemetria do caminho do vault", () => {
+  // As 9 chaves de `assembler_chooser` eram exigidas e este caminho gravava
+  // 2. Os testes passavam porque exercitavam o Curador LEGADO (kimi); o do
+  // vault, vigente desde 02/09, nunca foi coberto.
+  it("o leque grava as 9 chaves", async () => {
+    const ids = ["h1", "b1", "f1"]
+    invokeAgent.mockImplementation(async () => chamada(respostaDe(ids.shift()!)))
+    await runCuradorShadow(params())
+    expect(missingTelemetryKeys("assembler_chooser", telemetria().parsedOutput)).toEqual([])
+  })
+
+  it("o caminho de HOJE também — a correção não é do leque, é do agente", async () => {
+    invokeAgent.mockResolvedValue(
+      chamada(
+        JSON.stringify({
+          papeis: [{ block_index: 0, section: "hero", papel: "abre" }],
+          fio_narrativo: "fio",
+          escolhas: [{ block_index: 0, justificativa: "j", escolhas: [{ variant_id: "h1", motivo: "m" }] }],
+        }),
+      ),
+    )
+    await runCuradorShadow(
+      params({
+        lequeOn: false,
+        liveSections: ["hero"],
+        elegiveisPorPosicao: new Map([[0, { ids: ["h1"], zerou: false }]]),
+        decisaoPorPosicao: [{ papel: "abre", requisitos: "" }],
+      }),
+    )
+    expect(missingTelemetryKeys("assembler_chooser", telemetria().parsedOutput)).toEqual([])
   })
 })

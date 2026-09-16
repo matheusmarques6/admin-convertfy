@@ -571,13 +571,19 @@ export type AssemblySlot =
  *     (validador estrutural em `on`);
  *   - `dispositivo_indisponivel` (Passo 19, 15/09): a seção tem variante,
  *     mas nenhuma realiza o dispositivo PEDIDO. É o motivo mais acionável
- *     dos quatro — diz à curadoria exatamente qual bloco cadastrar.
+ *     dos cinco — diz à curadoria exatamente qual bloco cadastrar;
+ *   - `orcamento_esgotado` (leque, 16/09): a chamada daquela posição não
+ *     aconteceu — relógio, rede ou provedor. **Falta de tempo não é lacuna
+ *     de biblioteca**, e confundir as duas alimenta
+ *     `vault-propostas.service` com pauta falsa: a curadoria cadastraria um
+ *     bloco para resolver um timeout.
  */
 export type MotivoDePosicaoSemVariante =
   | "sem_candidata"
   | "todas_descartadas"
   | "resgate_recusado"
   | "dispositivo_indisponivel"
+  | "orcamento_esgotado"
 
 export interface PosicaoSemVariante {
   block_index: number
@@ -1520,6 +1526,7 @@ export async function assembleStoreReference(
       indiceDoVault,
       // Sem call vivo não há com o que comparar — a comparação era da fase
       // de ensaio.
+      candidatasImpreenchiveis: excludedUntagged,
       liveViolations: [],
       liveRank1: new Map(),
       baseInputSummary: chooserInputSummary,
@@ -1795,6 +1802,7 @@ export async function assembleStoreReference(
       typeIndex,
       aliasIndex,
       liveSections: sections,
+      candidatasImpreenchiveis: excludedUntagged,
       liveViolations: measureProtocolViolations({
         rank1ByBlock: liveRank1,
         extras: shadowExtras,
@@ -2109,6 +2117,7 @@ export async function assembleStoreReference(
   // antes da montagem: `coberturaSuficiente` só sabe contar buracos, e o
   // desfecho `hero_failed` três minutos depois não diz o que faltou.
   const posicoesSemVariante: PosicaoSemVariante[] = []
+  const posicoesComFalhaDeChamada = new Set(vaultResultado?.posicoesComFalhaDeChamada ?? [])
   const descartesDaDecisao = decisao?.descartes ?? []
   let resgatesTentados = 0
   let descartadasPorDispositivo = 0
@@ -2132,7 +2141,12 @@ export async function assembleStoreReference(
     const label = input.structure[i]?.label ?? section
     const id = chosenById.get(i)
     let variant = id ? byId.get(id) : undefined
-    let motivoDaLacuna: MotivoDePosicaoSemVariante = "sem_candidata"
+    // Chamada que não aconteceu NÃO é lacuna de biblioteca: o resgate
+    // ainda pode salvar a posição, mas se não salvar o motivo é o relógio,
+    // e é ele que tem de aparecer no vault e na tela.
+    let motivoDaLacuna: MotivoDePosicaoSemVariante = posicoesComFalhaDeChamada.has(i)
+      ? "orcamento_esgotado"
+      : "sem_candidata"
     if (!variant) {
       // Pool = elegíveis por contrato (fail-open: seção zerada devolve
       // todas). Sem o filtro o resgate podia pôr uma eliminada na posição.

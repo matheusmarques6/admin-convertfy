@@ -380,17 +380,25 @@ export function restrictRankingToShortlist(
   positions: number,
 ): ParsedRanking {
   const byBlock = new Map<number, RankedChoice[]>()
+  const invalidIds = [...ranking.invalidIds]
   for (const [block, choices] of ranking.byBlock) {
     const allowed = new Set((shortlist.byBlock.get(block) ?? []).map((c) => c.variant_id))
     const valid = choices.filter((choice) => allowed.has(choice.variant_id))
     if (valid.length) byBlock.set(block, valid)
     for (const choice of choices) {
-      if (!allowed.has(choice.variant_id)) ranking.invalidIds.push(choice.variant_id)
+      if (!allowed.has(choice.variant_id)) invalidIds.push(choice.variant_id)
     }
   }
-  ranking.byBlock = byBlock
-  ranking.emptyBlocks = Array.from({ length: positions }, (_, i) => i).filter((i) => !byBlock.has(i))
-  return ranking
+  // Devolve um objeto NOVO em vez de mutar o recebido (16/09). Hoje o
+  // argumento é inline e a mutação não escapa; num laço por posição ela
+  // escaparia — o `invalidIds` da posição 2 apareceria acumulado no
+  // ranking da 3, e ninguém saberia de onde veio.
+  return {
+    ...ranking,
+    byBlock,
+    invalidIds,
+    emptyBlocks: Array.from({ length: positions }, (_, i) => i).filter((i) => !byBlock.has(i)),
+  }
 }
 
 /**
@@ -1196,6 +1204,13 @@ export interface CuradorShadowParams {
    */
   elegiveisPorPosicao?: Map<number, ElegiveisDaPosicao> | null
   /**
+   * Variantes ATIVAS que o pipeline não consegue preencher (sem schema, sem
+   * âncora). Filtradas antes do catálogo pelo caller; aqui entram só na
+   * telemetria, porque é a medida de pressão da curadoria que o contrato
+   * exige e que este caminho não gravava.
+   */
+  candidatasImpreenchiveis?: Record<string, string[]>
+  /**
    * Uma chamada por POSIÇÃO em vez de uma pelo e-mail inteiro (o leque).
    * Quem lê o gate `curador_leque_mode` é o caller; aqui chega resolvido.
    */
@@ -1253,6 +1268,14 @@ export interface CuradorVaultResultado {
   fioNarrativo: string
   ranking: ParsedRanking
   conformidade: EstruturaConformada
+  /**
+   * Posições cuja CHAMADA não aconteceu (leque): relógio, rede, provedor.
+   *
+   * Sem isto elas chegam ao assembler indistinguíveis de "a seção não tem
+   * variante" e viram `lacuna_biblioteca` — pauta falsa no vault, mandando
+   * a curadoria cadastrar um bloco para resolver um timeout.
+   */
+  posicoesComFalhaDeChamada?: number[]
 }
 
 /**
@@ -1757,9 +1780,26 @@ export async function runCuradorShadow(
     )
     const divergencia = resumoDaDivergencia(conformidade)
     const sections = p.liveSections
-    const finalistTypeIndex = new Map(
-      res.finalistIds.map((id) => [id, p.typeIndex.get(id) ?? ""]),
-    )
+    /**
+     * O índice de tipos que valida as escolhas.
+     *
+     * Cobre as finalistas MAIS a reserva de cada posição e todas as
+     * elegíveis — com o leque a reserva pode virar a escolhida dentro do
+     * laço, e um id fora daqui sai com tipo `""`, que faz o marcador do
+     * bloco nascer `cfy:block:{i}:` (sem seção) e a hero deixar de ser
+     * localizável. Id sem tipo conhecido NÃO entra: melhor a escolha ser
+     * recusada por ausência do que aceita com seção vazia.
+     */
+    const finalistTypeIndex = new Map<string, string>()
+    for (const id of [
+      ...res.finalistIds,
+      ...(leque?.escolhas.flatMap((e) => [e.variant_id, e.reserva]) ?? []),
+      ...Array.from(planoShortlist.elegiveis.values()).flatMap((s) => Array.from(s)),
+    ]) {
+      if (!id) continue
+      const tipo = p.typeIndex.get(id)
+      if (tipo) finalistTypeIndex.set(id, tipo)
+    }
     const ranking = parsed
       ? restrictRankingToShortlist(parseCuratorRanking({
           raw: parsed.escolhasRaw,
@@ -1970,6 +2010,37 @@ export async function runCuradorShadow(
           justificativa: parsed?.justificativas?.[b] ?? "",
         })),
         invalid_ids: ranking?.invalidIds ?? [],
+        // ── As 7 chaves do TELEMETRY_CONTRACT que faltavam aqui ───────
+        //
+        // O contrato exige 9 de `assembler_chooser` e este caminho gravava
+        // 2. Os testes passavam porque exercitavam o caminho do Curador
+        // legado (kimi) — o do vault, que é o vigente desde 02/09, nunca
+        // foi coberto. Cada uma responde a uma pergunta que hoje não tem
+        // resposta na run.
+        catalog_variants: p.catalogComExtras.total,
+        attempts: res.voltas,
+        ranking: Object.fromEntries(
+          Array.from(ranking?.byBlock ?? [], ([b, escolhas]) => [b, escolhas.map((c) => c.variant_id)]),
+        ),
+        motivos: Object.fromEntries(
+          Array.from(ranking?.byBlock ?? [], ([b, escolhas]) => [b, escolhas[0]?.motivo ?? ""]),
+        ),
+        retyped_positions: ranking?.retypedChoices ?? [],
+        // A medida de pressão da curadoria: variante ativa que o pipeline
+        // não consegue preencher. Ela é filtrada ANTES do catálogo, então
+        // aqui é a diferença entre o que existe e o que chegou.
+        candidates_excluded_unfillable: p.candidatasImpreenchiveis ?? {},
+        ranking_detalhado: Array.from(ranking?.byBlock ?? [], ([b, escolhas]) => ({
+          block_index: b,
+          section: sectionByBlock.get(b) ?? "",
+          papel: conformidade.papeis[b] ?? "",
+          escolhas: escolhas.map((c, idx) => ({
+            rank: idx + 1,
+            variant_id: c.variant_id,
+            variante: p.extras.get(c.variant_id)?.slug ?? c.variant_id,
+            motivo: c.motivo,
+          })),
+        })),
         ids_por_apelido: ranking?.resolvedByAlias ?? [],
         protocol_violations: violations,
         repeticoes,
@@ -2039,6 +2110,9 @@ export async function runCuradorShadow(
       fioNarrativo: parsed.fioNarrativo,
       ranking,
       conformidade,
+      ...(leque && leque.falhas.length > 0
+        ? { posicoesComFalhaDeChamada: leque.falhas.map((f) => f.block_index) }
+        : {}),
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
@@ -2056,6 +2130,18 @@ export async function runCuradorShadow(
           shadow: modo === "shadow",
           curador_vault_mode: modo,
           consumo_por_chamada: porChamada,
+          // As 9 chaves do contrato também na run de ERRO, vazias. Sem
+          // elas, quem lê a telemetria por agente precisa de um segundo
+          // leitor para a falha — e é justamente na falha que se vai olhar.
+          catalog_variants: p.catalogComExtras.total,
+          attempts: 0,
+          ranking: {},
+          motivos: {},
+          invalid_ids: [],
+          retyped_positions: [],
+          empty_blocks: [],
+          candidates_excluded_unfillable: p.candidatasImpreenchiveis ?? {},
+          ranking_detalhado: [],
         },
         // A chamada já foi PAGA quando isto roda. Sem os números, o painel de
         // custo não vê o gasto e a falha parece de graça.
