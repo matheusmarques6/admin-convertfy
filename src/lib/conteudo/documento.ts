@@ -12,7 +12,7 @@ import { preservarCamposOpcionais } from "./campos"
 import { aplicarFamilia, FAMILIAS, familiaDe, fundoPadraoDaFamilia, ritmoDeFundos } from "./familias"
 import { aceitaHibrido } from "./prompt-slide"
 import { camposDoTipo, getTemplate } from "./templates"
-import { botaoDoGate, framesDaReferencia, type CampoLongo } from "./referencia-para-documento"
+import { botaoDoGate, framesDaReferencia, tipoDesenhaImagem, type CampoLongo } from "./referencia-para-documento"
 import type {
   BrandKit,
   Campo,
@@ -160,11 +160,18 @@ export function documentoDeEstrutura(
     const campos = camposDoTipo(e.tipo)
     const id = `f${i + 1}`
     const label = e.tipo === "capa" ? "Capa" : e.tipo === "cta" ? "CTA" : `Slide ${i + 1}`
+    // Slot só onde o renderer DESENHA foto (`TIPOS_COM_SLOT`): `dado` e
+    // `cta` não têm lugar para imagem, e marcá-los gravava um slot que
+    // nunca aparece — o operador vê "foto" na estrutura e nada no slide,
+    // sem erro nenhum. A capa segue com foto por padrão, mas só quando a
+    // estrutura NÃO se pronuncia: `slotImagem: false` declarado passou a
+    // valer, senão desmarcar a foto da capa não tinha efeito.
+    const pedeFoto = e.slotImagem ?? e.tipo === "capa"
     return {
       frameId: id,
       tipo: e.tipo,
       label,
-      slotsImagem: e.slotImagem || e.tipo === "capa" ? 1 : 0,
+      slotsImagem: pedeFoto && tipoDesenhaImagem(e.tipo) ? 1 : 0,
       campos,
       textos: textosGuia(e.tipo, campos),
       imagens: {},

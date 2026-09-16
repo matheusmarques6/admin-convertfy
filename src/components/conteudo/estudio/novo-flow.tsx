@@ -16,6 +16,8 @@ import { CT_MOLDE_COR, brandKitPadrao } from "@/lib/conteudo/brand"
 import { editorialVazio, headlineEscolhida, papeisDosFrames, podeGerarCopy } from "@/lib/conteudo/editorial"
 import { getPromptsProntos } from "@/lib/conteudo/data"
 import { ajustarQuantidadeFrames, comHistorico, documentoDeEstrutura, novoDocumento } from "@/lib/conteudo/documento"
+import { normalizarEstrutura } from "@/lib/conteudo/estrutura-do-documento"
+import { tipoDesenhaImagem } from "@/lib/conteudo/referencia-para-documento"
 import { FAMILIAS, FAMILIA_OPCOES, aplicarFamilia } from "@/lib/conteudo/familias"
 import { chamarIA } from "@/lib/conteudo/ia/client"
 import type { SaidaInspiracao } from "@/lib/conteudo/ia/schemas"
@@ -157,7 +159,10 @@ export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, meuTemplat
     try {
       const r = await chamarIA({ acao: "analisar_inspiracao", imagens: refs })
       setInspiracao(r)
-      setEstrutura(r.frames.map((f) => ({ tipo: f.tipo, slotImagem: f.slotImagem, descricao: f.descricao })))
+      // O modelo marca foto num slide de número porque VIU uma arte; o
+      // renderer de `dado`/`cta` não tem lugar para imagem, e o slot
+      // gravado ali some do slide sem erro nenhum.
+      setEstrutura(normalizarEstrutura(r.frames.map((f) => ({ tipo: f.tipo, slotImagem: f.slotImagem, descricao: f.descricao }))))
       setAnalise("done")
     } catch (e) {
       setAnalise("idle")
@@ -628,11 +633,17 @@ export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, meuTemplat
                           </span>
                           <CtBadge txt={e.tipo} cor={e.tipo === "capa" || e.tipo === "cta" ? "#4E62D8" : e.tipo === "prova" ? "#7C3AED" : "#6B7280"} />
                           <span className="flex-1 text-[11.5px] text-[var(--ops-text)]">{inspiracao?.frames[i]?.descricao ?? ""}</span>
-                          <label className="flex items-center gap-1 text-[10px] text-[var(--ops-mut)]">
-                            <input type="checkbox" checked={Boolean(e.slotImagem)} onChange={(ev) => setEstrutura((s) => s.map((x, j) => (j === i ? { ...x, slotImagem: ev.target.checked } : x)))} className="m-0 accent-[var(--ops-accent)]" />
+                          <label className={cn("flex items-center gap-1 text-[10px]", tipoDesenhaImagem(e.tipo) ? "text-[var(--ops-mut)]" : "cursor-not-allowed text-[var(--ops-mut)]/50")} title={tipoDesenhaImagem(e.tipo) ? undefined : `O slide de ${e.tipo} não tem lugar para foto neste layout.`}>
+                            <input
+                              type="checkbox"
+                              disabled={!tipoDesenhaImagem(e.tipo)}
+                              checked={Boolean(e.slotImagem)}
+                              onChange={(ev) => setEstrutura((s) => s.map((x, j) => (j === i ? { ...x, slotImagem: ev.target.checked } : x)))}
+                              className="m-0 accent-[var(--ops-accent)]"
+                            />
                             foto
                           </label>
-                          <select value={e.tipo} onChange={(ev) => setEstrutura((s) => s.map((x, j) => (j === i ? { ...x, tipo: ev.target.value as FrameTipo } : x)))} className="h-6 rounded-md border border-[var(--ops-border)] bg-[var(--ops-page)] px-1 text-[10.5px] text-[var(--ops-sec)] outline-none">
+                          <select value={e.tipo} onChange={(ev) => setEstrutura((s) => normalizarEstrutura(s.map((x, j) => (j === i ? { ...x, tipo: ev.target.value as FrameTipo } : x))))} className="h-6 rounded-md border border-[var(--ops-border)] bg-[var(--ops-page)] px-1 text-[10.5px] text-[var(--ops-sec)] outline-none">
                             {TIPOS.map((o) => (
                               <option key={o}>{o}</option>
                             ))}

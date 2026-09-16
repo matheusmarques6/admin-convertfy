@@ -5,6 +5,7 @@ import {
   aplicarPropostas,
   dividirFrame,
   dividirTexto,
+  documentoDeEstrutura,
   duplicarFrame,
   ehTextoGuia,
   excluirFrame,
@@ -309,5 +310,24 @@ describe("cores do slide", () => {
     expect(fundoValido("rgba(1,2,3,0.5)")).toBe(true)
     expect(fundoValido("azul")).toBe(false)
     expect(gradienteCss({ de: "#a", meio: "#b", ate: "#c", angulo: 90 })).toBe("linear-gradient(90deg, #a 0%, #b 55%, #c 100%)")
+  })
+})
+
+describe("documentoDeEstrutura", () => {
+  it("só dá slot onde o renderer desenha foto — dado e cta nunca", () => {
+    const d = documentoDeEstrutura("x", "", [
+      { tipo: "capa", slotImagem: true },
+      { tipo: "dado", slotImagem: true },
+      { tipo: "texto", slotImagem: true },
+      { tipo: "cta", slotImagem: true },
+    ])
+    expect(d.frames.map((f) => f.slotsImagem)).toEqual([1, 0, 1, 0])
+  })
+
+  it("a capa ganha foto por padrão, mas respeita o que a estrutura declarou", () => {
+    const comDefault = documentoDeEstrutura("x", "", [{ tipo: "capa" }, { tipo: "texto" }, { tipo: "cta" }])
+    expect(comDefault.frames[0].slotsImagem).toBe(1)
+    const semFoto = documentoDeEstrutura("x", "", [{ tipo: "capa", slotImagem: false }, { tipo: "texto" }, { tipo: "cta" }])
+    expect(semFoto.frames[0].slotsImagem).toBe(0)
   })
 })

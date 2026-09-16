@@ -7174,6 +7174,75 @@ declarado**: `commemorative_dates` (280 linhas, cron anual),
 estava registrado. `store_feedback_calls` recebeu linha em 15/09, o que
 confirma a ponte reunião→carteira da migration 20261129 funcionando.
 
+## Template do Estúdio: o caminho mais rápido não existia (16/09)
+
+Medido antes de escrever código: **0 templates do time**, 3 documentos, 1
+referência, 0 brand kits, 0 agendamentos. Não era desinteresse — era que
+**só existia UM caminho para cadastrar template**: "a partir de
+inspiração", que pede subir os slides como IMAGEM e paga uma chamada de
+VISÃO (até 12 imagens em base64) para um modelo adivinhar a sequência.
+Quem acabou de montar um carrossel bom no próprio Estúdio tinha de
+exportar a peça em PNG e subir de volta para o modelo ler o que o editor
+já conhece campo a campo.
+
+A conversão inversa já existia nos dois sentidos (`documentoDeEstrutura`,
+`estruturaDaReferencia`); **documento → estrutura** era a que faltava. Pior:
+`editor-page.tsx` já tinha a função `salvarTemplate` INTEIRA, e ela só era
+passada ao editor quando `?modo=template` estava na URL — isto é, apenas
+na revisão de um template que acabou de nascer da inspiração. O botão
+existia e estava atrás justamente do caminho caro.
+
+**`estrutura-do-documento.ts`** (puro, 13 testes) é a régua, com três
+regras que erram em silêncio se ficarem na UI:
+
+1. **Slide oculto não entra.** `oculto` é o que o operador tirou da peça;
+   trazê-lo pelo template devolveria, na criação seguinte, o slide que ele
+   acabou de esconder. A conversão à mão do `editor-page` levava todos.
+2. **Só é "com foto" o slot que o renderer DESENHA.** `dado` e `cta` não
+   chamam `imgSlot` (`TIPOS_COM_SLOT`), então `slotImagem` ali é promessa
+   que nenhuma peça cumpre. `documentoDeEstrutura` gravava `slotsImagem:
+   1` sem checar, a checkbox "foto" da revisão era oferecida nos 7 tipos e
+   `analisar_inspiracao` marca foto em slide de número porque VIU uma arte
+   — o operador via "foto" na estrutura e nada no slide. `normalizarEstrutura`
+   roda na leitura da inspiração e na troca manual de tipo; a checkbox fica
+   desabilitada com o motivo.
+3. **O nome do template descreve a FORMA, não a pauta.** O nome do
+   carrossel é a headline; como template ele reaparece na hora de escolher
+   a sequência, onde a headline de outra peça não ajuda. Vem preenchido e
+   EDITÁVEL — renomear sozinho seria adivinhar a intenção.
+
+Junto veio uma correção de comportamento declarada: a capa ganhava slot
+SEMPRE (`e.slotImagem || e.tipo === "capa"`), então desmarcar a foto da
+capa não tinha efeito. Agora o default só vale quando a estrutura **não se
+pronuncia** (`e.slotImagem ?? e.tipo === "capa"`) — estrutura sem o campo
+continua com foto na capa, zero regressão.
+
+**Nome repetido não vira duplicata silenciosa**: `templateComMesmoNome`
+(comparação sem acento/caixa) faz o botão virar "Atualizar o existente", e
+o PATCH da rota passou a aceitar `estrutura`/`templateId`/`fidelidade`.
+`fidelidade: null` ali APAGA o número de propósito — ela é a confiança da
+LEITURA de uma inspiração, e a forma que veio de um carrossel do Estúdio
+não foi lida por ninguém. Dois templates de mesmo nome são
+indistinguíveis na prateleira; quem quer os dois muda o nome, que é
+exatamente o que os distingue.
+
+Entradas: menu do card na biblioteca e botão na barra do editor (fora do
+`modoTemplate`, que mantém o fluxo de revisão). **Zero chamadas de IA,
+zero upload.**
+
+**Ficou de fora, com o motivo**: template a partir dos 10 carrosséis
+publicados no Instagram (exige leitura por visão — mesmo custo do caminho
+que este atalho existe para evitar) e UNIQUE em
+`conteudo_meus_templates(org, nome)` — o dedupe é do cliente e a tabela
+tem 0 linhas; vira corrida real só com uso simultâneo.
+
+**A outra lacuna do módulo é DADO, não código**: dos 89 posts
+sincronizados, **0 têm pilar, molde ou palavra-chave**. Mix de pilar e
+desempenho por molde mostram a ausência corretamente (`montarPilarMix`
+informa quantos ficaram fora), mas o painel só passa a responder depois
+que alguém classificar — e `PATCH /api/conteudo/posts` já classifica a
+seleção da tabela em lote, com os filtros "Sem pilar"/"Sem molde".
+
 ---
 
 *Última atualização: Setembro 2026*

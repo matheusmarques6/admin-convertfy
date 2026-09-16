@@ -14,12 +14,14 @@ import { ChevronLeft } from "lucide-react"
 import { Icon } from "@/components/ui/icon"
 import { useToast } from "@/lib/hooks/use-toast"
 import { getDocumento } from "@/lib/conteudo/data"
+import { estruturaDoDocumento } from "@/lib/conteudo/estrutura-do-documento"
 import type { Documento } from "@/lib/conteudo/types"
 import { ROUTES } from "@/lib/routes"
 import { CtEmpty, CtSkel } from "../ui"
 import { Editor } from "./editor"
 import type { ModalEditor } from "./editor-types"
 import { ANEXOS_KEY } from "./estudio-home"
+import { SalvarTemplateDialog, type SalvarTemplateEntrada } from "./salvar-template-dialog"
 import { useBrandKits, useDocumentos, useMeusTemplates, usePerfis } from "./use-estudio-data"
 
 const MODAIS: ModalEditor[] = ["preview", "exportar", "agendar", "brandkit"]
@@ -31,9 +33,10 @@ export function EditorPage({ id }: { id: string }) {
   const { docs, recarregar } = useDocumentos()
   const { kits, salvar: salvarKit } = useBrandKits()
   const { perfis } = usePerfis()
-  const { criar: criarMeuTemplate } = useMeusTemplates()
+  const { meus, criar: criarMeuTemplate, atualizar: atualizarMeuTemplate } = useMeusTemplates()
   const [anexos, setAnexos] = useState<string[] | undefined>(undefined)
   const [direto, setDireto] = useState<Documento | null | undefined>(undefined)
+  const [salvandoTemplate, setSalvandoTemplate] = useState<Documento | null>(null)
 
   useEffect(() => {
     try {
@@ -98,14 +101,12 @@ export function EditorPage({ id }: { id: string }) {
     )
   }
 
+  // A estrutura sai do módulo puro (`estruturaDoDocumento`): slide oculto
+  // fica de fora e só é "com foto" o slot que o renderer desenha — antes a
+  // conversão era feita aqui, à mão, e gravava as duas coisas erradas.
   const salvarTemplate = async (d: Documento) => {
     try {
-      await criarMeuTemplate({
-        nome: d.nome,
-        templateId: d.templateId,
-        estrutura: d.frames.map((f) => ({ tipo: f.tipo, slotImagem: f.slotsImagem > 0, descricao: f.label })),
-        usos: 0,
-      })
+      await criarMeuTemplate({ nome: d.nome, templateId: d.templateId, estrutura: estruturaDoDocumento(d), usos: 0 })
       toast({ title: "Template salvo", description: `"${d.nome}" entrou em Meus templates.` })
       router.push(ROUTES.ADMIN.CONTEUDO.ESTUDIO)
     } catch (e) {
@@ -113,19 +114,33 @@ export function EditorPage({ id }: { id: string }) {
     }
   }
 
+  const salvarComoTemplate = async (e: SalvarTemplateEntrada) => {
+    if (e.substituirId) {
+      await atualizarMeuTemplate(e.substituirId, { nome: e.nome, templateId: e.templateId, estrutura: e.estrutura, fidelidade: null })
+      toast({ title: "Template atualizado", description: `"${e.nome}" passou a ter a forma deste carrossel.` })
+      return
+    }
+    await criarMeuTemplate({ nome: e.nome, templateId: e.templateId, estrutura: e.estrutura, usos: 0 })
+    toast({ title: "Template salvo", description: `"${e.nome}" entrou em Meus templates.` })
+  }
+
   return (
-    <Editor
-      key={doc.id}
-      doc={doc}
-      perfis={perfis ?? []}
-      brandKits={kits}
-      onSalvarBrandKit={salvarKit}
-      modalInicial={modalInicial}
-      abaInicial={abaInicial}
-      modoTemplate={modoTemplate}
-      onSalvarTemplate={modoTemplate ? salvarTemplate : undefined}
-      anexosIniciais={anexos}
-      onSalvo={() => void recarregar()}
-    />
+    <>
+      <Editor
+        key={doc.id}
+        doc={doc}
+        perfis={perfis ?? []}
+        brandKits={kits}
+        onSalvarBrandKit={salvarKit}
+        modalInicial={modalInicial}
+        abaInicial={abaInicial}
+        modoTemplate={modoTemplate}
+        onSalvarTemplate={modoTemplate ? salvarTemplate : undefined}
+        onSalvarComoTemplate={(d) => setSalvandoTemplate(d)}
+        anexosIniciais={anexos}
+        onSalvo={() => void recarregar()}
+      />
+      {salvandoTemplate && <SalvarTemplateDialog doc={salvandoTemplate} meusTemplates={meus} onSalvar={salvarComoTemplate} onClose={() => setSalvandoTemplate(null)} />}
+    </>
   )
 }

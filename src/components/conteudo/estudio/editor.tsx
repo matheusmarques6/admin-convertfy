@@ -111,11 +111,17 @@ interface Props {
   abaInicial?: "ia" | "ajustes"
   modoTemplate?: boolean
   onSalvarTemplate?: (doc: Documento) => Promise<void>
+  /**
+   * "Salvar como template" fora do fluxo de revisão: guarda a FORMA deste
+   * carrossel em Meus templates. Quem monta o diálogo é o chamador — o
+   * editor não conhece a prateleira.
+   */
+  onSalvarComoTemplate?: (doc: Documento) => void
   anexosIniciais?: string[]
   onSalvo?: (doc: Documento) => void
 }
 
-export function Editor({ doc: docInicial, perfis, brandKits, onSalvarBrandKit, modalInicial, abaInicial, modoTemplate = false, onSalvarTemplate, anexosIniciais, onSalvo }: Props) {
+export function Editor({ doc: docInicial, perfis, brandKits, onSalvarBrandKit, modalInicial, abaInicial, modoTemplate = false, onSalvarTemplate, onSalvarComoTemplate, anexosIniciais, onSalvo }: Props) {
   const router = useRouter()
   const ed = useEditor(docInicial, onSalvo)
   const { doc, set, preview } = ed
@@ -320,6 +326,7 @@ export function Editor({ doc: docInicial, perfis, brandKits, onSalvarBrandKit, m
             Salvar template
           </button>
         )}
+        {!modoTemplate && onSalvarComoTemplate && ghost("Salvar como template", () => onSalvarComoTemplate(doc), LayoutTemplate)}
         {ghost("Preview", () => setModal("preview"), Instagram)}
         {ed.salvo === "conflito" ? (
           <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-[var(--ops-warn-br)] bg-[var(--ops-warn-bg)] px-2 py-1 text-[10.5px] text-[var(--ops-warn)]" title={ed.erroSalvar ?? undefined}>

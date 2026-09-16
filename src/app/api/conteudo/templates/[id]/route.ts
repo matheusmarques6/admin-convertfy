@@ -1,5 +1,8 @@
 /**
- * PATCH  /api/conteudo/templates/[id] — { usar: true } incrementa usos; { nome } renomeia.
+ * PATCH  /api/conteudo/templates/[id] — { usar: true } incrementa usos;
+ *        { nome } renomeia; { estrutura, templateId } substitui a FORMA
+ *        (é o "atualizar o existente" de quem salva um carrossel com nome
+ *        de template que já está na prateleira).
  * DELETE /api/conteudo/templates/[id]
  */
 
@@ -8,12 +11,18 @@ import { z } from "zod"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { AppError, errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
-import { rowToMeuTemplate } from "../route"
+import { criarSchema, rowToMeuTemplate } from "../route"
 
 export const dynamic = "force-dynamic"
 
 type Ctx = { params: Promise<{ id: string }> }
-const schema = z.object({ usar: z.boolean().optional(), nome: z.string().min(1).max(120).optional() })
+const schema = z.object({
+  usar: z.boolean().optional(),
+  nome: z.string().min(1).max(120).optional(),
+  estrutura: criarSchema.shape.estrutura.optional(),
+  templateId: z.string().max(80).optional(),
+  fidelidade: z.number().min(0).max(100).nullable().optional(),
+})
 
 export async function PATCH(request: NextRequest, ctx: Ctx) {
   try {
@@ -30,6 +39,14 @@ export async function PATCH(request: NextRequest, ctx: Ctx) {
     const patch: Record<string, unknown> = {}
     if (parsed.data.usar) patch.usos = (atual.usos ?? 0) + 1
     if (parsed.data.nome) patch.nome = parsed.data.nome
+    if (parsed.data.estrutura) patch.estrutura = parsed.data.estrutura
+    if (parsed.data.templateId) patch.template_base = parsed.data.templateId
+    // `fidelidade` é a confiança da LEITURA de uma inspiração. A forma que
+    // veio de um carrossel do Estúdio não foi lida por ninguém — é o
+    // documento em si —, então `null` aqui APAGA o número de propósito:
+    // manter a fidelidade antiga descreveria uma estrutura que já não é a
+    // gravada.
+    if (parsed.data.fidelidade !== undefined) patch.fidelidade = parsed.data.fidelidade == null ? null : Math.round(parsed.data.fidelidade)
     if (!Object.keys(patch).length) return successResponse(request, { template: rowToMeuTemplate(atual) })
     const { data, error } = await admin.from("conteudo_meus_templates").update(patch).eq("id", id).select("id, nome, template_base, estrutura, fidelidade, usos, criado_em").single()
     if (error) throw error

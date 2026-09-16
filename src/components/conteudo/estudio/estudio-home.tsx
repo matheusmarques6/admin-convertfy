@@ -12,11 +12,12 @@ import { useToast } from "@/lib/hooks/use-toast"
 import { getPromptsProntos } from "@/lib/conteudo/data"
 import { comHistorico, documentoDaReferencia, novoUuid } from "@/lib/conteudo/documento"
 import { estruturaDaReferencia } from "@/lib/conteudo/referencia-para-documento"
-import type { PerfilEditavel, Referencia } from "@/lib/conteudo/types"
+import type { Documento, PerfilEditavel, Referencia } from "@/lib/conteudo/types"
 import { ROUTES } from "@/lib/routes"
 import { Biblioteca, type Caminho } from "./biblioteca"
 import { NovoFlow, type CriacaoResultado } from "./novo-flow"
 import { ReferenciasSecao } from "./referencias"
+import { SalvarTemplateDialog, type SalvarTemplateEntrada } from "./salvar-template-dialog"
 import { useBrandKits, useDocumentos, useMeusTemplates, usePerfis, usePostsPublicados } from "./use-estudio-data"
 
 const CAMINHOS: Caminho[] = ["template", "ia", "inspiracao"]
@@ -28,11 +29,12 @@ export function EstudioHome() {
   const params = useSearchParams()
   const { toast } = useToast()
   const { docs, error, criar, salvar, excluir } = useDocumentos()
-  const { meus, criar: criarMeuTemplate, usar: usarMeuTemplate, excluir: excluirMeuTemplate } = useMeusTemplates()
+  const { meus, criar: criarMeuTemplate, usar: usarMeuTemplate, atualizar: atualizarMeuTemplate, excluir: excluirMeuTemplate } = useMeusTemplates()
   const { kits } = useBrandKits()
   const { perfis } = usePerfis()
   const posts = usePostsPublicados()
   const [novo, setNovo] = useState<{ caminho?: Caminho | null; perfil?: PerfilEditavel; meuTemplateId?: string; modoTemplate?: boolean; pauta?: string } | null>(null)
+  const [salvandoTemplate, setSalvandoTemplate] = useState<Documento | null>(null)
 
   useEffect(() => {
     const n = params.get("novo")
@@ -152,6 +154,22 @@ export function EstudioHome() {
     router.push(`${ROUTES.ADMIN.CONTEUDO.ESTUDIO_DOC(doc.id)}?aba=ajustes`)
   }
 
+  /**
+   * Carrossel pronto → template, sem upload e sem chamada de IA: a
+   * sequência sai do próprio documento (`estruturaDoDocumento`). Nome
+   * repetido ATUALIZA o template existente em vez de criar o segundo —
+   * dois com o mesmo nome são indistinguíveis na prateleira.
+   */
+  const salvarComoTemplate = async (e: SalvarTemplateEntrada) => {
+    if (e.substituirId) {
+      await atualizarMeuTemplate(e.substituirId, { nome: e.nome, templateId: e.templateId, estrutura: e.estrutura, fidelidade: null })
+      toast({ title: "Template atualizado", description: `"${e.nome}" passou a ter a forma deste carrossel.` })
+      return
+    }
+    await criarMeuTemplate({ nome: e.nome, templateId: e.templateId, estrutura: e.estrutura, usos: 0 })
+    toast({ title: "Template salvo", description: `"${e.nome}" entrou em Meus templates.` })
+  }
+
   const excluirTemplate = async (id: string) => {
     try {
       await excluirMeuTemplate(id)
@@ -172,6 +190,7 @@ export function EstudioHome() {
         onAbrir={abrir}
         onNovo={(caminho, perfil, meuTemplateId) => setNovo({ caminho: caminho ?? null, perfil, meuTemplateId })}
         onCriarTemplate={() => setNovo({ modoTemplate: true })}
+        onSalvarComoTemplate={(d) => setSalvandoTemplate(d)}
         onExcluir={excluirDoc}
         onExcluirTemplate={excluirTemplate}
         onDuplicar={duplicar}
@@ -183,6 +202,7 @@ export function EstudioHome() {
           else setNovo({ caminho: "template" })
         }}
       />
+      {salvandoTemplate && <SalvarTemplateDialog doc={salvandoTemplate} meusTemplates={meus} onSalvar={salvarComoTemplate} onClose={() => setSalvandoTemplate(null)} />}
       {novo && (
         <NovoFlow
           caminhoInicial={novo.caminho ?? null}

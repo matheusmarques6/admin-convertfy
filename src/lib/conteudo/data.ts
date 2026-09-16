@@ -149,6 +149,15 @@ export async function criarMeuTemplate(t: { nome: string; templateId: string; es
   return r.template
 }
 
+/** Substitui a FORMA de um template já cadastrado (nome, sequência, base). */
+export async function atualizarMeuTemplate(
+  id: string,
+  t: { nome?: string; templateId?: string; estrutura?: MeuTemplate["estrutura"]; fidelidade?: number | null },
+): Promise<MeuTemplate> {
+  const r = await api<{ template: MeuTemplate }>(`/api/conteudo/templates/${id}`, { method: "PATCH", body: JSON.stringify(t) })
+  return r.template
+}
+
 export async function usarMeuTemplate(id: string): Promise<MeuTemplate> {
   const r = await api<{ template: MeuTemplate }>(`/api/conteudo/templates/${id}`, { method: "PATCH", body: JSON.stringify({ usar: true }) })
   return r.template
