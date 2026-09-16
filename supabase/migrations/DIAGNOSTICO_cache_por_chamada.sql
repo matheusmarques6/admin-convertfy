@@ -44,8 +44,22 @@ order by created_at desc;
 -- 4. Escritas por prefixo e por lote (o gate): mais de UMA escrita do mesmo
 --    agente no mesmo batch com o mesmo modelo é a assinatura de irmãos que
 --    dispararam juntos.
+--
+--    ATENÇÃO (16/09): a chave `escolha` só existe no caminho de HOJE. Com o
+--    leque ligado as chaves viram `posicao_0..N`, e ler só `escolha`
+--    devolveria zero em silêncio — zero é o resultado BOM esperado aqui, e
+--    a leitura pós-deploy confirmaria a mudança por acidente. Por isso a
+--    soma percorre TODAS as chaves de `consumo_por_chamada`.
 select batch_id, agent, model,
-  count(*) filter (where coalesce((parsed_output->'consumo_por_chamada'->'escolha'->>'tokens_cache_escrita')::int, (input_vars->>'tokens_cache_escrita')::int, 0) > 0) as chamadas_com_escrita,
+  count(*) filter (
+    where coalesce(
+      (select sum((v->>'tokens_cache_escrita')::int)
+         from jsonb_each(coalesce(parsed_output->'consumo_por_chamada', '{}'::jsonb)) as e(k, v)
+        where jsonb_typeof(v) = 'object'),
+      (input_vars->>'tokens_cache_escrita')::int,
+      0
+    ) > 0
+  ) as chamadas_com_escrita,
   count(*) as runs,
   round(sum(cost_cents)::numeric / 100, 2) as usd
 from email_generation_runs

@@ -7696,5 +7696,90 @@ carregou — quem responde é o render, olhando.
 
 ---
 
+## O leque do Curador: uma chamada por posição (16/09, migration 20261158)
+
+O Curador decide TODAS as posições numa chamada só e é o 2º maior gasto do
+pipeline (US$ 33,54 em 53 runs em setembro). O leque quebra isso: uma
+chamada por posição, em série, prefixo cacheado e cauda fatiada pela seção.
+**Nasce DESLIGADO** (`curador_leque_mode`, enum `off|on`); execução em
+`docs/email-generation/execucao-plano-pipeline-set2026.md`, acompanhamento
+em `DIAGNOSTICO_leque_do_curador.sql`.
+
+**A conta ficou CONTRA ele, e mesmo assim entrou.** A projeção original
+(−27%) é anterior ao catálogo enxuto e ao cache de prompt (14–15/09).
+Refeita sobre a run `29c3f906`: entrada 38.370 (×1,0) + escrita de cache
+56.906 (×1,25) + saída 11.933 (×5) = **US$ 1,69**. O leque paga o mesmo
+prefixo de 57k **6 vezes** em vez de 1 → ~+23% de entrada. Decisão do dono:
+terminar o leque (o ganho buscado é de DECISÃO) e atacar o cache depois,
+quando houver 6 leitores em vez de 0. O veredito de ligar sai da bancada da
+Fase 1a — dois cliques em "Rodar só este nó", que custam o Curador sozinho.
+
+**Achado que a medição entregou**: `cache_user_prefix` é incondicional e a
+shortlist é pulada em ~2/3 das runs, então 56.906 tokens são escritos a
++25% **sem nenhum leitor** — US$ 0,14 por e-mail. É a primeira linha da
+fase do cache.
+
+**O que não pode regredir:**
+
+- **O prompt do leque é DERIVADO do vivo** (`montarLequeUser`): remoção de
+  blocos nomeados + troca de duas frases. Escrever um segundo template faz
+  as versões divergirem no primeiro ajuste; tag ou frase ausente **LANÇA**,
+  e o leque desliga naquela geração (`leque_indisponivel`) — renomear
+  `<notas_de_secao>` serviria a nota de TODAS as seções em toda posição,
+  calado.
+- **`{{catalogo}}` sai do system.** Com ele lá, ou é o inteiro (e a fatia
+  não existe) ou o system muda por posição — e o cache é hierárquico, então
+  system diferente mata o cache do user inteiro.
+- **As regras de conjunto foram reescritas contra `<ja_decididas>`, não
+  apagadas.** Tirar o dado sem tirar a regra é o que `momento` e `exige` já
+  custaram aqui. Não existe `<ainda_por_decidir>`: a sequência já está em
+  `<estrutura_do_email>`, no prefixo, e duas listas da mesma coisa viram
+  contradição quando uma muda.
+- **`block_index` e `section` são do CÓDIGO.** O eco do modelo vira registro
+  (`eco_divergente`), nunca reendereçamento — aceitá-lo montaria a variante
+  da posição 2 na 4.
+- **`try` por POSIÇÃO.** No caminho de hoje qualquer erro devolve `null` e o
+  caller mata a geração; com N chamadas isso perderia as decisões já
+  tomadas. A posição que falha vira vazia e NÃO entra no `<ja_decididas>` da
+  seguinte.
+- **A reserva existe porque `SHADOW_TOP_N = 1`** — três mecanismos procuram
+  um rank 2 que nunca existe e só sabem apagar a posição.
+- **A saída costurada é o MESMO `CuradorVaultOutput`.** Um segundo formato
+  faria o leque precisar de um segundo caminho de conformidade, medição e
+  telemetria. O fio vem do Estruturador (`recorteDaDecisao`): nenhuma
+  chamada vê o e-mail inteiro.
+- **A shortlist NÃO roda no leque** — com a fatia, cada posição já vê só as
+  dela, e mantê-la custaria um segundo system na mesma run (ela precisa do
+  catálogo) e com isso o cache do prefixo.
+- **Sem `shadow` no gate.** Rodar o laço em paralelo pagaria o Curador duas
+  vezes por geração e gravaria uma segunda run que a RPC do Estúdio
+  (DISTINCT ON) esconderia. Valor no enum que nenhum código executa é a
+  armadilha que este repo já pagou três vezes.
+
+**A janela de 3 e-mails (roda em SHADOW)**: `loadEscolhasRecentesPorSecao`
+deduplica por `email_number` — a tabela é append-only com 3,2 linhas por
+e-mail, e "as últimas 3 por `created_at`" devolveria três regerações do
+mesmo. Ela entra **antes** do filtro por requisito (fail-open no conjunto, e
+depois dele a janela seria anulada em silêncio) e **afrouxa por ESCASSEZ,
+não por zero**: com 2 posições `body` e 4 variantes, bloquear 3 deixa as
+duas com a MESMA variante. `janelaAfrouxada` vira pauta `biblioteca_escassa`
+com chave FIXA por (flow, seção) — sem ela cada loja abriria um balde e o
+limiar de 3 nunca seria atingido.
+
+**Consertos que o leque expôs e valem sozinhos**: `restrictRankingToShortlist`
+mutava o argumento; `finalistTypeIndex` aceitava tipo `""` (e aí o marcador
+nasce `cfy:block:{i}:` e a hero some do localizador); **as 7 chaves do
+`TELEMETRY_CONTRACT` que o caminho do VAULT nunca gravou** (ele exige 9 e
+gravava 2 — os testes passavam porque exercitavam o Curador legado);
+`orcamento_esgotado` como 5º motivo de posição sem variante (chamada que não
+aconteceu NÃO é lacuna de biblioteca, e confundi-las manda a curadoria
+cadastrar bloco para resolver timeout); `ordenarCandidatas` extraída do
+`menosIncompativel`; `loadEstruturasDosOutrosEmails` limitado aos 3
+anteriores; e `aplicarOrcamentoDaCauda` passou a **parar na primeira nota
+que não cabe** — antes pulava e servia as menores, premiando nota CURTA em
+vez de nota bem colocada.
+
+---
+
 *Última atualização: Setembro 2026*
 *Versões: Shopify 2024-10, Klaviyo revision 2025-10-15*

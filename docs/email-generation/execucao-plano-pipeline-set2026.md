@@ -1789,3 +1789,149 @@ copy" é não rodar a fase 2, que `stop_after` num nó da fase 2 já faz) e
 `image`, `copy_merge`, `background_fit`, `lint_envio`, `qa`, `qavision`
 (dentro da fase 2, sem ponto de parada escrito — acrescentar é uma linha
 em cada arquivo).
+
+---
+
+## Executado — O leque do Curador (16/09)
+
+Uma chamada por POSIÇÃO em vez de uma pelo e-mail inteiro. **Entra
+DESLIGADO** (`email_generation_settings.curador_leque_mode`, migration
+20261158, aplicada). Plano em `.claude/plans`; acompanhamento em
+`supabase/migrations/DIAGNOSTICO_leque_do_curador.sql`.
+
+### A conta que levou a entregar mesmo assim
+
+A projeção original (US$ 1,77 → 1,29, −27%) foi feita **antes** do catálogo
+enxuto e do cache de prompt (14–15/09). Refeita com o estado de hoje, ela se
+inverte. Decomposição real da run `29c3f906` (15/09):
+
+| | tokens | preço | US$ |
+|---|---|---|---|
+| entrada a preço cheio | 38.370 | ×1,0 | 0,38 |
+| escrita de cache | 56.906 | ×1,25 | 0,71 |
+| saída | 11.933 | ×5,0 | 0,60 |
+| | | **total** | **1,69** |
+
+O leque paga o mesmo prefixo de 57k **6 vezes** (1 escrita + 5 leituras) em
+vez de 1: ~US$ 1,36 de entrada contra US$ 1,10. **Sobe ~23%.** A economia
+teria de vir da saída, que precisaria cair 43% (11.933 → ≤ 6.800).
+
+Decisão do dono: terminar o leque e atacar o cache depois. O ganho buscado é
+de DECISÃO (`porque`/`conversa_com` por posição, a fatia que impede o modelo
+de confundir seções, a janela entre e-mails); o preço é a fase seguinte, e o
+veredito de ligar sai da bancada da Fase 1a — dois cliques em "Rodar só este
+nó" sobre o mesmo e-mail, que custam o Curador sozinho.
+
+### Dois achados que a medição entregou de graça
+
+1. **O cache é escrito e nunca lido em ~2/3 das runs.** Desde 14/09 a
+   shortlist é pulada quando nenhuma posição passa de 5 elegíveis — e aí
+   existe UMA chamada. `cache_user_prefix: true` é incondicional, então
+   56.906 tokens são escritos a +25% sem leitor: **US$ 0,14 por e-mail**.
+   Com o leque isso se inverte (6 leitores), e é por isso que o cache é a
+   fase seguinte.
+2. **O modelo é o custo, não a estrutura.** Agosto com o kimi: US$ 6,22 em
+   55 runs. Setembro com o Fable: US$ 33,54 em 53 — **5,4×**. Registrado
+   como fato; trocar o modelo do Curador foi vetado em 14/09.
+
+### O que foi construído
+
+**Fase 1 — a fatia e o prefixo.** `fatiarCatalogo` devolve UMA seção
+filtrada, renderizada pelo MESMO `compact` que monta o enxuto.
+`LEQUE_SYSTEM` é o system de hoje **sem** `{{catalogo}}` (com ele lá, ou é o
+inteiro e a fatia não existe, ou o system muda por posição e o cache
+hierárquico morre) e com o contrato de saída descrevendo UMA posição. As
+regras de conjunto foram **reescritas contra `<ja_decididas>`, não
+apagadas** — tirar o dado sem tirar a regra é o que `momento` e `exige` já
+custaram aqui.
+
+O user do leque é **derivado** do user vivo, por remoção de blocos nomeados
+e troca de duas frases (`montarLequeUser`). Escrever um segundo template
+faria as versões divergirem no primeiro ajuste; tag ou frase ausente LANÇA
+em vez de virar no-op — renomear `<notas_de_secao>` serviria a nota de seção
+de TODAS as seções em toda posição, calado. Como o prompt pode vir do banco,
+o erro desliga o leque naquela geração (`leque_indisponivel`) em vez de
+derrubar a peça.
+
+Não existe `<ainda_por_decidir>`: a sequência inteira já está em
+`<estrutura_do_email>`, no prefixo cacheado, e duas listas da mesma coisa é
+o que vira contradição quando uma muda. `{{indice_vault}}` fica (veto do
+dono, 14/09).
+
+**Fase 2 — o laço.** `curador-leque.ts` tem as peças puras com a chamada
+INJETADA. Três decisões que os testes travam:
+
+- **`block_index` e `section` são do CÓDIGO.** O eco do modelo vira registro
+  (`eco_divergente`), nunca reendereçamento — aceitá-lo montaria a variante
+  da posição 2 na 4 porque ele copiou o número errado.
+- **`try` por POSIÇÃO.** Hoje qualquer erro devolve `null` e o caller mata a
+  geração; com N chamadas isso transformaria uma falha de rede na 5ª posição
+  em perda das quatro decisões já tomadas. A posição que falha vira posição
+  vazia e NÃO entra no `<ja_decididas>` da seguinte.
+- **A reserva existe porque `SHADOW_TOP_N = 1`.** Três mecanismos procuram
+  um rank 2 que nunca existe e por isso só sabem apagar a posição.
+
+A saída costurada é o MESMO `CuradorVaultOutput`: um segundo formato faria o
+leque precisar de um segundo caminho de conformidade, de medição e de
+telemetria. O fio vem do Estruturador (`recorteDaDecisao`) — nenhuma chamada
+vê o e-mail inteiro, e pedi-lo a uma seria pedir síntese do que ela não
+recebeu.
+
+**A shortlist NÃO roda no leque.** Ela existia para reduzir de N para 3
+antes de carregar notas numa chamada que via todas as posições; com a fatia,
+cada posição já vê só as dela. Mantê-la custaria um SEGUNDO system na mesma
+run (ela precisa do catálogo) e com isso o cache do prefixo.
+
+**Fase 3 — a janela de 3 e-mails, em shadow.**
+`loadEscolhasRecentesPorSecao` deduplica **por `email_number`**: a tabela é
+append-only com 3,2 linhas por e-mail, e "as últimas 3 por `created_at`"
+devolveria três regerações do mesmo. A janela entra **antes** do filtro por
+requisito (que é fail-open no conjunto e a anularia) e **afrouxa por
+ESCASSEZ, não por zero** — com 2 posições `body` e 4 variantes, bloquear 3
+deixa as duas com a MESMA variante e a segunda cai no dedupe sem
+alternativa. `janelaAfrouxada` vira pauta `biblioteca_escassa` com chave
+FIXA por (flow, seção): sem ela cada loja abriria um balde e o limiar de 3
+nunca seria atingido.
+
+**Fase 4 — o gate, sem `shadow`.** O plano previa três valores; rodar o laço
+em paralelo pagaria o Curador duas vezes por geração de cliente e gravaria
+uma segunda run que a RPC do Estúdio esconderia. Valor no enum que nenhum
+código executa é a armadilha que este repo já pagou três vezes — então é
+`off|on`, e medir é a bancada. A guarda de orçamento usa um número MEDIDO
+(o custo típico de uma chamada do Curador); o caso "cabe uma, não cabem
+seis" fica com a degradação por posição (`orcamento_esgotado`).
+
+### Consertos que o leque expôs, e que valem sozinhos
+
+- `restrictRankingToShortlist` **mutava o argumento**. Inline não escapa; num
+  laço, o `invalidIds` da posição 2 apareceria acumulado no da 3.
+- `finalistTypeIndex` aceitava tipo `""`, e aí o marcador nasce
+  `cfy:block:{i}:` — a hero deixa de ser localizável.
+- **As 7 chaves do `TELEMETRY_CONTRACT` que o caminho do VAULT não gravava.**
+  Ele exige 9 e este caminho — vigente desde 02/09 — gravava duas; os testes
+  passavam porque exercitavam o Curador legado. Agora as nove saem no
+  sucesso e no ERRO.
+- `orcamento_esgotado` como quinto motivo de posição sem variante: chamada
+  que não aconteceu não é lacuna de biblioteca, e confundi-las manda a
+  curadoria cadastrar um bloco para resolver um timeout.
+- `ordenarCandidatas` saiu de dentro do `menosIncompativel` — ela decide qual
+  peça vai ao cliente e vivia inline, sem teste próprio.
+- `loadEstruturasDosOutrosEmails` ganhou `emailNumber`: só os anteriores, no
+  máximo 3. Sem limite os posteriores entravam como sequência "decidida" sem
+  terem sido decididos.
+- `aplicarOrcamentoDaCauda` **para na primeira nota que não cabe**. Antes ele
+  pulava e seguia servindo as menores, o que premiava nota CURTA em vez de
+  nota bem colocada — e o modelo lê "tem nota" como mais evidência.
+
+### Como medir, quando for a hora
+
+`DIAGNOSTICO_leque_do_curador.sql`, na ordem: o gate (0), quantas chamadas
+(1), **`tokens_cache` > 0 da posicao_1 em diante** (2 — sem isso o leque é
+puro prejuízo), a saída média leque × chamada única (3 — ≤ 6.800 ou não se
+paga), onde perdeu posição (4), a janela em shadow (5) e o contrato de
+telemetria (6).
+
+`DIAGNOSTICO_cache_por_chamada.sql` foi corrigido no mesmo commit: ele lia
+`->'escolha'->>'tokens_cache_escrita'` literalmente e, com as chaves virando
+`posicao_%`, devolveria zero em silêncio — e zero é o resultado BOM esperado
+ali, então a leitura pós-deploy confirmaria a mudança por acidente.
