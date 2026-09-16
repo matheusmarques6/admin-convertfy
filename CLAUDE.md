@@ -7042,6 +7042,44 @@ pendurados fechados com motivo declarado, 2 locks mortos liberados.
 Medição e acompanhamento em
 `supabase/migrations/DIAGNOSTICO_central_de_campanhas.sql`.
 
+## Os rounds de RLS fecharam as tabelas; as RPCs ficaram abertas (16/09)
+
+Medido: **78 funções `SECURITY DEFINER` no schema `public` executáveis
+por `anon`** — a chave pública que vai no JS do browser. `SECURITY
+DEFINER` roda como o dono, então a RLS não protege nada do que a função
+faz por dentro, e o PostgREST expõe toda função de `public` em
+`/rest/v1/rpc/<nome>`. Sem sessão nenhuma dava para `rate_limit_clear`
+(anular o rate limit do login/reset), `acquire_cron_lock('sync_reports',
+86400, …)` (travar a sincronização por um dia), `upsert_custom_range_cache`
+(**falsificar a receita do dashboard**), `audit_cleanup(0)` (apagar a
+trilha de auditoria), `audit_password_reset` (injetar evento falso) e
+`search_agent_chunks` (ler o conteúdo indexado dos agentes).
+
+**Fechar é seguro porque nenhuma rota chama RPC com a chave `anon`** —
+levantado no código, não suposto: as 51 RPCs do app usam
+`createAdminClient` (service role) ou o cliente de servidor com sessão;
+os dois únicos arquivos que chamam `.rpc` com o cliente do BROWSER são
+`notification.service.ts` (`unread_notifications_count`, que exige
+login) e `rate-limit.service.ts`, que é **código morto** — só
+reexportado por `lib/services/index.ts`, sem consumidor, porque o rate
+limit em uso é `lib/rate-limit.ts`. Todas as rotas públicas
+(`/api/public/*`, `/api/tracking/*`) usam `createAdminClient`, inclusive
+o `increment_form_views` do formulário.
+
+**A forma do REVOKE é a parte que erra em silêncio**: função nasce com
+`EXECUTE` para **PUBLIC** e `anon` herda dali, então `REVOKE … FROM
+anon` sozinho não tira nada. A revogação é de PUBLIC — e por isso
+`authenticated` e `service_role` recebem o grant explícito ANTES, senão
+tirar PUBLIC derrubaria também quem está logado (o sino de notificações,
+por exemplo). Aplicado e verificado: `anon` de 78 para **0**,
+`authenticated` em 78 (ninguém logado perdeu acesso), `service_role` em
+102. As INVOKER voláteis do app foram fechadas junto; as 8 que seguem
+abertas são de extensão (pgvector, pg_trgm), que o Supabase gerencia e
+cujos índices dependem delas.
+
+SQL idempotente, com a lista de exceções (hoje VAZIA, e isso foi medido)
+e o rollback, em `supabase/migrations/APPLY_MANUALLY_fechar_rpc_anon.sql`.
+
 ---
 
 *Última atualização: Setembro 2026*
