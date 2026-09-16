@@ -755,6 +755,9 @@ export async function advanceColumn(
         await sendColumnWhatsApp({
           onboardingId: opts.onboardingId,
           columnId: nextCol.id,
+          // Quem marcou o interruptor. O evento de envio precisa nomear o
+          // responsavel — "o sistema mandou" foi o que se leu no incidente.
+          actorId: opts.actorId,
         })
       } catch (e) {
         log.error("sendColumnWhatsApp failed", e)

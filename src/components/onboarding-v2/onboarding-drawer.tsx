@@ -230,6 +230,8 @@ function humanizeEvent(ev: ActivityEvent): string {
   if (t === "onboarding.briefing_confirmed")
     return "confirmou o briefing"
   if (t === "onboarding.whatsapp_sent") return "enviou WhatsApp pro cliente"
+  if (t === "onboarding.whatsapp_failed")
+    return "tentou avisar o cliente e a mensagem não saiu"
   if (t === "onboarding.task_completed") return "concluiu uma tarefa"
   if (t.startsWith("onboarding.")) return t.replace("onboarding.", "")
   return t

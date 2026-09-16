@@ -28,6 +28,7 @@ import {
   RefreshCw,
   Download,
   File as FileIcon,
+  MessageSquare,
 } from "lucide-react"
 import { useToast } from "@/lib/hooks/use-toast"
 import { TaskRow, type TaskRowData } from "@/components/tasks/task-row"
@@ -38,6 +39,7 @@ import {
   MensagemAoCliente,
   type AdvancePreview,
 } from "@/components/onboarding-v2/advance-dialog"
+import { motivoDoEnvio } from "@/lib/onboarding/motivo-do-envio"
 import { ROUTES } from "@/lib/routes"
 import { buildFormUrl } from "@/lib/utils/form-url"
 import type {
@@ -62,6 +64,20 @@ interface DetailResponse {
   }
   columns: OperationalPipelineColumn[]
   deliverables: TaskDeliverable[]
+  /**
+   * A rota SEMPRE devolveu isto (top 20 de `events`, autor resolvido) e a
+   * ficha nunca leu — por isso o envio de WhatsApp, que agora emite evento,
+   * aparece aqui sem nenhuma consulta nova.
+   */
+  activity?: MensagemEvento[]
+}
+
+interface MensagemEvento {
+  id: string
+  event_type: string
+  created_at: string
+  payload: Record<string, unknown>
+  actor?: { id: string; name: string } | null
 }
 
 type Tab = "checklist" | "deliverables" | "briefing" | "versions" | "form"
@@ -573,6 +589,8 @@ export function OnboardingDetailClient({ id }: { id: string }) {
           {tab === "versions" && <VersionsTab versions={onb.versions ?? []} />}
           {tab === "form" && <FormResponsesTab onboarding={onb} />}
         </div>
+
+        <MensagensAoCliente activity={data.activity ?? []} />
       </div>
 
       {goBackOpen && (
@@ -613,6 +631,93 @@ export function OnboardingDetailClient({ id }: { id: string }) {
           submitting={advancing}
         />
       )}
+    </div>
+  )
+}
+
+/**
+ * O que saiu (ou nao saiu) para o cliente, nesta ficha.
+ *
+ * Fica FORA das abas de proposito: o envio nao pertence a nenhuma etapa, e o
+ * que o incidente de 15/09/2026 mostrou e que ele nao pode depender de alguem
+ * procurar. Le `data.activity`, que a rota ja devolvia e a ficha ignorava.
+ */
+function MensagensAoCliente({ activity }: { activity: MensagemEvento[] }) {
+  const envios = activity.filter(
+    (e) =>
+      e.event_type === "onboarding.whatsapp_sent" ||
+      e.event_type === "onboarding.whatsapp_failed",
+  )
+
+  return (
+    <div className="px-5 sm:px-7 pb-6">
+      <div className="rounded-[8px] border border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-white/[0.02] overflow-hidden">
+        <div className="px-4 py-2.5 border-b border-black/[0.04] dark:border-white/[0.06] flex items-center gap-1.5">
+          <MessageSquare className="h-3.5 w-3.5 text-slate-400" />
+          <h3 className="text-[12.5px] font-semibold text-slate-900 dark:text-white">
+            Mensagens ao cliente
+          </h3>
+        </div>
+
+        {envios.length === 0 ? (
+          <p className="px-4 py-3 text-[12px] text-slate-500 dark:text-white/55">
+            Nenhuma mensagem foi enviada por este onboarding. Avançar etapa só
+            avisa o cliente com o interruptor ligado no diálogo.
+          </p>
+        ) : (
+          <ul className="divide-y divide-black/[0.04] dark:divide-white/[0.06]">
+            {envios.slice(0, 8).map((e) => {
+              const p = e.payload ?? {}
+              const enviou = e.event_type === "onboarding.whatsapp_sent"
+              const quando = new Date(e.created_at).toLocaleString("pt-BR", {
+                day: "2-digit",
+                month: "2-digit",
+                hour: "2-digit",
+                minute: "2-digit",
+              })
+              return (
+                <li key={e.id} className="px-4 py-2.5">
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="text-[12.5px] text-slate-800 dark:text-white/80">
+                      <span
+                        className={
+                          enviou
+                            ? "font-semibold text-emerald-700 dark:text-emerald-300"
+                            : "font-semibold text-amber-700 dark:text-amber-300"
+                        }
+                      >
+                        {enviou ? "Enviada" : "Não saiu"}
+                      </span>
+                      {typeof p.column_name === "string"
+                        ? ` · ${p.column_name}`
+                        : ""}
+                      {typeof p.destinatario === "string"
+                        ? ` · ${p.destinatario}`
+                        : ""}
+                    </p>
+                    <span className="text-[11px] text-slate-400 dark:text-white/40 tabular-nums shrink-0">
+                      {quando}
+                      {e.actor?.name ? ` · ${e.actor.name}` : ""}
+                    </span>
+                  </div>
+                  {!enviou && (
+                    <p className="text-[11.5px] text-amber-700 dark:text-amber-300 mt-0.5">
+                      {motivoDoEnvio(
+                        typeof p.reason === "string" ? p.reason : null,
+                      )}
+                    </p>
+                  )}
+                  {enviou && typeof p.previa === "string" && (
+                    <p className="text-[11.5px] text-slate-500 dark:text-white/55 mt-0.5 line-clamp-2">
+                      {p.previa}
+                    </p>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </div>
     </div>
   )
 }

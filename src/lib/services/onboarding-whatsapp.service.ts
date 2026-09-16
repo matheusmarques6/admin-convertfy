@@ -213,16 +213,45 @@ export async function resolveColumnMessage(params: {
   return { ...base, template, texto, faltando, vars }
 }
 
-export async function sendColumnWhatsApp(params: {
+export interface SendColumnParams {
   onboardingId: string
   columnId: string
-}): Promise<{ ok: boolean; reason?: string }> {
+  /**
+   * Quem autorizou o envio. Vem de `advanceColumn` (quem marcou o
+   * interruptor); ausente, o evento sai como `system`. Inventar um ator
+   * seria pior que não ter: o registro existe para responder "quem mandou".
+   */
+  actorId?: string | null
+}
+
+/**
+ * O envio, e o RASTRO dele.
+ *
+ * O wrapper existe para que nenhum dos oito caminhos de saída escape do
+ * registro — inclusive os `return` de guarda e o `catch`. Até 15/09/2026 o
+ * `reason` era devolvido e ninguém o lia: a chamada é fire-and-forget e o
+ * retorno morria ali. Dezesseis mensagens saíram sem deixar um evento nosso.
+ */
+export async function sendColumnWhatsApp(
+  params: SendColumnParams,
+): Promise<{ ok: boolean; reason?: string }> {
+  const { resultado, msg } = await executarEnvio(params)
+  await registrarEnvio(params, resultado, msg)
+  return resultado
+}
+
+async function executarEnvio(params: SendColumnParams): Promise<{
+  resultado: { ok: boolean; reason?: string }
+  msg: ColumnMessage | null
+}> {
   const admin = createAdminClient()
+  let msg: ColumnMessage | null = null
   try {
-    const msg = await resolveColumnMessage(params)
-    if (!msg) return { ok: false, reason: "no_onboarding" }
-    if (!msg.template) return { ok: false, reason: "no_template" }
-    if (!msg.phone) return { ok: false, reason: "no_phone" }
+    msg = await resolveColumnMessage(params)
+    if (!msg) return { resultado: { ok: false, reason: "no_onboarding" }, msg }
+    if (!msg.template)
+      return { resultado: { ok: false, reason: "no_template" }, msg }
+    if (!msg.phone) return { resultado: { ok: false, reason: "no_phone" }, msg }
 
     const onb = { id: params.onboardingId, org_id: msg.orgId }
     const phone = msg.phone
@@ -237,7 +266,13 @@ export async function sendColumnWhatsApp(params: {
         coluna: msg.columnName,
         faltando: msg.faltando,
       })
-      return { ok: false, reason: `vars_faltando:${msg.faltando.join(",")}` }
+      return {
+        resultado: {
+          ok: false,
+          reason: `vars_faltando:${msg.faltando.join(",")}`,
+        },
+        msg,
+      }
     }
 
     // Canal WhatsApp default da org (primeiro ativo — cloud OU evolution)
@@ -250,16 +285,16 @@ export async function sendColumnWhatsApp(params: {
       .order("created_at", { ascending: true })
       .limit(1)
       .maybeSingle()
-    if (!channel) return { ok: false, reason: "no_channel" }
+    if (!channel) return { resultado: { ok: false, reason: "no_channel" }, msg }
 
     const result = await sendTextViaChannel(channel, phone, body)
     if (result.error?.code === "config_missing") {
-      return { ok: false, reason: "channel_missing_creds" }
+      return { resultado: { ok: false, reason: "channel_missing_creds" }, msg }
     }
 
     if (!result.success) {
       log.error("send failed", { onb: onb.id, err: result.error })
-      return { ok: false, reason: "send_failed" }
+      return { resultado: { ok: false, reason: "send_failed" }, msg }
     }
 
     // Upsert thread + insert message no inbox CRM
@@ -293,9 +328,58 @@ export async function sendColumnWhatsApp(params: {
       })
     }
 
-    return { ok: true }
+    return { resultado: { ok: true }, msg }
   } catch (e) {
     log.error("unexpected", e)
-    return { ok: false, reason: "exception" }
+    return { resultado: { ok: false, reason: "exception" }, msg }
+  }
+}
+
+/** Quantos caracteres do texto ficam no evento. O corpo inteiro vive em
+ *  `crm_messages`; aqui basta reconhecer QUAL mensagem saiu. */
+const PREVIA_NO_EVENTO = 160
+
+/**
+ * O desfecho vira linha em `events` — nos DOIS sentidos.
+ *
+ * `onboarding.whatsapp_sent` ja tinha rotulo no drawer
+ * (`onboarding-drawer.tsx`) e nenhum emissor: a base tinha ZERO linhas dele em
+ * 16/09/2026. A falha nunca teve nem rotulo, e e o caso que mais precisa
+ * aparecer — mensagem que NAO saiu e invisivel por definicao.
+ *
+ * Fail-open: falhar ao registrar nao muda o que ja aconteceu com a mensagem,
+ * e derrubar o envio por causa do rastro seria trocar o problema pelo pior.
+ */
+async function registrarEnvio(
+  params: SendColumnParams,
+  resultado: { ok: boolean; reason?: string },
+  msg: ColumnMessage | null,
+): Promise<void> {
+  // Sem org nao ha como escopar o evento; e o unico caso em que calar e
+  // correto (o onboarding nem foi encontrado).
+  if (!msg?.orgId) return
+  try {
+    const admin = createAdminClient()
+    await admin.from("events").insert({
+      event_type: resultado.ok
+        ? "onboarding.whatsapp_sent"
+        : "onboarding.whatsapp_failed",
+      entity_type: "onboarding",
+      entity_id: params.onboardingId,
+      actor_id: params.actorId ?? null,
+      actor_type: params.actorId ? "user" : "system",
+      payload: {
+        onboarding_id: params.onboardingId,
+        column_id: params.columnId,
+        column_name: msg.columnName,
+        destinatario: msg.clientName,
+        telefone: msg.phone,
+        previa: msg.texto ? msg.texto.slice(0, PREVIA_NO_EVENTO) : null,
+        ...(resultado.ok ? {} : { reason: resultado.reason ?? null }),
+      },
+      metadata: { org_id: msg.orgId },
+    })
+  } catch (e) {
+    log.warn("registro do envio falhou", e)
   }
 }
