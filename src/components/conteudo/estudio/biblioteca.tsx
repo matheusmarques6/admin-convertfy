@@ -15,9 +15,9 @@ import { Icon } from "@/components/ui/icon"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { OpsCard, SectionTitle } from "@/components/dashboard/ops/primitives"
-import { documentoDeEstrutura } from "@/lib/conteudo/documento"
+import { previaDoMeuTemplate } from "@/lib/conteudo/previa-de-template"
 import { getTemplate, ST_TEMPLATES } from "@/lib/conteudo/templates"
-import type { DocStatus, Documento, MeuTemplate, Perfil, PerfilEditavel } from "@/lib/conteudo/types"
+import type { BrandKit, DocStatus, Documento, MeuTemplate, Perfil, PerfilEditavel } from "@/lib/conteudo/types"
 import { ROUTES } from "@/lib/routes"
 import { CtAvatar, CtBadge, CtBtn, CtEmpty, CtSeg, CtSkel, TNUM, inputCls, selectCls } from "../ui"
 import { perfilPorId } from "./use-estudio-data"
@@ -43,6 +43,12 @@ interface Props {
   erro: string | null
   perfis: Perfil[] | null
   meusTemplates: MeuTemplate[]
+  /**
+   * Brand kit do primeiro perfil, só para a PRÉVIA: as identidades de print
+   * desenham o cartão de perfil, e sem kit o card sai com o avatar vazio —
+   * que não é o que criar a partir do template entrega.
+   */
+  brandKit?: BrandKit
   promptsProntos: number
   onAbrir: (id: string, modal?: string) => void
   onNovo: (caminho?: Caminho, perfil?: PerfilEditavel, meuTemplateId?: string) => void
@@ -58,7 +64,7 @@ interface Props {
   referencias?: ReactNode
 }
 
-export function Biblioteca({ docs, erro, perfis, meusTemplates, promptsProntos, onAbrir, onNovo, onCriarTemplate, onSalvarComoTemplate, onExcluir, onExcluirTemplate, onDuplicar, onRenomear, onBrandKit, referencias }: Props) {
+export function Biblioteca({ docs, erro, perfis, meusTemplates, brandKit, promptsProntos, onAbrir, onNovo, onCriarTemplate, onSalvarComoTemplate, onExcluir, onExcluirTemplate, onDuplicar, onRenomear, onBrandKit, referencias }: Props) {
   const [fPerfil, setFPerfil] = useState<string>("todos")
   const [fStatus, setFStatus] = useState<"todos" | DocStatus>("todos")
   const [q, setQ] = useState("")
@@ -76,7 +82,7 @@ export function Biblioteca({ docs, erro, perfis, meusTemplates, promptsProntos, 
     if (nome) await onRenomear(renomeando.id, nome)
   }
 
-  const previas = useMemo(() => new Map(meusTemplates.map((m) => [m.id, documentoDeEstrutura(m.nome, "", m.estrutura, { templateBase: m.templateId })])), [meusTemplates])
+  const previas = useMemo(() => new Map(meusTemplates.map((m) => [m.id, previaDoMeuTemplate(m, perfis?.[0]?.id ?? "", brandKit)])), [meusTemplates, perfis, brandKit])
   const semPerfil = perfis !== null && perfis.length === 0
 
   return (

@@ -11,6 +11,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { useToast } from "@/lib/hooks/use-toast"
 import { getPromptsProntos } from "@/lib/conteudo/data"
 import { comHistorico, documentoDaReferencia, novoUuid } from "@/lib/conteudo/documento"
+import { familiaDe } from "@/lib/conteudo/familias"
 import { estruturaDaReferencia } from "@/lib/conteudo/referencia-para-documento"
 import type { Documento, PerfilEditavel, Referencia } from "@/lib/conteudo/types"
 import { ROUTES } from "@/lib/routes"
@@ -141,7 +142,7 @@ export function EstudioHome() {
     // clicar duas vezes na mesma referência não enche a prateleira.
     if (!meus.some((m) => m.nome === ref.nome)) {
       try {
-        await criarMeuTemplate({ nome: ref.nome, templateId: doc.templateId, estrutura: estruturaDaReferencia(ref.slides), usos: 1 })
+        await criarMeuTemplate({ nome: ref.nome, templateId: doc.templateId, familia: familiaDe(doc), estrutura: estruturaDaReferencia(ref.slides), usos: 1 })
       } catch {
         /* o carrossel já existe; falhar o atalho não pode derrubar o fluxo */
       }
@@ -162,11 +163,11 @@ export function EstudioHome() {
    */
   const salvarComoTemplate = async (e: SalvarTemplateEntrada) => {
     if (e.substituirId) {
-      await atualizarMeuTemplate(e.substituirId, { nome: e.nome, templateId: e.templateId, estrutura: e.estrutura, fidelidade: null })
+      await atualizarMeuTemplate(e.substituirId, { nome: e.nome, templateId: e.templateId, familia: e.familia, estrutura: e.estrutura, fidelidade: null })
       toast({ title: "Template atualizado", description: `"${e.nome}" passou a ter a forma deste carrossel.` })
       return
     }
-    await criarMeuTemplate({ nome: e.nome, templateId: e.templateId, estrutura: e.estrutura, usos: 0 })
+    await criarMeuTemplate({ nome: e.nome, templateId: e.templateId, familia: e.familia, estrutura: e.estrutura, usos: 0 })
     toast({ title: "Template salvo", description: `"${e.nome}" entrou em Meus templates.` })
   }
 
@@ -186,6 +187,7 @@ export function EstudioHome() {
         erro={error?.message ?? null}
         perfis={perfis}
         meusTemplates={meus}
+        brandKit={perfis?.[0] ? kits?.[perfis[0].id] : undefined}
         promptsProntos={getPromptsProntos().length}
         onAbrir={abrir}
         onNovo={(caminho, perfil, meuTemplateId) => setNovo({ caminho: caminho ?? null, perfil, meuTemplateId })}

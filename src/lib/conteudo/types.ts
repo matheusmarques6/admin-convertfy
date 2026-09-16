@@ -287,6 +287,12 @@ export interface MeuTemplate {
   usos: number
   /** Template base usado para materializar (a estrutura detectada). */
   templateId: string
+  /**
+   * Identidade visual com que o template foi salvo. Ausente nos criados
+   * antes da coluna — a prévia cai no que o molde base pressupõe
+   * (`familiaDaPrevia`), nunca na padrão fixa.
+   */
+  familia?: FamiliaVisual
   estrutura: EstruturaDetectada[]
   fidelidade: number | null
   criadoEm: string

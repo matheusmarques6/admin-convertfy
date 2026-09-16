@@ -25,12 +25,6 @@ const FONTES: Array<{ family: string; weight: string; url: string; range?: strin
   { family: "Caveat", weight: "600", url: "/fonts/caveat-600-latin-ext.woff2", range: "U+0100-02BA, U+1E00-1EFF" },
   // Família Post (print de tweet): os três pesos que o formato usa — 400 no
   // @handle e no corpo, 600 no botão, 700 no nome e na linha de destaque.
-  { family: "Poppins", weight: "400", url: "/fonts/poppins-400-latin.woff2" },
-  { family: "Poppins", weight: "400", url: "/fonts/poppins-400-latin-ext.woff2", range: "U+0100-02BA, U+1E00-1EFF" },
-  { family: "Poppins", weight: "600", url: "/fonts/poppins-600-latin.woff2" },
-  { family: "Poppins", weight: "600", url: "/fonts/poppins-600-latin-ext.woff2", range: "U+0100-02BA, U+1E00-1EFF" },
-  { family: "Poppins", weight: "700", url: "/fonts/poppins-700-latin.woff2" },
-  { family: "Poppins", weight: "700", url: "/fonts/poppins-700-latin-ext.woff2", range: "U+0100-02BA, U+1E00-1EFF" },
 ]
 
 let cssFontesPromise: Promise<string> | null = null

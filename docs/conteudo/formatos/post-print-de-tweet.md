@@ -34,10 +34,12 @@ permite conferir a peça contra a referência sem refazer a conta.
 **Cores** (`POST_CORES`): fundo `#0D0D0D` (nunca `#000` — o preto puro
 chapa), texto `#FFFFFF`, `@handle` `#808080`, selo `#1D9BF0`.
 
-**Fonte**: Poppins 400/600/700, self-hosted em `public/fonts` (OFL) e
-declarada em `conteudo-slides.css` **e** na lista da exportação — sem as
-duas, o PNG sai com a sans do sistema e a peça exportada não é a que está
-na tela.
+**Fonte**: a da PLATAFORMA — ver "A fonte não é escolha de gosto" no fim
+deste documento. Inter (self-hosted, variável) na frente da pilha do X
+(`Segoe UI, Roboto, Helvetica, Arial`). Toda fonte tem de estar declarada em
+`conteudo-slides.css` **e** na lista da exportação (`export/render.ts`) —
+sem as duas, o PNG sai com a sans do sistema e a peça exportada não é a que
+está na tela.
 
 ## As três poses
 
@@ -111,10 +113,9 @@ na referência, com a mesma quebra de linha nos dois parágrafos.
 - **A margem lateral é única (88).** Na referência ela varia de slide a
   slide (95, 88, 148, 140 no print) sem regra; margem que muda sem motivo
   é ruído, e a peça fica mais consistente com uma só.
-- **A fonte é uma aproximação.** A referência é uma captura, não um
-  arquivo: Poppins é a geométrica arredondada mais próxima do desenho
-  (x-height alta, círculos geométricos, terminais retos). Trocar é uma
-  linha em `familias.ts` + os `@font-face`.
+- **A fonte é a da plataforma, não a da referência.** A referência é uma
+  captura e o desenho original pode ter sido refeito em qualquer tipo; o que
+  o formato promete é parecer uma captura. Ver a seção final.
 
 ---
 
@@ -125,7 +126,7 @@ outra família (`post-largo`), não um ajuste da primeira.
 
 | item | Post | Post largo |
 |---|---|---|
-| fonte | Poppins (geométrica) | Inter (neutra) |
+| fonte | a mesma (Inter + pilha do X) | a mesma |
 | margem lateral | 88 | **72** |
 | avatar ⌀ | 104–134 | 114 |
 | avatar → nome | 35 | **18** |
@@ -136,11 +137,10 @@ outra família (`post-largo`), não um ajuste da primeira.
 | avatar | liso | **halo claro** |
 | subida óptica | 3% | **0,8%** |
 
-**A fonte do largo é Inter, não a original.** A referência foi capturada num
-Windows, onde a stack do aplicativo cai em Segoe UI. Inter é a grotesca
-livre mais próxima em proporção, já é self-hosted, e — o que decide — a
-exportação precisa de fonte determinística: fonte de sistema faria o PNG
-mudar de máquina para máquina.
+**As duas famílias usam a MESMA fonte, e isso é o certo**: elas simulam a
+mesma interface. O que as separa é a métrica — margem, avatar, entrelinha,
+colagem —, não o tipo. A referência do largo foi capturada num Windows, onde
+a pilha do X cai justamente em Segoe UI. Ver a seção final.
 
 ## A colagem de duas fotos
 
@@ -175,3 +175,36 @@ largura (ref idem).
 
 O único ajuste que o render pediu foi a **subida óptica**: 1,5% deixava o
 bloco 1% acima do da referência; medida nos cinco slides, ela é 0,8%.
+
+---
+
+# A fonte não é escolha de gosto
+
+O formato promete parecer uma **captura de tela**. Então a pergunta não é
+"qual fonte fica bonita", é "qual fonte a plataforma usa" — e ela tem
+resposta pública:
+
+- O **X** usa a **Chirp** (Grilli Type, 2021), grotesca de tela com x-height
+  alta, e declara esta pilha de recuo: `Segoe UI, Roboto, Helvetica, Arial,
+  sans-serif`. Chirp é **proprietária**: não é vendida nem licenciada para
+  embarcar.
+- Nos aplicativos nativos quem aparece é a fonte do sistema — **SF Pro** no
+  iOS, **Roboto** no Android. Todas grotescas.
+- O substituto livre apontado nas comparações de Chirp é a **Inter** (e, em
+  segundo, DM Sans): desenhada para tela, mesma família de proporções.
+
+**O primeiro desenho desta família usava Poppins, e estava errado.** Poppins
+é geométrica, derivada de Futura: `a` de um andar só, bojos circulares,
+terminais retos. Nenhuma interface social usa geométrica no corpo do post — e
+esse `a` de um andar é justamente o detalhe que faz a peça ler como card de
+Canva, o "cara de feito com IA". A troca é do TIPO, não das medidas: as
+medidas continuam as do print.
+
+Inter vai na FRENTE da pilha da plataforma (e não depois) porque a
+exportação precisa de fonte determinística: com fonte de sistema, o mesmo
+carrossel exportado em duas máquinas sai diferente.
+
+**O que isso NÃO resolve**: Chirp tem detalhes próprios (pontuação
+arredondada, letras levemente irregulares) que nenhuma substituta reproduz.
+A peça fica no gênero certo, não idêntica ao pixel — e isso é um limite da
+licença, não do desenho.

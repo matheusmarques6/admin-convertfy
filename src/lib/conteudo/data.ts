@@ -144,7 +144,7 @@ export async function getMeusTemplates(): Promise<MeuTemplate[]> {
   return r.templates
 }
 
-export async function criarMeuTemplate(t: { nome: string; templateId: string; estrutura: MeuTemplate["estrutura"]; fidelidade?: number | null; usos?: number }): Promise<MeuTemplate> {
+export async function criarMeuTemplate(t: { nome: string; templateId: string; familia?: MeuTemplate["familia"]; estrutura: MeuTemplate["estrutura"]; fidelidade?: number | null; usos?: number }): Promise<MeuTemplate> {
   const r = await api<{ template: MeuTemplate }>(`/api/conteudo/templates`, { method: "POST", body: JSON.stringify(t) })
   return r.template
 }
@@ -152,7 +152,7 @@ export async function criarMeuTemplate(t: { nome: string; templateId: string; es
 /** Substitui a FORMA de um template já cadastrado (nome, sequência, base). */
 export async function atualizarMeuTemplate(
   id: string,
-  t: { nome?: string; templateId?: string; estrutura?: MeuTemplate["estrutura"]; fidelidade?: number | null },
+  t: { nome?: string; templateId?: string; familia?: MeuTemplate["familia"]; estrutura?: MeuTemplate["estrutura"]; fidelidade?: number | null },
 ): Promise<MeuTemplate> {
   const r = await api<{ template: MeuTemplate }>(`/api/conteudo/templates/${id}`, { method: "PATCH", body: JSON.stringify(t) })
   return r.template

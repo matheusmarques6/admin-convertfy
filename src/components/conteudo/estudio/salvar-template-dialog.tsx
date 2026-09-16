@@ -27,12 +27,19 @@ import { Check, LayoutTemplate, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Icon } from "@/components/ui/icon"
 import { estruturaDoDocumento, resumoDoTemplate, templateComMesmoNome } from "@/lib/conteudo/estrutura-do-documento"
-import type { Documento, MeuTemplate } from "@/lib/conteudo/types"
+import { FAMILIAS, familiaDe } from "@/lib/conteudo/familias"
+import type { Documento, FamiliaVisual, MeuTemplate } from "@/lib/conteudo/types"
 import { CtLabel, TNUM, inputCls } from "../ui"
 
 export interface SalvarTemplateEntrada {
   nome: string
   templateId: string
+  /**
+   * Identidade visual da peça. Vai junto porque é ela que a prévia do
+   * template desenha: sem gravá-la, a prateleira mostraria a forma certa na
+   * identidade errada — e o clique entregaria uma terceira coisa.
+   */
+  familia: FamiliaVisual
   estrutura: ReturnType<typeof estruturaDoDocumento>
   /** Template existente com o mesmo nome — o operador escolheu substituir. */
   substituirId?: string
@@ -53,6 +60,7 @@ export function SalvarTemplateDialog({ doc, meusTemplates, onSalvar, onClose }: 
   const estrutura = useMemo(() => estruturaDoDocumento(doc), [doc])
   const resumo = useMemo(() => resumoDoTemplate(doc), [doc])
   const conflito = useMemo(() => templateComMesmoNome(nome, meusTemplates), [nome, meusTemplates])
+  const familia = familiaDe(doc)
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && !salvando && onClose()
@@ -67,7 +75,7 @@ export function SalvarTemplateDialog({ doc, meusTemplates, onSalvar, onClose }: 
     setSalvando(true)
     setErro(null)
     try {
-      await onSalvar({ nome: nome.trim(), templateId: doc.templateId, estrutura, substituirId: conflito?.id })
+      await onSalvar({ nome: nome.trim(), templateId: doc.templateId, familia, estrutura, substituirId: conflito?.id })
       onClose()
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível salvar o template.")
@@ -108,6 +116,7 @@ export function SalvarTemplateDialog({ doc, meusTemplates, onSalvar, onClose }: 
         <div className="mt-3.5 rounded-[9px] border border-[var(--ops-border)] bg-[var(--ops-tile)] px-3 py-2.5 text-[11.5px] text-[var(--ops-sec)]" style={TNUM}>
           {resumo.frames} {resumo.frames === 1 ? "slide" : "slides"} · {resumo.comFoto} com foto
           {resumo.ocultos > 0 ? ` · ${resumo.ocultos} slide${resumo.ocultos > 1 ? "s" : ""} oculto${resumo.ocultos > 1 ? "s" : ""} fora` : ""}
+          <span className="mt-1 block text-[10.5px] text-[var(--ops-mut)]">Identidade {FAMILIAS[familia].nome} — é ela que a prévia do template mostra.</span>
         </div>
 
         {estrutura.length < 3 && <div className="mt-2.5 text-[11.5px] text-[var(--ops-warn)]">Um template precisa de pelo menos 3 slides visíveis.</div>}

@@ -16,6 +16,7 @@ import { CT_MOLDE_COR, brandKitPadrao } from "@/lib/conteudo/brand"
 import { editorialVazio, headlineEscolhida, papeisDosFrames, podeGerarCopy } from "@/lib/conteudo/editorial"
 import { getPromptsProntos } from "@/lib/conteudo/data"
 import { ajustarQuantidadeFrames, comHistorico, documentoDeEstrutura, novoDocumento } from "@/lib/conteudo/documento"
+import { familiaDaPrevia, previaDoMeuTemplate } from "@/lib/conteudo/previa-de-template"
 import { normalizarEstrutura } from "@/lib/conteudo/estrutura-do-documento"
 import { tipoDesenhaImagem } from "@/lib/conteudo/referencia-para-documento"
 import { FAMILIAS, FAMILIA_OPCOES, aplicarFamilia } from "@/lib/conteudo/familias"
@@ -36,7 +37,7 @@ export interface CriacaoResultado {
   /** Referências visuais anexadas no caminho IA (vão para o chat do editor). */
   anexos?: string[]
   /** Também salvar como template reutilizável (caminho inspiração). */
-  salvarTemplate?: { nome: string; templateId: string; estrutura: EstruturaDetectada[]; fidelidade?: number | null }
+  salvarTemplate?: { nome: string; templateId: string; familia: FamiliaVisual; estrutura: EstruturaDetectada[]; fidelidade?: number | null }
   /** Template do time usado (incrementa usos). */
   meuTemplateUsado?: string
 }
@@ -182,10 +183,10 @@ export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, meuTemplat
 
   const docPrevia = useMemo(() => {
     if (!estrutura.length) return null
-    const d = documentoDeEstrutura(nome.trim() || "Prévia com a identidade da marca", perfil, estrutura, { templateBase: inspiracao?.templateSugerido, brandKit: kitDoPerfil })
+    const d = aplicarFamilia(documentoDeEstrutura(nome.trim() || "Prévia com a identidade da marca", perfil, estrutura, { templateBase: inspiracao?.templateSugerido, brandKit: kitDoPerfil }), familia)
     d.frames[0].textos.titulo = nome.trim() || "Sua afirmação forte aqui"
     return d
-  }, [estrutura, nome, perfil, inspiracao, kitDoPerfil])
+  }, [estrutura, nome, perfil, inspiracao, kitDoPerfil, familia])
 
   // ── criação ──
   const criar = async () => {
@@ -201,7 +202,7 @@ export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, meuTemplat
         onCriado({
           doc: comHistorico(d, `Template criado a partir de inspiração (fidelidade ${Math.round(inspiracao?.fidelidade ?? 0)}%)`),
           caminho: "template-review",
-          salvarTemplate: { nome: nomeTpl.trim(), templateId: inspiracao?.templateSugerido ?? "molde-benchmark", estrutura, fidelidade: inspiracao?.fidelidade ?? null },
+          salvarTemplate: { nome: nomeTpl.trim(), templateId: inspiracao?.templateSugerido ?? "molde-benchmark", familia, estrutura, fidelidade: inspiracao?.fidelidade ?? null },
         })
         return
       }
@@ -273,7 +274,7 @@ export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, meuTemplat
         onCriado({
           doc: d,
           caminho: "inspiracao",
-          salvarTemplate: salvarComoTemplate ? { nome: nome.trim(), templateId: inspiracao?.templateSugerido ?? "molde-benchmark", estrutura, fidelidade: inspiracao?.fidelidade ?? null } : undefined,
+          salvarTemplate: salvarComoTemplate ? { nome: nome.trim(), templateId: inspiracao?.templateSugerido ?? "molde-benchmark", familia, estrutura, fidelidade: inspiracao?.fidelidade ?? null } : undefined,
         })
       }
     } catch (e) {
@@ -372,7 +373,7 @@ export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, meuTemplat
               </div>
               <div className="grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-3">
                 {meusTemplates.map((m) => {
-                  const previa = documentoDeEstrutura(m.nome, perfil, m.estrutura, { templateBase: m.templateId, brandKit: kitDoPerfil })
+                  const previa = previaDoMeuTemplate(m, perfil, kitDoPerfil)
                   const on = meuTpl === m.id
                   return (
                     <button
@@ -381,7 +382,13 @@ export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, meuTemplat
                       aria-pressed={on}
                       onClick={() => {
                         setMeuTpl(on ? null : m.id)
-                        if (!on) setTpl(null)
+                        if (!on) {
+                          setTpl(null)
+                          // A identidade do template do time também troca o
+                          // seletor: a prévia ao lado mostra a peça preta e
+                          // criar na paleta azul entregaria outra coisa.
+                          setFamilia(familiaDaPrevia(m))
+                        }
                       }}
                       className={cn("relative flex flex-col gap-2.5 rounded-[10px] border bg-[var(--ops-card)] p-3 text-left transition-colors", on ? "border-[var(--ops-accent)] shadow-[0_0_0_2px_var(--ops-track)]" : "border-[var(--ops-border)] hover:border-[var(--ops-mut)]")}
                     >

@@ -15,6 +15,7 @@ import { Icon } from "@/components/ui/icon"
 import { useToast } from "@/lib/hooks/use-toast"
 import { getDocumento } from "@/lib/conteudo/data"
 import { estruturaDoDocumento } from "@/lib/conteudo/estrutura-do-documento"
+import { familiaDe } from "@/lib/conteudo/familias"
 import type { Documento } from "@/lib/conteudo/types"
 import { ROUTES } from "@/lib/routes"
 import { CtEmpty, CtSkel } from "../ui"
@@ -106,7 +107,7 @@ export function EditorPage({ id }: { id: string }) {
   // conversão era feita aqui, à mão, e gravava as duas coisas erradas.
   const salvarTemplate = async (d: Documento) => {
     try {
-      await criarMeuTemplate({ nome: d.nome, templateId: d.templateId, estrutura: estruturaDoDocumento(d), usos: 0 })
+      await criarMeuTemplate({ nome: d.nome, templateId: d.templateId, familia: familiaDe(d), estrutura: estruturaDoDocumento(d), usos: 0 })
       toast({ title: "Template salvo", description: `"${d.nome}" entrou em Meus templates.` })
       router.push(ROUTES.ADMIN.CONTEUDO.ESTUDIO)
     } catch (e) {
@@ -116,11 +117,11 @@ export function EditorPage({ id }: { id: string }) {
 
   const salvarComoTemplate = async (e: SalvarTemplateEntrada) => {
     if (e.substituirId) {
-      await atualizarMeuTemplate(e.substituirId, { nome: e.nome, templateId: e.templateId, estrutura: e.estrutura, fidelidade: null })
+      await atualizarMeuTemplate(e.substituirId, { nome: e.nome, templateId: e.templateId, familia: e.familia, estrutura: e.estrutura, fidelidade: null })
       toast({ title: "Template atualizado", description: `"${e.nome}" passou a ter a forma deste carrossel.` })
       return
     }
-    await criarMeuTemplate({ nome: e.nome, templateId: e.templateId, estrutura: e.estrutura, usos: 0 })
+    await criarMeuTemplate({ nome: e.nome, templateId: e.templateId, familia: e.familia, estrutura: e.estrutura, usos: 0 })
     toast({ title: "Template salvo", description: `"${e.nome}" entrou em Meus templates.` })
   }
 

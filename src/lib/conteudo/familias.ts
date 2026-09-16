@@ -99,16 +99,35 @@ const FONTE_SERIF = "Georgia, 'Times New Roman', serif"
 const FONTE_SANS = "'Inter Slides', Inter, -apple-system, BlinkMacSystemFont, sans-serif"
 const FONTE_SERIF_DISPLAY = "'Instrument Serif', Georgia, 'Times New Roman', serif"
 const FONTE_MANUSCRITA = "'Caveat', 'Segoe Script', cursive"
-/** Geométrica arredondada do print de tweet (self-hosted, OFL). */
-const FONTE_POST = "'Poppins', 'Inter Slides', Inter, -apple-system, sans-serif"
 /**
- * Fonte do formato largo: neutra, como a captura crua do aplicativo. A
- * referência foi tirada num Windows (Segoe UI); Inter é a grotesca livre
- * mais próxima em proporção e já está self-hosted — e a exportação
- * precisa de fonte determinística, senão o PNG muda de máquina para
+ * A fonte de quem SIMULA um post é a da plataforma — pesquisada, não
+ * escolhida por gosto.
+ *
+ * O X usa a **Chirp** (Grilli Type, 2021) e cai, quando ela não carrega,
+ * nesta pilha exata: Segoe UI, Roboto, Helvetica, Arial, sans-serif. Chirp é
+ * proprietária e não pode ser embarcada; **Inter** é o substituto livre
+ * apontado em toda comparação séria — grotesca de tela, x-height alta,
+ * proporções muito próximas. É também o que os aplicativos nativos entregam
+ * na prática (SF Pro no iOS, Roboto no Android), todos grotescos.
+ *
+ * O primeiro desenho desta família usava Poppins, e isso era o defeito que
+ * o usuário nomeou como "cara de feito com IA": Poppins é GEOMÉTRICA
+ * (derivada de Futura) — `a` de um andar só, bojos circulares. Nenhuma
+ * interface social usa geométrica no corpo do post, e esse `a` é o detalhe
+ * que denuncia a peça como card de Canva em vez de captura de tela.
+ *
+ * Inter fica antes da pilha da plataforma porque a EXPORTAÇÃO precisa de
+ * fonte determinística: com fonte de sistema o PNG mudaria de máquina para
  * máquina.
  */
-const FONTE_POST_LARGO = "'Inter Slides', Inter, 'Segoe UI', -apple-system, sans-serif"
+const FONTE_POST = "'Inter Slides', Inter, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+/**
+ * O formato largo usa a MESMA pilha, e isso é o certo: os dois simulam a
+ * mesma interface, e o que os separa é a métrica (margem, avatar,
+ * entrelinha, colagem), não o tipo. A referência do largo foi capturada num
+ * Windows, onde a pilha do X cai justamente em Segoe UI.
+ */
+const FONTE_POST_LARGO = FONTE_POST
 
 /**
  * A família Alternado inteira sai de UMA cor: é o que permite a mesma peça
