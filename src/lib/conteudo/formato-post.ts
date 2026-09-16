@@ -68,6 +68,21 @@ export interface MedidasPost {
   gapImagem: number
   /** Distância do topo do slide até o avatar, na pose de topo. */
   topo: number
+  /**
+   * Margem INFERIOR na pose de topo. Bem menor que a de cima: na
+   * referência a captura sangra até ~1% da borda, e é esse quase-corte
+   * que faz o slide parecer um print e não um card com moldura.
+   */
+  rodape: number
+  /** Raio dos cantos da captura. */
+  raioImagem: number
+  /** Vão entre as duas fotos da colagem (0 = sem colagem). */
+  gapGaleria: number
+  /**
+   * Halo claro em volta do avatar, em px da base (0 = sem halo). A
+   * referência do formato largo tem esse brilho; o desenhado, não.
+   */
+  halo: number
 }
 
 /** O cabeçalho do slide que carrega o print é maior — é o da referência. */
@@ -84,6 +99,10 @@ export const POST_GRANDE: MedidasPost = {
   gapTitulo: doPrint(41),
   gapImagem: doPrint(40),
   topo: doPrint(30),
+  rodape: doPrint(17),
+  raioImagem: doPrint(10),
+  gapGaleria: 0,
+  halo: 0,
 }
 
 /** Slides só de texto: o mesmo desenho, um passo menor. */
@@ -109,6 +128,62 @@ export const POST_GANCHO: MedidasPost = {
   ...POST_PADRAO,
   texto: doPrint(54),
   gapCabecalho: doPrint(110),
+}
+
+// ── Formato LARGO (a segunda referência) ────────────────────────────────
+//
+// Mesmo gênero, outro desenho: margem lateral bem menor (o texto ocupa
+// quase a largura toda), entrelinha mais aberta, avatar com halo e uma
+// COLAGEM de duas fotos no lugar da captura única. A fonte é neutra, não
+// geométrica — a peça parece a captura crua do aplicativo, não uma arte.
+//
+// | item                     | print | base 1080 |
+// |--------------------------|-------|-----------|
+// | margem lateral           |    78 |        72 |
+// | avatar ⌀                 |   124 |       114 |
+// | espaço avatar → nome      |    20 |        18 |
+// | nome e @handle            |    54 |        50 |
+// | corpo do texto            |    46 |        42 |
+// | entrelinha                |     — |      1,37 |
+// | cabeçalho → texto         |    60 |        55 |
+// | vão entre as duas fotos   |     8 |         7 |
+// | raio da foto              |    16 |        15 |
+
+export const POST_LARGO: MedidasPost = {
+  margem: doPrint(78),
+  margemImagem: doPrint(78),
+  avatar: doPrint(124),
+  gapAvatar: doPrint(20),
+  nome: doPrint(54),
+  selo: doPrint(34),
+  gapCabecalho: doPrint(60),
+  texto: doPrint(46),
+  entrelinha: 1.37,
+  gapTitulo: doPrint(44),
+  gapImagem: doPrint(56),
+  topo: doPrint(112),
+  rodape: doPrint(78),
+  raioImagem: doPrint(16),
+  gapGaleria: doPrint(8),
+  halo: doPrint(46),
+}
+
+/** O gancho do formato largo: a mesma cabeça, a frase um passo maior. */
+export const POST_LARGO_GANCHO: MedidasPost = {
+  ...POST_LARGO,
+  texto: doPrint(56),
+  gapCabecalho: doPrint(96),
+}
+
+/**
+ * Os dois desenhos do mesmo gênero. A família aponta para um deles; o
+ * renderer não escolhe nada sozinho.
+ */
+export type EstiloPost = "post" | "post-largo"
+
+const TABELAS: Record<EstiloPost, { topo: MedidasPost; centro: MedidasPost; gancho: MedidasPost }> = {
+  post: { topo: POST_GRANDE, centro: POST_PADRAO, gancho: POST_GANCHO },
+  "post-largo": { topo: POST_LARGO, centro: POST_LARGO, gancho: POST_LARGO_GANCHO },
 }
 
 /** Cores do formato — fundo quase preto, nunca #000 (o preto puro chapa). */
@@ -143,9 +218,10 @@ export function posePost(temImagem: boolean, variante: VarianteLayout | undefine
  * O tipo vence a pose porque a capa é o único slide com PAPEL declarado
  * no formato — os demais são o mesmo cartão, com ou sem print.
  */
-export function medidasPost(pose: PosePost, tipo?: FrameTipo): MedidasPost {
-  if (tipo === "capa") return POST_GANCHO
-  return pose === "topo" ? POST_GRANDE : POST_PADRAO
+export function medidasPost(pose: PosePost, tipo?: FrameTipo, estilo: EstiloPost = "post"): MedidasPost {
+  const t = TABELAS[estilo] ?? TABELAS.post
+  if (tipo === "capa") return t.gancho
+  return pose === "topo" ? t.topo : t.centro
 }
 
 /**
@@ -155,6 +231,18 @@ export function medidasPost(pose: PosePost, tipo?: FrameTipo): MedidasPost {
  * centro do slide — é o centro ÓPTICO, e sem ele a peça parece afundada.
  */
 export const SUBIDA_OPTICA = 0.03
+
+/**
+ * No formato largo o bloco fica praticamente no centro geométrico: medido
+ * nos cinco slides da referência, o centro do bloco fica a 0,8% acima do
+ * centro do slide, contra 3% no desenhado. Subir mais deixa o bloco alto
+ * num texto de oito linhas.
+ */
+export const SUBIDA_OPTICA_LARGO = 0.008
+
+export function subidaOptica(estilo: EstiloPost): number {
+  return estilo === "post-largo" ? SUBIDA_OPTICA_LARGO : SUBIDA_OPTICA
+}
 
 /**
  * Limites de texto do formato.

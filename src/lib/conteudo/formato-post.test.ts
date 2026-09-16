@@ -3,7 +3,12 @@ import {
   FATOR_DO_PRINT,
   POST_GANCHO,
   POST_GRANDE,
+  POST_LARGO,
+  POST_LARGO_GANCHO,
   POST_PADRAO,
+  SUBIDA_OPTICA,
+  SUBIDA_OPTICA_LARGO,
+  subidaOptica,
   camposPost,
   doPrint,
   limitePost,
@@ -109,5 +114,52 @@ describe("família Post", () => {
     const volta = aplicarFamilia(aplicarFamilia(base, "post"), "padrao")
     expect(volta.fundoPorFrame).toEqual(base.fundoPorFrame)
     expect(volta.cores).toEqual(base.cores)
+  })
+})
+
+describe("formato largo (a segunda referência)", () => {
+  it("o texto ocupa mais largura: a margem é menor que a do desenhado", () => {
+    expect(POST_LARGO.margem).toBeLessThan(POST_GRANDE.margem)
+    // E a foto acompanha o texto, em vez de ficar recuada como no outro.
+    expect(POST_LARGO.margemImagem).toBe(POST_LARGO.margem)
+  })
+
+  it("a entrelinha é mais aberta e o avatar tem halo", () => {
+    expect(POST_LARGO.entrelinha).toBeGreaterThan(POST_GRANDE.entrelinha)
+    expect(POST_LARGO.halo).toBeGreaterThan(0)
+    expect(POST_GRANDE.halo).toBe(0)
+  })
+
+  it("só o largo desenha a colagem de duas fotos", () => {
+    expect(POST_LARGO.gapGaleria).toBeGreaterThan(0)
+    expect(POST_GRANDE.gapGaleria).toBe(0)
+    expect(POST_PADRAO.gapGaleria).toBe(0)
+  })
+
+  it("medidasPost respeita o estilo pedido", () => {
+    expect(medidasPost("centro", "texto", "post-largo")).toBe(POST_LARGO)
+    expect(medidasPost("topo", "texto", "post-largo")).toBe(POST_LARGO)
+    expect(medidasPost("centro", "capa", "post-largo")).toBe(POST_LARGO_GANCHO)
+    // Sem estilo declarado continua o desenhado — nenhuma peça antiga muda.
+    expect(medidasPost("centro", "texto")).toBe(POST_PADRAO)
+  })
+
+  it("a captura sangra até quase a borda de baixo", () => {
+    expect(POST_GRANDE.rodape).toBeLessThan(POST_GRANDE.topo)
+  })
+
+  it("o bloco do largo fica mais perto do centro geométrico", () => {
+    expect(subidaOptica("post-largo")).toBe(SUBIDA_OPTICA_LARGO)
+    expect(subidaOptica("post")).toBe(SUBIDA_OPTICA)
+    expect(SUBIDA_OPTICA_LARGO).toBeLessThan(SUBIDA_OPTICA)
+  })
+
+  it("a família aponta para o estilo e continua sendo cartão de perfil", () => {
+    const t = FAMILIAS["post-largo"].traco
+    expect(t.cartaoPerfil).toBe(true)
+    expect(t.estiloPost).toBe("post-largo")
+    expect(FAMILIAS.post.traco.estiloPost).toBe("post")
+    // As duas famílias do gênero têm o mesmo preto.
+    expect(FAMILIAS["post-largo"].fundoClaro).toBe(FAMILIAS.post.fundoClaro)
   })
 })

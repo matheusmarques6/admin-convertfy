@@ -19,7 +19,7 @@
 import type { CSSProperties, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react"
 import { SLIDE, clarear, fundoEscuro, gradienteCss, hex6 } from "@/lib/conteudo/brand"
 import { familiaDe, tracoDe } from "@/lib/conteudo/familias"
-import { POST_CORES, SUBIDA_OPTICA, medidasPost, posePost } from "@/lib/conteudo/formato-post"
+import { POST_CORES, medidasPost, posePost, subidaOptica } from "@/lib/conteudo/formato-post"
 import { fitFactor, limiteDe } from "@/lib/conteudo/limites"
 import { partesDestacadas, textoLimpo } from "@/lib/conteudo/rich"
 import type { Campo, DocFrame, Documento, EstiloTexto, FrameTipo } from "@/lib/conteudo/types"
@@ -36,6 +36,8 @@ export interface SelTexto {
 export interface SelImagem {
   frameId: string
   vazio?: boolean
+  /** Qual foto da colagem (1 = a de sempre). Só o formato largo tem 2. */
+  slot?: 1 | 2
 }
 
 export interface FrameProps {
@@ -359,7 +361,22 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
       {!oc.avatar &&
         (bk.avatar ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={bk.avatar} alt="" crossOrigin="anonymous" style={{ width: S(m.avatar), height: S(m.avatar), borderRadius: "50%", objectFit: "cover", flexShrink: 0, display: "block" }} />
+          <img
+            src={bk.avatar}
+            alt=""
+            crossOrigin="anonymous"
+            style={{
+              width: S(m.avatar),
+              height: S(m.avatar),
+              borderRadius: "50%",
+              objectFit: "cover",
+              flexShrink: 0,
+              display: "block",
+              // Halo claro do formato largo: é o que faz a foto "acender"
+              // sobre o preto, como na referência.
+              ...(m.halo ? { boxShadow: `0 0 ${S(m.halo)}px rgba(255,255,255,0.16)` } : {}),
+            }}
+          />
         ) : (
           <span
             style={{
@@ -533,7 +550,12 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
     // medidas são as da referência, convertidas em `formato-post.ts`.
     const comImagem = Boolean(img) || f.slotsImagem > 0
     const pose = posePost(comImagem, f.variante)
-    const m = medidasPost(pose, f.tipo)
+    const m = medidasPost(pose, f.tipo, tr.estiloPost)
+    const img2 = f.imagens.slot2
+    // Colagem: só o formato que a declara (`gapGaleria`) desenha a segunda
+    // foto. Fora dele ela fica guardada sem aparecer — trocar de
+    // identidade não pode apagar o que alguém enviou.
+    const galeria = m.gapGaleria > 0 && Boolean(img2)
     const temTitulo = (f.textos.titulo ?? "").trim().length > 0
     body = (
       <div
@@ -542,8 +564,8 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
           left: S(m.margem),
           right: S(m.margem),
           ...(pose === "topo"
-            ? { top: S(off + m.topo), bottom: S(off + m.topo) }
-            : { top: "50%", transform: `translateY(calc(-50% - ${S(H * SUBIDA_OPTICA)}px))` }),
+            ? { top: S(off + m.topo), bottom: S(off + m.rodape) }
+            : { top: "50%", transform: `translateY(calc(-50% - ${S(H * subidaOptica(tr.estiloPost ?? "post"))}px))` }),
           display: "flex",
           flexDirection: "column",
         }}
@@ -554,11 +576,31 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
           {T("corpo", { fontFamily: tr.fonteCorpo, fontWeight: 400, fontSize: m.texto, color: POST_CORES.texto, lineHeight: m.entrelinha, marginTop: temTitulo ? S(m.gapTitulo) : 0 })}
         </div>
         {comImagem && (
-          // A imagem tem margem lateral PRÓPRIA, maior que a do texto — é
-          // assim na referência, e é o recuo que faz o print parecer um
-          // anexo do post em vez de o fundo do slide.
-          <div style={{ flex: 1, position: "relative", minHeight: S(300), marginTop: S(m.gapImagem), marginLeft: S(m.margemImagem - m.margem), marginRight: S(m.margemImagem - m.margem) }}>
-            {imgSlot({ inset: 0, borderRadius: S(tr.raio) })}
+          // A imagem tem margem lateral PRÓPRIA — no desenhado ela é maior
+          // que a do texto, e é o recuo que faz o print parecer um anexo
+          // do post em vez de o fundo do slide.
+          <div style={{ flex: 1, display: "flex", gap: S(m.gapGaleria), minHeight: S(300), marginTop: S(m.gapImagem), marginLeft: S(m.margemImagem - m.margem), marginRight: S(m.margemImagem - m.margem) }}>
+            <div style={{ flex: 1, position: "relative" }}>{imgSlot({ inset: 0, borderRadius: S(m.raioImagem) })}</div>
+            {galeria && img2 && (
+              <div style={{ flex: 1, position: "relative", overflow: "hidden", borderRadius: S(m.raioImagem) }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={img2.url}
+                  alt=""
+                  crossOrigin="anonymous"
+                  onClick={interactive ? (ev) => { ev.stopPropagation(); onSelImg?.({ frameId: f.frameId, slot: 2 }) } : undefined}
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
+                    display: "block",
+                    cursor: interactive ? "pointer" : "default",
+                    transform: `translate(${S(img2.x)}px, ${S(img2.y)}px) scale(${img2.zoom / 100})`,
+                    outline: imgSel && imgSel.frameId === f.frameId && imgSel.slot === 2 ? `${Math.max(1, S(3))}px dashed ${SLIDE.selecao}` : "none",
+                  }}
+                />
+              </div>
+            )}
           </div>
         )}
         {f.tipo === "cta" && doc.cta.mostrar && (f.textos.botao || doc.cta.texto) && (

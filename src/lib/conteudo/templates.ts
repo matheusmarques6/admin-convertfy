@@ -122,6 +122,21 @@ export const ST_TEMPLATES: Template[] = [
     ],
   },
   {
+    id: "molde-historia",
+    nome: "História em posts",
+    etapaFunil: "topo",
+    descricao: "A narrativa em capítulos curtos, um por slide, abrindo com a colagem de fotos. Use com a identidade Post largo.",
+    cor: "#111111",
+    familia: "post-largo",
+    frames: [
+      // O primeiro slide traz a prova visual (a colagem) e o começo da
+      // história; os capítulos seguintes são só texto, como na referência.
+      fr("f1", "texto", "Abertura", 1, TC),
+      ...[2, 3, 4, 5].map((i) => fr(`f${i}`, "texto", `Capítulo ${i - 1}`, 0, TC)),
+      fr("f6", "cta", "Chamada", 0, CTA),
+    ],
+  },
+  {
     id: "molde-bastidor",
     nome: "Bastidor",
     etapaFunil: "fundo",
@@ -169,6 +184,7 @@ export const ST_MOLDE_KEY: Record<string, MoldeKey> = {
   "Lista prática": "Lista",
   Bastidor: "Bastidor",
   "Print de post": "Post",
+  "História em posts": "Post",
 }
 
 export function moldeKeyDoTemplate(t: Template): MoldeKey {

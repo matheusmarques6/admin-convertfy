@@ -7299,6 +7299,44 @@ De passagem, `MOLDE_KEYS` virou lista ÚNICA em `types.ts`: três telas
 repetiam o array à mão, então acrescentar um molde acertava o tipo e
 deixava os filtros do dashboard para trás, em silêncio.
 
+### O segundo desenho: "Post largo" (16/09)
+
+A segunda referência é o mesmo GÊNERO com outro desenho, e a diferença é
+grande demais para ser ajuste da primeira: margem lateral 88 → **72** (o
+texto ocupa quase a largura toda), entrelinha 1,28 → **1,37**, avatar
+colado ao nome (35 → **18**), halo claro em volta da foto, a imagem
+acompanhando a margem do texto em vez de recuada, e uma **colagem de duas
+fotos** no lugar da captura única. Virou a família `post-largo` + o molde
+`molde-historia`; as medidas convivem em `TABELAS`, e `medidasPost(pose,
+tipo, estilo)` escolhe — sem estilo declarado continua o desenhado, então
+nenhuma peça antiga muda.
+
+**A fonte é Inter, não a original.** A referência foi capturada num
+Windows (a stack do app cai em Segoe UI); Inter é a grotesca livre mais
+próxima em proporção, já é self-hosted, e a exportação precisa de fonte
+DETERMINÍSTICA — fonte de sistema faria o PNG mudar de máquina para
+máquina.
+
+**`DocFrame.imagens.slot2`** (aditivo): só o formato que declara
+`gapGaleria > 0` desenha a segunda foto; nas outras identidades ela fica
+**guardada sem aparecer** — trocar de identidade não pode apagar o que
+alguém enviou. O painel Mídia ganhou o alternador 1ª|2ª (que troca o
+destino de upload, banco e IA) e o `ImageFloat` passou a operar na foto
+SELECIONADA (`imgSel.slot`): ajustar sempre a primeira deixaria a segunda
+sem enquadramento, e foto sem enquadrar sai errada no export sem nada
+avisar.
+
+**Verificado renderizando**: as quebras de linha saíram IDÊNTICAS às da
+referência nos dois slides longos — é a prova mais forte de que fonte,
+corpo e margem batem. Posições medidas: avatar 6,7%–17,0% (ref
+7,5%–18,1%), texto começando em 22,5% (ref 21,2%), colagem de 58,5% a
+94,5% da altura (ref 57,8%–94,7%). O único ajuste que o render pediu foi a
+subida óptica: 1,5% deixava o bloco alto; medida nos cinco slides, é
+**0,8%** (contra 3% no desenhado). E, revisando o primeiro formato com uma
+imagem clara no slot, apareceu que a captura parava a 2,1% da borda
+inferior contra ~1,2% da referência — daí `rodape` separado do `topo`: é o
+quase-corte que faz o slide parecer um print, não um card com moldura.
+
 ---
 
 *Última atualização: Setembro 2026*

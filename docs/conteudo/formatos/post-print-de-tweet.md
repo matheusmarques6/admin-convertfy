@@ -115,3 +115,63 @@ na referência, com a mesma quebra de linha nos dois parágrafos.
   arquivo: Poppins é a geométrica arredondada mais próxima do desenho
   (x-height alta, círculos geométricos, terminais retos). Trocar é uma
   linha em `familias.ts` + os `@font-face`.
+
+---
+
+# O segundo desenho: "Post largo"
+
+Mesmo gênero, outra referência — e a diferença é grande o bastante para ser
+outra família (`post-largo`), não um ajuste da primeira.
+
+| item | Post | Post largo |
+|---|---|---|
+| fonte | Poppins (geométrica) | Inter (neutra) |
+| margem lateral | 88 | **72** |
+| avatar ⌀ | 104–134 | 114 |
+| avatar → nome | 35 | **18** |
+| corpo do texto | 42 | 42 |
+| entrelinha | 1,28 | **1,37** |
+| margem da imagem | 120 (recuada) | **72** (acompanha o texto) |
+| fotos | 1 captura | **colagem de 2** |
+| avatar | liso | **halo claro** |
+| subida óptica | 3% | **0,8%** |
+
+**A fonte do largo é Inter, não a original.** A referência foi capturada num
+Windows, onde a stack do aplicativo cai em Segoe UI. Inter é a grotesca
+livre mais próxima em proporção, já é self-hosted, e — o que decide — a
+exportação precisa de fonte determinística: fonte de sistema faria o PNG
+mudar de máquina para máquina.
+
+## A colagem de duas fotos
+
+`DocFrame.imagens` ganhou `slot2` (aditivo). Só o formato que declara
+`gapGaleria > 0` desenha a segunda; nas outras identidades ela fica
+**guardada sem aparecer** — trocar de identidade não pode apagar o que
+alguém enviou.
+
+Onde se envia: painel Mídia → "Foto da colagem" (1ª | 2ª), que troca o
+destino de tudo (upload, banco da org, geração por IA). O ajuste fino
+(zoom, posição, trocar, remover) opera na foto SELECIONADA — clicar na
+segunda no canvas abre o painel flutuante nela, com o selo "2ª foto da
+colagem". Remover a segunda tira só ela; remover a primeira esvazia o
+frame, porque a colagem não existe sem a principal.
+
+## Molde "História em posts"
+
+Seis slides: abertura com a colagem e o começo da narrativa, quatro
+capítulos só de texto e a chamada. É a sequência da referência — a história
+contada em pedaços curtos, um por slide, com a prova visual no primeiro.
+
+## Verificado renderizando
+
+Os seis slides contra a referência, no Chromium. As **quebras de linha
+saíram idênticas** nos dois slides longos ("Conheci lá um alemão de 55
+anos, dono de / uma marca que patrocina uma das principais / equipes do
+ciclismo mundial." e os dois parágrafos do slide do Tour) — é a prova mais
+forte de que fonte, corpo e margem batem. Posições medidas contra o print:
+avatar 6,7%–17,0% (ref 7,5%–18,1%), texto começa em 22,5% (ref 21,2%),
+colagem de 58,5% a 94,5% da altura (ref 57,8%–94,7%) e de 6,7% a 93,3% da
+largura (ref idem).
+
+O único ajuste que o render pediu foi a **subida óptica**: 1,5% deixava o
+bloco 1% acima do da referência; medida nos cinco slides, ela é 0,8%.

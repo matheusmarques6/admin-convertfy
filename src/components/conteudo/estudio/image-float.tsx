@@ -4,6 +4,11 @@
  * Painel flutuante da imagem selecionada: largura/altura do slot (frames em
  * fluxo), deslocamento, zoom, trocar e remover. Sliders fazem prévia
  * contínua e gravam no histórico ao soltar.
+ *
+ * Opera na foto que está SELECIONADA (`imgSel.slot`): o formato largo do
+ * print de post tem uma colagem de duas, e ajustar sempre a primeira
+ * deixaria a segunda sem enquadramento — foto que não dá para enquadrar é
+ * foto que sai errada no export, sem nada avisar.
  */
 
 import { useRef } from "react"
@@ -25,7 +30,8 @@ export function ImageFloat({ api }: { api: EditorApi }) {
   const fileRef = useRef<HTMLInputElement>(null)
   const i = imgSel ? doc.frames.findIndex((x) => x.frameId === imgSel.frameId) : -1
   const frame = i >= 0 ? doc.frames[i] : null
-  const img = frame?.imagens.slot1
+  const chave: "slot1" | "slot2" = imgSel?.slot === 2 ? "slot2" : "slot1"
+  const img = frame?.imagens[chave]
   if (!frame || !img) return null
   // No "slide inteiro" (via B) a imagem é o frame todo: os sliders de
   // tamanho do slot não teriam efeito nenhum e só enganariam quem arrasta.
@@ -33,7 +39,7 @@ export function ImageFloat({ api }: { api: EditorApi }) {
   const fluxo = !slideInteiro && (frame.tipo === "texto" || frame.tipo === "lista" || frame.tipo === "mec")
 
   const patch = (p: Partial<ImagemSlot>, final: boolean) => {
-    const fn = (d: typeof doc) => ({ ...d, frames: d.frames.map((x, j) => (j === i ? { ...x, imagens: { slot1: { ...(x.imagens.slot1 ?? img), ...p } } } : x)) })
+    const fn = (d: typeof doc) => ({ ...d, frames: d.frames.map((x, j) => (j === i ? { ...x, imagens: { ...x.imagens, [chave]: { ...(x.imagens[chave] ?? img), ...p } } } : x)) })
     if (final) api.set(fn, null)
     else api.preview(fn)
   }
@@ -54,7 +60,8 @@ export function ImageFloat({ api }: { api: EditorApi }) {
           </div>
         ))}
       </div>
-      <div className="flex flex-wrap gap-1.5">
+      <div className="flex flex-wrap items-center gap-1.5">
+        {chave === "slot2" && <span className="rounded-md bg-[var(--ops-tile)] px-2 py-1 text-[10.5px] font-semibold text-[var(--ops-sec)]">2ª foto da colagem</span>}
         <button type="button" onClick={() => fileRef.current?.click()} className="h-[30px] rounded-lg border border-[var(--ops-border)] px-[11px] text-[11.5px] font-medium text-[var(--ops-title)] hover:bg-[var(--ops-hover)]">
           Trocar imagem
         </button>
@@ -65,7 +72,15 @@ export function ImageFloat({ api }: { api: EditorApi }) {
         <button
           type="button"
           onClick={() => {
-            api.set((d) => ({ ...d, frames: d.frames.map((x, j) => (j === i ? { ...x, imagens: {}, imagemModo: undefined } : x)) }), `Imagem removida · ${frame.label}`)
+            // Remover a 2ª foto tira só ela; remover a 1ª esvazia o frame
+            // (a colagem não existe sem a principal).
+            api.set(
+              (d) => ({
+                ...d,
+                frames: d.frames.map((x, j) => (j === i ? (chave === "slot2" ? { ...x, imagens: { ...x.imagens, slot2: undefined } } : { ...x, imagens: {}, imagemModo: undefined }) : x)),
+              }),
+              `Imagem removida · ${frame.label}`,
+            )
             api.setImgSel(null)
           }}
           className="h-[30px] rounded-lg border border-[var(--ops-neg)]/40 px-[11px] text-[11.5px] font-medium text-[var(--ops-neg)] hover:bg-[var(--ops-hover)]"
@@ -84,7 +99,7 @@ export function ImageFloat({ api }: { api: EditorApi }) {
             try {
               api.avisar("Enviando imagem…")
               const { url } = await uploadImagem(f, "slide")
-              api.set((d) => ({ ...d, frames: d.frames.map((x, j) => (j === i ? { ...x, imagens: { slot1: { ...img, url, zoom: 100, x: 0, y: 0 } } } : x)) }), `Imagem trocada · ${frame.label}`)
+              api.set((d) => ({ ...d, frames: d.frames.map((x, j) => (j === i ? { ...x, imagens: { ...x.imagens, [chave]: { ...img, url, zoom: 100, x: 0, y: 0 } } } : x)) }), `Imagem trocada · ${frame.label}`)
             } catch (err) {
               api.avisar(err instanceof Error ? err.message : "Falha no upload")
             }

@@ -241,7 +241,7 @@ export type Campo = "titulo" | "subtitulo" | "corpo" | "botao" | "gancho" | "ano
  * molde decide a sequência dos slides; a família decide como eles são
  * desenhados. Ausente = "padrao" (a identidade azul da casa).
  */
-export type FamiliaVisual = "padrao" | "editorial" | "alternado" | "post"
+export type FamiliaVisual = "padrao" | "editorial" | "alternado" | "post" | "post-largo"
 
 export type EtapaFunil = "topo" | "meio" | "fundo"
 
@@ -327,7 +327,12 @@ export interface DocFrame {
   slotsImagem: 0 | 1
   campos: Campo[]
   textos: Partial<Record<Campo, string>>
-  imagens: { slot1?: ImagemSlot }
+  /**
+   * `slot2` é a SEGUNDA foto da colagem, e só o formato largo a desenha
+   * (`gapGaleria > 0`). Fora dele ela fica guardada sem aparecer — trocar
+   * de identidade não pode apagar o que alguém enviou.
+   */
+  imagens: { slot1?: ImagemSlot; slot2?: ImagemSlot }
   oculto?: boolean
   variante?: VarianteLayout
   /**

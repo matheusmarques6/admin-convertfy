@@ -15,7 +15,7 @@
  */
 
 import { CORES_PADRAO, GRADIENTE_PADRAO, SLIDE } from "./brand"
-import { POST_CORES } from "./formato-post"
+import { POST_CORES, type EstiloPost } from "./formato-post"
 import { paletaDeUmaCor, tintaSobre, type Paleta } from "./paleta"
 import type { Documento, FamiliaVisual, FrameTipo, Gradiente } from "./types"
 
@@ -74,6 +74,11 @@ export interface TracoFamilia {
    * que não é uma. Medidas em `formato-post.ts`.
    */
   cartaoPerfil: boolean
+  /**
+   * Qual dos dois desenhos do print de tweet a família usa. Só vale com
+   * `cartaoPerfil`; as medidas moram em `formato-post.ts`.
+   */
+  estiloPost?: EstiloPost
 }
 
 export interface Familia {
@@ -96,6 +101,14 @@ const FONTE_SERIF_DISPLAY = "'Instrument Serif', Georgia, 'Times New Roman', ser
 const FONTE_MANUSCRITA = "'Caveat', 'Segoe Script', cursive"
 /** Geométrica arredondada do print de tweet (self-hosted, OFL). */
 const FONTE_POST = "'Poppins', 'Inter Slides', Inter, -apple-system, sans-serif"
+/**
+ * Fonte do formato largo: neutra, como a captura crua do aplicativo. A
+ * referência foi tirada num Windows (Segoe UI); Inter é a grotesca livre
+ * mais próxima em proporção e já está self-hosted — e a exportação
+ * precisa de fonte determinística, senão o PNG muda de máquina para
+ * máquina.
+ */
+const FONTE_POST_LARGO = "'Inter Slides', Inter, 'Segoe UI', -apple-system, sans-serif"
 
 /**
  * A família Alternado inteira sai de UMA cor: é o que permite a mesma peça
@@ -258,6 +271,44 @@ export const FAMILIAS: Record<FamiliaVisual, Familia> = {
       barraProgresso: false,
       alternaFundo: false,
       cartaoPerfil: true,
+      estiloPost: "post",
+    },
+  },
+  "post-largo": {
+    key: "post-largo",
+    nome: "Post largo",
+    descricao: "Print de post com margem estreita, fonte neutra e colagem de duas fotos — a cara de uma captura crua.",
+    cores: {
+      hook: POST_CORES.texto,
+      destaque: POST_CORES.selo,
+      metadado: POST_CORES.handle,
+      "fundo-bloco": "#1A1A1A",
+    },
+    gradiente: { de: "#151515", meio: "#101010", ate: POST_CORES.fundo, angulo: 160 },
+    fundoClaro: POST_CORES.fundo,
+    fundoEscuro: POST_CORES.fundo,
+    cta: { fundo: "#FFFFFF", cor: POST_CORES.fundo },
+    traco: {
+      fonteTitulo: FONTE_POST_LARGO,
+      fonteGancho: FONTE_POST_LARGO,
+      fonteCorpo: FONTE_POST_LARGO,
+      fonteMeta: FONTE_POST_LARGO,
+      fonteAnotacao: FONTE_MANUSCRITA,
+      tituloCaixaAlta: false,
+      tituloPeso: 700,
+      tituloTracking: "0",
+      tituloEntrelinha: 1.37,
+      corpoItalico: false,
+      cta: "pilula",
+      raio: 15,
+      anotacaoRotacao: -3,
+      ganchoFator: 1,
+      ganchoCor: "tinta",
+      barraTopo: false,
+      barraProgresso: false,
+      alternaFundo: false,
+      cartaoPerfil: true,
+      estiloPost: "post-largo",
     },
   },
 }
@@ -267,10 +318,11 @@ export const FAMILIA_OPCOES: Array<[FamiliaVisual, string]> = [
   ["editorial", FAMILIAS.editorial.nome],
   ["alternado", FAMILIAS.alternado.nome],
   ["post", FAMILIAS.post.nome],
+  ["post-largo", FAMILIAS["post-largo"].nome],
 ]
 
 export function ehFamilia(v: unknown): v is FamiliaVisual {
-  return v === "padrao" || v === "editorial" || v === "alternado" || v === "post"
+  return v === "padrao" || v === "editorial" || v === "alternado" || v === "post" || v === "post-largo"
 }
 
 export function familiaDe(doc: Pick<Documento, "familia">): FamiliaVisual {

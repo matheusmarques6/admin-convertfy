@@ -172,6 +172,10 @@ const ESTILO_POR_FAMILIA: Record<FamiliaVisual, string> = {
   // CAPTURA DE TELA, não uma cena fotografada. Pedir foto de estúdio ali
   // devolveria justamente o que o formato não usa.
   post: "A imagem é uma CAPTURA DE TELA nítida (página, painel ou app) sobre fundo claro, com as bordas retas e o conteúdo legível — não é fotografia. Sem cena, sem pessoas, sem objeto físico.",
+  // O formato largo mostra FOTO de bastidor (o lugar, o evento, a pessoa),
+  // não captura de tela: é a prova de que a história aconteceu.
+  "post-largo":
+    "Foto real de bastidor, como quem registrou o momento com o celular: luz do ambiente, enquadramento espontâneo, nada de estúdio nem de banco de imagens. É a prova visual da história que o texto conta.",
 }
 
 function blocoReferencias(porQueFunciona?: string[]): string {

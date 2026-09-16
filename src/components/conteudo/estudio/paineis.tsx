@@ -14,7 +14,8 @@ import { CORES_PADRAO, GRADIENTE_PADRAO, SLIDE, brandKitPadrao, fundoValido, gra
 import { PILARES } from "@/lib/conteudo/config"
 import { slotDeUrl, uploadImagem } from "@/lib/conteudo/data"
 import { CAMPO_OPCIONAL_GUIA, CAMPO_OPCIONAL_LABEL, camposOpcionaisDoTipo } from "@/lib/conteudo/campos"
-import { FAMILIAS, FAMILIA_OPCOES, aplicarCorPrimaria, aplicarFamilia, corPrimariaDe, familiaDe } from "@/lib/conteudo/familias"
+import { FAMILIAS, FAMILIA_OPCOES, aplicarCorPrimaria, aplicarFamilia, corPrimariaDe, familiaDe, tracoDe } from "@/lib/conteudo/familias"
+import { medidasPost } from "@/lib/conteudo/formato-post"
 import { aceitaImagem, aplicarPerfil, aplicarPropostas, propostasDeLinhas, setTexto as setTextoDoc, slotsDeImagem, trocarTemplate } from "@/lib/conteudo/documento"
 import { chamarIA, gerarImagemIA } from "@/lib/conteudo/ia/client"
 import { resumoDocumento } from "@/lib/conteudo/ia/prompt"
@@ -540,6 +541,12 @@ export function PainelTexto({ api }: { api: EditorApi }) {
 export function PainelMidia({ api }: { api: EditorApi }) {
   const { doc, ativo } = api
   const f = doc.frames[ativo]
+  // Colagem de duas fotos: só o formato que a declara. O alternador troca o
+  // DESTINO de tudo o que o painel faz (upload, banco, IA) — sem ele a
+  // segunda foto não teria como ser enviada.
+  const temColagem = medidasPost("topo", f?.tipo, tracoDe(familiaDe(doc)).estiloPost).gapGaleria > 0
+  const [slotAlvo, setSlotAlvo] = useState<1 | 2>(1)
+  const chaveSlot: "slot1" | "slot2" = temColagem && slotAlvo === 2 ? "slot2" : "slot1"
   const fileRef = useRef<HTMLInputElement>(null)
   const alvoRef = useRef<number>(ativo)
   const [ia, setIa] = useState<"off" | "prompt" | "loading" | string[]>("off")
@@ -558,7 +565,7 @@ export function PainelMidia({ api }: { api: EditorApi }) {
     // Frame sem slot mas com imagem é o "slide inteiro" da via B: trocar a
     // imagem dele aqui é legítimo; recusar em silêncio é que não era.
     if (!fr || !aceitaImagem(fr)) return
-    api.set((d) => ({ ...d, frames: d.frames.map((x, j) => (j === i ? { ...x, imagens: { slot1: slotDeUrl(url) } } : x)) }), `${label} · ${fr.label}`)
+    api.set((d) => ({ ...d, frames: d.frames.map((x, j) => (j === i ? { ...x, imagens: { ...x.imagens, [chaveSlot]: slotDeUrl(url) } } : x)) }), `${label} · ${fr.label}`)
   }
   const enviarArquivo = async (i: number, file: File) => {
     setEnviando(true)
@@ -608,6 +615,13 @@ export function PainelMidia({ api }: { api: EditorApi }) {
         <div className="mt-1.5 text-[12px] font-semibold text-[var(--ops-title)]">{enviando ? "Enviando…" : f && aceitaImagem(f) ? "Arraste ou clique" : "Este frame não tem slot"}</div>
         <div className="mt-0.5 text-[10.5px] text-[var(--ops-mut)]">PNG, JPG, WebP · vai para o Storage da org (≤ 1350px)</div>
       </div>
+      {temColagem && (
+        <div>
+          {label("Foto da colagem")}
+          <CtSeg size="sm" val={String(slotAlvo)} onChange={(v) => setSlotAlvo(v === "2" ? 2 : 1)} opts={[["1", "1ª foto"], ["2", "2ª foto"]]} />
+          <div className="mt-1 text-[10.5px] text-[var(--ops-mut)]">Este formato mostra duas fotos lado a lado. Sem a segunda, a primeira ocupa a largura toda.</div>
+        </div>
+      )}
       <div className="text-[11.5px] font-semibold text-[var(--ops-title)]" style={TNUM}>
         {cheios} de {total} slots
       </div>
@@ -622,13 +636,13 @@ export function PainelMidia({ api }: { api: EditorApi }) {
                 title={x.label}
                 onClick={() => {
                   api.setAtivo(i)
-                  if (!x.imagens.slot1) abrirUpload(i)
-                  else api.setImgSel({ frameId: x.frameId })
+                  if (!x.imagens[chaveSlot]) abrirUpload(i)
+                  else api.setImgSel({ frameId: x.frameId, slot: chaveSlot === "slot2" ? 2 : 1 })
                 }}
-                className={cn("relative aspect-square rounded-lg border bg-cover bg-center text-[16px] text-[var(--ops-mut)]", x.imagens.slot1 ? "border-solid" : "border-dashed", ativo === i ? "border-[var(--ops-accent)]" : "border-[var(--ops-border)]")}
-                style={x.imagens.slot1 ? { backgroundImage: `url(${x.imagens.slot1.url})` } : undefined}
+                className={cn("relative aspect-square rounded-lg border bg-cover bg-center text-[16px] text-[var(--ops-mut)]", x.imagens[chaveSlot] ? "border-solid" : "border-dashed", ativo === i ? "border-[var(--ops-accent)]" : "border-[var(--ops-border)]")}
+                style={x.imagens[chaveSlot] ? { backgroundImage: `url(${x.imagens[chaveSlot]?.url})` } : undefined}
               >
-                {!x.imagens.slot1 && "+"}
+                {!x.imagens[chaveSlot] && "+"}
                 <span className="absolute left-[3px] top-[3px] inline-flex h-[15px] w-[15px] items-center justify-center rounded bg-[var(--ops-title)] text-[9px] font-bold text-[var(--ops-card)]">{i + 1}</span>
               </button>
             ),
@@ -652,7 +666,7 @@ export function PainelMidia({ api }: { api: EditorApi }) {
               {assets
                 .filter((a) => a.kind !== "avatar")
                 .map((a) => (
-                  <button key={a.path} type="button" title={a.nome} aria-label="Usar imagem do banco" onClick={() => aplicarUrl(ativo, a.url, "Imagem do banco")} className={cn("aspect-[4/5] rounded-lg border-2 bg-cover bg-center", f.imagens.slot1?.url === a.url ? "border-[var(--ops-accent)]" : "border-[var(--ops-border)]")} style={{ backgroundImage: `url(${a.url})` }} />
+                  <button key={a.path} type="button" title={a.nome} aria-label="Usar imagem do banco" onClick={() => aplicarUrl(ativo, a.url, "Imagem do banco")} className={cn("aspect-[4/5] rounded-lg border-2 bg-cover bg-center", f.imagens[chaveSlot]?.url === a.url ? "border-[var(--ops-accent)]" : "border-[var(--ops-border)]")} style={{ backgroundImage: `url(${a.url})` }} />
                 ))}
             </div>
           )}
