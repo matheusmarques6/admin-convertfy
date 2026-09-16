@@ -490,7 +490,15 @@ export interface Trend {
   dificuldade: "facil" | "medio" | "dificil"
   categoria: "viral" | "venda" | "educativo"
   comoUsar: string
-  fonte: "web" | "manual"
+  /**
+   * `web` = busca na internet com o link conferido; `interno` = a rodada
+   * aconteceu SEM busca, do contexto da casa; `manual` = alguém digitou.
+   *
+   * `interno` existe porque o rodapé do painel lê o ambiente de AGORA: com um
+   * cron diário, uma rodada de três dias atrás pode ter acontecido sem
+   * provedor de busca e o rodapé de hoje diria que ela teve fato externo.
+   */
+  fonte: "web" | "manual" | "interno"
   fonteUrl: string | null
   fonteTitulo: string | null
   geradoEm: string
@@ -498,11 +506,18 @@ export interface Trend {
 
 /** O estado da fonte de trends — a tela DIZ de onde o painel veio. */
 export interface TrendsStatus {
-  /** Nunca gerado = null. */
+  /**
+   * Quando o radar rodou pela última vez — lido INCLUSIVE das linhas já
+   * arquivadas. Painel vazio depois de uma rodada não é "nunca gerado": são
+   * estados diferentes e pedem ações opostas ("ligue o radar" × "a última
+   * rodada foi há N dias e tudo já venceu").
+   */
   geradoEm: string | null
   /** Provedor de busca configurado no ambiente (null = não configurado). */
   buscaConfigurada: boolean
   total: number
+  /** Dias que um assunto fica no painel — a tela DIZ a regra. */
+  validadeDias: number
 }
 
 export type EixoNarrativo = "mercado" | "cases" | "noticias" | "cultura" | "produto"

@@ -7931,6 +7931,65 @@ lado — número contra a própria legenda; `compararComONosso` passou a devolve
 `{ razao, vezes, quem, nota }`, com `vezes` sempre ≥ 1 na direção que a frase
 afirma, e tem teste de regressão. O render também entregou o "1 comentários".
 
+## Radar editorial: a tela pronta que nunca rodou (set/2026, migration 20261160)
+
+`conteudo_trends` com **ZERO linhas** em produção. Não era bug de escrita —
+era falta de gatilho: o painel "Em alta", o `gerarTrends`, a busca com fonte
+conferida e a rota existiam desde set/2026 com **um botão** como única
+entrada, e ninguém clicou. É a pior forma de defeito daqui: nada falha, a rota
+responde 200 quando chamada e não é chamada, e na tela o sintoma é "não há
+assunto em alta" — indistinguível de "rodou e não achou nada". Mapa completo
+em `docs/conteudo/radar-editorial.md`.
+
+**Cron diário** `/api/cron/conteudo-radar` (06:40 BRT), uma rodada por org
+**com canal de Instagram ativo** (rodar para toda org gastaria busca + modelo
+por dia para quem nunca abre o painel), fail-open por org. **Zero não é
+sucesso**: havendo org e nenhuma tendo rodado, responde 500 — cron mudo
+reportado como verde é como o `crm-snapshot` passou meses sem gravar linha.
+Org pulada por "rodou há pouco" não conta como falha.
+
+**O cron resolve o vazio e cria o problema oposto** — rodada que só acrescenta
+vira arquivo. `trends/validade.ts` (puro, 9 testes): (1) **"em alta" é a
+RODADA MAIS RECENTE, não uma janela de horas** — as linhas de uma rodada
+compartilham o `gerado_em`, então o grupo é exato, e o **92 de três dias atrás
+não fica acima do 88 de hoje** (decaimento por idade resolveria, mas a curva
+seria inventada); (2) **expira em 14 dias ARQUIVANDO, não apagando** (quem
+virou ideia mantém `trend_id`; os 14 dias são DECISÃO — duas voltas do ciclo
+semanal do pipeline, passadas elas manter o assunto é mostrar ao time o que
+ele já declinou); (3) **painel vazio depois de uma rodada NÃO é "nunca
+gerado"** — a idade da última rodada é lida INCLUSIVE das arquivadas
+(`ultimaRodada`), porque os dois estados pedem ações opostas. Data ilegível
+**não expira** (apagar o não medido é a mesma família do "zero por não medir")
+e o desempate final é por `id`, para a ordem ser estável entre renders.
+
+**Procedência é da LINHA, não do ambiente de quem lê**: o rodapé dizia se a
+busca está configurada AGORA, o que bastava com um botão (linha e leitura no
+mesmo minuto) e deixa de bastar com cron diário. `fonte = 'interno'` marca a
+rodada que aconteceu sem busca; na tela os dois caminhos sem link passam a se
+distinguir — **"fonte não conferida"** (a busca rodou e `verificarFontes`
+removeu o link inventado) × **"sem fato externo"** (não houve busca). A
+referência marca "TEMA SENSÍVEL · CONFIRA AS FONTES" em bloco; aqui a linha
+guarda a procedência e dá para ser preciso.
+
+**Três limites que só o cron tornou necessários**: `jaTem` com teto de 24
+(sem ele, duas semanas de rodadas mandariam ~80 títulos com "evite estes" e o
+modelo raspa o fundo do barril); `listarTrends` ordena por `gerado_em` e não
+por score, porque é essa ordem que decide quem sobrevive ao `limit 40` — um
+top-40 por score cortaria a rodada de hoje se ela viesse com notas baixas (a
+ordem da TELA é a do módulo puro); e `precisaRodar` recusa a segunda rodada do
+dia, senão retry da plataforma custa duas chamadas de modelo (`?forcar=1` fura).
+
+**O teste que fecha a classe**: `src/lib/crons-agendados.test.ts` — toda rota
+em `src/app/api/cron/*` tem de ter horário em `vercel.json`, e todo horário
+sob `/api/cron/` tem de apontar para rota existente. Cron que nunca dispara
+não falha, ele não acontece. As 42 rotas de hoje estão agendadas; o teste
+protege a próxima. (`sync-omnisend` aparece duas vezes de propósito — a
+duplicata é medida pelo caminho COM querystring.)
+
+**Não rodou ponta a ponta daqui**: o ambiente de desenvolvimento não tem
+`OPENROUTER_API_KEY` nem chave de busca. Verificados: o CHECK aplicado em
+produção, typecheck, suíte, build, e o painel renderizado nos três estados.
+
 ---
 
 *Última atualização: Setembro 2026*

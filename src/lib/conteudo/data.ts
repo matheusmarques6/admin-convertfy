@@ -470,6 +470,8 @@ export interface TrendsGeradas {
   fontes_descartadas: number
   /** Por que a rodada saiu sem fato externo, quando foi o caso. */
   busca_indisponivel: string | null
+  /** Assuntos que saíram do painel por validade nesta rodada. */
+  expirados: number
 }
 
 export async function gerarTrends(): Promise<TrendsGeradas> {
