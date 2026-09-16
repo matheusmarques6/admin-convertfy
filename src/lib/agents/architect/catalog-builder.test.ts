@@ -7,6 +7,7 @@ import {
   buildCatalogoEnxuto,
   buildTypeIndex,
   duplicatasPorDispositivo,
+  fatiarCatalogo,
   levantarHigieneDoVault,
   LIMIAR_DE_DUPLICATA,
   LIMITE_CHARS_POR_VARIANTE,
@@ -765,5 +766,57 @@ describe("duplicatasPorDispositivo", () => {
       v("b", "hero", "B", { description: "", dispositivo: "hero_lineup" }),
     ])
     expect(duplicatasPorDispositivo(r.sections)).toEqual([])
+  })
+})
+
+// O leque (uma chamada por posição) serve a cada posição só a seção dela.
+// A fatia tem de sair pelo MESMO renderizador do catálogo inteiro: com
+// render próprio, a linha da variante mudaria de forma entre os dois e as
+// medições (chars por variante, duplicatas) passariam a falar de textos
+// diferentes.
+describe("fatiarCatalogo", () => {
+  const cat = () =>
+    buildCatalog(
+      [
+        v("h1", "hero", "Hero cupom", { description: "Abre com incentivo." }),
+        v("h2", "hero", "Hero pergunta", { description: "Abre perguntando." }),
+        v("b1", "body", "Corpo", { description: "Bloco de texto." }),
+      ],
+      new Map(),
+    )
+
+  it("devolve só a seção pedida, e a linha é idêntica à do catálogo inteiro", () => {
+    const r = cat()
+    const fatia = fatiarCatalogo(r.sections, "hero")
+    expect(fatia).toHaveLength(1)
+    expect(fatia[0].variantes.map((x) => x.variant_id)).toEqual(["h1", "h2"])
+    const texto = buildCatalogoEnxuto(fatia)
+    expect(texto).toContain("## hero (2)")
+    expect(texto).not.toContain("## body")
+    // byte a byte a mesma linha — é isso que mantém as medições comparáveis
+    const doInteiro = r.enxuto.split("\n").find((l) => l.startsWith("- h1"))
+    expect(texto.split("\n").find((l) => l.startsWith("- h1"))).toBe(doInteiro)
+  })
+
+  it("`idsPermitidos` corta as candidatas; id de fora da seção é ignorado", () => {
+    const fatia = fatiarCatalogo(cat().sections, "hero", ["h2", "b1", "nao-existe"])
+    expect(fatia[0].variantes.map((x) => x.variant_id)).toEqual(["h2"])
+  })
+
+  it("sem `idsPermitidos` vai a seção inteira; seção inexistente devolve []", () => {
+    expect(fatiarCatalogo(cat().sections, "hero")[0].variantes).toHaveLength(2)
+    expect(fatiarCatalogo(cat().sections, "reviews")).toEqual([])
+  })
+
+  it("a seção é normalizada como no resto do pipeline", () => {
+    expect(fatiarCatalogo(cat().sections, "  HERO ")[0].variantes).toHaveLength(2)
+  })
+
+  // Lista vazia é diferente de ausente: o chamador precisa distinguir "esta
+  // posição não tem candidata" de "esta seção não existe no catálogo".
+  it("nenhuma candidata elegível devolve a seção com zero variantes, não []", () => {
+    const fatia = fatiarCatalogo(cat().sections, "hero", [])
+    expect(fatia).toHaveLength(1)
+    expect(fatia[0].variantes).toEqual([])
   })
 })

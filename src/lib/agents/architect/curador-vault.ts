@@ -27,6 +27,7 @@ import { derivarAliviadorEProfundidade } from "../objecoes/aliviador-bridge"
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 import type { CatalogVaultExtra } from "./catalog-builder"
+import { normalizarSecao } from "./repeticao"
 
 const log = logger.child("CuradorVault")
 
@@ -590,12 +591,28 @@ export function secaoDaLacuna(doc: VaultDocRow, secoesConhecidas: ReadonlyArray<
  * Lacunas das seções deste email + as gerais (sem seção). Lacuna não é
  * veto: o prompt a usa como peso contra e como motivo obrigatório na
  * justificativa quando a escolhida a carrega.
+ *
+ * `secaoDaPosicao` (16/09, leque) restringe a UMA seção — a da posição que
+ * está sendo decidida. As seções do EMAIL inteiro continuam entrando em
+ * `secoesDoEmail`, e não é detalhe: `secaoDaLacuna` infere a seção a partir
+ * do slug comparando com uma lista de seções conhecidas, então recortar
+ * essa lista para uma faria a nota `lacuna-body-garantias` deixar de ser
+ * reconhecida como de `body` e virar lacuna GERAL — servida em todas as
+ * posições, que é o oposto de fatiar.
+ *
+ * Sem `secaoDaPosicao`, o comportamento é o de antes: todas as seções do
+ * e-mail.
  */
-export function buildLacunasBlock(k: CuradorVaultKnowledge, sections: string[]): string {
+export function buildLacunasBlock(
+  k: CuradorVaultKnowledge,
+  secoesDoEmail: string[],
+  secaoDaPosicao?: string | null,
+): string {
   if (k.lacunas.length === 0) return "(nenhuma lacuna registrada no vault)"
-  const pedidas = new Set(sections.map((s) => s.toLowerCase()))
-  const conhecidas = Array.from(new Set(k.lacunas.map((d) => secaoDaLacuna(d, [...pedidas])).filter((x): x is string => !!x)))
-  const todas = Array.from(new Set([...pedidas, ...conhecidas]))
+  const doEmail = new Set(secoesDoEmail.map((s) => normalizarSecao(s)))
+  const pedidas = secaoDaPosicao ? new Set([normalizarSecao(secaoDaPosicao)]) : doEmail
+  const conhecidas = Array.from(new Set(k.lacunas.map((d) => secaoDaLacuna(d, [...doEmail])).filter((x): x is string => !!x)))
+  const todas = Array.from(new Set([...doEmail, ...conhecidas]))
   const blocos: string[] = []
   for (const d of k.lacunas) {
     const secao = secaoDaLacuna(d, todas)
@@ -604,7 +621,11 @@ export function buildLacunasBlock(k: CuradorVaultKnowledge, sections: string[]):
     blocos.push(`${titulo}\n${clamp(d.body_md, 1_200)}`)
     if (blocos.length >= 12) break
   }
-  if (blocos.length === 0) return "(nenhuma lacuna registrada para as seções deste email)"
+  if (blocos.length === 0) {
+    return secaoDaPosicao
+      ? `(nenhuma lacuna registrada para ${normalizarSecao(secaoDaPosicao)})`
+      : "(nenhuma lacuna registrada para as seções deste email)"
+  }
   return blocos.join("\n\n")
 }
 

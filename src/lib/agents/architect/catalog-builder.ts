@@ -23,6 +23,7 @@
 import type { EmailComponentVariant } from "@/types/email-generation"
 import { resumirContrato, type ContratoResumo, type FamiliaDeItem } from "../shared/field-roles"
 import { lerDirecao } from "../image/direcao-fotografica"
+import { normalizarSecao } from "./repeticao"
 
 /**
  * Extras do VAULT de componentes para uma variante (curador-vault, 31/08):
@@ -465,6 +466,36 @@ function grades(c: ContratoResumo): string {
     })
     .filter(Boolean)
     .join(", ")
+}
+
+/**
+ * A fatia do catálogo que UMA posição vê: a seção dela, só com as
+ * candidatas elegíveis.
+ *
+ * O leque (uma chamada por posição) precisa disto porque o catálogo inteiro
+ * no prompt de cada posição é o mesmo custo repetido N vezes — e porque o
+ * modelo, vendo as seis seções, tem o que confundir. A fatia é renderizada
+ * pelo MESMO `buildCompactCatalog` que monta o enxuto: se a fatia tivesse
+ * render próprio, a linha da variante mudaria de forma entre o catálogo
+ * inteiro e a fatia, e as duas medições (chars por variante, duplicatas)
+ * passariam a falar de textos diferentes.
+ *
+ * `idsPermitidos` ausente = a seção inteira. Ids que não estão na seção são
+ * ignorados (não inventa entrada); seção inexistente devolve `[]`, e quem
+ * chama decide — servir "(nenhuma candidata)" é decisão do prompt, não
+ * daqui. Puro.
+ */
+export function fatiarCatalogo(
+  sections: ReadonlyArray<CatalogSection>,
+  secao: string,
+  idsPermitidos?: ReadonlyArray<string> | null,
+): CatalogSection[] {
+  const alvo = normalizarSecao(secao)
+  const encontrada = sections.find((s) => normalizarSecao(s.section) === alvo)
+  if (!encontrada) return []
+  if (!idsPermitidos) return [encontrada]
+  const permitidos = new Set(idsPermitidos)
+  return [{ section: encontrada.section, variantes: encontrada.variantes.filter((v) => permitidos.has(v.variant_id)) }]
 }
 
 /**
