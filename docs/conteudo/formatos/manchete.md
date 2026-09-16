@@ -119,6 +119,50 @@ sangra e não acende), e o slide com caixa de destaque pede **CAIXA SÓLIDA**
 no lugar da pílula. O `**palavra**` não vai cru para o modelo — ele viraria
 asterisco dentro da imagem; vira instrução de cor.
 
+## O que a comparação com o print do sistema mostrou (set/2026)
+
+O usuário mandou o print do Estúdio ao lado da referência. O que separava
+os dois NÃO era medida:
+
+**1. A quebra de linha era descartada ao salvar.** `onBlur` lia
+`textContent`, que devolve `"ab"` para `<div>a</div><div>b</div>` — o
+Chrome escreve um `<div>` por parágrafo. O banco tinha, literalmente,
+`"FORAM CRIADAS PARAVOCÊ VENDER MAISE a Black Friday é a maior delas..."`.
+Efeito maior que o texto feio: **a escada depende de `\n`**, então ela era
+inalcançável por quem edita pela tela — a peça nunca ia ficar igual, por
+mais certas que fossem as medidas. `textoDoEditavel` (puro, 10 testes) lê
+o DOM e converte fronteira de bloco e `<br>` em `\n`.
+
+**2. A caixa azul estava no RODAPÉ.** Ela era o último item da coluna; na
+referência vem logo depois do título, antes do corpo. Medido depois da
+correção: `y=462`, contra `y≈462` da referência.
+
+**3. O título saía na tinta do corpo.** Na referência o título do slide do
+erro é um bloco AZUL que ocupa um terço da peça, e no slide preto ele é
+CREME, não branco. Virou traço (`tituloDestacado`).
+
+**4. A escada estava amarrada ao fundo ESCURO**, e o slide preto da
+pergunta tem as duas linhas do MESMO corpo. Ela é o gesto de abrir a peça:
+vale **só na capa**.
+
+**5. A foto ia para o meio mesmo com caixa.** Com caixa, a foto vai para o
+FIM — a caixa já é o corte entre afirmação e argumento.
+
+## O limite que a comparação também mostrou
+
+**A referência é composta À MÃO, slide a slide.** Medindo a largura das
+linhas, o slide branco pede um corpo de ~110px e o slide preto ~86px para o
+mesmo texto — não existe UMA constante que reproduza os dois. Um template
+tem um tamanho; a referência tem pelo menos dois. O que ficou é o valor que
+faz o bloco de três linhas ocupar a mesma fração da altura (~18%), com o
+ajuste por campo (o arraste de tamanho do Estúdio) para o resto.
+
+**E as medidas foram lidas da IMAGEM, não do arquivo.** As leituras de
+largura e de altura divergiram entre si em até 25% — é o teto da precisão
+de quem mede olhando. Com os PNG dos slides em disco dá para medir por
+código (posição e altura de letra por varredura de pixel) e fechar isso,
+como foi feito com os dois formatos de print.
+
 ## Verificado renderizando
 
 Os cinco slides desenhados com `renderToStaticMarkup` e fotografados no

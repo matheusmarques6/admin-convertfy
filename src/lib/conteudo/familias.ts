@@ -61,9 +61,11 @@ export interface TracoFamilia {
    */
   respiroEscuro: boolean
   /**
-   * O título quebrado em linhas sai em ESCADA decrescente. Vale só no
-   * fundo escuro — é o que a referência faz, e é a diferença entre o modo
-   * "manchete" e o modo "artigo" dentro da mesma peça.
+   * O título quebrado em linhas sai em ESCADA decrescente, e **só na
+   * capa**: na referência o slide preto da pergunta tem as duas linhas do
+   * mesmo corpo. A escada é o gesto de ABRIR a peça, não um traço do fundo
+   * escuro — amarrá-la ao fundo (a primeira versão) errava o slide do
+   * problema.
    */
   escadaNoTitulo: boolean
   /**
@@ -72,6 +74,13 @@ export interface TracoFamilia {
    * campo nem é oferecido no painel.
    */
   caixaDeDestaque: boolean
+  /**
+   * O TÍTULO não sai na tinta do corpo: no fundo claro ele usa a cor de
+   * destaque e no escuro o creme. Medido na referência da Manchete, onde o
+   * título do slide do erro é um bloco AZUL que ocupa um terço da peça —
+   * com a tinta do corpo ele saía preto e a peça deixava de ser a mesma.
+   */
+  tituloDestacado: boolean
   /**
    * Só o ÍCONE da marca, pequeno, no topo — sem nome e sem `@handle`. É o
    * que a Manchete usa no lugar da assinatura completa; sem avatar no
@@ -222,6 +231,7 @@ export function alternadoDaPaleta(p: Paleta): Omit<Familia, "key" | "nome" | "de
       respiroEscuro: false,
       escadaNoTitulo: false,
       caixaDeDestaque: false,
+      tituloDestacado: false,
       logoNoTopo: false,
     },
   }
@@ -262,6 +272,7 @@ export const FAMILIAS: Record<FamiliaVisual, Familia> = {
       respiroEscuro: false,
       escadaNoTitulo: false,
       caixaDeDestaque: false,
+      tituloDestacado: false,
       logoNoTopo: false,
     },
   },
@@ -308,6 +319,7 @@ export const FAMILIAS: Record<FamiliaVisual, Familia> = {
       respiroEscuro: false,
       escadaNoTitulo: false,
       caixaDeDestaque: false,
+      tituloDestacado: false,
       logoNoTopo: false,
     },
   },
@@ -359,6 +371,7 @@ export const FAMILIAS: Record<FamiliaVisual, Familia> = {
       respiroEscuro: false,
       escadaNoTitulo: false,
       caixaDeDestaque: false,
+      tituloDestacado: false,
       logoNoTopo: false,
       estiloPost: "post",
     },
@@ -402,6 +415,7 @@ export const FAMILIAS: Record<FamiliaVisual, Familia> = {
       respiroEscuro: false,
       escadaNoTitulo: false,
       caixaDeDestaque: false,
+      tituloDestacado: false,
       logoNoTopo: false,
       estiloPost: "post-largo",
     },
@@ -459,6 +473,7 @@ export const FAMILIAS: Record<FamiliaVisual, Familia> = {
       respiroEscuro: true,
       escadaNoTitulo: true,
       caixaDeDestaque: true,
+      tituloDestacado: true,
     },
   },
 }

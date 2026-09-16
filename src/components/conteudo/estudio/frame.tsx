@@ -20,9 +20,10 @@ import type { CSSProperties, MouseEvent as ReactMouseEvent, PointerEvent as Reac
 import { SLIDE, clarear, fundoEscuro, gradienteCss, hex6 } from "@/lib/conteudo/brand"
 import { familiaDe, tracoDe } from "@/lib/conteudo/familias"
 import { POST_CORES, medidasPost, posePost, subidaOptica } from "@/lib/conteudo/formato-post"
-import { MANCHETE, fatoresDaEscada, linhasDoTitulo } from "@/lib/conteudo/formato-manchete"
+import { MANCHETE, corDoTituloManchete, fatoresDaEscada, linhasDoTitulo } from "@/lib/conteudo/formato-manchete"
 import { fitFactor, limiteDe } from "@/lib/conteudo/limites"
 import { partesDestacadas, textoLimpo } from "@/lib/conteudo/rich"
+import { textoDoEditavel } from "@/lib/conteudo/texto-editavel"
 import type { Campo, DocFrame, Documento, EstiloTexto, FrameTipo } from "@/lib/conteudo/types"
 
 export const FRAME_W = 1080
@@ -166,11 +167,19 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
   // editorial em vez de card cheio até a borda.
   const ML = S(tr.logoNoTopo ? MANCHETE.margem : 80)
   /**
-   * A escada só entra no fundo ESCURO. Lido dos cinco slides: os dois
-   * pretos têm título em escada, os três brancos têm o título todo do
-   * mesmo corpo. É a diferença entre o modo "manchete" e o "artigo".
+   * A cor do TÍTULO pode não ser a tinta do corpo. Na Manchete ele sai no
+   * azul do destaque sobre o claro e no creme sobre o escuro — medido na
+   * referência, onde o título do slide do erro é um bloco azul que ocupa
+   * um terço da peça. `fg` continua valendo para as outras famílias.
    */
-  const escadaDoTitulo = (campo: "titulo") => (tr.escadaNoTitulo && escuro ? { escada: fatoresDaEscada(linhasDoTitulo(f.textos[campo] ?? "").length) } : {})
+  const corTitulo = tr.tituloDestacado ? corDoTituloManchete(escuro, doc.cores.destaque ?? SLIDE.destaque) : fg
+  /**
+   * A escada só entra na CAPA. Lido da referência: o slide preto da
+   * pergunta tem as duas linhas do mesmo corpo e o branco tem as três
+   * iguais — ela é o gesto de ABRIR a peça, não um traço do fundo escuro.
+   * Amarrar ao fundo (a primeira versão) errava o slide do problema.
+   */
+  const escadaDoTitulo = (campo: "titulo") => (tr.escadaNoTitulo && f.tipo === "capa" ? { escada: fatoresDaEscada(linhasDoTitulo(f.textos[campo] ?? "").length) } : {})
   /**
    * A CAIXA sólida de destaque: retângulo na cor de acento com o texto do
    * campo `destaque` dentro. Sem texto não desenha nada — caixa vazia é
@@ -198,7 +207,7 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
         crossOrigin="anonymous"
         style={{
           position: "absolute",
-          top: S(off + MANCHETE.logoTopo),
+          top: S(off + (centro ? MANCHETE.logoTopoCapa : MANCHETE.logoTopo)),
           ...(centro ? { left: "50%", transform: "translateX(-50%)" } : { left: ML }),
           width: S(MANCHETE.logoTam),
           height: S(MANCHETE.logoTam),
@@ -266,7 +275,11 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
           }
           contentEditable={editing}
           suppressContentEditableWarning
-          onBlur={interactive ? (ev) => onEditText?.(f.frameId, campo, ev.currentTarget.textContent ?? "") : undefined}
+          // `textContent` DESCARTA quebra de linha (o Chrome escreve um
+          // `<div>` por parágrafo), e foi assim que o subtítulo da capa
+          // gravou "PARAVOCÊ"/"MAISE" no banco. A escada do título depende
+          // de `\n`, então ela era inalcançável por quem edita na tela.
+          onBlur={interactive ? (ev) => onEditText?.(f.frameId, campo, textoDoEditavel(ev.currentTarget)) : undefined}
           onKeyDown={
             editing
               ? (ev) => {
@@ -723,14 +736,14 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
         {imgSlot({ inset: 0 }, `linear-gradient(180deg, ${veu(0.1)} 0%, ${veu(0.55)} 42%, ${veu(0.98)} 82%, ${veu(1)} 100%)`)}
         <div style={{ position: "absolute", left: ML, right: ML, bottom: S(off + 112), textAlign: "center" }}>
           {T("titulo", { ...cond, fontSize: MANCHETE.tituloCapa, color: "#FFFFFF", textAlign: "center", ...escadaDoTitulo("titulo") })}
-          {T("subtitulo", { ...serif, fontSize: MANCHETE.texto + 3, color: "rgba(255,255,255,0.92)", marginTop: S(30), lineHeight: 1.3, textAlign: "center" })}
+          {T("subtitulo", { ...serif, fontSize: MANCHETE.texto, color: "rgba(255,255,255,0.92)", marginTop: S(30), lineHeight: 1.3, textAlign: "center" })}
         </div>
       </>
     ) : (
       <div style={{ position: "absolute", left: ML, right: ML, top: S(off + 210), bottom: S(off + 150), display: "flex", flexDirection: "column", justifyContent: "center" }}>
         <div style={{ height: S(470), position: "relative", marginBottom: S(74) }}>{imgSlot({ inset: 0, borderRadius: S(tr.raio) })}</div>
         {T("titulo", { ...cond, fontSize: MANCHETE.tituloCapa, color: "#FFFFFF", textAlign: "center", ...escadaDoTitulo("titulo") })}
-        {T("subtitulo", { ...serif, fontSize: MANCHETE.texto + 3, color: "rgba(255,255,255,0.92)", marginTop: S(30), lineHeight: 1.3, textAlign: "center" })}
+        {T("subtitulo", { ...serif, fontSize: MANCHETE.texto, color: "rgba(255,255,255,0.92)", marginTop: S(30), lineHeight: 1.3, textAlign: "center" })}
       </div>
     )
   } else if (f.tipo === "capa") {
@@ -799,7 +812,7 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
     // desenhado ali devolveria a peça para a cara de card de rede social.
     body = (
       <div style={{ position: "absolute", left: ML, right: ML, top: "50%", transform: "translateY(-50%)" }}>
-        {T("titulo", { ...cond, fontSize: MANCHETE.titulo, color: fg })}
+        {T("titulo", { ...cond, fontSize: MANCHETE.titulo, color: corTitulo })}
         <div style={{ height: Math.max(1, S(2)), background: escuro ? "rgba(255,255,255,0.45)" : "rgba(0,0,0,0.85)", margin: `${S(MANCHETE.reguaRespiro)}px 0` }} />
         {T("subtitulo", { ...serif, fontSize: MANCHETE.texto + 3, color: fg2, lineHeight: MANCHETE.entrelinhaTexto })}
       </div>
@@ -849,23 +862,33 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
      * ABRE o slide (variante "b") — são os dois arranjos da referência. Nas
      * famílias da casa a imagem fecha o bloco, como sempre.
      */
-    const fotoNoMeio = tr.logoNoTopo && variante === "a"
+    // Com CAIXA de destaque a foto vai para o FIM: a caixa já é o corte
+    // entre a afirmação e o argumento, e uma foto no meio criaria um
+    // segundo corte no mesmo lugar. É a ordem do slide preto da
+    // referência (título → caixa → corpo → foto).
+    const temCaixa = tr.caixaDeDestaque && f.campos.includes("destaque") && !!(f.textos.destaque ?? "").trim()
+    const fotoNoMeio = tr.logoNoTopo && variante === "a" && !temCaixa
     const bloco = (
       <>
         {avatarRow(escuro)}
         {gancho(52, fg2, variante === "c" ? "center" : "left")}
-        {T("titulo", { ...cond, fontSize: tr.logoNoTopo ? MANCHETE.titulo : 96, color: fg, textAlign: variante === "c" ? "center" : "left", ...escadaDoTitulo("titulo") })}
+        {T("titulo", { ...cond, fontSize: tr.logoNoTopo ? MANCHETE.titulo : 96, color: tr.tituloDestacado ? corTitulo : fg, textAlign: variante === "c" ? "center" : "left", ...escadaDoTitulo("titulo") })}
         {/* Régua entre a afirmação e o argumento: no slide sem foto não há
             outro corte, e os dois blocos de texto se colam. */}
         {tr.reguaSobCorpo && (f.textos.corpo ?? "").trim() ? (
           <div style={{ width: S(140), height: S(8), background: escuro ? corDestaque : doc.cores.destaque, marginTop: S(40), borderRadius: S(4), ...(variante === "c" ? { marginLeft: "auto", marginRight: "auto" } : {}) }} />
         ) : null}
+        {/* A CAIXA vem logo depois do título, antes da foto e do corpo —
+            é a ordem da referência: afirmação, a frase entre aspas que ela
+            nega, e só então o argumento. No fim da coluna (onde ela estava)
+            ela virava rodapé e perdia a função de contraponto. */}
+        {caixaDestaque()}
         {fotoNoMeio && comImg ? slotEmFluxo(44, 0) : null}
         {T("corpo", { ...serif, fontSize: tr.logoNoTopo ? MANCHETE.texto : 42, color: fg2, marginTop: S(fotoNoMeio ? 44 : 36), lineHeight: tr.logoNoTopo ? MANCHETE.entrelinhaTexto : 1.35, textAlign: variante === "c" ? "center" : "left" })}
         {anotacao(44, variante === "c" ? "left" : "right")}
       </>
     )
-    const imagem = comImg && variante !== "c" && !fotoNoMeio && slotEmFluxo(variante === "a" ? 56 : 0, variante === "b" ? 56 : 0)
+    const imagem = comImg && variante !== "c" && !fotoNoMeio && slotEmFluxo(variante === "b" ? 0 : 56, variante === "b" ? 56 : 0)
     body = (
       <div style={{ position: "absolute", left: ML, right: ML, top: S(off + (tr.logoNoTopo ? 230 : 180)), bottom: S(off + 100), display: "flex", flexDirection: "column", justifyContent: variante === "c" ? "center" : "flex-start" }}>
         {variante === "b" ? (
@@ -879,7 +902,6 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
             {imagem}
           </>
         )}
-        {caixaDestaque()}
       </div>
     )
   }

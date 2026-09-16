@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { FAMILIAS, aplicarFamilia, fundoPadraoDaFamilia, ritmoDeFundos } from "./familias"
 import { novoDocumento } from "./documento"
-import { fatoresDaEscada, linhasDoTitulo, MANCHETE_CORES } from "./formato-manchete"
+import { corDoTituloManchete, fatoresDaEscada, linhasDoTitulo, MANCHETE_CORES } from "./formato-manchete"
 import { camposOpcionaisDaPeca } from "./campos"
 import { limiteDe } from "./limites"
 import { getTemplate } from "./templates"
@@ -72,6 +72,14 @@ describe("identidade Manchete", () => {
     expect(volta.cores).toEqual(base.cores)
   })
 
+  it("o título NÃO sai na tinta do corpo — é azul no claro e creme no escuro", () => {
+    expect(M.traco.tituloDestacado).toBe(true)
+    expect(corDoTituloManchete(false, M.cores.destaque)).toBe(MANCHETE_CORES.azul)
+    expect(corDoTituloManchete(true, M.cores.destaque)).toBe(MANCHETE_CORES.creme)
+    // Nenhuma outra família muda a cor do título: lá ele é a tinta do corpo.
+    for (const [key, f] of Object.entries(FAMILIAS)) if (key !== "manchete") expect(f.traco.tituloDestacado, key).toBe(false)
+  })
+
   it("o fecho é caixa sólida e a marca é só o ícone no topo", () => {
     expect(M.traco.cta).toBe("bloco")
     expect(M.traco.logoNoTopo).toBe(true)
@@ -96,7 +104,8 @@ describe("identidade Manchete", () => {
 
 describe("a escada do título", () => {
   it("é decrescente e o último passo se repete — título longo não vira letra miúda", () => {
-    expect(fatoresDaEscada(3)).toEqual([1, 0.66, 0.56])
+    // Da altura de letra da capa (~88 / 62 / 52 px).
+    expect(fatoresDaEscada(3)).toEqual([1, 0.72, 0.61])
     const seis = fatoresDaEscada(6)
     expect(seis[0]).toBe(1)
     expect(seis[5]).toBe(seis[4])
