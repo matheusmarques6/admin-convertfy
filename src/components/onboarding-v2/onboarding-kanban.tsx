@@ -15,6 +15,7 @@ import { SelectClientAndStore } from "./select-client-and-store"
 import { OnboardingCard } from "./onboarding-card"
 import { OnboardingDrawer } from "./onboarding-drawer"
 import { AdvanceDialog } from "./advance-dialog"
+import { TemplatesDialog } from "./templates-dialog"
 import {
   DragDropContext,
   Droppable,
@@ -24,6 +25,7 @@ import {
 import {
   Plus,
   Loader2,
+  MessageSquare,
   Search,
   Flame,
   Activity,
@@ -146,6 +148,7 @@ export function OnboardingKanban({
   // WhatsApp ao cliente. Agora abre o dialogo: o avanco so acontece depois de
   // alguem ver a mensagem e decidir. O card volta sozinho pra coluna de
   // origem enquanto isso — a lista vem do SWR, sem estado otimista local.
+  const [templatesOpen, setTemplatesOpen] = useState(false)
   const [advanceContext, setAdvanceContext] = useState<string | null>(null)
   const [advancing, setAdvancing] = useState(false)
 
@@ -386,14 +389,24 @@ export function OnboardingKanban({
               </span>
             </h1>
           </div>
-          <button
-            type="button"
-            onClick={() => setNewOpen(true)}
-            className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-[8px] bg-[#1F1F1F] dark:bg-white text-white dark:text-black text-[12.5px] font-semibold hover:opacity-90 transition-opacity shadow-[0_1px_2px_rgba(0,0,0,0.08)]"
-          >
-            <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
-            Novo onboarding
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setTemplatesOpen(true)}
+              className="inline-flex items-center gap-1.5 h-9 px-3 rounded-[8px] text-[12.5px] font-medium text-slate-600 dark:text-white/70 border border-black/[0.08] dark:border-white/[0.12] hover:bg-slate-50 dark:hover:bg-white/[0.04] transition-colors"
+            >
+              <MessageSquare className="h-3.5 w-3.5" strokeWidth={2} />
+              Mensagens
+            </button>
+            <button
+              type="button"
+              onClick={() => setNewOpen(true)}
+              className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-[8px] bg-[#1F1F1F] dark:bg-white text-white dark:text-black text-[12.5px] font-semibold hover:opacity-90 transition-opacity shadow-[0_1px_2px_rgba(0,0,0,0.08)]"
+            >
+              <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
+              Novo onboarding
+            </button>
+          </div>
         </div>
 
         {/* KPI strip */}
@@ -739,6 +752,10 @@ export function OnboardingKanban({
             mutate()
           }}
         />
+      )}
+
+      {templatesOpen && (
+        <TemplatesDialog onClose={() => setTemplatesOpen(false)} />
       )}
 
       {advanceContext && (

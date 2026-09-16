@@ -13,6 +13,7 @@
  *   - advance: avancar coluna
  *   - go_back: voltar coluna (criar versao)
  *   - override: forcar avanco pulando itens pendentes
+ *   - manage_templates: editar o texto de WhatsApp das etapas
  *   - admin: excluir, alterar pipeline structure
  */
 
@@ -27,15 +28,29 @@ export type OnboardingAction =
   | "advance"
   | "go_back"
   | "override"
+  /**
+   * Editar a mensagem que a etapa manda AO CLIENTE.
+   *
+   * Nao sai pela RLS: a policy `op_cols_manage` exige
+   * `owner|manager|coo|coordinator` e a org nao tem nenhum manager, coo nem
+   * coordinator (medido em 16/09/2026) — so os donos conseguiriam. Quem
+   * decide o acesso e esta matriz, pela rota com service role.
+   *
+   * Liberado tambem a suporte e implementacao: sao quem opera o onboarding
+   * no dia a dia. O preco e que o texto que todos os clientes recebem passa
+   * a ter cinco papeis com a caneta — por isso a coluna
+   * `whatsapp_template_editado_por` existe, e a edicao deixa de ser anonima.
+   */
+  | "manage_templates"
   | "admin"
 
 const ROLE_PERMISSIONS: Record<OrgRole, OnboardingAction[]> = {
-  admin: ["read", "edit_meta", "work", "advance", "go_back", "override", "admin"],
-  dev: ["read", "edit_meta", "work", "advance", "go_back", "override", "admin"],
-  coo: ["read", "edit_meta", "work", "advance", "go_back", "override", "admin"],
-  suporte: ["read", "work", "advance"],
+  admin: ["read", "edit_meta", "work", "advance", "go_back", "override", "manage_templates", "admin"],
+  dev: ["read", "edit_meta", "work", "advance", "go_back", "override", "manage_templates", "admin"],
+  coo: ["read", "edit_meta", "work", "advance", "go_back", "override", "manage_templates", "admin"],
+  suporte: ["read", "work", "advance", "manage_templates"],
   designer: ["read", "work"],
-  implementacao: ["read", "work"],
+  implementacao: ["read", "work", "manage_templates"],
 }
 
 export async function getUserOrgRole(userId: string): Promise<{

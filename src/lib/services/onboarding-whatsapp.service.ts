@@ -12,6 +12,14 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { sendTextViaChannel } from "@/lib/services/whatsapp-channel-send.service"
 import { logger } from "@/lib/logger"
 import { buildBriefingUrl, buildFormUrl } from "@/lib/utils/form-url"
+import { VARS_DO_TEMPLATE, render } from "@/lib/onboarding/preview-do-avanco"
+
+/**
+ * `render` mora no modulo PURO porque a tela de edicao precisa dele: a previa
+ * do editor tem de ser a mesma funcao do envio, nao uma imitacao. Reexportado
+ * daqui porque a rota de preview e os testes ja o importavam deste arquivo.
+ */
+export { render }
 
 const log = logger.child("OnboardingWhatsApp")
 
@@ -25,7 +33,7 @@ const PLATFORM_LABEL: Record<string, string> = {
   other: "sua plataforma de email",
 }
 
-export interface Vars {
+export type Vars = {
   client_name: string
   store_name: string
   platform_name: string
@@ -45,36 +53,21 @@ export interface Vars {
 }
 
 /**
- * Troca `{{var}}` pelo valor e DIZ o que nao resolveu.
+ * O vocabulario servido ao editor de mensagens tem de ser EXATAMENTE o que
+ * `buildVars` produz. Este `satisfies` e o que amarra os dois: variavel nova
+ * em `Vars` sem entrada em `VARS_DO_TEMPLATE` reprova no tsc, e o inverso
+ * tambem — chave a mais na tabela nao casa com `keyof Vars`.
  *
- * Duas formas de faltar, e as duas chegavam ao cliente:
- *  - chave que nao existe em Vars -> voltava o `{{nome}}` cru;
- *  - chave que existe e esta vazia -> virava string vazia ("Figma:" orfao).
- *
- * Quem decide o que fazer com `faltando` e o chamador. `sendColumnWhatsApp`
- * nao envia: metade de uma mensagem e pior que mensagem nenhuma, e depois de
- * enviada nao se desfaz.
+ * Sem isso, o editor ofereceria uma variavel que o envio nao substitui, e o
+ * cliente receberia a chave crua. Foi assim que `{{tutorial_link}}` chegou a
+ * cinco pessoas em 15/09/2026.
  */
-export function render(
-  tpl: string,
-  v: Vars,
-): { texto: string; faltando: string[] } {
-  const dict = v as unknown as Record<string, string>
-  const faltando = new Set<string>()
-  const texto = tpl.replace(/\{\{\s*([a-zA-Z_]+)\s*\}\}/g, (_, k: string) => {
-    const valor = dict[k]
-    if (valor === undefined) {
-      faltando.add(k)
-      return `{{${k}}}`
-    }
-    if (valor.trim() === "") {
-      faltando.add(k)
-      return ""
-    }
-    return valor
-  })
-  return { texto, faltando: [...faltando] }
-}
+const _VOCABULARIO_CASA_COM_VARS = VARS_DO_TEMPLATE satisfies Record<
+  keyof Vars,
+  string
+>
+void _VOCABULARIO_CASA_COM_VARS
+
 
 function buildVars(
   onb: {

@@ -10,18 +10,19 @@
 import { describe, it, expect } from "vitest"
 import { render } from "./onboarding-whatsapp.service"
 import { SEED_COLUMNS } from "./onboarding-bootstrap.service"
+import {
+  VARS_DO_TEMPLATE,
+  varsDesconhecidas,
+} from "@/lib/onboarding/preview-do-avanco"
 
-/** Todo campo que `buildVars` sabe produzir. */
-const VARS_DISPONIVEIS = [
-  "client_name",
-  "store_name",
-  "platform_name",
-  "form_url",
-  "tutorial_link",
-  "briefing_url",
-  "figma_link",
-  "figma_full_link",
-] as const
+/**
+ * Todo campo que `buildVars` sabe produzir — lido da FONTE UNICA, nao
+ * recopiado aqui. A copia era o terceiro lugar onde a lista vivia, e uma
+ * lista repetida em tres lugares diverge no dia em que alguem toca um.
+ */
+const VARS_DISPONIVEIS = Object.keys(VARS_DO_TEMPLATE) as Array<
+  keyof typeof VARS_DO_TEMPLATE
+>
 
 function varsDoTexto(tpl: string): string[] {
   return [...tpl.matchAll(/\{\{\s*([a-zA-Z_]+)\s*\}\}/g)].map((m) => m[1])

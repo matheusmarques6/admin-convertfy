@@ -598,11 +598,39 @@ export async function ensureOnboardingBootstrap(
   }
 
   // 2. Colunas (idempotente por slug)
-  const { data: existingCols } = await admin
-    .from("operational_pipeline_columns")
-    .select("id, slug")
-    .eq("pipeline_id", pipelineId)
+  //
+  // O select traz o carimbo de edicao humana porque e ele que decide, mais
+  // abaixo, se o re-sync pode reescrever `whatsapp_template`. A migration
+  // 20261159 e aplicada A MAO neste repo e escorrega: coluna ausente (42703)
+  // cai no comportamento antigo e loga, em vez de derrubar o bootstrap — que
+  // roda no caminho de leitura de /admin/onboarding.
+  let existingCols: Array<{ slug: string; whatsapp_template_editado_em?: string | null }> = []
+  {
+    const comCarimbo = await admin
+      .from("operational_pipeline_columns")
+      .select("id, slug, whatsapp_template_editado_em")
+      .eq("pipeline_id", pipelineId)
+    if (comCarimbo.error) {
+      log.warn("select com carimbo de edicao falhou — re-sync sem a guarda", {
+        code: comCarimbo.error.code,
+        msg: comCarimbo.error.message,
+      })
+      const { data } = await admin
+        .from("operational_pipeline_columns")
+        .select("id, slug")
+        .eq("pipeline_id", pipelineId)
+      existingCols = (data ?? []) as typeof existingCols
+    } else {
+      existingCols = (comCarimbo.data ?? []) as typeof existingCols
+    }
+  }
   const existingSlugs = new Set((existingCols ?? []).map((c) => c.slug))
+  /** Slugs cujo texto foi editado a mao — o seed nao os toca mais. */
+  const textoEditado = new Set(
+    (existingCols ?? [])
+      .filter((c) => c.whatsapp_template_editado_em)
+      .map((c) => c.slug),
+  )
   const colsToInsert = SEED_COLUMNS.filter((c) => !existingSlugs.has(c.slug)).map((c) => ({
     pipeline_id: pipelineId,
     name: c.name,
@@ -633,21 +661,29 @@ export async function ensureOnboardingBootstrap(
   // tasks/checklists ja instanciadas (essas usam snapshot do template).
   await Promise.all(
     SEED_COLUMNS.filter((seed) => existingSlugs.has(seed.slug)).map(async (seed) => {
+      // Nome, posicao, checklist, deliverables, SLA e automacoes continuam
+      // vindo do seed — melhoria no codigo tem de propagar. So o TEXTO que
+      // vai ao cliente para de ser reescrito quando um humano o editou; a
+      // tela de mensagens tem o "voltar ao padrao", que limpa o carimbo e
+      // devolve esta coluna ao seed.
+      const patch: Record<string, unknown> = {
+        name: seed.name,
+        position: seed.position,
+        color: seed.color,
+        is_initial: seed.is_initial ?? false,
+        is_final: seed.is_final ?? false,
+        checklist_template: seed.checklist_template,
+        deliverables_template: seed.deliverables_template,
+        default_assignee_role: seed.default_assignee_role,
+        sla_hours: seed.sla_hours,
+        automation_rules: seed.automation_rules,
+      }
+      if (!textoEditado.has(seed.slug)) {
+        patch.whatsapp_template = seed.whatsapp_template
+      }
       const { error: upErr } = await admin
         .from("operational_pipeline_columns")
-        .update({
-          name: seed.name,
-          position: seed.position,
-          color: seed.color,
-          is_initial: seed.is_initial ?? false,
-          is_final: seed.is_final ?? false,
-          checklist_template: seed.checklist_template,
-          deliverables_template: seed.deliverables_template,
-          whatsapp_template: seed.whatsapp_template,
-          default_assignee_role: seed.default_assignee_role,
-          sla_hours: seed.sla_hours,
-          automation_rules: seed.automation_rules,
-        })
+        .update(patch)
         .eq("pipeline_id", pipelineId)
         .eq("slug", seed.slug)
       if (upErr) log.warn("Re-sync coluna falhou", { slug: seed.slug, code: upErr.code, msg: upErr.message })

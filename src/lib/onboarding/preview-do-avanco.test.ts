@@ -7,6 +7,9 @@ import {
   labelDaVar,
   marcadorDaVar,
   motivoDoBloqueio,
+  render,
+  varsDesconhecidas,
+  VARS_DO_TEMPLATE,
 } from "./preview-do-avanco"
 
 describe("classificarPendencias", () => {
@@ -156,5 +159,49 @@ describe("formatarTelefone", () => {
 
   it("null continua null — nao inventa destinatario", () => {
     expect(formatarTelefone(null)).toBeNull()
+  })
+})
+
+describe("varsDesconhecidas", () => {
+  it("acha a chave que buildVars nao produz", () => {
+    // O guard do editor: `{{nome_inventado}}` recusado no salvar, nao
+    // descoberto pelo cliente. Foi assim que `{{tutorial_link}}` chegou cru.
+    expect(varsDesconhecidas("Oi {{client_name}}, veja {{nome_inventado}}")).toEqual([
+      "nome_inventado",
+    ])
+  })
+
+  it("texto so com variaveis validas passa limpo", () => {
+    const todas = Object.keys(VARS_DO_TEMPLATE)
+      .map((k) => `{{${k}}}`)
+      .join(" ")
+    expect(varsDesconhecidas(todas)).toEqual([])
+  })
+
+  it("aceita espaco dentro das chaves, como o render", () => {
+    // Um segundo dialeto de placeholder aceitaria no editor o que o envio
+    // nao substitui — a regex tem de ser a MESMA.
+    expect(varsDesconhecidas("{{ client_name }} e {{ errada }}")).toEqual([
+      "errada",
+    ])
+  })
+
+  it("nao repete a mesma chave", () => {
+    expect(varsDesconhecidas("{{x}} {{x}} {{x}}")).toEqual(["x"])
+  })
+
+  it("texto sem variavel nenhuma nao acusa nada", () => {
+    expect(varsDesconhecidas("Oi, tudo bem?")).toEqual([])
+  })
+})
+
+describe("render", () => {
+  it("e a MESMA funcao do envio — previa do editor nao pode imitar", () => {
+    const { texto, faltando } = render("Oi {{client_name}}! {{figma_link}}", {
+      client_name: "João",
+      figma_link: "",
+    })
+    expect(texto).toBe("Oi João! ")
+    expect(faltando).toEqual(["figma_link"])
   })
 })

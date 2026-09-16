@@ -25,8 +25,22 @@ export const VARS_CRIADAS_NO_AVANCO: Record<string, readonly string[]> = {
   implementacao: ["tutorial_link"],
 }
 
-/** Nome de gente pra cada variavel — o motivo tem de ser legivel na tela. */
-const LABEL_DA_VAR: Record<string, string> = {
+/**
+ * As variaveis que um template de etapa pode usar — FONTE UNICA.
+ *
+ * A mesma lista existia em tres lugares que podiam divergir em silencio: o
+ * interface `Vars` (o que `buildVars` realmente produz), o rotulo do dialogo e
+ * a varredura do SEED no teste. Divergir e o defeito original: `tutorial_url`
+ * no codigo contra `{{tutorial_link}}` no template mandou a chave CRUA a cinco
+ * clientes.
+ *
+ * `onboarding-whatsapp.service.ts` tem um `satisfies Record<keyof Vars, …>`
+ * sobre esta tabela: variavel nova em `Vars` que nao entre aqui **reprova no
+ * tsc**, antes de chegar a qualquer template.
+ *
+ * O valor e o nome de gente, usado em toda frase que fala dela ao operador.
+ */
+export const VARS_DO_TEMPLATE = {
   client_name: "o nome do cliente",
   store_name: "o nome da loja",
   platform_name: "a plataforma da loja",
@@ -35,10 +49,31 @@ const LABEL_DA_VAR: Record<string, string> = {
   briefing_url: "o link do briefing",
   figma_link: "o link do Figma do preview",
   figma_full_link: "o link do Figma completo",
-}
+} as const
+
+export type VarDoTemplate = keyof typeof VARS_DO_TEMPLATE
 
 export function labelDaVar(nome: string): string {
-  return LABEL_DA_VAR[nome] ?? `a variavel {{${nome}}}`
+  return (
+    (VARS_DO_TEMPLATE as Record<string, string>)[nome] ??
+    `a variavel {{${nome}}}`
+  )
+}
+
+/**
+ * As `{{chaves}}` de um texto que NAO existem no vocabulario.
+ *
+ * E o guard do editor: template com `{{nome_inventado}}` e recusado no salvar,
+ * nao descoberto no cliente. A regex e a MESMA do `render` — um segundo
+ * dialeto de placeholder aceitaria no editor o que o envio nao substitui.
+ */
+export function varsDesconhecidas(texto: string): string[] {
+  const achadas = new Set<string>()
+  for (const m of texto.matchAll(/\{\{\s*([a-zA-Z_]+)\s*\}\}/g)) {
+    const chave = m[1]
+    if (!(chave in VARS_DO_TEMPLATE)) achadas.add(chave)
+  }
+  return [...achadas]
 }
 
 /**
@@ -52,6 +87,38 @@ export function labelDaVar(nome: string): string {
  */
 export function marcadorDaVar(nome: string): string {
   return `[${labelDaVar(nome)} — gerado ao avançar]`
+}
+
+/**
+ * Troca `{{var}}` pelo valor e DIZ o que nao resolveu.
+ *
+ * Duas formas de faltar, e as duas chegavam ao cliente:
+ *  - chave que nao existe em Vars -> voltava o `{{nome}}` cru;
+ *  - chave que existe e esta vazia -> virava string vazia ("Figma:" orfao).
+ *
+ * Quem decide o que fazer com `faltando` e o chamador. `sendColumnWhatsApp`
+ * nao envia: metade de uma mensagem e pior que mensagem nenhuma, e depois de
+ * enviada nao se desfaz.
+ */
+export function render(
+  tpl: string,
+  v: Record<string, string>,
+): { texto: string; faltando: string[] } {
+  const dict = v
+  const faltando = new Set<string>()
+  const texto = tpl.replace(/\{\{\s*([a-zA-Z_]+)\s*\}\}/g, (_, k: string) => {
+    const valor = dict[k]
+    if (valor === undefined) {
+      faltando.add(k)
+      return `{{${k}}}`
+    }
+    if (valor.trim() === "") {
+      faltando.add(k)
+      return ""
+    }
+    return valor
+  })
+  return { texto, faltando: [...faltando] }
 }
 
 export interface Pendencias {
