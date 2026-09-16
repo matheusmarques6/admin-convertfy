@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest"
 import { parseCuratorRanking } from "./curator-ranking.parser"
+import type { DecididaAntes } from "./curador-leque-prompt"
 import {
   conflitoComAsDecididas,
   costurarLeque,
@@ -159,7 +160,7 @@ describe("conflitoComAsDecididas", () => {
 describe("escolherPorPosicao", () => {
   it("é SÉRIE: cada posição recebe o que as anteriores decidiram", async () => {
     const vistos: number[][] = []
-    const chamar = vi.fn(async (p: PosicaoDoLeque, ja) => {
+    const chamar = vi.fn(async (p: PosicaoDoLeque, ja: DecididaAntes[]) => {
       vistos.push(ja.map((d) => d.block_index))
       return { raw: resposta(p.idsPermitidos[0]) }
     })
@@ -187,7 +188,7 @@ describe("escolherPorPosicao", () => {
 
   it("posição que falhou NÃO entra no <ja_decididas> da seguinte", async () => {
     const vistos: string[][] = []
-    const chamar = vi.fn(async (p: PosicaoDoLeque, ja) => {
+    const chamar = vi.fn(async (p: PosicaoDoLeque, ja: DecididaAntes[]) => {
       vistos.push(ja.map((d) => d.variant_id))
       if (p.block_index === 0) throw new Error("boom")
       return { raw: resposta(p.idsPermitidos[0]) }
@@ -211,7 +212,7 @@ describe("escolherPorPosicao", () => {
 
   it("o nome da variante chega ao <ja_decididas> quando existe", async () => {
     let visto: string | null | undefined
-    const chamar = vi.fn(async (p: PosicaoDoLeque, ja) => {
+    const chamar = vi.fn(async (p: PosicaoDoLeque, ja: DecididaAntes[]) => {
       if (p.block_index === 1) visto = ja[0]?.nome
       return { raw: resposta(p.idsPermitidos[0]) }
     })

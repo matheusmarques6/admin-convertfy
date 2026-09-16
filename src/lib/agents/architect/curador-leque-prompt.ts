@@ -189,6 +189,17 @@ export function idsBloqueadosPelaRepeticao(
   return jaDecididas.filter((d) => normalizarSecao(d.section) === alvo).map((d) => d.variant_id)
 }
 
+/**
+ * A retomada do leque.
+ *
+ * O `MENSAGEM_RETOMADA_JSON` do caminho de hoje manda "cobrir TODAS as
+ * posições de <estrutura_do_email>". Numa chamada que decidiu UMA, isso é
+ * um convite direto a inventar as outras cinco — e as inventadas passariam
+ * pelo parser como escolhas legítimas.
+ */
+export const MENSAGEM_RETOMADA_POSICAO =
+  "Devolva agora APENAS o objeto JSON desta posição, no formato pedido no system — sem texto antes ou depois, sem markdown. É UMA posição: a de <posicao_a_decidir>. Não decida por nenhuma outra. Se a resposta anterior foi cortada, complete-a a partir do que já decidiu."
+
 // ── O user do leque, derivado do user vivo ──────────────────────────────
 
 /**

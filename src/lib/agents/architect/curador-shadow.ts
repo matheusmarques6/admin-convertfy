@@ -15,7 +15,7 @@
 import crypto from "crypto"
 
 import { logger } from "@/lib/logger"
-import { type BuildCatalogResult, type CatalogVaultExtra } from "./catalog-builder"
+import { buildCompactCatalog, fatiarCatalogo, type BuildCatalogResult, type CatalogVaultExtra } from "./catalog-builder"
 import {
   buildAprendizadosBlock,
   buildConvivenciaBlock,
@@ -39,7 +39,26 @@ import {
   type AgentInvokeConfig,
   CACHE_PREFIX_MARKER,
 } from "./llm-invoke"
-import { loadFinalistNotes, type FinalistNoteResult } from "./curador-vault-tools"
+import {
+  aplicarOrcamentoDaCauda,
+  carregarNotasDasFinalistas,
+  loadFinalistNotes,
+  type FinalistNoteResult,
+} from "./curador-vault-tools"
+import {
+  CAUDA_POSICAO_USER,
+  LEQUE_SYSTEM,
+  MENSAGEM_RETOMADA_POSICAO,
+  montarLequeUser,
+  renderJaDecididas,
+} from "./curador-leque-prompt"
+import {
+  costurarLeque,
+  escolherPorPosicao,
+  parseEscolhaDaPosicao,
+  type PosicaoDoLeque,
+  type ResultadoDoLeque,
+} from "./curador-leque"
 import { tetoDeRelogioDoAgente } from "@/lib/agents/fase1-orcamento"
 import { usageOf } from "@/lib/agents/chains/step-usage"
 import { RespostaVaziaError } from "@/lib/agents/resposta-vazia"
@@ -66,6 +85,7 @@ import {
 import {
   conflitoDeContrato,
   indiceDeEliminadas,
+  renderEliminadasPorRequisito,
   resumirContrato,
   type ContratoResumo,
   type ElegiveisDaPosicao,
@@ -146,6 +166,19 @@ export function planejarShortlist(p: {
   sections: string[]
   elegiveisPorPosicao?: Map<number, ElegiveisDaPosicao> | null
   forcarChamada?: boolean
+  /**
+   * O leque NÃO faz shortlist (16/09).
+   *
+   * Ela existia para reduzir de N para 3 **antes** de carregar notas numa
+   * chamada que via todas as posições. No leque cada posição já recebe só
+   * as candidatas dela, fatiadas, e quem reparte a evidência é o orçamento
+   * da cauda — quem não couber sai como `sem_orcamento`, que é degradação
+   * graciosa e não custa uma chamada a mais. Manter a shortlist ali
+   * custaria, além do dinheiro, um SEGUNDO system na mesma run (ela precisa
+   * do catálogo, que o leque tirou do system) e com isso o cache do prefixo
+   * das posições — que é a razão de o leque existir.
+   */
+  nuncaChamar?: boolean
   /** Default `limiarSemChamada()`. */
   limiar?: number
 }): PlanoDaShortlist {
@@ -156,6 +189,16 @@ export function planejarShortlist(p: {
   for (const [i, e] of p.elegiveisPorPosicao ?? []) {
     elegiveis.set(i, new Set(e.ids))
     if (e.zerou) emFailOpen.push(i)
+  }
+  if (p.nuncaChamar) {
+    const porCodigo = new Map<number, RankedChoice[]>()
+    for (const i of todas) {
+      const ids = p.elegiveisPorPosicao?.get(i)?.ids ?? []
+      if (ids.length > 0) {
+        porCodigo.set(i, ids.map((variant_id) => ({ variant_id, motivo: "elegível por contrato (o leque não faz shortlist)" })))
+      }
+    }
+    return { puladas: todas, limiar, chamar: false, obrigatorias: [], porCodigo, elegiveis, emFailOpen }
   }
   if (!p.elegiveisPorPosicao || p.forcarChamada) {
     return { puladas: [], limiar, chamar: true, obrigatorias: todas, porCodigo: new Map(), elegiveis, emFailOpen }
@@ -502,8 +545,19 @@ export const MENSAGEM_RETOMADA_JSON =
  * Motivo da retomada, ou null quando a resposta serve. JSON legível com
  * `finish_reason: length` NÃO retoma: o corte veio depois do objeto.
  */
-export function motivoDeRetomada(raw: string, finishReason?: string): string | null {
-  if (parseCuradorVaultOutput(raw)) return null
+export function motivoDeRetomada(
+  raw: string,
+  finishReason?: string,
+  /**
+   * O que conta como resposta utilizável. Default é o JSON do e-mail
+   * inteiro; o leque passa o parser de UMA posição — sem isso a retomada
+   * dispararia em toda chamada do leque, porque o objeto de uma posição
+   * não tem `papeis` nem `escolhas[].block_index` e o parser agregado o lê
+   * como ilegível.
+   */
+  jsonUtilizavel: (raw: string) => boolean = (r) => !!parseCuradorVaultOutput(r),
+): string | null {
+  if (jsonUtilizavel(raw)) return null
   if (!raw.trim()) return finishReason === "length" || finishReason === "max_tokens" ? "vazio_por_teto" : "vazio"
   return finishReason === "length" || finishReason === "max_tokens" ? "cortado_antes_do_json" : "sem_json"
 }
@@ -1141,6 +1195,27 @@ export interface CuradorShadowParams {
    * a shortlist chama o modelo e o que restringe as finalistas.
    */
   elegiveisPorPosicao?: Map<number, ElegiveisDaPosicao> | null
+  /**
+   * Uma chamada por POSIÇÃO em vez de uma pelo e-mail inteiro (o leque).
+   * Quem lê o gate `curador_leque_mode` é o caller; aqui chega resolvido.
+   */
+  lequeOn?: boolean
+  /**
+   * Papel e requisitos POR posição, do Estruturador — só o leque usa.
+   *
+   * Eles já estão em `<decisao_do_estruturador>`, no prefixo cacheado, mas
+   * lá vêm as N posições juntas. Na cauda o recorte é literal e do MESMO
+   * dado, e o que ele compra é o modelo não ter de achar a posição 3 dentro
+   * de um bloco de seis — que é onde ele se perde, e onde o engano custa a
+   * peça.
+   */
+  decisaoPorPosicao?: Array<{ papel: string; requisitos: string }>
+  /**
+   * O fio do Estruturador. No leque nenhuma chamada vê o e-mail inteiro,
+   * então pedir o fio a uma delas seria pedir síntese do que ela não
+   * recebeu.
+   */
+  fioDoEstruturador?: string
 }
 
 /** O que o Curador legado herda de um JSON do vault que não pôde ser consumido. */
@@ -1263,6 +1338,32 @@ export async function runCuradorShadow(
       cache_user_prefix: true,
     }
 
+    /**
+     * O prompt do leque é DERIVADO do user vivo. `montarLequeUser` lança
+     * quando o prompt do banco perdeu um dos blocos nomeados — e aí o leque
+     * simplesmente não roda: cair para o caminho de hoje é sempre correto,
+     * enquanto servir um prefixo de que não se sabe a forma serviria a nota
+     * de seção de TODAS as seções em toda posição, calado.
+     */
+    let lequeUser: string | null = null
+    let lequeIndisponivel: string | null = null
+    if (p.lequeOn && !(p.elegiveisPorPosicao && p.elegiveisPorPosicao.size > 0)) {
+      // Sem elegíveis por posição não há o que fatiar, e o leque serviria
+      // cauda vazia em todas: a peça inteira viraria lacuna.
+      lequeIndisponivel = "sem_elegiveis_por_posicao"
+      log.warn("leque.prompt_indisponivel", { motivo: lequeIndisponivel })
+    } else if (p.lequeOn) {
+      try {
+        lequeUser = montarLequeUser(config.user_template)
+      } catch (e) {
+        lequeIndisponivel = e instanceof Error ? e.message : String(e)
+        log.warn("leque.prompt_indisponivel", { motivo: lequeIndisponivel })
+      }
+    }
+    const usarLeque = lequeUser !== null
+    const systemEfetivo = usarLeque ? LEQUE_SYSTEM : DEFAULT_CHOOSER_VAULT_SYSTEM
+    const userEfetivo = usarLeque ? lequeUser! : config.user_template
+
     const estruturadorOn = p.estruturadorOn === true
     const OMITIDO = BLOCO_OMITIDO_PELO_ESTRUTURADOR
     const lacunasBlock = buildLacunasBlock(p.vault, p.liveSections)
@@ -1289,7 +1390,10 @@ export async function runCuradorShadow(
     const systemVars = {
       protocolo: buildProtocoloBlock(p.vault),
       convivencias: buildConvivenciaBlock(p.vault),
-      catalogo: p.catalogComExtras.compact.text,
+      // No leque o catálogo não fica no system: ou ele é o inteiro (e a
+      // fatia não existe) ou o system muda por posição — e com o cache
+      // hierárquico, system diferente mata o cache do user inteiro.
+      ...(usarLeque ? {} : { catalogo: p.catalogComExtras.compact.text }),
     }
 
     const catalogSha8 = crypto
@@ -1297,24 +1401,28 @@ export async function runCuradorShadow(
       .update(p.catalogComExtras.compact.text)
       .digest("hex")
       .slice(0, 8)
-    const systemResolvido = interpolateSystem(DEFAULT_CHOOSER_VAULT_SYSTEM, systemVars)
-    const segUser = buildSegmentedPrompt(config.user_template, vars, {
+    const systemResolvido = interpolateSystem(systemEfetivo, systemVars)
+    const segUser = buildSegmentedPrompt(userEfetivo, vars, {
       ...p.origins,
       aprendizados: { cls: "vault", rotulo: "Aprendizados — email_learnings" },
       aprendizados_do_toque: { cls: "vault", rotulo: "Aprendizados deste toque — email_learnings.frontmatter.serve_a" },
       lacunas_biblioteca: { cls: "vault", rotulo: "Lacunas da biblioteca — email_vault_docs (componentes/lacunas)" },
       indice_vault: { cls: "vault", rotulo: "Índice de pastas do Obsidian — file_path das tabelas do vault" },
     }, { parte: "user" })
-    const segSystem = buildInterpolatedSegments(DEFAULT_CHOOSER_VAULT_SYSTEM, systemVars, {
-      catalogo: {
-        cls: "biblioteca",
-        rotulo: `Índice compacto da biblioteca — ${p.catalogComExtras.total} variantes`,
-        // `catalogo_enxuto`: o resolver compara o sha8 com `catalog.enxuto`
-        // (= `compact.text`); com `catalogo` comparava com o JSON integral
-        // e o segmento saía `stale` em toda run.
-        ref: "catalogo_enxuto",
-        sha8: catalogSha8,
-      },
+    const segSystem = buildInterpolatedSegments(systemEfetivo, systemVars, {
+      ...(usarLeque
+        ? {}
+        : {
+            catalogo: {
+              cls: "biblioteca" as const,
+              rotulo: `Índice compacto da biblioteca — ${p.catalogComExtras.total} variantes`,
+              // `catalogo_enxuto`: o resolver compara o sha8 com
+              // `catalog.enxuto` (= `compact.text`); com `catalogo`
+              // comparava com o JSON integral e o segmento saía `stale`.
+              ref: "catalogo_enxuto",
+              sha8: catalogSha8,
+            },
+          }),
       protocolo: { cls: "vault", rotulo: "Protocolo de seleção — email_vault_docs" },
       convivencias: { cls: "vault", rotulo: "Regras de convivência — email_vault_docs" },
     }, { parte: "system" })
@@ -1330,7 +1438,8 @@ export async function runCuradorShadow(
     const planoShortlist = planejarShortlist({
       sections: p.liveSections,
       elegiveisPorPosicao: p.elegiveisPorPosicao ?? null,
-      forcarChamada: process.env.CURADOR_SHORTLIST_SEMPRE === "1",
+      forcarChamada: !usarLeque && process.env.CURADOR_SHORTLIST_SEMPRE === "1",
+      nuncaChamar: usarLeque,
     })
     const etapas = planoShortlist.chamar ? "shortlist + escolha" : "escolha (shortlist por código)"
     const inputSummary: InputSummaryItem[] = [
@@ -1456,7 +1565,10 @@ export async function runCuradorShadow(
         posicoesObrigatorias: planoShortlist.obrigatorias,
       })
       if (shortlistLlm.malformed) throw new Error("curador_shortlist_invalida")
-    } else {
+    } else if (!usarLeque) {
+      // `null` = "houve uma shortlist e ela foi pulada". No leque não há
+      // etapa de shortlist nenhuma, e registrá-la faria a telemetria
+      // afirmar uma chamada que o desenho não tem.
       porChamada.shortlist = null
     }
     const mesclaShortlist = mesclarShortlist({ plano: planoShortlist, llm: shortlistLlm, sections: p.liveSections })
@@ -1465,38 +1577,160 @@ export async function runCuradorShadow(
       throw new Error("curador_shortlist_invalida")
     }
     const finalistIds = Array.from(new Set(Array.from(shortlist.byBlock.values()).flatMap((choices) => choices.map((c) => c.variant_id))))
-    const finalistNotes = await loadFinalistNotes(finalistIds)
-    const finalVars = { ...vars, finalistas_notas: renderFinalistNotes(finalistNotes) }
-    const finalConfig = {
-      ...config,
-      user_template: `${config.user_template}${CAUDA_ESCOLHA_USER}`,
-    }
-    let finalCall = await medir("escolha", () =>
-      naEtapa("escolha", () => invokeAgent(finalConfig, finalVars, systemVars)),
-    )
+
+    let finalistNotes: FinalistNoteResult[]
+    let finalCall: { raw: string; tokensInput: number; tokensOutput: number; costUsd: number; finishReason?: string }
     let retomada: { feita: boolean; motivo: string; erro?: string; prefill_usado: boolean } | undefined
-    // Uma retomada curta preserva o comportamento de recuperação do JSON,
-    // sem reabrir ferramentas nem refazer a shortlist.
-    const motivoRetomada = motivoDeRetomada(finalCall.raw, finalCall.finishReason)
-    if (retomadaLigada() && motivoRetomada) {
-      const retryVars = { ...finalVars, resposta_anterior: finalCall.raw }
-      const retry = await medir("retomada", () =>
-        naEtapa("retomada", () =>
-          invokeAgent(
-            { ...finalConfig, user_template: `${finalConfig.user_template}\n\n<resposta_anterior>{{resposta_anterior}}</resposta_anterior>\n${MENSAGEM_RETOMADA_JSON}` },
-            retryVars,
-            systemVars,
-          ),
-        ),
+    let parsed: CuradorVaultOutput | null
+    let leque: ResultadoDoLeque | null = null
+    let chamadasDoLeque = 0
+
+    if (usarLeque) {
+      // ── O leque: uma chamada por posição, em série ────────────────────
+      //
+      // O prefixo (system + os três blocos de user) é idêntico entre elas e
+      // é lido do cache da 2ª em diante; o que muda vai na cauda.
+      //
+      // As notas saem de UMA consulta ao banco e o orçamento é repartido
+      // POR posição — o teto do e-mail inteiro deixaria as últimas posições
+      // sem nota, que é o defeito que a separação em
+      // `carregarNotasDasFinalistas` + `aplicarOrcamentoDaCauda` fecha.
+      const notasCruas = await carregarNotasDasFinalistas(finalistIds)
+      const notaPorId = new Map(notasCruas.map((n) => [n.variant_id, n]))
+      const eliminadasPorBloco = new Map(
+        (p.eliminadasPorRequisito ?? []).map((e) => [e.block_index, e]),
       )
-      finalCall = {
-        ...retry,
-        tokensInput: finalCall.tokensInput + retry.tokensInput,
-        tokensOutput: finalCall.tokensOutput + retry.tokensOutput,
-        costUsd: finalCall.costUsd + retry.costUsd,
+      const servidas = new Map<string, FinalistNoteResult>()
+
+      const posicoes: PosicaoDoLeque[] = p.liveSections.map((section, i) => {
+        const ids = (shortlist.byBlock.get(i) ?? []).map((c) => c.variant_id)
+        const notasDaPosicao = aplicarOrcamentoDaCauda(
+          ids.map((id) => notaPorId.get(id)).filter((n): n is FinalistNoteResult => !!n),
+        )
+        for (const n of notasDaPosicao) if (!servidas.has(n.variant_id)) servidas.set(n.variant_id, n)
+        const elim = eliminadasPorBloco.get(i)
+        const decisao = p.decisaoPorPosicao?.[i]
+        return {
+          block_index: i,
+          section,
+          papel: decisao?.papel ?? "",
+          requisitos: decisao?.requisitos ?? "",
+          candidatas: buildCompactCatalog(fatiarCatalogo(p.catalogComExtras.sections, section, ids)).text,
+          notas: renderFinalistNotes(notasDaPosicao),
+          notaDaSecao: buildSecaoNotasBlock(p.vault, [section]),
+          lacunas: buildLacunasBlock(p.vault, p.liveSections, section),
+          eliminadas: renderEliminadasPorRequisito(elim ? [elim] : []),
+          idsPermitidos: ids,
+        }
+      })
+
+      const acumulado = { tokensInput: 0, tokensOutput: 0, costUsd: 0 }
+      const brutas: string[] = []
+      let finishPior: string | undefined
+      const lequeConfig = { ...config, system_prompt: systemEfetivo, user_template: `${lequeUser}${CAUDA_POSICAO_USER}` }
+
+      leque = await escolherPorPosicao({
+        posicoes,
+        nomePorVariante: new Map(p.catalogComExtras.compact.entries.map((e) => [e.variant_id, e.title])),
+        chamar: async (pos, ja) => {
+          const posVars = {
+            ...vars,
+            posicao_index: String(pos.block_index),
+            posicao_section: pos.section,
+            posicao_papel: pos.papel || "(o papel desta posição está em <decisao_do_estruturador>)",
+            posicao_requisitos: pos.requisitos || "(nenhum requisito duro declarado para esta posição)",
+            posicao_candidatas: pos.candidatas,
+            finalistas_notas: pos.notas,
+            posicao_nota_secao: pos.notaDaSecao,
+            posicao_lacunas: pos.lacunas,
+            posicao_eliminadas: pos.eliminadas,
+            ja_decididas: renderJaDecididas(ja),
+          }
+          const etapa = `posicao_${pos.block_index}`
+          let call = await medir(etapa, () => naEtapa(etapa, () => invokeAgent(lequeConfig, posVars, systemVars)))
+          chamadasDoLeque++
+          // `sem_escolha` é resposta legítima (a eliminação zerou a lista) e
+          // NÃO retoma; só o JSON ilegível retoma.
+          const motivo = motivoDeRetomada(
+            call.raw,
+            call.finishReason,
+            (r) => parseEscolhaDaPosicao(r, pos).erro !== "json_ilegivel",
+          )
+          if (retomadaLigada() && motivo) {
+            const retry = await medir(`${etapa}_retomada`, () =>
+              naEtapa(`${etapa}_retomada`, () =>
+                invokeAgent(
+                  {
+                    ...lequeConfig,
+                    user_template: `${lequeConfig.user_template}\n\n<resposta_anterior>{{resposta_anterior}}</resposta_anterior>\n${MENSAGEM_RETOMADA_POSICAO}`,
+                  },
+                  { ...posVars, resposta_anterior: call.raw },
+                  systemVars,
+                ),
+              ),
+            )
+            chamadasDoLeque++
+            acumulado.tokensInput += call.tokensInput
+            acumulado.tokensOutput += call.tokensOutput
+            acumulado.costUsd += call.costUsd
+            retomada = { feita: true, motivo, prefill_usado: false }
+            call = retry
+          }
+          acumulado.tokensInput += call.tokensInput
+          acumulado.tokensOutput += call.tokensOutput
+          acumulado.costUsd += call.costUsd
+          if (call.finishReason === "length" || call.finishReason === "max_tokens") finishPior = call.finishReason
+          brutas.push(`=== [${pos.block_index}] ${pos.section} ===\n${call.raw}`)
+          return { raw: call.raw }
+        },
+      })
+
+      // A união do que foi REALMENTE servido: com o orçamento por posição,
+      // a mesma nota pode caber numa e não em outra.
+      finalistNotes = finalistIds.map(
+        (id) => servidas.get(id) ?? notaPorId.get(id) ?? { variant_id: id, status: "missing" as const, file_path: null, body: null },
+      )
+      finalCall = { raw: brutas.join("\n\n"), ...acumulado, finishReason: finishPior }
+      parsed = costurarLeque(
+        p.liveSections.map((section, i) => ({ block_index: i, section })),
+        leque.escolhas,
+        p.fioDoEstruturador ?? "",
+      )
+    } else {
+      finalistNotes = await loadFinalistNotes(finalistIds)
+      const finalVars = { ...vars, finalistas_notas: renderFinalistNotes(finalistNotes) }
+      const finalConfig = {
+        ...config,
+        user_template: `${config.user_template}${CAUDA_ESCOLHA_USER}`,
       }
-      retomada = { feita: true, motivo: motivoRetomada, prefill_usado: false }
+      finalCall = await medir("escolha", () =>
+        naEtapa("escolha", () => invokeAgent(finalConfig, finalVars, systemVars)),
+      )
+      // Uma retomada curta preserva o comportamento de recuperação do JSON,
+      // sem reabrir ferramentas nem refazer a shortlist.
+      const motivoRetomada = motivoDeRetomada(finalCall.raw, finalCall.finishReason)
+      if (retomadaLigada() && motivoRetomada) {
+        const retryVars = { ...finalVars, resposta_anterior: finalCall.raw }
+        const retry = await medir("retomada", () =>
+          naEtapa("retomada", () =>
+            invokeAgent(
+              { ...finalConfig, user_template: `${finalConfig.user_template}\n\n<resposta_anterior>{{resposta_anterior}}</resposta_anterior>\n${MENSAGEM_RETOMADA_JSON}` },
+              retryVars,
+              systemVars,
+            ),
+          ),
+        )
+        finalCall = {
+          ...retry,
+          tokensInput: finalCall.tokensInput + retry.tokensInput,
+          tokensOutput: finalCall.tokensOutput + retry.tokensOutput,
+          costUsd: finalCall.costUsd + retry.costUsd,
+        }
+        retomada = { feita: true, motivo: motivoRetomada, prefill_usado: false }
+      }
+      parsed = parseCuradorVaultOutput(finalCall.raw)
     }
+
     const res = {
       ...finalCall,
       tokensInput: shortlistConsumo.tokensInput + finalCall.tokensInput,
@@ -1505,13 +1739,15 @@ export async function runCuradorShadow(
       // `voltas` é o número REAL de chamadas ao modelo, não um literal: a
       // shortlist é pulada quando nenhuma posição passa do limiar, e o
       // `retomada ? 3 : 2` de antes contava uma chamada que não aconteceu.
-      voltas: (planoShortlist.chamar ? 1 : 0) + 1 + (retomada?.feita ? 1 : 0),
+      // No leque são N posições (mais as retomadas que houver).
+      voltas: usarLeque
+        ? chamadasDoLeque
+        : (planoShortlist.chamar ? 1 : 0) + 1 + (retomada?.feita ? 1 : 0),
       shortlist,
       finalistNotes,
       finalistIds,
       retomada,
     }
-    const parsed = parseCuradorVaultOutput(res.raw)
     // A sequência é a da ARQUITETURA, sempre. O guard casa os papéis contra
     // ela e registra o que o agente tentou mudar; o `block_index` das
     // escolhas passa a se referir a esta lista, não à que ele devolveu.
@@ -1590,6 +1826,33 @@ export async function runCuradorShadow(
         // Quanto CADA chamada gastou, não só a soma: é o que diz para onde
         // o teto precisa ir na próxima vez.
         consumo_por_chamada: porChamada,
+        // ── O leque (16/09) ───────────────────────────────────────────
+        //
+        // `leque` presente = esta run decidiu POSIÇÃO A POSIÇÃO. As chaves
+        // são separadas de propósito: `falhas` é chamada que LANÇOU (rede,
+        // relógio, provedor) e `ajustes` é o código desfazendo repetição
+        // com a reserva — as duas viram posição sem variante no fim, mas
+        // pedem ações opostas da operação.
+        leque: usarLeque
+          ? {
+              posicoes: leque?.escolhas.map((e) => ({
+                block_index: e.block_index,
+                section: e.section,
+                variant_id: e.variant_id,
+                reserva: e.reserva,
+                motivo: e.motivo,
+                conversa_com: e.conversa_com,
+                erro: e.erro ?? null,
+                eco_divergente: e.eco_divergente ?? null,
+              })) ?? [],
+              ajustes: leque?.ajustes ?? [],
+              falhas: leque?.falhas ?? [],
+              chamadas: chamadasDoLeque,
+            }
+          : null,
+        // Por que o leque NÃO rodou nesta geração, quando foi pedido. Sem
+        // isto, "o gate está on e a run parece a de sempre" não tem causa.
+        leque_indisponivel: lequeIndisponivel,
         // 14/09: posições resolvidas por código (≤ limiar elegíveis por
         // contrato), origem da shortlist e onde o modelo só apontou
         // eliminadas.
