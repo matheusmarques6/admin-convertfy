@@ -7115,6 +7115,65 @@ Fica declarado o que NÃO foi mexido: `onboarding_column_change` (374) e
 estado — repetição ali é legítima, e coalescê-las esconderia evento. O
 que falta nesses dois é política de retenção, que é decisão de produto.
 
+## Dois crons rodavam há meses sem gravar uma linha (16/09)
+
+Varredura dos 43 crons contra o que cada um deixa no banco. Dois estavam
+mudos, pela MESMA causa de fundo: **zero devolvido com `success: true` se
+lê como "não havia o que fazer"**.
+
+**`crm-snapshot` nunca gravou NADA.** `crm_org_snapshots`,
+`crm_pipeline_snapshots` e `crm_lead_funnel_snapshots` com ZERO linhas,
+as três, desde sempre: `computeAllOrgSnapshots` selecionava as
+organizações com `.eq("type", "agency")` e a ÚNICA organização deste
+banco é `type: 'internal'`. O laço percorria lista vazia e o cron
+respondia 200 todo dia às 06:20. O custo ficava escondido em três telas —
+`/admin/crm/reports` é "snapshot-first" e lia tabela vazia como se não
+houvesse histórico, os deltas do painel de CS ficavam `null` "porque
+ainda não há snapshot", e `dashboard/sales` comparava o valor aberto de
+hoje com um passado que nunca existiu. O rótulo era suposição sobre um
+modelo de negócio que nunca existiu aqui; quem decide se a org rende
+snapshot é ter pipeline e carteira, e `snapshotOrg` já mede isso. Os três
+upserts também passavam sem conferir erro — o PostgREST devolve a falha
+em `error`, não como exceção, e o código nem a desestruturava.
+
+**`store-daily-metrics` tinha TRÊS linhas em meses.** O cron rodava e
+agregava quase nada porque `fetchCampaigns` filtrava
+`.eq("period_label", "90d")` — o rótulo mais RARO da tabela: medido,
+`90d` tem 73 linhas com a mais nova de 05/09, contra 2.061 em `30d` com
+423 dos últimos dez dias, num universo de 8.356 campanhas com `send_time`
+em 51 lojas. A justificativa ("evitar contar a mesma campanha em várias
+janelas") estava certa na intenção e errada na âncora: quem deduplica é
+`dedupCampaigns`, por (store_id, campaign_id), dentro do `aggregateByDay`
+— o filtro era redundante e amarrava o cron ao rótulo vazio. O gráfico de
+receita atribuída caía sempre no fallback por campanhas.
+
+A leitura passou a cobrir todos os rótulos e a ser **paginada** (a mesma
+campanha em várias janelas passa fácil do teto de 1.000 do PostgREST, que
+corta sem avisar) com ordem TOTAL, senão `.range()` repete e pula linhas.
+A dedupe que torna isso seguro ganhou teste dedicado — a mesma campanha
+em três rótulos conta uma vez, e vence o sync mais recente.
+
+**Os dois passaram a DIZER quando não escrevem**: `avaliarSnapshot`
+(`lib/crm/snapshot-saude.ts`, puro, 6 testes) reprova rodada sem
+organização ou sem linha gravada, e o de métricas separa "ontem ninguém
+enviou campanha" (zero legítimo) de "havia campanha e nada foi gravado"
+(500). Cron que falha tem de aparecer como falha no painel da plataforma
+— foi a ausência desse sinal que deixou os dois parados por meses.
+
+Recuperação: o snapshot do CRM começa a série no dia seguinte ao deploy
+(snapshot é do dia, não há passado a recuperar); o histórico de métricas
+por loja volta com `GET /api/cron/store-daily-metrics?backfill=120`, que
+usa a mesma leitura corrigida.
+
+**O resto da varredura está saudável, e o que está zerado tem motivo
+declarado**: `commemorative_dates` (280 linhas, cron anual),
+`google-calendar-sync` (reuniões atualizadas na hora), `crm-ads-sync`,
+`crm-health-compute`, `exchange-rate-snapshot`, `convertia-saldo` e
+`vault-sync` todos com escrita recente. `ai_eval_cases`/`ai_eval_runs` e
+`client_briefings` em zero é falta de USO, não gatilho quebrado — como já
+estava registrado. `store_feedback_calls` recebeu linha em 15/09, o que
+confirma a ponte reunião→carteira da migration 20261129 funcionando.
+
 ---
 
 *Última atualização: Setembro 2026*
