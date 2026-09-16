@@ -7862,6 +7862,75 @@ nenhum teste pegaria. As quatro capas da prateleira foram renderizadas
 juntas: cada molde aparece na identidade que ele dá, que era a queixa da
 thumb que "não condiz com a realidade".
 
+## Conteúdo — Raio-X e Espionagem: o número que diz de onde veio (set/2026)
+
+Duas telas copiadas de uma ferramenta que o time assinou, cada uma com o eixo
+de melhoria declarado. De/para completo em
+`docs/conteudo/raio-x-e-espionagem.md`.
+
+**A medição veio antes do código, e mudou o desenho**: 90 posts sincronizados
+e **0 classificados**, 0 brand kits, 0 templates do time, 2 documentos, e
+`conteudo_trends` em **0 linhas** — o radar "Em alta" nunca rodou porque
+**não existe cron para ele**. As duas telas foram desenhadas para funcionar
+NESSE estado: nenhuma exige classificação para mostrar número, e o que
+depende dela diz que depende.
+
+**Raio-X** (`raio-x/nota.ts`, puro). A referência mostra "48 de 100" e mais
+nada — não dá para saber o que entrou na conta, e um perfil cujos insights a
+Meta não entregou aparece como perfil RUIM. Três regras:
+
+1. **Componente não medido sai do DENOMINADOR**, nunca entra como zero —
+   penalizar o não medido é inventar defeito. A saída declara `medidos` de
+   `total` e a tela é obrigada a dizer isso.
+2. **Nada medido ⇒ `nota: null`**, jamais 0 (zero se lê como "péssimo"; a
+   verdade é "não dá para dizer").
+3. **Toda referência é DECLARADA e tem dono**: meta semanal do canal (dado
+   nosso), mediana publicada com a fonte nomeada, ou o teto que o próprio
+   perfil já provou. Alvo inventado não existe — e por isso o **mix de
+   formato**, que não tem referência honesta, ficou FORA da nota e vive no
+   diagnóstico.
+
+Constância 30 · Engajamento 25 · Retenção 25 · Conversão 20. A aritmética que
+os testes travam: `taxaMediaPorPost` é média POR POST (é a forma das medianas
+publicadas — somar o período e dividir por seguidores daria número
+incomparável com fonte nenhuma); `retencaoDoPeriodo` é **soma ÷ soma**, nunca
+média de razões; e o teto é a **mediana dos 3 melhores**, não o melhor
+sozinho — um post de alcance 40 com 2 sends rende 5% e viraria teto que
+ninguém alcança, o alarme falso que ensina a ignorar o alarme (`ALCANCE_MINIMO
+= 30` é o mesmo cuidado do outro lado). O diagnóstico tem 8 lacunas, cada uma
+com evidência, custo, saída e o botão que leva ao lugar certo; lacuna sem
+número medido não aparece.
+
+Medido contra produção (@convertfy.me, 30 dias, 781 seguidores, 6 posts):
+**72 (bom), 3 de 4 medidos** — Constância 47% (1,4 post/semana · meta 3),
+Engajamento 100% (3,29% por post · Socialinsider 0,48%), Retenção 74% (0,28%
+no período · os 3 melhores fazem 0,38%), Conversão NÃO MEDIDA. Os 3,29%
+foram conferidos post a post.
+
+**Espionagem** (`espionagem/analise.ts`, puro). A tela copiada ordena por
+"mais quentes" = curtidas + comentários: num perfil de 68 mil seguidores isso
+ranqueia o TAMANHO da conta, e o pior post de um perfil grande ganha do melhor
+de um pequeno. Padrão aqui é **destaque** — quantas vezes o post passou da
+MEDIANA do próprio perfil; abaixo de 5 posts não há destaque (com 3, "2,4× a
+mediana" é ruído) e a ordem cai para o absoluto em vez de ficar arbitrária em
+silêncio. **A fórmula é PARCIAL e a tela diz isso**: `business_discovery`
+entrega curtidas e comentários e mais nada, então a comparação com o nosso
+perfil roda na MESMA fórmula parcial dos dois lados — comparar a parcial dele
+com a nossa completa inflaria o nosso lado por construção. **"Usar este tema"
+leva o ASSUNTO, nunca a legenda**: levá-la traria a voz dele junto, que é a
+diferença entre pesquisar e copiar. Conta pessoal/privada devolve `#110` e a
+mensagem diz isso — "perfil inexistente" mandaria caçar erro de digitação que
+não existe. Cache de 6 h por handle em `crm_channels.config.conteudo.espionagem`.
+
+**Os dois defeitos que só o RENDER pegou**, nenhum quebrando teste: (a) a
+barra de "não medido" saía VAZIA, que se lê exatamente como zero — o oposto
+do que a regra 1 existe para dizer; `bg-[repeating-linear-gradient(...)]` como
+classe arbitrária do Tailwind **não é aplicada**, virou `style` inline. (b) O
+card exibia **"0,1×"** com a legenda "o seu perfil engaja 6,7× o deles" ao
+lado — número contra a própria legenda; `compararComONosso` passou a devolver
+`{ razao, vezes, quem, nota }`, com `vezes` sempre ≥ 1 na direção que a frase
+afirma, e tem teste de regressão. O render também entregou o "1 comentários".
+
 ---
 
 *Última atualização: Setembro 2026*

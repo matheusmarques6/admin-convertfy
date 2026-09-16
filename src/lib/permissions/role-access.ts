@@ -47,6 +47,8 @@ export type NavItemId =
   | "ops.image_studio"
   | "ops.conteudo"
   | "ops.conteudo.dashboard"
+  | "ops.conteudo.raio_x"
+  | "ops.conteudo.espionagem"
   | "ops.conteudo.estudio"
   | "ops.conteudo.reels"
   | "ops.conteudo.calendario"
@@ -101,6 +103,8 @@ const ALL_ITEMS: NavItemId[] = [
   "ops.image_studio",
   "ops.conteudo",
   "ops.conteudo.dashboard",
+  "ops.conteudo.raio_x",
+  "ops.conteudo.espionagem",
   "ops.conteudo.estudio",
   "ops.conteudo.reels",
   "ops.conteudo.calendario",
@@ -128,6 +132,8 @@ const BYPASS_ROLES: OrgRole[] = ["admin", "dev"]
 const CONTEUDO_ITEMS: NavItemId[] = [
   "ops.conteudo",
   "ops.conteudo.dashboard",
+  "ops.conteudo.raio_x",
+  "ops.conteudo.espionagem",
   "ops.conteudo.estudio",
   "ops.conteudo.reels",
   "ops.conteudo.calendario",

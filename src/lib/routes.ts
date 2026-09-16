@@ -146,6 +146,8 @@ export const ROUTES = {
     CONTEUDO: {
       ROOT: "/admin/conteudo",
       DASHBOARD: "/admin/conteudo/dashboard",
+      RAIO_X: "/admin/conteudo/raio-x",
+      ESPIONAGEM: "/admin/conteudo/espionagem",
       ESTUDIO: "/admin/conteudo/estudio",
       ESTUDIO_DOC: (id: string) => `/admin/conteudo/estudio/${id}` as const,
       REELS: "/admin/conteudo/reels",

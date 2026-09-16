@@ -181,6 +181,8 @@ export const OPERACIONAL_NAV: NavGroup[] = [
         icon: Instagram,
         children: [
           { id: "ops.conteudo.dashboard", name: "Dashboard", href: ROUTES.ADMIN.CONTEUDO.DASHBOARD },
+          { id: "ops.conteudo.raio_x", name: "Raio-X", href: ROUTES.ADMIN.CONTEUDO.RAIO_X },
+          { id: "ops.conteudo.espionagem", name: "Espionagem", href: ROUTES.ADMIN.CONTEUDO.ESPIONAGEM },
           { id: "ops.conteudo.estudio", name: "Estúdio", href: ROUTES.ADMIN.CONTEUDO.ESTUDIO },
           { id: "ops.conteudo.reels", name: "Reels", href: ROUTES.ADMIN.CONTEUDO.REELS },
           { id: "ops.conteudo.calendario", name: "Calendário", href: ROUTES.ADMIN.CONTEUDO.CALENDARIO },
