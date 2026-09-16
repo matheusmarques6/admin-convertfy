@@ -187,7 +187,7 @@ describe("integração com o documento salvo", () => {
   })
 
   it("o documento com prompt e modo sobrevive à validação da rota de salvamento", () => {
-    const base = novoDocumento("Carrossel", "canal-1", "molde-turbo", { agora: new Date("2026-09-09T10:00:00-03:00") })
+    const base = novoDocumento("Carrossel", "canal-1", "molde-neon", { agora: new Date("2026-09-09T10:00:00-03:00") })
     const doc = {
       ...base,
       frames: base.frames.map((fr, i) =>

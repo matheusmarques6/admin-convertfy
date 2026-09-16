@@ -1,7 +1,8 @@
 /**
  * Famílias visuais do Estúdio — a "cara" do carrossel, separada da estrutura.
  *
- * O molde (Turbo, Benchmark…) decide a SEQUÊNCIA de slides; a família decide
+ * O molde (Print de post, Oferta em neon…) decide a SEQUÊNCIA de slides; a
+ * família decide
  * como eles são desenhados: paleta, tipografia, forma do CTA, raio dos
  * cartões. Trocar de família não mexe em uma palavra da copy.
  *
@@ -18,6 +19,7 @@ import { CORES_PADRAO, GRADIENTE_PADRAO, SLIDE } from "./brand"
 import { POST_CORES, type EstiloPost } from "./formato-post"
 import { paletaDeUmaCor, tintaSobre, type Paleta } from "./paleta"
 import type { Documento, FamiliaVisual, FrameTipo, Gradiente } from "./types"
+import { camposDaIdentidade, reconciliarCampos } from "./campos-da-identidade"
 
 export type { FamiliaVisual }
 
@@ -640,5 +642,16 @@ export function aplicarFamilia(doc: Documento, nova: FamiliaVisual): Documento {
       ? { ...doc.cta, fundo: para.cta.fundo, cor: para.cta.cor }
       : doc.cta
 
-  return { ...doc, familia: nova, cores, gradiente, fundoPorFrame, cta }
+  // O conjunto de CAMPOS também é da identidade: o cartão de perfil desenha
+  // título e corpo, a casa desenha o conjunto do tipo (capa com subtítulo,
+  // CTA com botão). Sem reconciliar, trocar de identidade deixava o
+  // parágrafo num campo que a nova não desenha — presente no documento,
+  // invisível na tela, sem erro nenhum. A migração é simétrica: voltar à
+  // identidade anterior devolve o texto ao campo de origem.
+  const frames =
+    de.traco.cartaoPerfil === para.traco.cartaoPerfil
+      ? doc.frames
+      : doc.frames.map((f) => ({ ...f, ...reconciliarCampos(f, camposDaIdentidade(para.traco.cartaoPerfil, f.tipo)) }))
+
+  return { ...doc, familia: nova, cores, gradiente, fundoPorFrame, cta, frames }
 }

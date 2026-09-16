@@ -16,6 +16,7 @@ import { slotDeUrl, uploadImagem } from "@/lib/conteudo/data"
 import { CAMPO_OPCIONAL_GUIA, CAMPO_OPCIONAL_LABEL, camposOpcionaisDoTipo } from "@/lib/conteudo/campos"
 import { FAMILIAS, FAMILIA_OPCOES, aplicarCorPrimaria, aplicarFamilia, corPrimariaDe, familiaDe, tracoDe } from "@/lib/conteudo/familias"
 import { medidasPost } from "@/lib/conteudo/formato-post"
+import { camposDeMarca, handleComArroba, seloDeVerificado } from "@/lib/conteudo/rotulos-de-marca"
 import { aceitaImagem, aplicarPerfil, aplicarPropostas, propostasDeLinhas, setTexto as setTextoDoc, slotsDeImagem, trocarTemplate } from "@/lib/conteudo/documento"
 import { chamarIA, gerarImagemIA } from "@/lib/conteudo/ia/client"
 import { resumoDocumento } from "@/lib/conteudo/ia/prompt"
@@ -304,6 +305,9 @@ export function PainelAssistente({ api }: { api: EditorApi }) {
 export function PainelGlobais({ api }: { api: EditorApi }) {
   const { doc } = api
   const fileRef = useRef<HTMLInputElement>(null)
+  const traco = tracoDe(familiaDe(doc))
+  const campos = camposDeMarca(traco)
+  const selo = seloDeVerificado(traco)
   const toggle = (k: OcultavelGlobal) => api.set({ ocultos: { ...doc.ocultos, [k]: !doc.ocultos[k] } })
   const olho = (k: OcultavelGlobal) => (
     <button type="button" title={doc.ocultos[k] ? "Mostrar no slide" : "Ocultar do slide"} onClick={() => toggle(k)} className={cn("mb-1.5 flex text-[var(--ops-sec)]", doc.ocultos[k] && "opacity-50")}>
@@ -342,19 +346,23 @@ export function PainelGlobais({ api }: { api: EditorApi }) {
           </div>
         )}
       </div>
-      {(
-        [
-          ["brandName", "brand-name"],
-          ["brandName2", "brand-name-2"],
-          ["copyright", "copyright"],
-        ] as Array<[keyof typeof doc.brandKit & OcultavelGlobal, string]>
-      ).map(([k, l]) => (
-        <div key={k}>
+      {/* Os campos vêm da IDENTIDADE: no cartão de perfil o `brandName` é o
+          @handle e o `brandName2` é o nome exibido — com os nomes internos
+          na tela ninguém achava onde editar a arroba. O que a identidade
+          não desenha (o copyright, nas famílias de print) fica de fora. */}
+      {campos.map((c) => (
+        <div key={c.campo}>
           <div className="flex items-center justify-between">
-            {label(l)}
-            {olho(k)}
+            {label(c.rotulo)}
+            {olho(c.campo)}
           </div>
-          <input value={String(doc.brandKit[k] ?? "")} onChange={(e) => api.set({ brandKit: { ...doc.brandKit, [k]: e.target.value } })} className={inputCls} />
+          <input
+            value={String(doc.brandKit[c.campo] ?? "")}
+            onChange={(e) => api.set({ brandKit: { ...doc.brandKit, [c.campo]: c.arroba ? handleComArroba(e.target.value) : e.target.value } })}
+            placeholder={c.arroba ? "@perfil" : undefined}
+            className={inputCls}
+          />
+          {c.dica && <div className="mt-0.5 text-[10px] text-[var(--ops-mut)]">{c.dica}</div>}
         </div>
       ))}
       <div>
@@ -385,9 +393,12 @@ export function PainelGlobais({ api }: { api: EditorApi }) {
       </div>
       <div className="border-t border-[var(--ops-border)] pt-2">
         {label("Acessórios")}
-        <label className="flex cursor-pointer items-center gap-2 text-[12px] text-[var(--ops-title)]">
-          <input type="checkbox" checked={doc.brandKit.verificado} onChange={(e) => api.set({ brandKit: { ...doc.brandKit, verificado: e.target.checked } })} className="m-0 accent-[var(--ops-accent)]" /> Verificado
+        <label className={cn("flex items-center gap-2 text-[12px] text-[var(--ops-title)]", selo.desenha ? "cursor-pointer" : "cursor-not-allowed opacity-60")}>
+          <input type="checkbox" checked={doc.brandKit.verificado} disabled={!selo.desenha} onChange={(e) => api.set({ brandKit: { ...doc.brandKit, verificado: e.target.checked } })} className="m-0 accent-[var(--ops-accent)]" /> Selo verificado
         </label>
+        {/* Onde ele aparece, ou por que não aparece: um interruptor que não
+            muda nada na tela é lido como editor quebrado. */}
+        <div className="mt-0.5 text-[10px] leading-relaxed text-[var(--ops-mut)]">{selo.onde}</div>
       </div>
       <button type="button" onClick={() => api.setModal("brandkit")} className="text-left text-[11.5px] font-medium text-[var(--ops-accent)] hover:underline">
         Gerenciar no Brand Kit

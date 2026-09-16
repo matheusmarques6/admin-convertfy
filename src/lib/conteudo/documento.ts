@@ -9,9 +9,10 @@
 
 import { brandKitPadrao, CORES_PADRAO, GRADIENTE_PADRAO, SLIDE } from "./brand"
 import { preservarCamposOpcionais } from "./campos"
-import { aplicarFamilia, FAMILIAS, familiaDe, fundoPadraoDaFamilia, ritmoDeFundos } from "./familias"
+import { camposDaIdentidade, reconciliarCampos } from "./campos-da-identidade"
+import { aplicarFamilia, FAMILIAS, familiaDe, fundoPadraoDaFamilia, ritmoDeFundos, tracoDe } from "./familias"
 import { aceitaHibrido } from "./prompt-slide"
-import { camposDoTipo, getTemplate } from "./templates"
+import { camposDoTipo, getTemplate, TEMPLATE_PADRAO_ID } from "./templates"
 import { botaoDoGate, framesDaReferencia, tipoDesenhaImagem, type CampoLongo } from "./referencia-para-documento"
 import type {
   BrandKit,
@@ -108,13 +109,19 @@ export function frameDoTemplate(tf: TemplateFrame): DocFrame {
 
 // ── Criação ─────────────────────────────────────────────────────────────
 
+/**
+ * `template` aceita o id de um molde da prateleira ou o molde inteiro. A
+ * segunda forma existe para os TESTES: amarrar o comportamento do documento
+ * a um molde do catálogo faz a suíte ser reescrita toda vez que o produto
+ * muda de prateleira, e é reescrevendo teste que se perde asserção.
+ */
 export function novoDocumento(
   nome: string,
   perfil: PerfilEditavel,
-  templateId: string,
+  template: string | Template,
   opts: { projeto?: string; brandKit?: BrandKit; agora?: Date } = {},
 ): Documento {
-  const t = getTemplate(templateId)
+  const t = typeof template === "string" ? getTemplate(template) : template
   const agora = opts.agora ?? new Date()
   return {
     id: novoUuid(),
@@ -155,7 +162,7 @@ export function documentoDeEstrutura(
   estrutura: EstruturaDetectada[],
   opts: { templateBase?: string; brandKit?: BrandKit; agora?: Date } = {},
 ): Documento {
-  const base = novoDocumento(nome, perfil, opts.templateBase ?? "molde-benchmark", opts)
+  const base = novoDocumento(nome, perfil, opts.templateBase ?? TEMPLATE_PADRAO_ID, opts)
   const frames: DocFrame[] = estrutura.map((e, i) => {
     const campos = camposDoTipo(e.tipo)
     const id = `f${i + 1}`
@@ -204,7 +211,7 @@ export function documentoDaReferencia(
   opts: { familia?: FamiliaVisual; brandKit?: BrandKit; agora?: Date } = {},
 ): { doc: Documento; imagemSemLugar: number[]; camposLongos: CampoLongo[] } {
   const agora = opts.agora ?? new Date()
-  const base = novoDocumento(ref.nome, perfil, "molde-benchmark", { brandKit: opts.brandKit, agora })
+  const base = novoDocumento(ref.nome, perfil, TEMPLATE_PADRAO_ID, { brandKit: opts.brandKit, agora })
   const { frames, imagemSemLugar, camposLongos } = framesDaReferencia(ref.slides)
 
   const comFrames: Documento = {
@@ -416,16 +423,14 @@ export function excluirFrame(doc: Documento, i: number): Documento {
 export function trocarTipoFrame(doc: Documento, i: number, tipo: FrameTipo): Documento {
   const o = doc.frames[i]
   if (!o || o.tipo === tipo) return doc
-  const base = camposDoTipo(tipo)
+  // O conjunto de campos é da IDENTIDADE: no cartão de perfil o renderer
+  // desenha só título e corpo, e pegar o conjunto do tipo mandava a copy
+  // para um campo invisível. Gancho e anotação sobrevivem pela mesma
+  // regra de sempre, e o parágrafo migra em vez de sumir.
+  const base = camposDaIdentidade(tracoDe(familiaDe(doc)).cartaoPerfil, tipo)
   const guia = textosGuia(tipo, base)
-  // Gancho e anotação não vêm do molde: sem isto, trocar o tipo do slide
-  // apagava em silêncio o que o operador escreveu neles.
-  const { campos, textos } = preservarCamposOpcionais(
-    o,
-    tipo,
-    base,
-    Object.fromEntries(base.map((c) => [c, o.textos[c] ?? guia[c] ?? ""])),
-  )
+  const { campos, textos: preservados } = reconciliarCampos({ ...o, tipo }, base)
+  const textos = Object.fromEntries(campos.map((c) => [c, (preservados[c] ?? "").trim() ? preservados[c] : (guia[c] ?? preservados[c] ?? "")]))
   return comHistorico(
     { ...doc, frames: doc.frames.map((f, j) => (j === i ? { ...f, tipo, campos, textos } : f)) },
     `${o.label} trocado para ${tipo}`,

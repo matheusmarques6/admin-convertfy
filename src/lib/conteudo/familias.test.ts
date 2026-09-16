@@ -10,7 +10,7 @@ import { clarear } from "./brand"
 import type { DocFrame, Documento, FamiliaVisual } from "./types"
 
 const agora = new Date("2026-09-09T10:00:00-03:00")
-const doc = (): Documento => novoDocumento("x", "canal-1", "molde-turbo", { agora })
+const doc = (): Documento => novoDocumento("x", "canal-1", "molde-neon", { agora })
 
 describe("família visual", () => {
   it("documento sem família é o padrão, e toda família tem traço completo", () => {
@@ -253,7 +253,7 @@ describe("campos opcionais do slide", () => {
     const base = doc()
     const alvo = base.frames.findIndex((f) => f.tipo === "texto")
     const d: Documento = { ...base, frames: base.frames.map((f, i) => (i === alvo ? comOpcionais("texto") : f)) }
-    const { doc: novo } = trocarTemplate(d, getTemplate("molde-benchmark"))
+    const { doc: novo } = trocarTemplate(d, getTemplate("molde-post"))
     const texto = novo.frames.find((f) => f.tipo === "texto")!
     expect(texto.campos).toContain("gancho")
     expect(texto.textos.gancho).toBe("o que ninguém olha")

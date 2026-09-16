@@ -49,6 +49,13 @@ título fecha embaixo. Sangrar apagaria o brilho (não há preto em volta para
 ele aparecer) e o véu faria o oposto do que o formato quer — a foto é a
 única fonte de luz da peça.
 
+**Sem foto, a composição ENCOLHE e se centraliza** (set/2026): o slot vira
+um convite de 320px e o título fecha logo abaixo, os dois centrados no
+bloco. Com `flex: 1` no bloco vazio a capa era um retângulo tracejado oco
+com a frase espremida no rodapé — e é exatamente assim que ela aparece na
+prateleira do Estúdio, onde nenhum molde tem foto. Com foto, o layout é o
+descrito acima, sem mudança.
+
 ## O molde
 
 Seis slides: **Afirmação** (capa com foto), **Promessa**, **Prova**,

@@ -54,7 +54,7 @@ describe("identidade Neon", () => {
   })
 
   it("ida e volta devolve o documento à família de origem", () => {
-    const base: Documento = novoDocumento("x", "", "molde-turbo")
+    const base: Documento = novoDocumento("x", "", "molde-neon")
     const volta = aplicarFamilia(aplicarFamilia(base, "neon"), "padrao")
     expect(volta.fundoPorFrame).toEqual(base.fundoPorFrame)
     // A cor que SÓ a Neon declara (`apoio`) sai na volta: sobrevivendo, ela

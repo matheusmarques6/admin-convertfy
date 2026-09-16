@@ -639,8 +639,13 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
     // escuro por cima faria o oposto do que o formato quer — a foto é a
     // única fonte de luz da peça.
     body = (
-      <div style={{ position: "absolute", left: S(80), right: S(80), top: S(off + 150), bottom: S(off + 130), display: "flex", flexDirection: "column" }}>
-        <div style={{ flex: 1, position: "relative", marginBottom: S(78) }}>{imgSlot({ inset: 0, borderRadius: S(tr.raio) })}</div>
+      <div style={{ position: "absolute", left: S(80), right: S(80), top: S(off + 150), bottom: S(off + 130), display: "flex", flexDirection: "column", justifyContent: img ? "flex-start" : "center" }}>
+        {/* SEM foto a composição ENCOLHE e se centraliza: o slot vira um
+            convite de 320px e o título fecha logo abaixo. Com `flex: 1` no
+            bloco vazio a capa virava um retângulo tracejado oco com a
+            frase espremida no rodapé — é o que se via na prateleira, onde
+            nenhum molde tem foto. */}
+        <div style={{ flex: img ? 1 : "0 0 auto", height: img ? undefined : S(320), position: "relative", marginBottom: S(78) }}>{imgSlot({ inset: 0, borderRadius: S(tr.raio) })}</div>
         {gancho(58, fg2)}
         {T("titulo", { ...cond, fontSize: 104, color: fg })}
         {T("subtitulo", { ...serif, fontSize: 40, color: fg2, marginTop: S(26), lineHeight: 1.3 })}

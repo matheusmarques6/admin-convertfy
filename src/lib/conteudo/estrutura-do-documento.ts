@@ -31,8 +31,9 @@
  * Puro e testado.
  */
 
+import { familiaDe, tracoDe } from "./familias"
 import { tipoDesenhaImagem } from "./referencia-para-documento"
-import { FRAME_TIPO_LABEL, ST_VARIANTES } from "./templates"
+import { FRAME_TIPO_LABEL, variantesDoTipo } from "./templates"
 import type { DocFrame, Documento, EstruturaDetectada, MeuTemplate } from "./types"
 
 /** Teto do `descricao` no schema da rota (`estruturaSchema`). */
@@ -43,9 +44,12 @@ const DESCRICAO_MAX = 200
  * depende de foto. É o texto que aparece na revisão da estrutura, então
  * ele fala de desenho — nunca da copy, que muda a cada peça.
  */
-export function descricaoDoFrame(f: DocFrame): string {
+export function descricaoDoFrame(f: DocFrame, cartaoPerfil = false): string {
   const partes: string[] = [FRAME_TIPO_LABEL[f.tipo]]
-  const variante = f.variante ? ST_VARIANTES[f.tipo]?.find(([k]) => k === f.variante)?.[1] : undefined
+  // O nome da variação é o da IDENTIDADE: no cartão de perfil "a" é uma
+  // POSE, e gravar "texto embaixo" na estrutura descreveria um desenho que
+  // aquela família não tem.
+  const variante = f.variante ? variantesDoTipo(f.tipo, cartaoPerfil)?.find(([k]) => k === f.variante)?.[1] : undefined
   if (variante) partes.push(variante.toLowerCase())
   if (temFoto(f)) partes.push("com foto")
   return partes.join(" · ").slice(0, DESCRICAO_MAX)
@@ -60,10 +64,11 @@ export function temFoto(f: DocFrame): boolean {
  * A sequência do documento como estrutura de template: um item por slide
  * visível, na ordem da peça.
  */
-export function estruturaDoDocumento(doc: Pick<Documento, "frames">): EstruturaDetectada[] {
+export function estruturaDoDocumento(doc: Pick<Documento, "frames" | "familia">): EstruturaDetectada[] {
+  const cartaoPerfil = tracoDe(familiaDe(doc)).cartaoPerfil
   return doc.frames
     .filter((f) => !f.oculto)
-    .map((f) => ({ tipo: f.tipo, slotImagem: temFoto(f), descricao: descricaoDoFrame(f) }))
+    .map((f) => ({ tipo: f.tipo, slotImagem: temFoto(f), descricao: descricaoDoFrame(f, cartaoPerfil) }))
 }
 
 /**

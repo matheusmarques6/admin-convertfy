@@ -9,6 +9,7 @@ import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { AppError, errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { ehFamilia } from "@/lib/conteudo/familias"
+import { TEMPLATE_PADRAO_ID } from "@/lib/conteudo/templates"
 import type { EstruturaDetectada, MeuTemplate } from "@/lib/conteudo/types"
 
 export const dynamic = "force-dynamic"
@@ -45,7 +46,7 @@ export function rowToMeuTemplate(r: Row): MeuTemplate {
     origem: "inspiração",
     frames: r.estrutura.length,
     usos: r.usos,
-    templateId: r.template_base ?? "molde-benchmark",
+    templateId: r.template_base ?? TEMPLATE_PADRAO_ID,
     ...(ehFamilia(r.familia) ? { familia: r.familia } : {}),
     estrutura: r.estrutura,
     fidelidade: r.fidelidade,

@@ -581,21 +581,34 @@ export function montarCadencia(posts: Post[], perfis: Perfil[], hoje: string): C
   }))
 }
 
+/**
+ * Desempenho por molde. A lista vem do VOCABULÁRIO de classificação
+ * (`MOLDE_KEYS`), não da prateleira do Estúdio: post publicado é
+ * classificado por chave, e derivar as linhas dos moldes vivos apagaria o
+ * histórico de quem foi classificado com um molde depois aposentado — em
+ * silêncio, porque o post continua no banco e some da tabela.
+ *
+ * Nome e descrição vêm do molde quando ele ainda existe; aposentado, a
+ * linha diz isso em vez de inventar uma descrição.
+ */
 export function montarMoldes(posts: Post[]): MoldeResumo[] {
-  return ST_TEMPLATES.map((t) => {
-    const k = moldeKeyDoTemplate(t)
+  const vivo = new Map(ST_TEMPLATES.map((t) => [moldeKeyDoTemplate(t), t] as const))
+  return MOLDE_KEYS.map((k) => {
+    const t = vivo.get(k)
     const ps = posts.filter((p) => p.molde === k)
     const alc = ps.map((p) => p.alc).filter((v): v is number => v != null)
     return {
       k,
-      nome: t.nome,
-      descricao: t.descricao,
-      slides: `${t.frames.length}`,
+      nome: t?.nome ?? k,
+      descricao: t?.descricao ?? "Molde aposentado da prateleira — os posts classificados assim continuam contando aqui.",
+      slides: t ? `${t.frames.length}` : "—",
       posts: ps.length,
       leads: ps.length ? ps.reduce((a, p) => a + p.leads, 0) / ps.length : null,
       alcanceMedio: alc.length ? Math.round(alc.reduce((a, b) => a + b, 0) / alc.length) : null,
     }
-  }).sort((a, b) => (b.leads ?? -1) - (a.leads ?? -1))
+  })
+    .filter((m) => m.posts > 0 || vivo.has(m.k))
+    .sort((a, b) => (b.leads ?? -1) - (a.leads ?? -1))
 }
 
 export function ordenarAgendados(itens: Agendado[], hoje: string): Agendado[] {

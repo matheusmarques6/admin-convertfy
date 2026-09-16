@@ -7,6 +7,8 @@
 
 import { streamOpenRouterChat, type ChatContentPart, type ChatMessage } from "@/lib/ai/openrouter-chat"
 import { logger } from "@/lib/logger"
+import { ST_TEMPLATES } from "../templates"
+import { MOLDE_KEYS } from "../types"
 import { SYSTEM_PROMPT } from "./prompt"
 import { SAIDA_SCHEMA, type EntradaIA, type SaidaPorAcao } from "./schemas"
 
@@ -261,7 +263,7 @@ Responda com JSON: {"texto": string, "acao": {"tipo": string, "label": string} o
     case "analisar_inspiracao":
       return {
         imagens: e.imagens,
-        texto: `As imagens em anexo são os slides de um carrossel de referência (na ordem). Leia a ESTRUTURA (não o conteúdo): para cada slide, classifique o tipo entre capa, dado, texto, prova, lista, mec, cta e descreva o layout em poucas palavras (ex.: "imagem full + título 2 linhas", "número gigante + apoio serif", "citação sobre foto escura"). Marque slotImagem quando o slide depende de fotografia. Estime a fidelidade (0 a 100) com que os moldes da casa reproduzem essa estrutura e sugira o molde mais próximo (molde-turbo, molde-benchmark, molde-lista, molde-mec ou molde-bastidor).
+        texto: `As imagens em anexo são os slides de um carrossel de referência (na ordem). Leia a ESTRUTURA (não o conteúdo): para cada slide, classifique o tipo entre capa, dado, texto, prova, lista, mec, cta e descreva o layout em poucas palavras (ex.: "imagem full + título 2 linhas", "número gigante + apoio serif", "citação sobre foto escura"). Marque slotImagem quando o slide depende de fotografia. Estime a fidelidade (0 a 100) com que os moldes da casa reproduzem essa estrutura e sugira o molde mais próximo entre ${ST_TEMPLATES.map((t) => `${t.id} (${t.nome})`).join(", ")}.
 Responda com JSON: {"frames": [{"tipo": string, "descricao": string, "slotImagem": boolean}], "fidelidade": number, "observacoes": string, "templateSugerido": string}`,
       }
     case "transcrever_referencia":
@@ -271,7 +273,7 @@ Responda com JSON: {"frames": [{"tipo": string, "descricao": string, "slotImagem
 1. Transcreva a COPY de cada slide, fiel ao que está escrito (título e texto de apoio, separados). Não resuma, não corrija, não invente o que não está legível — deixe o campo vazio.
 2. Classifique cada slide entre capa, dado, texto, prova, lista, mec, cta.
 3. Diga em 3 a 5 bullets curtos POR QUE a peça funciona (gancho da capa, ritmo, tipo de prova, como fecha no CTA) — é o que a próxima geração vai imitar.
-4. Sugira pilar (Case, Educacional, Bastidor, Benchmark) e molde (Turbo, MEC, Benchmark, Lista, Bastidor) mais próximos, e a palavra-chave do comment gate se houver.
+4. Sugira pilar (Case, Educacional, Bastidor, Benchmark) e molde (${MOLDE_KEYS.join(", ")}) mais próximos, e a palavra-chave do comment gate se houver.
 5. "nome" = a headline da capa.
 ${e.legenda ? `Legenda publicada com o post (use para entender o fechamento e a palavra-chave):\n"""\n${e.legenda}\n"""` : ""}
 ${e.nome ? `Nome de trabalho informado: "${e.nome}".` : ""}

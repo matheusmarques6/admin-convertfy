@@ -19,7 +19,7 @@ import {
   trocarTipoFrame,
   novaVersao,
 } from "./documento"
-import { getTemplate } from "./templates"
+import type { Campo, FrameTipo, Template, TemplateFrame } from "./types"
 import { camposExcedidos, fitFactor } from "./limites"
 import { avaliarCompliance, corrigirLegendaLocal, localizarTrecho } from "./compliance"
 import { editorReducer, estadoInicial } from "./historico"
@@ -27,13 +27,65 @@ import { fundoEscuro, fundoValido, gradienteCss } from "./brand"
 
 const agora = new Date("2026-09-05T10:00:00-03:00")
 
+/**
+ * Moldes de TESTE. O comportamento do documento (trocar template, dividir,
+ * reordenar, distribuir) não é sobre a prateleira da casa: amarrar estas
+ * asserções a um molde do catálogo obrigava a reescrever a suíte a cada
+ * mudança de produto, e é reescrevendo teste que se perde asserção.
+ */
+const f = (id: string, tipo: FrameTipo, label: string, slotsImagem: 0 | 1, campos: Campo[]): TemplateFrame => ({ id, tipo, label, slotsImagem, campos })
+const TC: Campo[] = ["titulo", "corpo"]
+const CAPA: Campo[] = ["titulo", "subtitulo"]
+const CTA: Campo[] = ["titulo", "subtitulo", "botao"]
+
+/** Sete slides, com um `dado` e um `prova` — o formato clássico da casa. */
+const SETE: Template = {
+  id: "teste-sete",
+  nome: "Sete",
+  etapaFunil: "topo",
+  descricao: "Molde de teste com sete slides.",
+  cor: "#2137B6",
+  frames: [f("f1", "capa", "Capa", 1, CAPA), f("f2", "dado", "Slide 2", 0, TC), f("f3", "texto", "Slide 3", 0, TC), f("f4", "texto", "Slide 4", 1, TC), f("f5", "prova", "Slide 5", 1, TC), f("f6", "texto", "Slide 6", 0, TC), f("f7", "cta", "CTA", 0, CTA)],
+}
+
+/** Oito slides, mesma anatomia — serve de destino para `trocarTemplate`. */
+const OITO: Template = {
+  id: "teste-oito",
+  nome: "Oito",
+  etapaFunil: "topo",
+  descricao: "Molde de teste com oito slides.",
+  cor: "#0E7490",
+  frames: [f("f1", "capa", "Capa", 1, CAPA), f("f2", "dado", "Slide 2", 0, TC), f("f3", "texto", "Slide 3", 1, TC), f("f4", "texto", "Slide 4", 0, TC), f("f5", "prova", "Slide 5", 1, TC), f("f6", "texto", "Slide 6", 0, TC), f("f7", "texto", "Slide 7", 0, TC), f("f8", "cta", "CTA", 0, CTA)],
+}
+
+/** Sem `dado` e sem `texto`: é o molde que faz sobrar frame escrito. */
+const SO_MEC: Template = {
+  id: "teste-mec",
+  nome: "Só MEC",
+  etapaFunil: "meio",
+  descricao: "Molde de teste sem dado e sem texto.",
+  cor: "#7C3AED",
+  frames: [f("f1", "capa", "Capa", 1, CAPA), ...[2, 3, 4, 5, 6, 7, 8, 9].map((i) => f(`f${i}`, "mec", `Papel ${i - 1}`, 0, TC)), f("f10", "cta", "CTA", 0, CTA)],
+}
+
+/** Nove slides de lista — o caso "documento nasce sem brand kit". */
+const NOVE: Template = {
+  id: "teste-nove",
+  nome: "Nove",
+  etapaFunil: "meio",
+  descricao: "Molde de teste com nove slides.",
+  cor: "#B45309",
+  frames: [f("f1", "capa", "Capa", 1, CAPA), ...[2, 3, 4, 5, 6, 7, 8].map((i) => f(`f${i}`, "lista", `Item ${i - 1}`, i % 3 === 0 ? 1 : 0, TC)), f("f9", "cta", "CTA", 0, CTA)],
+}
+
+
 /** Brand kits de teste: no produto eles vêm do canal Instagram conectado. */
 const kitConvertfy = { brandName: "@convertfy", brandName2: "Convertfy", copyright: "© 2026", avatar: null, verificado: true }
 const kitBruno = { brandName: "@brunoconvertfy", brandName2: "Bruno Marques", copyright: "© 2026", avatar: null, verificado: true }
 
 describe("novoDocumento", () => {
   it("copia a estrutura do template e abre com textos-guia", () => {
-    const d = novoDocumento("Teste", "canal-1", "molde-turbo", { agora, brandKit: kitConvertfy })
+    const d = novoDocumento("Teste", "canal-1", SETE, { agora, brandKit: kitConvertfy })
     expect(d.frames).toHaveLength(7)
     expect(d.frames[0].tipo).toBe("capa")
     expect(d.frames[6].tipo).toBe("cta")
@@ -42,12 +94,12 @@ describe("novoDocumento", () => {
     expect(d.fundoPorFrame.f1).toBe("gradiente")
     expect(d.brandKit.brandName).toBe("@convertfy")
     expect(d.perfil).toBe("canal-1")
-    expect(d.historico[0].label).toContain("Turbo")
+    expect(d.historico[0].label).toContain(SETE.nome)
     expect(d.data).toBe("05/09")
   })
 
   it("sem brand kit informado, o documento nasce com o kit vazio (nada de marca inventada)", () => {
-    const d = novoDocumento("x", "canal-2", "molde-lista", { agora })
+    const d = novoDocumento("x", "canal-2", NOVE, { agora })
     expect(d.brandKit.brandName).toBe("")
     expect(d.brandKit.brandName2).toBe("")
     expect(d.brandKit.copyright).toBe(`© ${agora.getFullYear()}`)
@@ -57,12 +109,12 @@ describe("novoDocumento", () => {
 
 describe("trocarTemplate", () => {
   it("preserva textos escritos casando por tipo, na ordem", () => {
-    let d = novoDocumento("x", "canal-1", "molde-turbo", { agora })
+    let d = novoDocumento("x", "canal-1", SETE, { agora })
     d = setTexto(d, "f3", "titulo", "Primeiro texto")
     d = setTexto(d, "f4", "titulo", "Segundo texto")
     d = setTexto(d, "f1", "titulo", "Capa escrita")
-    const { doc, naoCoube } = trocarTemplate(d, getTemplate("molde-benchmark"))
-    expect(doc.templateId).toBe("molde-benchmark")
+    const { doc, naoCoube } = trocarTemplate(d, OITO)
+    expect(doc.templateId).toBe(OITO.id)
     expect(doc.frames[0].textos.titulo).toBe("Capa escrita")
     const textos = doc.frames.filter((f) => f.tipo === "texto").map((f) => f.textos.titulo)
     expect(textos[0]).toBe("Primeiro texto")
@@ -72,10 +124,10 @@ describe("trocarTemplate", () => {
 
   it("imagem da via B sobrevive à troca: híbrido ganha slot no tipo com lugar, slide inteiro não depende de slot", () => {
     const slot = { url: "u", zoom: 100, x: 0, y: 0, larguraSlot: 1080, alturaSlot: 900 }
-    let d = novoDocumento("x", "canal-1", "molde-turbo", { agora })
+    let d = novoDocumento("x", "canal-1", SETE, { agora })
     // f3 (texto, sem slot no Turbo) recebeu imagem híbrida; f2 (dado) virou slide inteiro.
     d = { ...d, frames: d.frames.map((f) => (f.frameId === "f3" ? { ...f, slotsImagem: 1 as const, imagens: { slot1: slot }, imagemModo: "hibrido" as const, promptImagem: "meu prompt" } : f.frameId === "f2" ? { ...f, imagens: { slot1: slot }, imagemModo: "completo" as const } : f)) }
-    const { doc } = trocarTemplate(d, getTemplate("molde-benchmark"))
+    const { doc } = trocarTemplate(d, OITO)
     const texto = doc.frames.find((f) => f.tipo === "texto")!
     expect(texto.imagens.slot1).toEqual(slot)
     expect(texto.slotsImagem).toBe(1)
@@ -88,31 +140,31 @@ describe("trocarTemplate", () => {
   })
 
   it("avisa o que não coube (frame escrito sem par no novo template)", () => {
-    let d = novoDocumento("x", "canal-1", "molde-turbo", { agora })
+    let d = novoDocumento("x", "canal-1", SETE, { agora })
     d = setTexto(d, "f2", "titulo", "73%") // dado
-    const { doc, naoCoube } = trocarTemplate(d, getTemplate("molde-mec")) // sem frame "dado"
+    const { doc, naoCoube } = trocarTemplate(d, SO_MEC) // sem frame "dado"
     expect(doc.frames.some((f) => f.tipo === "dado")).toBe(false)
     expect(naoCoube.map((f) => f.textos.titulo)).toEqual(["73%"])
   })
 
   it("não conta texto-guia como perdido", () => {
-    const d = novoDocumento("x", "canal-1", "molde-turbo", { agora })
-    const { naoCoube } = trocarTemplate(d, getTemplate("molde-bastidor"))
+    const d = novoDocumento("x", "canal-1", SETE, { agora })
+    const { naoCoube } = trocarTemplate(d, SO_MEC)
     expect(naoCoube).toHaveLength(0)
   })
 
   it("imagem só segue quando o novo frame tem slot", () => {
-    let d = novoDocumento("x", "canal-1", "molde-turbo", { agora })
+    let d = novoDocumento("x", "canal-1", SETE, { agora })
     const img = { url: "u", zoom: 100, x: 0, y: 0, larguraSlot: 1080, alturaSlot: 1350 }
     d = { ...d, frames: d.frames.map((f) => (f.frameId === "f4" ? { ...f, imagens: { slot1: img }, textos: { titulo: "Com imagem", corpo: "c" } } : f)) }
-    const { doc } = trocarTemplate(d, getTemplate("molde-mec"))
+    const { doc } = trocarTemplate(d, SO_MEC)
     // "texto" não existe no MEC → vai para naoCoube; nenhum slot herda a imagem
     expect(doc.frames.every((f) => !f.imagens.slot1 || f.slotsImagem > 0)).toBe(true)
   })
 })
 
 describe("estrutura de frames", () => {
-  const base = novoDocumento("x", "canal-1", "molde-turbo", { agora })
+  const base = novoDocumento("x", "canal-1", SETE, { agora })
 
   it("reordena e mantém o conjunto", () => {
     const d = reordenarFrames(base, 1, 4)
@@ -168,7 +220,7 @@ describe("estrutura de frames", () => {
 })
 
 describe("distribuir texto colado", () => {
-  const base = novoDocumento("x", "canal-1", "molde-turbo", { agora })
+  const base = novoDocumento("x", "canal-1", SETE, { agora })
 
   it("limpa marcadores e gera uma proposta por linha, ignorando capa e CTA", () => {
     expect(linhasDeTexto("- a\n• b\n1. c\n\n2) d")).toEqual(["a", "b", "c", "d"])
@@ -196,13 +248,13 @@ describe("distribuir texto colado", () => {
 
 describe("perfil, slots e versão", () => {
   it("aplicarPerfil troca o brand kit inteiro", () => {
-    const d = aplicarPerfil(novoDocumento("x", "canal-1", "molde-turbo", { agora, brandKit: kitConvertfy }), "canal-2", kitBruno)
+    const d = aplicarPerfil(novoDocumento("x", "canal-1", SETE, { agora, brandKit: kitConvertfy }), "canal-2", kitBruno)
     expect(d.perfil).toBe("canal-2")
     expect(d.brandKit.brandName2).toBe("Bruno Marques")
   })
 
   it("slotsDeImagem conta total, cheios e frames sem slot", () => {
-    const s = slotsDeImagem(novoDocumento("x", "canal-1", "molde-turbo", { agora }))
+    const s = slotsDeImagem(novoDocumento("x", "canal-1", SETE, { agora }))
     expect(s).toEqual({ total: 3, cheios: 0, semSlot: [2, 3, 6, 7] })
   })
 
@@ -222,7 +274,7 @@ describe("limites e auto-fit", () => {
   })
 
   it("camposExcedidos aponta só o que passou", () => {
-    const d = novoDocumento("x", "canal-1", "molde-turbo", { agora })
+    const d = novoDocumento("x", "canal-1", SETE, { agora })
     const f = { ...d.frames[1], textos: { titulo: "123456", corpo: "ok" } } // dado: titulo 5
     expect(camposExcedidos(f)).toEqual(["titulo"])
   })
@@ -258,7 +310,7 @@ describe("compliance", () => {
 })
 
 describe("historico (undo/redo)", () => {
-  const d0 = novoDocumento("x", "canal-1", "molde-turbo", { agora })
+  const d0 = novoDocumento("x", "canal-1", SETE, { agora })
   const d1 = { ...d0, nome: "um" }
   const d2 = { ...d0, nome: "dois" }
 

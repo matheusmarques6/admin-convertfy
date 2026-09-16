@@ -7539,6 +7539,84 @@ fase 2 já faz); `image`, `copy_merge`, `background_fit`, `lint_envio`, `qa`
 e `qavision` estão na fase 2 sem ponto de parada escrito — acrescentar é uma
 linha em cada arquivo.
 
+---
+
+## Estúdio — prateleira enxuta e slide emprestado de outro molde (set/2026)
+
+Relato com print da galeria: *"tire os templates antigos que estão tudo igual
+e péssimos"*. Eram cinco — Turbo, Benchmark, Lista prática, MEC e Bastidor —,
+**sequências diferentes desenhadas todas na identidade azul da casa**: cinco
+cartões iguais em que a escolha não mudava a peça. Medido antes de apagar:
+**zero documentos e zero templates do time no banco**, então a retirada não
+alcança dado nenhum. Ficam os três que DECLARAM identidade (`Template.familia`):
+Print de post, História em posts e Oferta em neon.
+
+**O vocabulário de CLASSIFICAÇÃO não foi mexido.** `MoldeKey` (Turbo, MEC,
+Benchmark, Lista, Bastidor, Post, Neon) é o que classifica post PUBLICADO no
+dashboard — outro eixo. `montarMoldes` derivava as linhas de `ST_TEMPLATES`:
+aposentar um molde apagaria da tabela os posts classificados com ele, em
+silêncio, com o post intacto no banco. Agora a lista vem de `MOLDE_KEYS`, nome
+e descrição saem do molde quando ele existe, e a chave sem molde vivo aparece
+como "aposentado" enquanto tiver post.
+
+**Id de molde escrito à mão é o modo de falha desta parte.** `getTemplate`
+cai no primeiro da prateleira sem erro: a peça nasce com outra sequência e
+outra identidade, calada. Por isso o caminho da IA passou a derivar de
+`etapaFunil` (`templatePorFunil`), os defaults viraram `TEMPLATE_PADRAO_ID`, a
+lista de moldes nos prompts de leitura de inspiração é gerada de `ST_TEMPLATES`
+e um teste confere `PROMPTS_PRONTOS[].tpl` contra a prateleira. Etapa sem molde
+não desenha cabeçalho órfão na galeria.
+
+**Os campos de marca passaram a se chamar pelo que a IDENTIDADE desenha**
+(`rotulos-de-marca.ts`, puro, 10 testes): no cartão de perfil `brandName` é o
+**@ (arroba)** e `brandName2` é o **nome exibido** — com "brand-name" na tela
+ninguém achava onde editar a arroba, que foi o pedido literal. `handleComArroba`
+põe o @ que falta e **uma arroba sozinha esvazia o campo** (senão sobra um "@"
+preso no slide). O `copyright` sai da lista nas famílias de print: elas não têm
+rodapé, e campo que não aparece é lido como editor quebrado. O selo verificado
+diz ONDE aparece e fica desabilitado na Neon, que não desenha assinatura no
+slide.
+
+**Slide emprestado de outro molde** (`slide-de-outro-template.ts`, puro, 15
+testes) — o gesto que faltava entre "Adicionar" (branco) e "Trocar" (tipo e
+variação). Duas ações, e a diferença é o que acontece com a COPY: `importarSlide`
+INSERE um passo com texto-guia (molde é forma, não conteúdo) e
+`aplicarSlideNoFrame` troca o FORMATO do slide atual **preservando o que o
+operador escreveu** — é o "usar outro formato de capa". Regras: `frameId` novo
+(`fundoPorFrame`, `estilos` e imagens são chaveados por ele, e os moldes usam
+`f1`, `f2`…); o fundo sai de `ritmoDeFundos` do DESTINO (importar da Neon não
+traz o preto); slot só onde o tipo desenha foto; a variação volta ao padrão
+(ela endereçava o desenho do molde anterior); a imagem FICA quando o formato
+novo não tem slot. Na tela: "Adicionar" virou menu com miniaturas REAIS do
+documento de destino, e "Trocar" ganhou "Formato de outro molde" — aberto
+também para o CTA, com o seletor de tipo fechado em capa e CTA.
+
+**O conjunto de campos é da IDENTIDADE, não do molde** (`campos-da-identidade.ts`,
+puro, 10 testes). Achado RENDERIZANDO: aplicar a capa da Neon (`titulo` +
+`subtitulo`) num carrossel Post **apagou o parágrafo da tela** — o renderer do
+cartão de perfil desenha `titulo` e `corpo` e mais nada. `camposPost` já
+declarava isso e **nada consumia**. Agora `camposDaIdentidade` decide e
+`reconciliarCampos` MIGRA o texto do campo que sai para o que fica, de forma
+simétrica (ir e voltar devolve o parágrafo ao campo de origem). Ligado em
+`trocarTipoFrame`, nas duas ações de empréstimo e em **`aplicarFamilia`** — que
+até aqui trocava a identidade e deixava o subtítulo da capa no documento,
+invisível na tela, sem erro nenhum.
+
+**A capa da Neon SEM foto encolhe e se centraliza**: com `flex: 1` no bloco
+vazio ela virava um retângulo tracejado oco com a frase espremida no rodapé, e
+é assim que ela aparece na prateleira, onde nenhum molde tem foto. As medidas
+da identidade Neon seguem vindo da DESCRIÇÃO, não de um arquivo de referência
+— o limite está declarado em `docs/conteudo/formatos/neon.md` e só sai com a
+referência em mãos.
+
+*A fonte do print continua sendo Inter* à frente da pilha que o próprio X
+declara (`Segoe UI, Roboto, Helvetica, Arial`): Chirp é proprietária e não
+pode ser embarcada, e a exportação precisa de fonte determinística.
+
+*Verificado renderizando* (`renderToStaticMarkup` + Chromium) os três cartões
+da prateleira e os dois sentidos do empréstimo (capa da Neon num Post, "Por
+que funciona" do Post numa Neon). Foi o render que pegou a perda de copy
+acima — nenhum teste quebrava.
 
 ---
 

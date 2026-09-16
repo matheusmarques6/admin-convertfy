@@ -23,7 +23,7 @@ import { FAMILIAS, FAMILIA_OPCOES, aplicarFamilia } from "@/lib/conteudo/familia
 import { chamarIA } from "@/lib/conteudo/ia/client"
 import type { SaidaInspiracao } from "@/lib/conteudo/ia/schemas"
 import { arquivosParaDataUrls } from "@/lib/conteudo/imagens"
-import { getTemplate, moldeKeyDoTemplate, ST_FUNIL, ST_TEMPLATES } from "@/lib/conteudo/templates"
+import { getTemplate, moldeKeyDoTemplate, ST_FUNIL, ST_TEMPLATES, TEMPLATE_PADRAO_ID, templatePorFunil } from "@/lib/conteudo/templates"
 import type { BrandKit, Documento, Editorial, EstruturaDetectada, FamiliaVisual, FrameTipo, MeuTemplate, Perfil, PerfilEditavel, Post } from "@/lib/conteudo/types"
 import { CtAvatar, CtBadge, CtLabel, TNUM, inputCls, selectCls, textareaCls } from "../ui"
 import type { Caminho } from "./biblioteca"
@@ -176,7 +176,9 @@ export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, meuTemplat
   // ── motor editorial (caminho IA) ──
   const promptPronto = promptSel != null ? prompts[promptSel] : null
   const pautaCompleta = [prompt.trim(), promptPronto?.pauta].filter(Boolean).join("\n\n")
-  const templateIdIa = promptPronto?.tpl ?? (etapa === "meio" ? "molde-lista" : etapa === "fundo" ? "molde-bastidor" : "molde-turbo")
+  // O molde da IA sai da ETAPA DO FUNIL, não de ids escritos aqui: molde
+  // aposentado deixava `getTemplate` cair no primeiro da lista em silêncio.
+  const templateIdIa = promptPronto?.tpl ?? templatePorFunil(etapa).id
   const framesIa = useMemo(() => ajustarQuantidadeFrames(novoDocumento("prévia", perfil, templateIdIa, { brandKit: kitDoPerfil }), slides).frames, [perfil, templateIdIa, slides, kitDoPerfil])
   const editorialIa: Editorial = useMemo(() => ({ ...(motor ?? editorialVazio(pautaCompleta, voz, segundaPessoa)), insumo: pautaCompleta, voz, segundaPessoa }), [motor, pautaCompleta, voz, segundaPessoa])
   const pelaEspinha = podeGerarCopy(editorialIa)
@@ -202,7 +204,7 @@ export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, meuTemplat
         onCriado({
           doc: comHistorico(d, `Template criado a partir de inspiração (fidelidade ${Math.round(inspiracao?.fidelidade ?? 0)}%)`),
           caminho: "template-review",
-          salvarTemplate: { nome: nomeTpl.trim(), templateId: inspiracao?.templateSugerido ?? "molde-benchmark", familia, estrutura, fidelidade: inspiracao?.fidelidade ?? null },
+          salvarTemplate: { nome: nomeTpl.trim(), templateId: inspiracao?.templateSugerido ?? TEMPLATE_PADRAO_ID, familia, estrutura, fidelidade: inspiracao?.fidelidade ?? null },
         })
         return
       }
@@ -278,7 +280,7 @@ export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, meuTemplat
         onCriado({
           doc: d,
           caminho: "inspiracao",
-          salvarTemplate: salvarComoTemplate ? { nome: nome.trim(), templateId: inspiracao?.templateSugerido ?? "molde-benchmark", familia, estrutura, fidelidade: inspiracao?.fidelidade ?? null } : undefined,
+          salvarTemplate: salvarComoTemplate ? { nome: nome.trim(), templateId: inspiracao?.templateSugerido ?? TEMPLATE_PADRAO_ID, familia, estrutura, fidelidade: inspiracao?.fidelidade ?? null } : undefined,
         })
       }
     } catch (e) {
@@ -423,6 +425,11 @@ export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, meuTemplat
           {caminho === "template" &&
             (Object.keys(ST_FUNIL) as Array<keyof typeof ST_FUNIL>).map((k) => {
               const g = ST_FUNIL[k]
+              const doGrupo = ST_TEMPLATES.filter((t) => t.etapaFunil === k)
+              // Etapa sem molde não vira cabeçalho órfão: com a prateleira
+              // enxuta o "Meio de funil" ficaria como um título seguido de
+              // nada, lido como lista que falhou ao carregar.
+              if (doGrupo.length === 0) return null
               return (
                 <div key={k}>
                   <div className="mb-2.5 flex flex-wrap items-baseline gap-2.5">
@@ -432,7 +439,7 @@ export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, meuTemplat
                     <span className="text-[11.5px] text-[var(--ops-sec)]">{g.d}</span>
                   </div>
                   <div className="grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-3">
-                    {ST_TEMPLATES.filter((t) => t.etapaFunil === k).map((t) => (
+                    {doGrupo.map((t) => (
                       <TemplateCard
                         key={t.id}
                         tpl={t}

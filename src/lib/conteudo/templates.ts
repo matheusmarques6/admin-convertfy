@@ -1,6 +1,14 @@
 /**
  * Templates (moldes) da casa — definição FIXA. O documento copia a estrutura
  * na criação e passa a ser dono dela; nada aqui é mutado em runtime.
+ *
+ * **Todo molde declara a identidade que pressupõe** (`familia`). Os cinco
+ * moldes originais (Turbo, Benchmark, Lista prática, MEC e Bastidor) foram
+ * APOSENTADOS em set/2026: eram sequências diferentes desenhadas todas na
+ * mesma identidade azul, então a prateleira mostrava cinco cartões iguais e
+ * a escolha não mudava a peça. O vocabulário de CLASSIFICAÇÃO dos posts
+ * publicados (`MoldeKey`) não foi mexido — ele é outro eixo, e apagá-lo
+ * levaria junto o histórico de quem já foi classificado.
  */
 
 import type {
@@ -44,65 +52,6 @@ const CAPA: Campo[] = ["titulo", "subtitulo"]
 const CTA: Campo[] = ["titulo", "subtitulo", "botao"]
 
 export const ST_TEMPLATES: Template[] = [
-  {
-    id: "molde-turbo",
-    nome: "Turbo",
-    etapaFunil: "topo",
-    descricao: "Afirmação universal + multiplicador grande. Alcance e descoberta.",
-    cor: "#2137B6",
-    frames: [
-      fr("f1", "capa", "Capa", 1, CAPA),
-      fr("f2", "dado", "Slide 2", 0, TC),
-      fr("f3", "texto", "Slide 3", 0, TC),
-      fr("f4", "texto", "Slide 4", 1, TC),
-      fr("f5", "prova", "Slide 5", 1, TC),
-      fr("f6", "texto", "Slide 6", 0, TC),
-      fr("f7", "cta", "CTA", 0, CTA),
-    ],
-  },
-  {
-    id: "molde-benchmark",
-    nome: "Benchmark de marca",
-    etapaFunil: "topo",
-    descricao: "Case de marca conhecida com número forte, mecanismo e tradução para o leitor.",
-    cor: "#0E7490",
-    frames: [
-      fr("f1", "capa", "Capa", 1, CAPA),
-      fr("f2", "dado", "Slide 2", 0, TC),
-      fr("f3", "texto", "Slide 3", 1, TC),
-      fr("f4", "texto", "Slide 4", 0, TC),
-      fr("f5", "prova", "Slide 5", 1, TC),
-      fr("f6", "texto", "Slide 6", 0, TC),
-      fr("f7", "texto", "Slide 7", 0, TC),
-      fr("f8", "cta", "CTA", 0, CTA),
-    ],
-  },
-  {
-    id: "molde-lista",
-    nome: "Lista prática",
-    etapaFunil: "meio",
-    descricao: "N coisas que você precisa entender sobre X. Um item por slide, CTA de salvar.",
-    cor: "#B45309",
-    frames: [
-      fr("f1", "capa", "Capa", 1, CAPA),
-      ...[2, 3, 4, 5, 6, 7, 8].map((i) =>
-        fr(`f${i}`, "lista", `Item ${i - 1}`, i % 3 === 0 ? 1 : 0, TC),
-      ),
-      fr("f9", "cta", "CTA", 0, CTA),
-    ],
-  },
-  {
-    id: "molde-mec",
-    nome: "MEC papel-por-papel",
-    etapaFunil: "meio",
-    descricao: "Série numerada com barra de progresso no topo. Um papel por slide.",
-    cor: "#7C3AED",
-    frames: [
-      fr("f1", "capa", "Capa", 1, CAPA),
-      ...[2, 3, 4, 5, 6, 7, 8, 9].map((i) => fr(`f${i}`, "mec", `Papel ${i - 1}`, 0, TC)),
-      fr("f10", "cta", "CTA", 0, CTA),
-    ],
-  },
   {
     id: "molde-post",
     nome: "Print de post",
@@ -157,27 +106,24 @@ export const ST_TEMPLATES: Template[] = [
       fr("f6", "cta", "Chamada", 0, CTA),
     ],
   },
-  {
-    id: "molde-bastidor",
-    nome: "Bastidor",
-    etapaFunil: "fundo",
-    descricao: "O que eu fiz por dentro, prova e convite para conversa.",
-    cor: "#374151",
-    frames: [
-      fr("f1", "capa", "Capa", 1, CAPA),
-      fr("f2", "texto", "Slide 2", 1, TC),
-      fr("f3", "prova", "Slide 3", 1, TC),
-      fr("f4", "texto", "Slide 4", 0, TC),
-      fr("f5", "texto", "Slide 5", 1, TC),
-      fr("f6", "cta", "CTA", 0, CTA),
-    ],
-  },
 ]
 
-export const TEMPLATE_PADRAO_ID = "molde-turbo"
+export const TEMPLATE_PADRAO_ID = ST_TEMPLATES[0].id
 
 export function getTemplate(id: string): Template {
   return ST_TEMPLATES.find((t) => t.id === id) ?? ST_TEMPLATES[0]
+}
+
+/**
+ * O molde que o caminho "100% com IA" usa para cada etapa do funil.
+ *
+ * Deriva de `etapaFunil` em vez de um id escrito à mão: com ids fixos,
+ * aposentar um molde deixava a IA apontando para um id inexistente, e
+ * `getTemplate` caía no primeiro da lista SEM erro nenhum — a peça nascia
+ * com outra sequência e outra identidade, em silêncio.
+ */
+export function templatePorFunil(etapa: EtapaFunil): Template {
+  return ST_TEMPLATES.find((t) => t.etapaFunil === etapa) ?? ST_TEMPLATES[0]
 }
 
 /** Tipos que um frame do meio pode virar (capa e CTA são fixos). */
@@ -197,7 +143,34 @@ export const ST_VARIANTES: Partial<Record<FrameTipo, Array<[VarianteLayout, stri
   ],
 }
 
-/** Nome do template → chave curta do molde usada nos posts do dashboard. */
+/**
+ * As MESMAS variantes, com o nome do que a identidade desenha.
+ *
+ * No cartão de perfil (as duas famílias de print) a variante não move texto
+ * dentro do slide: ela escolhe a POSE (`posePost`) — cabeçalho colado no
+ * topo ou bloco no centro óptico —, e o padrão é decidido pela foto. Os
+ * rótulos da casa ("Texto embaixo") descreviam um desenho que ali não
+ * existe, então o operador escolhia no escuro.
+ */
+export function variantesDoTipo(tipo: FrameTipo, cartaoPerfil = false): Array<[VarianteLayout, string]> | undefined {
+  if (!cartaoPerfil) return ST_VARIANTES[tipo]
+  if (tipo === "capa" || tipo === "texto" || tipo === "prova" || tipo === "lista" || tipo === "mec") {
+    return [
+      ["a", "Automático (pela foto)"],
+      ["b", "Cabeçalho no topo"],
+      ["c", "Bloco no centro"],
+    ]
+  }
+  return undefined
+}
+
+/**
+ * Nome do template → chave curta do molde usada nos posts do dashboard.
+ *
+ * As chaves dos moldes aposentados continuam aqui **de propósito**: elas
+ * classificam posts já publicados, e o `MoldeKey` é a coluna que o
+ * dashboard lê. Tirá-las apagaria o histórico junto com a prateleira.
+ */
 export const ST_MOLDE_KEY: Record<string, MoldeKey> = {
   Turbo: "Turbo",
   "MEC papel-por-papel": "MEC",
@@ -210,7 +183,12 @@ export const ST_MOLDE_KEY: Record<string, MoldeKey> = {
 }
 
 export function moldeKeyDoTemplate(t: Template): MoldeKey {
-  return ST_MOLDE_KEY[t.nome] ?? "Turbo"
+  return ST_MOLDE_KEY[t.nome] ?? "Post"
+}
+
+/** O molde da prateleira que realiza esta chave de classificação, se houver. */
+export function templateDaMoldeKey(k: MoldeKey): Template | undefined {
+  return ST_TEMPLATES.find((t) => moldeKeyDoTemplate(t) === k)
 }
 
 /** Campos que cada tipo de frame usa (ao trocar o tipo de um frame). */
