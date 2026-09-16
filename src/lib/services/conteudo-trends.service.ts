@@ -18,6 +18,8 @@ import { logger } from "@/lib/logger"
 import { buscarNaWeb, escolherProvedor } from "@/lib/ai/web/web-search"
 import { blocoDeFontes, verificarFontes, type FonteServida } from "@/lib/conteudo/editorial/evidencias"
 import { executarIA } from "@/lib/conteudo/ia/service"
+import { assuntosDaBase, carregarConhecimento } from "./conteudo-conhecimento.service"
+import { consultaDaAcao } from "@/lib/conteudo/conhecimento"
 import { VALIDADE_DIAS, expirados, ordenarParaOPainel, precisaRodar } from "@/lib/conteudo/trends/validade"
 import type { Formato, Trend, TrendsStatus } from "@/lib/conteudo/types"
 import type { EtapaFunil } from "@/lib/conteudo/types"
@@ -136,7 +138,12 @@ async function contextoDaOrg(admin: Admin, orgId: string): Promise<string> {
     .slice(0, 5)
   const base =
     "Agência de e-mail marketing e retenção para e-commerce (Convertfy). O público é dono de loja e gestor de tráfego; os assuntos giram em torno de segmentação, LTV, carrinho abandonado, pós-compra e o que fazer com a base que já comprou."
-  return linhas.length > 0 ? `${base}\n\nPosts da casa que mais salvaram:\n${linhas.map((l) => `- ${l}`).join("\n")}` : base
+  // O mapa da base entra aqui, e não como doutrina: para PROPOR pauta o que
+  // importa é saber sobre o que a casa consegue sustentar um argumento — o
+  // conteúdo das notas só é servido quando a peça vai ser escrita.
+  const assuntos = await assuntosDaBase(admin)
+  const partes = [base, assuntos, linhas.length > 0 ? `Posts da casa que mais salvaram:\n${linhas.map((l) => `- ${l}`).join("\n")}` : ""]
+  return partes.filter(Boolean).join("\n\n")
 }
 
 export interface GerarTrendsResultado {
@@ -333,14 +340,26 @@ export async function gerarPautas(
     .limit(40)
   const jaTem = ((data ?? []) as Array<{ titulo: string }>).map((i) => i.titulo)
 
-  const r = await executarIA({
-    acao: "pautas",
-    perfil: { handle: perfil.handle, nome: perfil.nome },
-    contexto,
-    jaTem,
-    lacunas: opts.lacunas?.slice(0, 3),
-    quantidade: opts.quantidade ?? 5,
-  })
+  // A pauta é proposta, não peça escrita: a base entra com teto menor, só
+  // para o modelo saber QUE ângulo a casa consegue defender. Servir a
+  // doutrina inteira aqui pagaria contexto por um texto de duas linhas.
+  const conhecimento = await carregarConhecimento(
+    admin,
+    consultaDaAcao({ acao: "pautas", insumo: (opts.lacunas ?? []).join(" · ") || contexto.slice(0, 400) }),
+    { limites: { maxNotas: 2, maxChars: 4500, maxCharsNota: 2500 } },
+  )
+
+  const r = await executarIA(
+    {
+      acao: "pautas",
+      perfil: { handle: perfil.handle, nome: perfil.nome },
+      contexto,
+      jaTem,
+      lacunas: opts.lacunas?.slice(0, 3),
+      quantidade: opts.quantidade ?? 5,
+    },
+    { blocoConhecimento: conhecimento.bloco },
+  )
 
   return r.dados.pautas.map((p) => ({
     titulo: p.titulo.trim(),

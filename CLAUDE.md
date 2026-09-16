@@ -8058,6 +8058,78 @@ duplicata é medida pelo caminho COM querystring.)
 `OPENROUTER_API_KEY` nem chave de busca. Verificados: o CHECK aplicado em
 produção, typecheck, suíte, build, e o painel renderizado nos três estados.
 
+## A base do Obsidian entra no Estúdio (set/2026)
+
+Medido antes de escrever: **256 notas aprovadas, 251 com vetor** — e o
+Estúdio escrevia carrossel com **~40 palavras** de contexto hardcoded
+(`contextoDaOrg`), sem consultar a base em ação nenhuma. A base cobre
+exatamente os assuntos dos carrosséis da casa: 14 notas de flows, 14 de
+deliverability, 12 de list-growth, 11 de copy, 11 de referências de e-mail,
+5 de estruturas da casa, com 644 a 1.906 palavras cada. O ativo mais forte é
+uma série de **16 notas de NÚMEROS** com valor verbatim, registro de origem e
+linha do bruto — enquanto o motor editorial marcava `[confirmar]` toda vez
+que não tinha número com fonte. Mapa em
+`docs/conteudo/base-do-obsidian-no-estudio.md`.
+
+`blocoConhecimento` é o terceiro bloco do `executarIA` e responde a outra
+pergunta: **conhecimento = o que afirmar** (mecanismo, limites, números),
+**referências = como escrever**, **fontes = que fato externo existe**. Usa
+`buscarConhecimento`, a MESMA busca do `conhecimento_buscar` e do
+`buscar_doutrina` — dois buscadores divergiriam e ninguém saberia por que o
+Estúdio "não acha" o que a ConvertIA acha. Fail-open: base indisponível não
+impede escrever carrossel.
+
+**As cinco regras** (`lib/conteudo/conhecimento.ts`, puro, 18 testes):
+
+1. **Procedência SEPARA o bloco em dois.** `Convertfy/*` e `Referencias/*` é
+   como A CASA faz (afirmável em primeira pessoa); `Advisors/Max/*` é curso
+   de terceiro. Trocar um pelo outro custa nos dois sentidos: "nós fazemos
+   assim" sobre curso alheio é apropriação, "o mercado diz" sobre a casa joga
+   fora a autoridade.
+2. **Número de doutrina é BENCHMARK, nunca resultado nosso** — "3x por semana
+   é o sweet spot" é o que o curso ensina, não o que a casa mediu; um slide
+   que troque publica case falso.
+3. **As três regras do corpus viajam com o número** (verbatim sem arredondar;
+   `outro-narrador` NÃO é citável como fala do Max; nada de média — "o piso é
+   3", nunca "cerca de 5"), e só quando uma tabela de número entra,
+   reconhecida pelo NOME do arquivo: servi-las sempre vira ruído que o modelo
+   aprende a pular.
+4. **O corte NUNCA come a ressalva.** As notas da casa abrem com o resumo e
+   FECHAM declarando o que não provam — a de welcome termina com "não a use
+   para afirmar que esta estrutura converte mais que outra". Cortar pelo
+   começo preserva o resumo e joga fora a ressalva, e a nota decapitada vira
+   material para afirmar o que ela proíbe. `ressalvaDaNota` entra no
+   orçamento ANTES do corpo. Linha de tabela partida ao meio também é barrada
+   (`semLinhaPartida`) — "| 7 |" é lido como dado incompleto, não como texto
+   faltando; apareceu ao LER o prompt montado com as notas reais.
+5. **Path de nota inventado é REMOVIDO, como link inventado.**
+   `verificarFontes` só confere o que começa com `http`, então servir a base
+   sem uma segunda régua abriria a porta que a primeira fecha — e por um
+   caminho pior, porque path interno parece mais confiável que link.
+   `conferirNotasCitadas` confere contra os paths servidos.
+
+**A busca por SIGNIFICADO é o que faz isto funcionar**, e foi medido: "carrinho
+abandonado recuperacao" devolve **0** notas na full-text e "cart abandon"
+devolve 3 (o corpus mistura PT e EN); três pautas naturais devolveram **0/3**,
+porque o `websearch_to_tsquery` é AND e uma pauta de dez palavras exige as dez
+na nota. Daí a consulta ir em **palavras-chave** (`consultaDaPauta`, a mesma
+extração da busca na web — 0/3 → 1/3, e o vetor perde pouco) e o
+`semanticaRodou: false` ser dito com força ("o que chegou é quase certamente
+uma fração do que a base tem; NÃO conclua que a casa não trata o assunto") —
+"pode estar incompleto" faria o modelo concluir o contrário.
+
+**A triagem foi AUTORIZADA a usar a base**, não só servida: o prompt dizia
+"só o que está no insumo ou nos resultados de busca", e servir o dado sem
+mudar a regra é o erro que este repo já pagou duas vezes. Agora ele ensina a
+citar o caminho EXATO da nota e avisa que caminho não servido é removido.
+
+Na tela, o painel da triagem mostra **Fontes consultadas** (web) e **Base da
+casa** (notas, com o rótulo `nossa doutrina` × `mercado`) separadas; zero
+notas é resultado legítimo e é dito. `contextoDaOrg` (pautas, trends, ideias)
+ganhou `assuntosDaBase` — o mapa de pastas com a contagem, para propor pauta
+que a casa consegue SUSTENTAR. Custo medido: 5.949 chars no caso real, teto
+de 3 notas / 9.000 chars; `pautas` usa teto menor (2 / 4.500).
+
 ---
 
 *Última atualização: Setembro 2026*

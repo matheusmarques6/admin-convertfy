@@ -22,6 +22,8 @@ import { entradaImagemSchema, entradaSchema, type EntradaIA } from "@/lib/conteu
 import { executarIA, IaJsonInvalidoError } from "@/lib/conteudo/ia/service"
 import { blocoDeFontes, consultaDaPauta, verificarFontes, type FonteServida } from "@/lib/conteudo/editorial/evidencias"
 import { blocoDeReferencias, selecionarReferencias, type ContextoSelecao } from "@/lib/conteudo/referencias"
+import { conferirNotasCitadas, consultaDaAcao } from "@/lib/conteudo/conhecimento"
+import { carregarConhecimento, type ConhecimentoDoPedido } from "@/lib/services/conteudo-conhecimento.service"
 import { ST_MOLDE_KEY } from "@/lib/conteudo/templates"
 import { listarReferencias } from "@/lib/services/conteudo-referencias.service"
 import { buscarNaWeb } from "@/lib/ai/web/web-search"
@@ -104,20 +106,30 @@ async function handlePost(request: NextRequest) {
       throw new AppError(`Pedido inválido: ${parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`, 400)
     }
 
-    // Referências da casa: as ações que ESCREVEM recebem os exemplos de
-    // estilo antes do pedido. Fail-open — sem tabela ou sem referência o
-    // comportamento é o de sempre. É o que separa "escrever pela regra" de
-    // "escrever como a casa escreve".
+    // Duas fontes de contexto, e elas respondem a perguntas diferentes:
+    // a BASE do Obsidian diz o que afirmar (mecanismo, limites, números com
+    // procedência) e a REFERÊNCIA diz como escrever (ritmo, gancho, prova).
+    // As duas são fail-open e rodam em paralelo — nenhuma pode atrasar nem
+    // impedir a escrita de um carrossel.
+    const admin = createAdminClient()
     let blocoReferencias = ""
-    try {
-      const orgId = await resolveOrgId(user.id)
-      const admin = createAdminClient()
-      const todas = await listarReferencias(admin, orgId)
-      const sel = selecionarReferencias(todas, contextoDaEntrada(parsed.data))
-      blocoReferencias = blocoDeReferencias(sel)
-    } catch (e) {
-      log.warn("conteudo_ia.referencias_indisponiveis", { erro: (e as Error).message })
-    }
+    let blocoConhecimento = ""
+    let conhecimento: ConhecimentoDoPedido = { bloco: "", fontes: [], semanticaRodou: false }
+
+    const [refs, base] = await Promise.allSettled([
+      (async () => {
+        const orgId = await resolveOrgId(user.id)
+        const todas = await listarReferencias(admin, orgId)
+        return blocoDeReferencias(selecionarReferencias(todas, contextoDaEntrada(parsed.data)))
+      })(),
+      carregarConhecimento(admin, consultaDaAcao(parsed.data as Parameters<typeof consultaDaAcao>[0])),
+    ])
+    if (refs.status === "fulfilled") blocoReferencias = refs.value
+    else log.warn("conteudo_ia.referencias_indisponiveis", { erro: String(refs.reason) })
+    if (base.status === "fulfilled") {
+      conhecimento = base.value
+      blocoConhecimento = base.value.bloco
+    } else log.warn("conteudo_ia.conhecimento_indisponivel", { erro: String(base.reason) })
 
     // Triagem com fato externo: a busca roda ANTES do modelo, e as URLs
     // servidas são a lista fechada contra a qual cada citação é conferida
@@ -146,6 +158,7 @@ async function handlePost(request: NextRequest) {
       const r = await executarIA(parsed.data, {
         signal: request.signal,
         blocoReferencias,
+        blocoConhecimento,
         blocoFontes: blocoDeFontes(fontes),
       })
       let dados = r.dados
@@ -154,11 +167,16 @@ async function handlePost(request: NextRequest) {
         const t = dados as { evidencias?: Array<{ rotulo: string; texto: string; fonte?: string }> }
         if (Array.isArray(t.evidencias)) {
           const v = verificarFontes(t.evidencias, fontes)
-          fontesDescartadas = v.descartadas
-          if (v.descartadas.length > 0) {
-            log.warn("conteudo_ia.fonte_inventada", { quantas: v.descartadas.length, urls: v.descartadas })
+          // Duas réguas, porque são dois espaços de endereço: `verificarFontes`
+          // só confere o que começa com `http`, então um caminho de nota
+          // inventado passaria — e path interno parece MAIS confiável que
+          // link, o que torna a falha pior.
+          const n = conferirNotasCitadas(v.evidencias, conhecimento.fontes.map((f) => f.path))
+          fontesDescartadas = [...v.descartadas, ...n.descartadas]
+          if (fontesDescartadas.length > 0) {
+            log.warn("conteudo_ia.fonte_inventada", { quantas: fontesDescartadas.length, urls: v.descartadas, notas: n.descartadas })
           }
-          dados = { ...t, evidencias: v.evidencias } as typeof dados
+          dados = { ...t, evidencias: n.evidencias } as typeof dados
         }
       }
       return successResponse(request, {
@@ -166,6 +184,15 @@ async function handlePost(request: NextRequest) {
         fontes: fontes.map((f) => ({ titulo: f.titulo, url: f.url })),
         busca_indisponivel: buscaIndisponivel,
         fontes_descartadas: fontesDescartadas.length,
+        // A base consultada sobe na resposta para a tela poder dizer em que
+        // regime a peça saiu — e para o operador CONFERIR a nota que
+        // sustentou uma afirmação, que é a diferença entre lastro e citação
+        // de memória.
+        conhecimento: {
+          notas: conhecimento.fontes.map((f) => ({ path: f.path, titulo: f.titulo, procedencia: f.procedencia })),
+          semantica: conhecimento.semanticaRodou,
+          motivo: conhecimento.motivo ?? null,
+        },
         meta: { modelo: r.modelo, ms: r.ms, custo_usd: r.custoUsd, tentativas: r.tentativas },
       })
     } catch (e) {
