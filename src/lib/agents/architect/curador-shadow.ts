@@ -1908,6 +1908,27 @@ export async function runCuradorShadow(
         // tem TODAS as candidatas reprovadas pelo contrato, e a lacuna de
         // biblioteca fica invisível para a curadoria.
         elegiveis_em_fail_open: planoShortlist.emFailOpen,
+        // ── A janela de e-mails recentes (Fase 3) ─────────────────────
+        //
+        // Em shadow ela não filtra nada; o que sobe aqui é o EFEITO que
+        // ela teria. `afrouxadas` é o sinal acionável: a seção tem menos
+        // variantes distintas do que posições no e-mail, e é isso que vira
+        // pauta de cadastro — diferente de "a janela bloqueou 2", que é o
+        // funcionamento normal.
+        janela: {
+          bloqueadas_por_posicao: Object.fromEntries(
+            Array.from(p.elegiveisPorPosicao ?? [], ([i, e]) => [i, e.bloqueadasPelaJanela]).filter(
+              ([, ids]) => (ids as string[]).length > 0,
+            ),
+          ),
+          afrouxadas: Array.from(p.elegiveisPorPosicao ?? [])
+            .filter(([, e]) => e.janelaAfrouxada)
+            // O `flow_type` viaja NO payload: a chave da pauta é
+            // (flow, seção) e `email_generation_runs` não tem coluna de
+            // flow — derivá-lo no leitor seria depender de um select que
+            // pode mudar sem ninguém notar.
+            .map(([i]) => ({ block_index: i, section: p.liveSections[i] ?? "", flow_type: p.flowType })),
+        },
         // Custo do índice (15/09): `chars_por_variante` é o que diz se a
         // biblioteca pode crescer sem encarecer a geração; `linhas_longas`
         // é cadastro a revisar, não biblioteca grande.

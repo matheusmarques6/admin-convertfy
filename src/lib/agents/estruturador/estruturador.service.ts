@@ -476,6 +476,18 @@ async function loadEstruturaVigenteDesteEmail(
 async function loadEstruturasDosOutrosEmails(
   flowId: string | null,
   emailId: string | null,
+  /**
+   * Número deste e-mail (16/09). Com ele, só os ANTERIORES viajam, e no
+   * máximo os 3 últimos.
+   *
+   * Sem limite a lista crescia com o flow inteiro, e os posteriores entram
+   * como sequência "decidida" quando na verdade ainda não foram — na fila
+   * os quatro rodam em paralelo e o irmão de número maior costuma estar
+   * `running`, o que hoje disfarça o problema em vez de resolvê-lo.
+   * Ausente = comportamento antigo (todos), para o caller que não o passa.
+   */
+  emailNumber?: number,
+  janela = 3,
 ): Promise<EstruturaIrma[]> {
   if (!flowId) return []
   const admin = createAdminClient()
@@ -488,7 +500,7 @@ async function loadEstruturasDosOutrosEmails(
     id: string
     number: number
     flow?: { flow_type?: string } | null
-  }>).filter((e) => e.id !== emailId)
+  }>).filter((e) => e.id !== emailId && (emailNumber == null || e.number < emailNumber))
   if (outros.length === 0) return []
 
   const { data } = await admin
@@ -508,9 +520,10 @@ async function loadEstruturasDosOutrosEmails(
     if (seq.length > 0) vigentePorEmail.set(r.email_id, seq)
   }
 
-  return outros
-    .filter((e) => vigentePorEmail.has(e.id))
-    .sort((a, b) => a.number - b.number)
+  const comEstrutura = outros.filter((e) => vigentePorEmail.has(e.id)).sort((a, b) => a.number - b.number)
+  // Os `janela` mais PRÓXIMOS deste e-mail, na ordem do flow: o toque 1 diz
+  // pouco sobre o 8, e servir os sete anteriores é prompt que não cabe.
+  return (emailNumber == null ? comEstrutura : comEstrutura.slice(-janela))
     .map((e) => ({
       rotulo: `${e.flow?.flow_type ?? "email"} #${e.number}`,
       seq: vigentePorEmail.get(e.id)!,
@@ -542,7 +555,7 @@ export async function runEstruturador(
 
   const [capacidade, irmas, minhaAnterior, vigente, modos] = await Promise.all([
     loadCapacidade(input.topProducts.length),
-    loadEstruturasDosOutrosEmails(input.flowId ?? null, input.emailId ?? null),
+    loadEstruturasDosOutrosEmails(input.flowId ?? null, input.emailId ?? null, input.emailNumber),
     loadEstruturaVigenteDesteEmail(input.emailId ?? null),
     loadDecisaoVigenteDesteEmail(input.emailId ?? null),
     loadContratoModes(input.storeId),

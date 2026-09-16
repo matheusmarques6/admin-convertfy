@@ -136,6 +136,7 @@ import {
 } from "../shared/prompt-provenance"
 import {
   loadCuradorMemory,
+  loadEscolhasRecentesPorSecao,
   logCuradorChoice,
   renderCuradorMemory,
   type ChoiceEntry,
@@ -1157,7 +1158,19 @@ export async function assembleStoreReference(
   // 14/09: a eliminação vira FILTRO. Elegíveis por posição decidem se a
   // shortlist do Curador chama o modelo (≤ 3 elegíveis = por código),
   // restringem as finalistas e são o pool do resgate.
-  const elegiveisDaPosicao = elegiveisPorPosicao(sections, requisitosPorPosicao, catalog.sections)
+  // Janela de repetição entre e-mails (Fase 3 do leque). Em `shadow` ela é
+  // CALCULADA e não filtra: `bloqueadasPelaJanela` sobe na telemetria e os
+  // `ids` saem idênticos aos de sempre — é assim que se mede o efeito antes
+  // de ligar. `aplicar` é decisão do gate; hoje nasce em shadow.
+  const bloqueadasPorSecao = await loadEscolhasRecentesPorSecao(
+    input.storeId,
+    input.flowType,
+    input.emailNumber,
+  )
+  const elegiveisDaPosicao = elegiveisPorPosicao(sections, requisitosPorPosicao, catalog.sections, {
+    bloqueadasPorSecao,
+    aplicar: false,
+  })
   // Contrato de decisão (14/09): o que os validadores estruturais comparam.
   // Sem `decisao` (Estruturador desligado/falhou) não há o que validar —
   // `_contrato` diz isso em vez de fingir "zero violações".

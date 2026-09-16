@@ -110,3 +110,52 @@ describe("buildLacunaDraft", () => {
     expect(d.markdown).toContain("1 geração em 14 dias")
   })
 })
+
+describe("biblioteca escassa (janela afrouxada, 16/09)", () => {
+  const run = (id: string, flow: string, section: string, store: string) => ({
+    id,
+    createdAt: `2026-09-1${id}T00:00:00Z`,
+    storeName: store,
+    violations: [],
+    posicoesSemVariante: [],
+    janelaAfrouxada: [{ section, flow_type: flow }],
+  })
+
+  it("a chave é FIXA por (flow, seção): lojas diferentes somam no MESMO balde", () => {
+    // Sem `chaveFixa` o detalhe entraria na normalização por texto, cada
+    // loja abriria um balde próprio, o limiar de 3 nunca seria atingido e a
+    // pauta nunca apareceria.
+    const r = agregarLacunas([
+      run("1", "welcome", "body", "Loja A"),
+      run("2", "welcome", "body", "Loja B"),
+      run("3", "welcome", "body", "Loja C"),
+    ])
+    expect(r).toHaveLength(1)
+    expect(r[0].chave).toBe("biblioteca_escassa:welcome:body")
+    expect(r[0].ocorrencias).toBe(3)
+    expect(r[0].secao).toBe("body")
+  })
+
+  it("flows diferentes são baldes diferentes — a lacuna é por toque", () => {
+    const r = agregarLacunas(
+      [run("1", "welcome", "body", "A"), run("2", "offer", "body", "B")],
+      { minimo: 1 },
+    )
+    expect(r.map((x) => x.chave).sort()).toEqual([
+      "biblioteca_escassa:offer:body",
+      "biblioteca_escassa:welcome:body",
+    ])
+  })
+
+  it("abaixo do mínimo não vira pauta", () => {
+    expect(agregarLacunas([run("1", "welcome", "body", "A")])).toEqual([])
+  })
+
+  it("seção vazia é ignorada em vez de abrir balde sem nome", () => {
+    const r = agregarLacunas(
+      [{ id: "1", createdAt: "2026-09-16T00:00:00Z", violations: [], posicoesSemVariante: [], janelaAfrouxada: [{ flow_type: "welcome" }] }],
+      { minimo: 1 },
+    )
+    expect(r).toEqual([])
+  })
+})

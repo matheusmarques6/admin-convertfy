@@ -221,8 +221,8 @@ describe("n_itens null conta como 1 item; elegíveis por posição (14/09)", () 
   })
   it("elegíveis = seção menos eliminadas; seção normalizada; posição sem seção fica fora do mapa", () => {
     const e = elegiveisPorPosicao(["hero", "products", "reviews"], [null, { n_itens: { min: 2 } }, null], cat)
-    expect(e.get(0)).toEqual({ ids: ["h3"], zerou: false })
-    expect(e.get(1)).toEqual({ ids: ["p9"], zerou: false })
+    expect(e.get(0)).toEqual({ ids: ["h3"], zerou: false, bloqueadasPelaJanela: [], janelaAfrouxada: false })
+    expect(e.get(1)).toEqual({ ids: ["p9"], zerou: false, bloqueadasPelaJanela: [], janelaAfrouxada: false })
     expect(e.has(2)).toBe(false)
   })
   // 16/09: a lista do fail-open é o pool cru, e sem `zerou` ela é
@@ -230,7 +230,7 @@ describe("n_itens null conta como 1 item; elegíveis por posição (14/09)", () 
   // variantes que o contrato reprova, e a lacuna de biblioteca some.
   it("fail-open: requisito que zera a seção mantém todas elegíveis, e DIZ que zerou", () => {
     const e = elegiveisPorPosicao(["products"], [{ n_itens: { min: 2, max: 3 }, preco: true }], cat)
-    expect(e.get(0)).toEqual({ ids: ["p9", "p4"], zerou: true })
+    expect(e.get(0)).toEqual({ ids: ["p9", "p4"], zerou: true, bloqueadasPelaJanela: [], janelaAfrouxada: false })
   })
   // As duas liam o catálogo por chaves diferentes: `elegiveisPorPosicao`
   // normalizava e `eliminarPorRequisitos` não. Com caixa/espaço diferentes,
@@ -341,5 +341,96 @@ describe("capacidadePorSecao — faixa de itens por dispositivo (15/09)", () => 
     )
     expect(txt).toContain("hero_pergunta (1)")
     expect(txt).not.toContain("hero_pergunta (1, 0")
+  })
+})
+
+// ── A janela de repetição entre e-mails (Fase 3 do leque, 16/09) ────────
+
+describe("elegiveisPorPosicao com janela", () => {
+  const v = (id: string) => ({ variant_id: id, contrato: resumirContrato([]) })
+  const catalogo = [
+    { section: "body", variantes: [v("b1"), v("b2"), v("b3"), v("b4")] },
+    { section: "hero", variantes: [v("h1"), v("h2")] },
+  ]
+  const janela = (m: Record<string, string[]>) =>
+    new Map(Object.entries(m).map(([k, ids]) => [k, new Set(ids)]))
+
+  it("shadow (`aplicar: false`) NÃO muda os ids, e ainda assim mede", () => {
+    // Sem isto o shadow não mede nada — era o item 3.4 do plano.
+    const semJanela = elegiveisPorPosicao(["body"], [null], catalogo)
+    const shadow = elegiveisPorPosicao(["body"], [null], catalogo, {
+      bloqueadasPorSecao: janela({ body: ["b1", "b2"] }),
+      aplicar: false,
+    })
+    expect(shadow.get(0)!.ids).toEqual(semJanela.get(0)!.ids)
+    expect(shadow.get(0)!.bloqueadasPelaJanela).toEqual(["b1", "b2"])
+  })
+
+  it("ligada, tira as usadas nos últimos e-mails", () => {
+    const e = elegiveisPorPosicao(["body"], [null], catalogo, {
+      bloqueadasPorSecao: janela({ body: ["b1", "b2"] }),
+      aplicar: true,
+    })
+    expect(e.get(0)!.ids).toEqual(["b3", "b4"])
+    expect(e.get(0)!.janelaAfrouxada).toBe(false)
+  })
+
+  it("AFROUXA por escassez, não por zero: 2 posições `body` e 4 variantes com 3 bloqueadas", () => {
+    // A régua de zero não dispararia (sobra 1), as duas posições receberiam
+    // a MESMA variante e a segunda cairia no dedupe sem alternativa.
+    const e = elegiveisPorPosicao(["body", "body"], [null, null], catalogo, {
+      bloqueadasPorSecao: janela({ body: ["b1", "b2", "b3"] }),
+      aplicar: true,
+    })
+    expect(e.get(0)!.ids).toEqual(["b1", "b2", "b3", "b4"])
+    expect(e.get(0)!.janelaAfrouxada).toBe(true)
+    // O que a janela teria tirado continua registrado — é a medição.
+    expect(e.get(0)!.bloqueadasPelaJanela).toEqual(["b1", "b2", "b3"])
+  })
+
+  it("com UMA posição a mesma janela NÃO afrouxa — o piso é o número de posições", () => {
+    const e = elegiveisPorPosicao(["body"], [null], catalogo, {
+      bloqueadasPorSecao: janela({ body: ["b1", "b2", "b3"] }),
+      aplicar: true,
+    })
+    expect(e.get(0)!.ids).toEqual(["b4"])
+    expect(e.get(0)!.janelaAfrouxada).toBe(false)
+  })
+
+  it("janela que bloqueia TUDO afrouxa em vez de esvaziar", () => {
+    const e = elegiveisPorPosicao(["hero"], [null], catalogo, {
+      bloqueadasPorSecao: janela({ hero: ["h1", "h2"] }),
+      aplicar: true,
+    })
+    expect(e.get(0)!.ids).toEqual(["h1", "h2"])
+    expect(e.get(0)!.janelaAfrouxada).toBe(true)
+  })
+
+  it("a janela entra ANTES do filtro por requisito, que é fail-open no conjunto", () => {
+    // Depois dele, a janela poderia zerar a lista e o fail-open a
+    // devolveria inteira — a janela seria anulada sem nada dizer.
+    const comCupom = [
+      { section: "hero", variantes: [
+        { variant_id: "h1", contrato: resumirContrato([{ key: "coupon_code", type: "text_short", example: "X" }]) },
+        { variant_id: "h2", contrato: resumirContrato([]) },
+      ] },
+    ]
+    const e = elegiveisPorPosicao(["hero"], [{ cupom: false }], comCupom, {
+      bloqueadasPorSecao: janela({ hero: ["h2"] }),
+      aplicar: true,
+    })
+    // h2 sai pela janela; h1 sai pelo requisito → fail-open do requisito
+    // devolve o que a JANELA deixou, não o catálogo inteiro.
+    expect(e.get(0)!.ids).toEqual(["h1"])
+    expect(e.get(0)!.zerou).toBe(true)
+  })
+
+  it("seção sem histórico passa intacta", () => {
+    const e = elegiveisPorPosicao(["hero"], [null], catalogo, {
+      bloqueadasPorSecao: janela({ body: ["b1"] }),
+      aplicar: true,
+    })
+    expect(e.get(0)!.ids).toEqual(["h1", "h2"])
+    expect(e.get(0)!.bloqueadasPelaJanela).toEqual([])
   })
 })

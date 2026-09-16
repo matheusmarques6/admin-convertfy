@@ -86,6 +86,13 @@ export async function proporLacunas(
       posicoesSemVariante: Array.isArray(po.posicoes_sem_variante)
         ? (po.posicoes_sem_variante as RunParaLacuna["posicoesSemVariante"])
         : [],
+      // Fase 3 (16/09): seções em que a janela de repetição precisou ser
+      // afrouxada por escassez. O `flow_type` vem DENTRO do payload — a
+      // chave da pauta é (flow, seção) e a tabela de runs não tem coluna
+      // de flow.
+      janelaAfrouxada: Array.isArray((po.janela as { afrouxadas?: unknown } | undefined)?.afrouxadas)
+        ? ((po.janela as { afrouxadas: RunParaLacuna["janelaAfrouxada"] }).afrouxadas ?? [])
+        : [],
     }
   })
   const agregadas = agregarLacunas(entrada, { minimo: opts.minimo ?? 3 })

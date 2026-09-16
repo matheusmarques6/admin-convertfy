@@ -42,6 +42,16 @@ export interface RunParaLacuna {
     flow_type?: string
     motivo?: string
   }>
+  /**
+   * Seções em que a JANELA de e-mails recentes foi afrouxada por escassez
+   * (Fase 3, 16/09): sobraram menos variantes distintas do que posições
+   * daquela seção no e-mail.
+   *
+   * É pauta de cadastro legítima e diferente das outras: aqui a peça SAIU
+   * bem, e o que falta é repertório para os e-mails não se parecerem entre
+   * si. "A janela bloqueou duas" é o funcionamento normal e não entra.
+   */
+  janelaAfrouxada?: Array<{ section?: string; flow_type?: string }>
 }
 
 export interface LacunaAgregada {
@@ -59,7 +69,13 @@ export interface LacunaAgregada {
 }
 
 /** Só o que significa "a biblioteca não cobre" vira proposta. */
-const TIPOS_DE_LACUNA = new Set(["aliviador_ausente", "proibicao_violada", "posicao_sem_variante", "lacuna_biblioteca"])
+const TIPOS_DE_LACUNA = new Set([
+  "aliviador_ausente",
+  "proibicao_violada",
+  "posicao_sem_variante",
+  "lacuna_biblioteca",
+  "biblioteca_escassa",
+])
 const EXEMPLOS_MAX = 5
 
 /**
@@ -164,6 +180,25 @@ export function agregarLacunas(
       if (vistas.has(chave)) continue
       vistas.add(chave)
       registrar(run, "posicao_sem_variante", detalhe, secao)
+    }
+    for (const a of run.janelaAfrouxada ?? []) {
+      const secao = (a.section ?? "").trim().toLowerCase()
+      if (!secao) continue
+      const flow = (a.flow_type ?? "").trim().toLowerCase() || "flow"
+      // Chave FIXA por (flow, seção). Sem ela o detalhe entraria na
+      // normalização por texto e cada loja abriria um balde próprio — o
+      // limiar de 3 nunca seria atingido e a pauta nunca apareceria, que é
+      // o modo de falha que o `chaveFixa` existe para fechar.
+      const chave = `biblioteca_escassa:${flow}:${secao}`
+      if (vistas.has(chave)) continue
+      vistas.add(chave)
+      registrar(
+        run,
+        "biblioteca_escassa",
+        `${flow}: a seção ${secao} tem menos variantes distintas do que posições no e-mail — a janela de repetição precisou ser afrouxada`,
+        secao,
+        chave,
+      )
     }
   }
   return [...baldes.values()]

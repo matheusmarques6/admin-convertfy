@@ -134,9 +134,9 @@ function params(over: Partial<CuradorShadowParams> = {}): CuradorShadowParams {
     modo: "on",
     lequeOn: true,
     elegiveisPorPosicao: new Map([
-      [0, { ids: ["h1", "h2"], zerou: false }],
-      [1, { ids: ["b1"], zerou: false }],
-      [2, { ids: ["f1"], zerou: false }],
+      [0, { ids: ["h1", "h2"], zerou: false, bloqueadasPelaJanela: [], janelaAfrouxada: false }],
+      [1, { ids: ["b1"], zerou: false, bloqueadasPelaJanela: [], janelaAfrouxada: false }],
+      [2, { ids: ["f1"], zerou: false, bloqueadasPelaJanela: [], janelaAfrouxada: false }],
     ]),
     decisaoPorPosicao: [
       { papel: "abre com a objeção", requisitos: "dispositivo: hero_pergunta" },
@@ -193,7 +193,7 @@ describe("o leque dentro do runCuradorShadow", () => {
 
   it("o fio vem do ESTRUTURADOR — nenhuma chamada vê o e-mail inteiro", async () => {
     invokeAgent.mockResolvedValue(chamada(respostaDe("h1")))
-    const r = await runCuradorShadow(params({ liveSections: ["hero"], elegiveisPorPosicao: new Map([[0, { ids: ["h1"], zerou: false }]]) }))
+    const r = await runCuradorShadow(params({ liveSections: ["hero"], elegiveisPorPosicao: new Map([[0, { ids: ["h1"], zerou: false, bloqueadasPelaJanela: [], janelaAfrouxada: false }]]) }))
     expect(r!.fioNarrativo).toBe("o fio que o Estruturador escreveu")
   })
 
@@ -279,8 +279,8 @@ describe("o leque dentro do runCuradorShadow", () => {
         liveSections: ["hero", "hero"],
         typeIndex: new Map([["h1", "hero"], ["h2", "hero"]]),
         elegiveisPorPosicao: new Map([
-          [0, { ids: ["h1", "h2"], zerou: false }],
-          [1, { ids: ["h1", "h2"], zerou: false }],
+          [0, { ids: ["h1", "h2"], zerou: false, bloqueadasPelaJanela: [], janelaAfrouxada: false }],
+          [1, { ids: ["h1", "h2"], zerou: false, bloqueadasPelaJanela: [], janelaAfrouxada: false }],
         ]),
         decisaoPorPosicao: [{ papel: "a", requisitos: "" }, { papel: "b", requisitos: "" }],
       }),
@@ -295,7 +295,7 @@ describe("o leque dentro do runCuradorShadow", () => {
     // `montarLequeUser` lança, e cair para o caminho de hoje é sempre
     // correto — servir um prefixo de forma desconhecida não é.
     invokeAgent.mockResolvedValue(chamada(JSON.stringify({ papeis: [], escolhas: [] })))
-    await runCuradorShadow(params({ baseVars: {}, lequeOn: true, elegiveisPorPosicao: new Map([[0, { ids: ["h1"], zerou: false }]]), liveSections: ["hero"] }))
+    await runCuradorShadow(params({ baseVars: {}, lequeOn: true, elegiveisPorPosicao: new Map([[0, { ids: ["h1"], zerou: false, bloqueadasPelaJanela: [], janelaAfrouxada: false }]]), liveSections: ["hero"] }))
     // com o prompt padrão do repo ele roda; o caso de falha é coberto no
     // teste de `montarLequeUser`. Aqui garantimos que `leque` foi gravado.
     expect(telemetria().parsedOutput.leque).not.toBeNull()
@@ -345,7 +345,7 @@ describe("o contrato de telemetria do caminho do vault", () => {
       params({
         lequeOn: false,
         liveSections: ["hero"],
-        elegiveisPorPosicao: new Map([[0, { ids: ["h1"], zerou: false }]]),
+        elegiveisPorPosicao: new Map([[0, { ids: ["h1"], zerou: false, bloqueadasPelaJanela: [], janelaAfrouxada: false }]]),
         decisaoPorPosicao: [{ papel: "abre", requisitos: "" }],
       }),
     )

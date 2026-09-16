@@ -302,20 +302,87 @@ export interface ElegiveisDaPosicao {
    * chamada para escolher entre variantes que já estavam todas fora.
    */
   zerou: boolean
+  /**
+   * Variantes que a JANELA de e-mails recentes bloqueou nesta posição —
+   * sempre preenchido, mesmo quando `aplicar` é false.
+   *
+   * Em shadow o campo existe e os `ids` não mudam: é assim que se mede o
+   * efeito da janela antes de ligá-la. Sem isto o shadow não mede nada.
+   */
+  bloqueadasPelaJanela: string[]
+  /** A janela foi afrouxada por escassez (ver `elegiveisPorPosicao`). */
+  janelaAfrouxada: boolean
+}
+
+/**
+ * A janela de repetição entre e-mails (Fase 3 do leque).
+ *
+ * Ela entra ANTES de `filtrarPorRequisitos`, e não depois, porque o filtro
+ * é fail-open no CONJUNTO: aplicada depois, a janela poderia zerar a lista
+ * e o fail-open a devolveria inteira, anulando a janela sem nada dizer.
+ *
+ * **O afrouxamento é por ESCASSEZ, não por zero.** A régua é "sobraram
+ * menos variantes distintas do que posições desta seção neste e-mail".
+ * Medido no caso real: com 2 posições `body` e 4 variantes, a janela
+ * bloqueia 3, a régua de zero não dispara, as duas posições recebem a
+ * MESMA variante e a segunda cai no dedupe sem alternativa. Afrouxar por
+ * escassez devolve as bloqueadas e deixa o Curador escolher — variedade
+ * entre e-mails não vale uma posição vazia.
+ */
+function aplicarJanela<T extends { variant_id: string }>(
+  candidatas: T[],
+  bloqueadas: ReadonlySet<string> | undefined,
+  posicoesDestaSecao: number,
+): { pool: T[]; bloqueadasPelaJanela: string[]; afrouxada: boolean } {
+  if (!bloqueadas || bloqueadas.size === 0) {
+    return { pool: candidatas, bloqueadasPelaJanela: [], afrouxada: false }
+  }
+  const bloqueadasPelaJanela = candidatas.filter((c) => bloqueadas.has(c.variant_id)).map((c) => c.variant_id)
+  if (bloqueadasPelaJanela.length === 0) {
+    return { pool: candidatas, bloqueadasPelaJanela: [], afrouxada: false }
+  }
+  const sobrando = candidatas.filter((c) => !bloqueadas.has(c.variant_id))
+  if (sobrando.length < Math.max(1, posicoesDestaSecao)) {
+    return { pool: candidatas, bloqueadasPelaJanela, afrouxada: true }
+  }
+  return { pool: sobrando, bloqueadasPelaJanela, afrouxada: false }
 }
 
 export function elegiveisPorPosicao(
   sections: string[],
   requisitos: Array<RequisitosDuros | null | undefined>,
   catalogo: Array<{ section: string; variantes: Array<{ variant_id: string; contrato?: ContratoResumo }> }>,
+  janela?: {
+    /** seção normalizada → variantes usadas nos últimos e-mails. */
+    bloqueadasPorSecao: ReadonlyMap<string, ReadonlySet<string>>
+    /**
+     * `false` = SHADOW: calcula e não filtra. Os `ids` saem idênticos aos
+     * de sempre e `bloqueadasPelaJanela` diz o que a janela teria tirado.
+     */
+    aplicar: boolean
+  },
 ): Map<number, ElegiveisDaPosicao> {
   const porSecao = new Map(catalogo.map((c) => [normalizarSecao(c.section), c.variantes]))
+  // Quantas posições DESTE e-mail pedem cada seção — é o piso da régua de
+  // escassez.
+  const posicoesPorSecao = new Map<string, number>()
+  for (const s of sections) {
+    const k = normalizarSecao(s)
+    posicoesPorSecao.set(k, (posicoesPorSecao.get(k) ?? 0) + 1)
+  }
   const out = new Map<number, ElegiveisDaPosicao>()
   sections.forEach((section, i) => {
-    const candidatas = porSecao.get(normalizarSecao(section))
+    const chave = normalizarSecao(section)
+    const candidatas = porSecao.get(chave)
     if (!candidatas) return
-    const r = filtrarPorRequisitos(candidatas, requisitos[i])
-    out.set(i, { ids: r.elegiveis.map((v) => v.variant_id), zerou: r.zerou })
+    const j = aplicarJanela(candidatas, janela?.bloqueadasPorSecao.get(chave), posicoesPorSecao.get(chave) ?? 1)
+    const r = filtrarPorRequisitos(janela?.aplicar ? j.pool : candidatas, requisitos[i])
+    out.set(i, {
+      ids: r.elegiveis.map((v) => v.variant_id),
+      zerou: r.zerou,
+      bloqueadasPelaJanela: j.bloqueadasPelaJanela,
+      janelaAfrouxada: j.afrouxada,
+    })
   })
   return out
 }

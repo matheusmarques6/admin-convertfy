@@ -166,3 +166,66 @@ export function renderCuradorMemory(mem: CuradorMemory): string {
   }
   return parts.join("\n\n") || "(sem histórico ainda)"
 }
+
+/**
+ * As variantes já usadas nos ÚLTIMOS `janela` e-mails deste flow/loja,
+ * agrupadas por seção.
+ *
+ * **Dedupe por `email_number`, não por linha.** `email_generation_choices`
+ * é append-only e tem 3,2 linhas por e-mail (222 para 70 combinações de
+ * loja × flow × e-mail, medido em 16/09): "as últimas 3 por `created_at`"
+ * devolveria três regerações do MESMO e-mail e a janela não olharia para
+ * trás nenhum e-mail. A linha mais recente de cada `email_number` vence.
+ *
+ * Só os e-mails ANTERIORES a `emailNumber` entram — os irmãos posteriores
+ * ainda não foram decididos, e os de outra geração do mesmo número são o
+ * que está sendo refeito.
+ *
+ * Best-effort, como as irmãs: falha devolve mapa vazio e a janela não
+ * bloqueia nada.
+ */
+export async function loadEscolhasRecentesPorSecao(
+  storeId: string,
+  flowType: string,
+  emailNumber: number,
+  janela = 3,
+): Promise<Map<string, Set<string>>> {
+  const out = new Map<string, Set<string>>()
+  if (emailNumber <= 1 || janela <= 0) return out
+  try {
+    const admin = createAdminClient()
+    const { data, error } = await admin
+      .from("email_generation_choices")
+      .select("email_number, choices, created_at")
+      .eq("store_id", storeId)
+      .eq("flow_type", flowType)
+      .lt("email_number", emailNumber)
+      .order("email_number", { ascending: false })
+      .order("created_at", { ascending: false })
+      .limit(janela * 8)
+    if (error) throw error
+
+    const vistos = new Set<number>()
+    for (const linha of (data ?? []) as Array<{ email_number: number; choices: ChoiceEntry[] }>) {
+      if (vistos.has(linha.email_number)) continue
+      vistos.add(linha.email_number)
+      if (vistos.size > janela) break
+      for (const c of linha.choices ?? []) {
+        const secao = (c.section ?? "").trim().toLowerCase()
+        if (!secao || !c.variant_id) continue
+        const set = out.get(secao) ?? new Set<string>()
+        set.add(c.variant_id)
+        out.set(secao, set)
+      }
+    }
+    return out
+  } catch (err) {
+    log.warn("memory.janela_load_failed", {
+      storeId,
+      flowType,
+      emailNumber,
+      error: err instanceof Error ? err.message : String(err),
+    })
+    return out
+  }
+}

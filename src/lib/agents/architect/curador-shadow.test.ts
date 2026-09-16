@@ -440,7 +440,7 @@ describe("rank1ByBlock + blocos da fase 1", () => {
   })
 
   it("elegiveisDaGeracao achata as posições e descarta o vazio", () => {
-    const e = (ids: string[], zerou = false) => ({ ids, zerou })
+    const e = (ids: string[], zerou = false) => ({ ids, zerou, bloqueadasPelaJanela: [], janelaAfrouxada: false })
     expect(elegiveisDaGeracao(new Map([[0, e(["a", "b"])], [1, e(["b", "c"])]]))).toEqual(new Set(["a", "b", "c"]))
     expect(elegiveisDaGeracao(new Map())).toBeUndefined()
     expect(elegiveisDaGeracao(null)).toBeUndefined()
@@ -927,7 +927,12 @@ describe("shortlist por código quando não há o que rankear (14/09)", () => {
   // `elegiveisPorPosicao` devolve `{ids, zerou}` desde 16/09 — `zerou:false`
   // é a seleção de verdade; o caso do fail-open tem teste próprio abaixo.
   const eleg = (m: Record<number, string[]>, zerou: number[] = []) =>
-    new Map(Object.entries(m).map(([i, ids]) => [Number(i), { ids, zerou: zerou.includes(Number(i)) }]))
+    new Map(
+      Object.entries(m).map(([i, ids]) => [
+        Number(i),
+        { ids, zerou: zerou.includes(Number(i)), bloqueadasPelaJanela: [], janelaAfrouxada: false },
+      ]),
+    )
   const batch = eleg({ 0: ["h1", "h2", "h3"], 1: ["b1", "b2"], 2: ["r1", "r2", "r3"], 3: ["p1"], 4: ["f1", "f2", "f3"] })
   it("o cenário do batch: zero chamadas, shortlist inteira por código", () => {
     const plano = planejarShortlist({ sections, elegiveisPorPosicao: batch })
