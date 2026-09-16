@@ -25,7 +25,7 @@ const PLATFORM_LABEL: Record<string, string> = {
   other: "sua plataforma de email",
 }
 
-interface Vars {
+export interface Vars {
   client_name: string
   store_name: string
   platform_name: string
@@ -119,70 +119,125 @@ function sanitizePhone(p: string | null | undefined): string | null {
   return d
 }
 
+/**
+ * A mensagem de uma coluna para um onboarding, ja renderizada.
+ *
+ * Existe para que o PREVIEW e o ENVIO leiam a mesma coisa por construcao. Um
+ * preview que remonta a mensagem por conta propria mostra na tela algo que
+ * nao e o que sai — e o diagolo de autorizacao passa a mentir justamente no
+ * ponto em que alguem confia nele para clicar.
+ */
+export interface ColumnMessage {
+  orgId: string
+  columnName: string | null
+  columnSlug: string | null
+  /** `null` = a coluna nao tem mensagem cadastrada. */
+  template: string | null
+  /** Vazio quando nao ha template. */
+  texto: string
+  /**
+   * Os valores usados na renderizacao. O preview re-renderiza com eles para
+   * marcar o que ainda sera criado — ver `marcadorDaVar`.
+   */
+  vars: Vars | null
+  /** Variaveis que nao resolveram — ver `classificarPendencias`. */
+  faltando: string[]
+  /** Digitos com DDI, como o envio usa. `null` = cadastro sem telefone util. */
+  phone: string | null
+  clientName: string | null
+}
+
+export async function resolveColumnMessage(params: {
+  onboardingId: string
+  columnId: string
+}): Promise<ColumnMessage | null> {
+  const admin = createAdminClient()
+
+  const { data: col } = await admin
+    .from("operational_pipeline_columns")
+    .select("whatsapp_template, name, slug")
+    .eq("id", params.columnId)
+    .maybeSingle()
+
+  const { data: onb } = await admin
+    .from("onboardings")
+    .select(
+      `id, org_id, form_token, tutorial_token,
+       client:clients!onboardings_client_id_fkey(id, name, phone),
+       store:client_stores(id, store_name, platform)`,
+    )
+    .eq("id", params.onboardingId)
+    .maybeSingle()
+  if (!onb) return null
+
+  const client = (Array.isArray(onb.client) ? onb.client[0] : onb.client) as {
+    name: string | null
+    phone: string | null
+  } | null
+  const store = (Array.isArray(onb.store) ? onb.store[0] : onb.store) as {
+    store_name: string | null
+    platform: string | null
+  } | null
+
+  const base = {
+    orgId: onb.org_id as string,
+    columnName: (col?.name as string | null) ?? null,
+    columnSlug: (col?.slug as string | null) ?? null,
+    phone: sanitizePhone(client?.phone),
+    clientName: client?.name ?? null,
+  }
+
+  const template = (col?.whatsapp_template as string | null) || null
+  if (!template)
+    return { ...base, template: null, texto: "", faltando: [], vars: null }
+
+  // Deliverables ja preenchidos — e o que resolve {{figma_link}} e
+  // {{figma_full_link}}.
+  const { data: tasks } = await admin
+    .from("tasks")
+    .select("id")
+    .eq("onboarding_id", params.onboardingId)
+  const taskIds = (tasks ?? []).map((t) => t.id as string)
+  const { data: deliverables } = taskIds.length
+    ? await admin
+        .from("task_deliverables")
+        .select("field_slug, value, file_url")
+        .in("task_id", taskIds)
+    : { data: [] }
+
+  const baseUrl =
+    process.env.NEXT_PUBLIC_APP_URL ?? "https://admin.convertfy.com"
+  const vars = buildVars(onb, client, store, baseUrl, deliverables ?? [])
+  const { texto, faltando } = render(template, vars)
+
+  return { ...base, template, texto, faltando, vars }
+}
+
 export async function sendColumnWhatsApp(params: {
   onboardingId: string
   columnId: string
 }): Promise<{ ok: boolean; reason?: string }> {
   const admin = createAdminClient()
   try {
-    const { data: col } = await admin
-      .from("operational_pipeline_columns")
-      .select("whatsapp_template, name")
-      .eq("id", params.columnId)
-      .maybeSingle()
-    if (!col?.whatsapp_template) return { ok: false, reason: "no_template" }
+    const msg = await resolveColumnMessage(params)
+    if (!msg) return { ok: false, reason: "no_onboarding" }
+    if (!msg.template) return { ok: false, reason: "no_template" }
+    if (!msg.phone) return { ok: false, reason: "no_phone" }
 
-    const { data: onb } = await admin
-      .from("onboardings")
-      .select(
-        `id, org_id, form_token, tutorial_token,
-         client:clients!onboardings_client_id_fkey(id, name, phone),
-         store:client_stores(id, store_name, platform)`,
-      )
-      .eq("id", params.onboardingId)
-      .maybeSingle()
-    if (!onb) return { ok: false, reason: "no_onboarding" }
-
-    const client = (
-      Array.isArray(onb.client) ? onb.client[0] : onb.client
-    ) as { name: string | null; phone: string | null } | null
-    const store = (
-      Array.isArray(onb.store) ? onb.store[0] : onb.store
-    ) as { store_name: string | null; platform: string | null } | null
-
-    const phone = sanitizePhone(client?.phone)
-    if (!phone) return { ok: false, reason: "no_phone" }
-
-    // Pega deliverables ja preenchidos do onboarding pra substituir vars
-    // como {{figma_link}} e {{figma_full_link}}
-    const { data: tasks } = await admin
-      .from("tasks")
-      .select("id")
-      .eq("onboarding_id", params.onboardingId)
-    const taskIds = (tasks ?? []).map((t) => t.id as string)
-    const { data: deliverables } = taskIds.length
-      ? await admin
-          .from("task_deliverables")
-          .select("field_slug, value, file_url")
-          .in("task_id", taskIds)
-      : { data: [] }
-
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://admin.convertfy.com"
-    const { texto: body, faltando } = render(
-      col.whatsapp_template,
-      buildVars(onb, client, store, baseUrl, deliverables ?? []),
-    )
+    const onb = { id: params.onboardingId, org_id: msg.orgId }
+    const phone = msg.phone
+    const body = msg.texto
 
     // Variavel sem valor NAO vira mensagem. Ate 15/09/2026 virava: cinco
     // clientes receberam "{{tutorial_link}}" literal e seis mensagens sairam
     // com a linha "Figma:" vazia.
-    if (faltando.length > 0) {
+    if (msg.faltando.length > 0) {
       log.error("template incompleto — envio recusado", {
         onb: onb.id,
-        coluna: col.name,
-        faltando,
+        coluna: msg.columnName,
+        faltando: msg.faltando,
       })
-      return { ok: false, reason: `vars_faltando:${faltando.join(",")}` }
+      return { ok: false, reason: `vars_faltando:${msg.faltando.join(",")}` }
     }
 
     // Canal WhatsApp default da org (primeiro ativo — cloud OU evolution)
@@ -215,7 +270,7 @@ export async function sendColumnWhatsApp(params: {
           org_id: onb.org_id,
           channel_id: channel.id,
           contact_external_id: phone,
-          contact_name: client?.name ?? null,
+          contact_name: msg.clientName,
           status: "open",
           last_message_at: new Date().toISOString(),
         },

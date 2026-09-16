@@ -33,6 +33,11 @@ import { useToast } from "@/lib/hooks/use-toast"
 import { TaskRow, type TaskRowData } from "@/components/tasks/task-row"
 import { SubItemsList, type SubItem } from "@/components/onboarding-v2/sub-items-list"
 import { pickAnchorTask } from "@/lib/onboarding/anchor-task"
+import {
+  AdvanceDialog,
+  MensagemAoCliente,
+  type AdvancePreview,
+} from "@/components/onboarding-v2/advance-dialog"
 import { ROUTES } from "@/lib/routes"
 import { buildFormUrl } from "@/lib/utils/form-url"
 import type {
@@ -69,6 +74,7 @@ export function OnboardingDetailClient({ id }: { id: string }) {
   const [tab, setTab] = useState<Tab>("checklist")
   const [goBackOpen, setGoBackOpen] = useState(false)
   const [overrideOpen, setOverrideOpen] = useState(false)
+  const [advanceOpen, setAdvanceOpen] = useState(false)
   const router = useRouter()
   const searchParams = useSearchParams()
 
@@ -116,19 +122,30 @@ export function OnboardingDetailClient({ id }: { id: string }) {
       ((t as unknown as { version?: number }).version ?? 1) === onb.current_version,
   )
 
-  async function advance(override?: {
-    justification: string
-    items_skipped: Array<
-      | { type: "checklist"; id: string; label: string }
-      | { type: "deliverable"; slug: string; label: string }
-    >
-  }) {
+  /**
+   * `sendWhatsApp` so chega aqui vindo do interruptor do dialogo. Nenhuma
+   * chamada monta o corpo sozinha: corpo sem a chave = avanca sem avisar o
+   * cliente, que e o default desde o incidente de 15/09/2026.
+   */
+  async function advance(
+    sendWhatsApp: boolean,
+    override?: {
+      justification: string
+      items_skipped: Array<
+        | { type: "checklist"; id: string; label: string }
+        | { type: "deliverable"; slug: string; label: string }
+      >
+    },
+  ) {
     setAdvancing(true)
     try {
       const res = await fetch(`/api/onboardings/${id}/advance`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(override ? { override } : {}),
+        body: JSON.stringify({
+          ...(override ? { override } : {}),
+          ...(sendWhatsApp ? { send_whatsapp: true } : {}),
+        }),
       })
       const j = await res.json().catch(() => ({}))
       if (!res.ok) {
@@ -142,12 +159,18 @@ export function OnboardingDetailClient({ id }: { id: string }) {
           description: errMsg,
         })
       } else {
-        toast.toast({ title: "Onboarding avancou de coluna" })
+        toast.toast({
+          title: "Onboarding avancou de coluna",
+          description: sendWhatsApp
+            ? "A mensagem foi enviada ao cliente."
+            : "Nenhuma mensagem foi enviada ao cliente.",
+        })
         mutate()
       }
     } finally {
       setAdvancing(false)
       setOverrideOpen(false)
+      setAdvanceOpen(false)
     }
   }
 
@@ -282,7 +305,7 @@ export function OnboardingDetailClient({ id }: { id: string }) {
                 </button>
                 <button
                   type="button"
-                  onClick={() => advance()}
+                  onClick={() => setAdvanceOpen(true)}
                   disabled={advancing}
                   className="inline-flex items-center gap-1.5 h-9 px-4 rounded-[8px] text-[12.5px] font-semibold bg-[#1F1F1F] dark:bg-white text-white dark:text-black disabled:opacity-50 hover:opacity-90 transition-opacity shadow-[0_1px_2px_rgba(0,0,0,0.08)]"
                 >
@@ -565,14 +588,27 @@ export function OnboardingDetailClient({ id }: { id: string }) {
         />
       )}
 
+      {advanceOpen && (
+        <AdvanceDialog
+          onboardingId={id}
+          onClose={() => setAdvanceOpen(false)}
+          onConfirm={(sendWhatsApp) => advance(sendWhatsApp)}
+          submitting={advancing}
+        />
+      )}
+
       {overrideOpen && currentCol && (
         <OverrideDialog
+          onboardingId={id}
           column={currentCol}
           tasksInCurrent={tasksInCurrent}
           deliverables={deliverables}
           onClose={() => setOverrideOpen(false)}
-          onConfirm={(justification, itemsSkipped) =>
-            advance({ justification, items_skipped: itemsSkipped })
+          onConfirm={(justification, itemsSkipped, sendWhatsApp) =>
+            advance(sendWhatsApp, {
+              justification,
+              items_skipped: itemsSkipped,
+            })
           }
           submitting={advancing}
         />
@@ -582,6 +618,7 @@ export function OnboardingDetailClient({ id }: { id: string }) {
 }
 
 function OverrideDialog({
+  onboardingId,
   column,
   tasksInCurrent,
   deliverables,
@@ -589,6 +626,7 @@ function OverrideDialog({
   onConfirm,
   submitting,
 }: {
+  onboardingId: string
   column: OperationalPipelineColumn
   tasksInCurrent: (OnboardingTaskLite)[]
   deliverables: TaskDeliverable[]
@@ -599,10 +637,24 @@ function OverrideDialog({
       | { type: "checklist"; id: string; label: string }
       | { type: "deliverable"; slug: string; label: string }
     >,
+    sendWhatsApp: boolean,
   ) => void
   submitting: boolean
 }) {
   const [justification, setJustification] = useState("")
+  // O forcado tambem entra numa coluna com mensagem. Sem este bloco ele
+  // seria o caminho que nunca avisa o cliente — e o time migraria pra ele.
+  const [enviar, setEnviar] = useState(false)
+  const { data: preview } = useSWR<AdvancePreview>(
+    `/api/onboardings/${onboardingId}/advance/preview`,
+    async (url: string) => {
+      const r = await fetch(url)
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(j.error?.message ?? `HTTP ${r.status}`)
+      return j as AdvancePreview
+    },
+    { revalidateOnFocus: false },
+  )
   // Tasks pendentes da coluna atual (cada checklist item é uma task)
   const pendingTasks = tasksInCurrent.filter((t) => t.status !== "completed")
   const anchorTask = tasksInCurrent[0] ?? null
@@ -684,6 +736,12 @@ function OverrideDialog({
               </div>
             </>
           )}
+          <MensagemAoCliente
+            preview={preview}
+            enviar={enviar}
+            onChange={setEnviar}
+            disabled={submitting}
+          />
         </div>
         <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-black/[0.06] dark:border-white/[0.08] bg-slate-50/60 dark:bg-white/[0.02]">
           <button
@@ -695,7 +753,7 @@ function OverrideDialog({
           </button>
           <button
             type="button"
-            onClick={() => onConfirm(justification, skipped)}
+            onClick={() => onConfirm(justification, skipped, enviar)}
             disabled={
               submitting || (skipped.length > 0 && justification.trim().length < 10)
             }

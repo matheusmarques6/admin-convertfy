@@ -14,6 +14,7 @@ import useSWR from "swr"
 import { SelectClientAndStore } from "./select-client-and-store"
 import { OnboardingCard } from "./onboarding-card"
 import { OnboardingDrawer } from "./onboarding-drawer"
+import { AdvanceDialog } from "./advance-dialog"
 import {
   DragDropContext,
   Droppable,
@@ -141,6 +142,13 @@ export function OnboardingKanban({
 
   const [newOpen, setNewOpen] = useState(false)
   const [drawerId, setDrawerId] = useState<string | null>(null)
+  // Arrastar um card e um gesto de organizacao e ate 15/09/2026 ele mandava
+  // WhatsApp ao cliente. Agora abre o dialogo: o avanco so acontece depois de
+  // alguem ver a mensagem e decidir. O card volta sozinho pra coluna de
+  // origem enquanto isso — a lista vem do SWR, sem estado otimista local.
+  const [advanceContext, setAdvanceContext] = useState<string | null>(null)
+  const [advancing, setAdvancing] = useState(false)
+
   const [goBackContext, setGoBackContext] = useState<{
     onboardingId: string
     targetSlug: string
@@ -307,24 +315,9 @@ export function OnboardingKanban({
     const destIdx = columns.findIndex((c) => c.id === destination.droppableId)
     if (srcIdx < 0 || destIdx < 0) return
 
-    // Avancar (proximo +1)
+    // Avancar (proximo +1) — passa pelo dialogo, nunca direto.
     if (destIdx === srcIdx + 1) {
-      const res = await fetch(`/api/onboardings/${draggableId}/advance`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: "{}",
-      })
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}))
-        toast.toast({
-          variant: "destructive",
-          title: "Nao foi possivel avancar",
-          description: j.error?.message ?? j.error ?? "Tente novamente.",
-        })
-        return
-      }
-      toast.toast({ title: "Onboarding avancou de coluna" })
-      mutate()
+      setAdvanceContext(draggableId)
       return
     }
 
@@ -343,6 +336,36 @@ export function OnboardingKanban({
       title: "Pular colunas não permitido",
       description: "Arraste 1 coluna por vez (avançar ou voltar).",
     })
+  }
+
+  async function confirmarAvanco(onboardingId: string, sendWhatsApp: boolean) {
+    setAdvancing(true)
+    try {
+      const res = await fetch(`/api/onboardings/${onboardingId}/advance`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(sendWhatsApp ? { send_whatsapp: true } : {}),
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        toast.toast({
+          variant: "destructive",
+          title: "Nao foi possivel avancar",
+          description: j.error?.message ?? j.error ?? "Tente novamente.",
+        })
+        return
+      }
+      toast.toast({
+        title: "Onboarding avancou de coluna",
+        description: sendWhatsApp
+          ? "A mensagem foi enviada ao cliente."
+          : "Nenhuma mensagem foi enviada ao cliente.",
+      })
+      mutate()
+    } finally {
+      setAdvancing(false)
+      setAdvanceContext(null)
+    }
   }
 
   if (isLoading) return <KanbanSkeleton />
@@ -715,6 +738,17 @@ export function OnboardingKanban({
             setNewOpen(false)
             mutate()
           }}
+        />
+      )}
+
+      {advanceContext && (
+        <AdvanceDialog
+          onboardingId={advanceContext}
+          onClose={() => setAdvanceContext(null)}
+          onConfirm={(sendWhatsApp) =>
+            confirmarAvanco(advanceContext, sendWhatsApp)
+          }
+          submitting={advancing}
         />
       )}
 
