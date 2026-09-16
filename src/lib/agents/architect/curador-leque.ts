@@ -200,6 +200,60 @@ export interface ResultadoDoLeque {
   ajustes: Array<{ block_index: number; ajuste: string }>
   /** Posições em que a chamada LANÇOU — erro de rede, relógio, provedor. */
   falhas: Array<{ block_index: number; erro: string }>
+  /** Posições que vieram da gravação anterior e NÃO foram chamadas de novo. */
+  retomadas: number[]
+}
+
+/** Prefixo do `erro` de uma escolha cuja CHAMADA não chegou a responder. */
+export const ERRO_DE_CHAMADA = "chamada_falhou: "
+
+/**
+ * O teto de saída de UMA posição, derivado do teto do e-mail inteiro.
+ *
+ * ── Por que não é `teto / N` ─────────────────────────────────────────
+ *
+ * O JSON de uma escolha tem umas centenas de tokens; o que consome o teto
+ * é o RACIOCÍNIO, e ele não encolhe na mesma proporção — escolher entre
+ * quatro finalistas é um problema parecido, venha ele sozinho ou junto de
+ * outros cinco. O piso de `CURADOR_SHADOW_MAX_TOKENS_MIN` foi calibrado
+ * contra esse caso real (09/09: o Sonnet gastou 8.327 tokens raciocinando
+ * antes do JSON e a resposta certa virou `shadow_json_ilegivel`), então
+ * ele é o chão aqui também. A divisão só vale acima dele, para quando
+ * alguém levantar muito o teto pela config ou pelo ambiente.
+ *
+ * ── Por que isto importa, e não é sobre o relógio ────────────────────
+ *
+ * O OpenRouter **reserva `prompt + max_tokens` em crédito enquanto a
+ * chamada está em voo** — é a causa dos `402 in-flight` deste projeto (há
+ * duas runs do Curador mortas assim em 08–09/09). Herdar o teto do e-mail
+ * inteiro em CADA uma das N chamadas reserva N vezes um crédito que
+ * nenhuma delas vai usar. Não é limitar trabalho: é parar de bloquear
+ * saldo à toa.
+ */
+export function tetoDaPosicao(tetoDoEmail: number, nPosicoes: number, piso: number): number {
+  const n = Math.max(1, Math.floor(nPosicoes))
+  return Math.max(piso, Math.ceil(tetoDoEmail / n))
+}
+
+/**
+ * Esta posição precisa ser chamada de novo?
+ *
+ * A retomada existe para não pagar duas vezes pelo que já foi decidido —
+ * e a linha entre "já foi decidido" e "não chegou a acontecer" é o tipo do
+ * erro, não a presença de `variant_id`.
+ *
+ * `sem_escolha`, `ids_fora_das_candidatas` e `repetida_sem_reserva` são
+ * VEREDICTOS: o modelo respondeu e o código julgou. Rechamá-los gasta de
+ * novo pelo mesmo resultado, e ainda por cima com um `<ja_decididas>`
+ * diferente — duas respostas para a mesma pergunta, e a segunda vale.
+ *
+ * `chamada_falhou:` é o contrário: o relógio acabou, o provedor recusou ou
+ * o processo morreu. Ali não houve decisão nenhuma, e a retomada existe
+ * justamente para terminar isso.
+ */
+export function precisaRechamar(escolha: EscolhaDaPosicao | undefined): boolean {
+  if (!escolha) return true
+  return (escolha.erro ?? "").startsWith(ERRO_DE_CHAMADA)
 }
 
 /**
@@ -222,14 +276,51 @@ export async function escolherPorPosicao(params: {
   chamar: ChamarPosicao
   /** Nome legível da variante, só para o `<ja_decididas>` ficar lido. */
   nomePorVariante?: ReadonlyMap<string, string>
+  /**
+   * O que já foi decidido e GRAVADO numa invocação anterior deste mesmo
+   * e-mail. Posição que não `precisaRechamar` é reaproveitada sem custo.
+   */
+  jaGravadas?: ReadonlyArray<EscolhaDaPosicao>
+  /**
+   * Chamado assim que CADA posição fecha, para a decisão sobreviver à
+   * morte do processo. Fail-open: gravar é o que torna a retomada
+   * possível, mas falhar ao gravar não pode custar a decisão que está na
+   * memória — ela ainda vai no fechamento da run.
+   */
+  onDecidida?: (escolha: EscolhaDaPosicao, todas: ReadonlyArray<EscolhaDaPosicao>) => Promise<void> | void
 }): Promise<ResultadoDoLeque> {
-  const { posicoes, chamar, nomePorVariante } = params
+  const { posicoes, chamar, nomePorVariante, onDecidida } = params
+  const gravadas = new Map((params.jaGravadas ?? []).map((e) => [e.block_index, e]))
   const jaDecididas: DecididaAntes[] = []
   const escolhas: EscolhaDaPosicao[] = []
   const ajustes: ResultadoDoLeque["ajustes"] = []
   const falhas: ResultadoDoLeque["falhas"] = []
+  const retomadas: number[] = []
+
+  const registrar = (pos: PosicaoDoLeque, escolha: EscolhaDaPosicao) => {
+    escolhas.push(escolha)
+    if (escolha.variant_id) {
+      jaDecididas.push({
+        block_index: pos.block_index,
+        section: pos.section,
+        variant_id: escolha.variant_id,
+        nome: nomePorVariante?.get(escolha.variant_id) ?? null,
+        papel: escolha.papel || pos.papel || null,
+      })
+    }
+  }
 
   for (const pos of posicoes) {
+    // Retomada: a decisão já existe e não foi uma chamada frustrada.
+    // O arco continua valendo — ela entra em `<ja_decididas>` da próxima
+    // exatamente como se tivesse acabado de ser tomada.
+    const anterior = gravadas.get(pos.block_index)
+    if (!precisaRechamar(anterior)) {
+      retomadas.push(pos.block_index)
+      registrar(pos, anterior!)
+      continue
+    }
+
     let escolha: EscolhaDaPosicao
     try {
       const { raw } = await chamar(pos, [...jaDecididas])
@@ -241,24 +332,22 @@ export async function escolherPorPosicao(params: {
         ...VAZIO,
         block_index: pos.block_index,
         section: pos.section,
-        erro: `chamada_falhou: ${erro}`,
+        erro: `${ERRO_DE_CHAMADA}${erro}`,
       }
     }
     const resolvida = conflitoComAsDecididas(escolha, jaDecididas)
     if (resolvida.ajuste) ajustes.push({ block_index: pos.block_index, ajuste: resolvida.ajuste })
-    escolhas.push(resolvida.escolha)
-    if (resolvida.escolha.variant_id) {
-      jaDecididas.push({
-        block_index: pos.block_index,
-        section: pos.section,
-        variant_id: resolvida.escolha.variant_id,
-        nome: nomePorVariante?.get(resolvida.escolha.variant_id) ?? null,
-        papel: resolvida.escolha.papel || pos.papel || null,
-      })
+    registrar(pos, resolvida.escolha)
+    if (onDecidida) {
+      try {
+        await onDecidida(resolvida.escolha, escolhas)
+      } catch {
+        // fail-open: ver o comentário do parâmetro.
+      }
     }
   }
 
-  return { escolhas, ajustes, falhas }
+  return { escolhas, ajustes, falhas, retomadas }
 }
 
 /**

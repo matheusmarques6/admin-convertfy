@@ -6,6 +6,9 @@ import {
   costurarLeque,
   escolherPorPosicao,
   parseEscolhaDaPosicao,
+  precisaRechamar,
+  tetoDaPosicao,
+  ERRO_DE_CHAMADA,
   type EscolhaDaPosicao,
   type PosicaoDoLeque,
 } from "./curador-leque"
@@ -282,5 +285,147 @@ describe("costurarLeque", () => {
   it("posição sem resposta vira `escolhas: []` — o caminho de lacuna que o pipeline já trata", () => {
     const out = costurarLeque(posicoes, [escolhas[0]], "")
     expect(out.escolhasDetalhadas[1]).toEqual({ block_index: 1, justificativa: "", escolhas: [] })
+  })
+})
+
+describe("tetoDaPosicao", () => {
+  it("nunca desce abaixo do piso calibrado — o raciocínio não encolhe com a fatia", () => {
+    // 32.000 / 6 = 5.334, mas o piso existe porque o modelo gastou 8.327
+    // tokens raciocinando antes do JSON (09/09) — numa posição só ele
+    // gastaria parecido.
+    expect(tetoDaPosicao(32_000, 6, 8_192)).toBe(8_192)
+    expect(tetoDaPosicao(16_000, 6, 8_192)).toBe(8_192)
+  })
+
+  it("divide quando alguém levanta MUITO o teto", () => {
+    expect(tetoDaPosicao(60_000, 6, 8_192)).toBe(10_000)
+  })
+
+  it("é menor que o teto do e-mail inteiro — é isso que corta a reserva em voo", () => {
+    const teto = 32_000
+    expect(tetoDaPosicao(teto, 6, 8_192)).toBeLessThan(teto)
+  })
+
+  it("posição única não inventa divisão nem desce do piso", () => {
+    expect(tetoDaPosicao(32_000, 1, 8_192)).toBe(32_000)
+    expect(tetoDaPosicao(1_000, 0, 8_192)).toBe(8_192)
+  })
+})
+
+describe("precisaRechamar", () => {
+  const base = (erro?: string): EscolhaDaPosicao => ({
+    block_index: 0,
+    section: "hero",
+    papel: "",
+    justificativa: "",
+    conversa_com: "",
+    variant_id: erro ? null : "v1",
+    motivo: "",
+    reserva: null,
+    ...(erro ? { erro } : {}),
+  })
+
+  it("posição que nunca foi decidida é chamada", () => {
+    expect(precisaRechamar(undefined)).toBe(true)
+  })
+
+  it("veredicto do modelo NÃO é rechamado — sem_escolha é resposta, não falha", () => {
+    expect(precisaRechamar(base("sem_escolha"))).toBe(false)
+    expect(precisaRechamar(base("ids_fora_das_candidatas"))).toBe(false)
+    expect(precisaRechamar(base("repetida_sem_reserva"))).toBe(false)
+  })
+
+  it("chamada que não aconteceu É rechamada — é para isso que a retomada existe", () => {
+    expect(precisaRechamar(base(`${ERRO_DE_CHAMADA}sem orçamento`))).toBe(true)
+  })
+
+  it("escolha boa não é rechamada", () => {
+    expect(precisaRechamar(base())).toBe(false)
+  })
+})
+
+describe("escolherPorPosicao · retomada e persistência", () => {
+  const posicoes = [pos(0, "hero", ["h1"]), pos(1, "body", ["b1"]), pos(2, "offer", ["o1"])]
+  const respostaDe = (i: number, section: string, id: string) =>
+    JSON.stringify({
+      block_index: i,
+      section,
+      papel: "p",
+      justificativa: "j",
+      conversa_com: "",
+      escolhas: [{ variant_id: id, motivo: "m" }],
+    })
+
+  it("não rechama o que já foi decidido e gravado", async () => {
+    const chamar = vi.fn(async (p: PosicaoDoLeque) =>
+      ({ raw: respostaDe(p.block_index, p.section, p.idsPermitidos[0]) }))
+    const gravadas: EscolhaDaPosicao[] = [
+      { block_index: 0, section: "hero", papel: "p", justificativa: "j", conversa_com: "", variant_id: "h1", motivo: "m", reserva: null },
+      { block_index: 1, section: "body", papel: "p", justificativa: "j", conversa_com: "", variant_id: "b1", motivo: "m", reserva: null },
+    ]
+
+    const r = await escolherPorPosicao({ posicoes, chamar, jaGravadas: gravadas })
+
+    expect(chamar).toHaveBeenCalledTimes(1)
+    expect(chamar.mock.calls[0][0].block_index).toBe(2)
+    expect(r.retomadas).toEqual([0, 1])
+    expect(r.escolhas.map((e) => e.variant_id)).toEqual(["h1", "b1", "o1"])
+  })
+
+  it("a retomada preserva o arco: a posição nova vê as anteriores em ja_decididas", async () => {
+    const vistos: DecididaAntes[][] = []
+    const chamar = vi.fn(async (p: PosicaoDoLeque, ja: DecididaAntes[]) => {
+      vistos.push(ja)
+      return { raw: respostaDe(p.block_index, p.section, p.idsPermitidos[0]) }
+    })
+    const gravadas: EscolhaDaPosicao[] = [
+      { block_index: 0, section: "hero", papel: "abre", justificativa: "j", conversa_com: "", variant_id: "h1", motivo: "m", reserva: null },
+    ]
+
+    await escolherPorPosicao({ posicoes: posicoes.slice(0, 2), chamar, jaGravadas: gravadas })
+
+    expect(vistos[0]).toHaveLength(1)
+    expect(vistos[0][0]).toMatchObject({ block_index: 0, variant_id: "h1", papel: "abre" })
+  })
+
+  it("chamada frustrada na gravação anterior É refeita", async () => {
+    const chamar = vi.fn(async (p: PosicaoDoLeque) =>
+      ({ raw: respostaDe(p.block_index, p.section, p.idsPermitidos[0]) }))
+    const gravadas: EscolhaDaPosicao[] = [
+      { block_index: 0, section: "hero", papel: "", justificativa: "", conversa_com: "", variant_id: null, motivo: "", reserva: null, erro: `${ERRO_DE_CHAMADA}timeout` },
+    ]
+
+    const r = await escolherPorPosicao({ posicoes: [posicoes[0]], chamar, jaGravadas: gravadas })
+
+    expect(chamar).toHaveBeenCalledTimes(1)
+    expect(r.retomadas).toEqual([])
+    expect(r.escolhas[0].variant_id).toBe("h1")
+  })
+
+  it("grava a cada posição, acumulando — é o que sobrevive à morte do processo", async () => {
+    const chamar = vi.fn(async (p: PosicaoDoLeque) =>
+      ({ raw: respostaDe(p.block_index, p.section, p.idsPermitidos[0]) }))
+    const gravacoes: number[] = []
+
+    await escolherPorPosicao({
+      posicoes,
+      chamar,
+      onDecidida: (_e, todas) => { gravacoes.push(todas.length) },
+    })
+
+    expect(gravacoes).toEqual([1, 2, 3])
+  })
+
+  it("falha ao gravar não custa a decisão nem interrompe o laço", async () => {
+    const chamar = vi.fn(async (p: PosicaoDoLeque) =>
+      ({ raw: respostaDe(p.block_index, p.section, p.idsPermitidos[0]) }))
+
+    const r = await escolherPorPosicao({
+      posicoes,
+      chamar,
+      onDecidida: async () => { throw new Error("banco fora") },
+    })
+
+    expect(r.escolhas.map((e) => e.variant_id)).toEqual(["h1", "b1", "o1"])
   })
 })

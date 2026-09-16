@@ -599,7 +599,7 @@ export interface PosicaoSemVariante {
 }
 
 /**
- * Lacuna de biblioteca FATAL: a hero ficou sem variante (a fase 2 morre em
+ * Lacuna FATAL: a hero ficou sem variante (a fase 2 morre em
  * `hero_failed` de qualquer jeito, e parar aqui é mais legível) ou mais de
  * uma posição ficou vazia (peça com dois buracos não representa a
  * decisão). Uma posição não-hero vazia é peça POBRE, não inviável: entra,
@@ -609,6 +609,37 @@ export function lacunaEhFatal(posicoes: ReadonlyArray<Pick<PosicaoSemVariante, "
   if (posicoes.length === 0) return false
   if (posicoes.length > 1) return true
   return normalizarSecao(posicoes[0].section) === "hero"
+}
+
+/** De quem é a culpa pela peça não ter fechado. */
+export type CausaDaLacuna = "biblioteca" | "relogio"
+
+/**
+ * Fatal, sim — mas por quê?
+ *
+ * As duas causas levam ao MESMO descarte da referência (peça com buraco não
+ * representa a decisão, e referência que não representa é pior que
+ * referência nenhuma). O que elas não compartilham é nada depois disso:
+ *
+ * - **biblioteca**: o bloco não existe. `failed: lacuna_biblioteca`, o
+ *   e-mail é settled na fila (repetir paga pelo mesmo resultado) e a lacuna
+ *   vira pauta de cadastro no vault.
+ * - **relógio**: a chamada daquela posição não chegou a acontecer — a
+ *   janela acabou, o provedor recusou, o processo morreu. Não há veredito
+ *   nenhum sobre a biblioteca, e as posições já decididas estão gravadas
+ *   (`curador-leque-progresso.ts`). Settlar aqui seria enterrar uma peça a
+ *   uma retomada de distância; e chamar isso de `lacuna_biblioteca` manda
+ *   a curadoria cadastrar bloco que já existe.
+ *
+ * **Uma posição por relógio basta para a causa ser `relogio`**: com a peça
+ * decidida pela metade, qualquer veredito sobre a biblioteca é sobre o que
+ * ainda não foi perguntado. A retomada completa e a passada seguinte diz a
+ * verdade.
+ */
+export function causaDaLacuna(
+  posicoes: ReadonlyArray<Pick<PosicaoSemVariante, "motivo">>,
+): CausaDaLacuna {
+  return posicoes.some((p) => p.motivo === "orcamento_esgotado") ? "relogio" : "biblioteca"
 }
 
 /**
@@ -773,7 +804,20 @@ export interface AssembleReferenceInput {
 // "store" = reference+blueprint já persistidos foram REUSADOS sem regerar
 //   (guard de reuso do generate.service; só com force=false).
 // "llm" = legado: reference gravada pelo Montador LLM antes do CM-2.
-export type ReferenceSource = "llm" | "code" | "global" | "none" | "store" | "lacuna"
+export type ReferenceSource =
+  | "llm"
+  | "code"
+  | "global"
+  | "none"
+  | "store"
+  | "lacuna"
+  /**
+   * A peça não fechou porque uma chamada não aconteceu (relógio, provedor,
+   * processo morto) — não porque a biblioteca não tem o bloco. As posições
+   * já decididas estão gravadas; a próxima passada retoma dali. Nunca
+   * settla a fila: settlar enterraria uma peça a uma retomada de distância.
+   */
+  | "retomavel"
 
 /**
  * O que o card "Outline" da Entrada mostra.
@@ -856,7 +900,7 @@ export interface AssembleReferenceResult {
    * e-mail não pode seguir (hero vazia ou 2+ lacunas) — o chamador marca
    * `failed: lacuna_biblioteca` e NÃO manda ao n8n. `null` = nenhuma.
    */
-  lacuna: { posicoes: PosicaoSemVariante[]; fatal: boolean } | null
+  lacuna: { posicoes: PosicaoSemVariante[]; fatal: boolean; causa: CausaDaLacuna } | null
 }
 
 /**
@@ -2261,12 +2305,14 @@ export async function assembleStoreReference(
     })
   }
   const lacunaFatal = lacunaEhFatal(posicoesSemVariante)
+  const lacunaCausa = causaDaLacuna(posicoesSemVariante)
   if (posicoesSemVariante.length > 0) {
     log.warn("assembler.posicoes_sem_variante", {
       storeId: input.storeId,
       flowType: input.flowType,
       emailNumber: input.emailNumber,
       fatal: lacunaFatal,
+      causa: lacunaCausa,
       posicoes: posicoesSemVariante.map((p) => `${p.block_index}:${p.section}:${p.dispositivo_pedido ?? "-"}:${p.motivo}`),
     })
   }
@@ -2368,10 +2414,19 @@ export async function assembleStoreReference(
   const cobertura = lacunaFatal
     ? {
         ok: false,
-        motivo: `lacuna de biblioteca: ${posicoesSemVariante.map((p) => `${p.section}${p.dispositivo_pedido ? ` (${p.dispositivo_pedido})` : ""}`).join(", ")}`,
+        motivo: `${lacunaCausa === "relogio" ? "posições não decididas (relógio)" : "lacuna de biblioteca"}: ${posicoesSemVariante.map((p) => `${p.section}${p.dispositivo_pedido ? ` (${p.dispositivo_pedido})` : ""}`).join(", ")}`,
       }
     : coberturaSuficiente(assembled.stats)
-  const source: ReferenceSource = lacunaFatal ? "lacuna" : cobertura.ok ? "code" : "none"
+  // O descarte da referência é o mesmo nos dois casos (peça com buraco não
+  // representa a decisão); o que muda é o desfecho na fila e o rótulo —
+  // ver `causaDaLacuna`.
+  const source: ReferenceSource = lacunaFatal
+    ? lacunaCausa === "relogio"
+      ? "retomavel"
+      : "lacuna"
+    : cobertura.ok
+      ? "code"
+      : "none"
 
   if (source === "code") {
     await upsertStoreReference(
@@ -2508,7 +2563,12 @@ export async function assembleStoreReference(
         dispositivo_indisponivel: posicoesSemVariante.filter((p) => p.motivo === "dispositivo_indisponivel").length,
       },
       posicoes_sem_variante: posicoesSemVariante,
-      lacuna_biblioteca: lacunaFatal,
+      // Só é lacuna de BIBLIOTECA quando a causa é a biblioteca. Peça que
+      // não fechou por relógio vira `lacuna_causa: "relogio"` e não entra
+      // na contagem que o vault lê — cobrar cadastro por chamada que não
+      // aconteceu é pauta falsa (ver `causaDaLacuna`).
+      lacuna_biblioteca: lacunaFatal && lacunaCausa === "biblioteca",
+      ...(lacunaFatal ? { lacuna_causa: lacunaCausa } : {}),
       wrapped_unknown: assembled.stats.wrappedUnknown,
       // Variantes cadastradas como documento completo: a casca foi removida
       // antes do encaixe. Sem isto a montagem embrulhava o documento inteiro
@@ -2621,7 +2681,10 @@ export async function assembleStoreReference(
     // consumidor não muda de comportamento.
     papeisPorPosicao: vaultResultado?.papeis ?? null,
     fioNarrativo: vaultResultado?.fioNarrativo ?? null,
-    lacuna: posicoesSemVariante.length > 0 ? { posicoes: posicoesSemVariante, fatal: lacunaFatal } : null,
+    lacuna:
+      posicoesSemVariante.length > 0
+        ? { posicoes: posicoesSemVariante, fatal: lacunaFatal, causa: lacunaCausa }
+        : null,
   }
 }
 

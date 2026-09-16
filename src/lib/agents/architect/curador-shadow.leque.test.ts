@@ -6,18 +6,34 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 // cada prompt, e o que sobra na telemetria.
 
 const notas = vi.hoisted(() => ({ linhas: [] as Array<Record<string, unknown>> }))
-vi.mock("@/lib/supabase/server", () => ({
-  createAdminClient: () => ({
-    from: () => ({
-      select: () => ({
-        eq: () => ({
-          eq: () => ({ in: () => Promise.resolve({ data: notas.linhas, error: null }) }),
-        }),
-      }),
+// `runs` é o que uma invocação ANTERIOR desta geração deixou gravado — a
+// retomada lê daqui (`curador-leque-progresso.ts`).
+const runs = vi.hoisted(() => ({ linhas: [] as Array<Record<string, unknown>> }))
+vi.mock("@/lib/supabase/server", () => {
+  // Encadeável: as duas consultas deste caminho têm formas diferentes
+  // (`.eq().eq().in()` nas notas, `.eq().eq().eq().order().limit()` nas
+  // runs) e um mock de forma fixa fazia a segunda cair no catch — a
+  // retomada passava no teste sem nunca ter sido exercitada.
+  const encadeavel = (linhas: Array<Record<string, unknown>>) => {
+    const alvo: Record<string, unknown> = {}
+    const proxy: unknown = new Proxy(alvo, {
+      get(_t, prop) {
+        if (prop === "then") {
+          return (resolve: (v: unknown) => unknown) => resolve({ data: linhas, error: null })
+        }
+        return () => proxy
+      },
+    })
+    return proxy
+  }
+  return {
+    createAdminClient: () => ({
+      from: (tabela: string) =>
+        encadeavel(tabela === "email_generation_runs" ? runs.linhas : notas.linhas),
     }),
-  }),
-  createClient: () => ({}),
-}))
+    createClient: () => ({}),
+  }
+})
 
 const invokeAgent = vi.fn()
 vi.mock("./llm-invoke", async (importActual) => {
@@ -26,10 +42,12 @@ vi.mock("./llm-invoke", async (importActual) => {
 })
 
 const finishGenerationRun = vi.fn().mockResolvedValue("run-1")
+const updateGenerationRun = vi.fn().mockResolvedValue(undefined)
 vi.mock("../callbacks/telemetry.callback", () => ({
   logGenerationRun: vi.fn().mockResolvedValue(""),
   startGenerationRun: vi.fn().mockResolvedValue("run-1"),
   finishGenerationRun: (...a: unknown[]) => finishGenerationRun(...a),
+  updateGenerationRun: (...a: unknown[]) => updateGenerationRun(...a),
   computeCostCents: () => 0,
   resolveCostCents: () => 0,
 }))
@@ -115,6 +133,9 @@ function params(over: Partial<CuradorShadowParams> = {}): CuradorShadowParams {
     flowType: "welcome",
     emailNumber: 1,
     batchId: "b1",
+    // A retomada é chaveada por (email_id, batch_id): sem o e-mail não há
+    // o que retomar, e é o caso de quem roda fora de uma geração.
+    emailId: "e1",
     baseVars: {},
     origins: {},
     vault,
@@ -163,6 +184,7 @@ const respostaDe = (id: string) =>
 
 beforeEach(() => {
   vi.clearAllMocks()
+  runs.linhas = []
   notas.linhas = [
     { variant_id: "h1", file_path: "h1.md", body_md: "## Quando usar\nuse" },
     { variant_id: "h2", file_path: "h2.md", body_md: "## Quando usar\nuse" },
@@ -377,5 +399,82 @@ describe("a guarda de orçamento do leque", () => {
     invokeAgent.mockImplementation(async () => chamada(respostaDe(ids.shift()!)))
     await runCuradorShadow(params())
     expect(telemetria().parsedOutput.leque).not.toBeNull()
+  })
+})
+
+describe("a durabilidade do leque (16/09)", () => {
+  it("grava a decisão assim que CADA posição fecha", async () => {
+    const ids = ["h1", "b1", "f1"]
+    invokeAgent.mockImplementation(async () => chamada(respostaDe(ids.shift()!)))
+
+    await runCuradorShadow(params())
+
+    // Uma gravação por posição, acumulando — é isso que sobrevive à morte
+    // do processo.
+    expect(updateGenerationRun).toHaveBeenCalledTimes(3)
+    const tamanhos = updateGenerationRun.mock.calls.map(
+      (c) => (c[1] as { parsedOutput: { leque: { escolhas: unknown[] } } }).parsedOutput.leque.escolhas.length,
+    )
+    expect(tamanhos).toEqual([1, 2, 3])
+    expect((updateGenerationRun.mock.calls[0][1] as { status: string }).status).toBe("running")
+  })
+
+  it("retoma o que uma invocação anterior gravou, sem rechamar", async () => {
+    runs.linhas = [
+      {
+        id: "run-morta",
+        parsed_output: {
+          leque: {
+            parcial: true,
+            escolhas: [
+              { block_index: 0, section: "hero", papel: "p", justificativa: "j", conversa_com: "", variant_id: "h1", motivo: "m", reserva: null },
+              { block_index: 1, section: "body", papel: "p", justificativa: "j", conversa_com: "", variant_id: "b1", motivo: "m", reserva: null },
+            ],
+          },
+        },
+      },
+    ]
+    invokeAgent.mockImplementation(async () => chamada(respostaDe("f1")))
+
+    await runCuradorShadow(params())
+
+    // Uma chamada só: as duas primeiras posições vieram da gravação.
+    expect(invokeAgent).toHaveBeenCalledTimes(1)
+    const leque = telemetria().parsedOutput.leque as { retomadas: number[]; posicoes: Array<{ variant_id: string | null }> }
+    expect(leque.retomadas).toEqual([0, 1])
+    expect(leque.posicoes.map((p) => p.variant_id)).toEqual(["h1", "b1", "f1"])
+  })
+
+  it("a run ATUAL não é lida como se fosse anterior", async () => {
+    runs.linhas = [
+      {
+        id: "run-1",
+        parsed_output: {
+          leque: { parcial: true, escolhas: [{ block_index: 0, section: "hero", papel: "", justificativa: "", conversa_com: "", variant_id: "h2", motivo: "", reserva: null }] },
+        },
+      },
+    ]
+    const ids = ["h1", "b1", "f1"]
+    invokeAgent.mockImplementation(async () => chamada(respostaDe(ids.shift()!)))
+
+    await runCuradorShadow(params())
+
+    expect(invokeAgent).toHaveBeenCalledTimes(3)
+    expect((telemetria().parsedOutput.leque as { retomadas: number[] }).retomadas).toEqual([])
+  })
+
+  it("o teto de cada chamada é o de UMA posição, não o do e-mail inteiro", async () => {
+    const ids = ["h1", "b1", "f1"]
+    invokeAgent.mockImplementation(async () => chamada(respostaDe(ids.shift()!)))
+
+    await runCuradorShadow(params())
+
+    // O OpenRouter reserva `prompt + max_tokens` em voo: herdar o teto do
+    // e-mail inteiro em cada chamada bloqueia N vezes o mesmo saldo.
+    const config = invokeAgent.mock.calls[0][0] as { max_tokens: number; timeoutMs: number }
+    const leque = telemetria().parsedOutput.leque as { teto_por_posicao: number }
+    expect(config.max_tokens).toBe(leque.teto_por_posicao)
+    expect(config.max_tokens).toBeLessThan(32_000)
+    expect(config.timeoutMs).toBeLessThan(360_000)
   })
 })

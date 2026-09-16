@@ -55,12 +55,17 @@ import {
 import {
   costurarLeque,
   escolherPorPosicao,
+  tetoDaPosicao,
   parseEscolhaDaPosicao,
   type PosicaoDoLeque,
   type ResultadoDoLeque,
 } from "./curador-leque"
 import {
-  custoTipicoDoAgente,
+  carregarEscolhasGravadas,
+  gravarProgressoDoLeque,
+} from "./curador-leque-progresso"
+import {
+  relogioParaTeto,
   restanteDoOrcamento,
   tetoDeRelogioDoAgente,
 } from "@/lib/agents/fase1-orcamento"
@@ -1359,10 +1364,19 @@ export async function runCuradorShadow(
       // na cauda do user, depois da última marca.
       system_prompt: DEFAULT_CHOOSER_VAULT_SYSTEM,
       user_template: DEFAULT_CHOOSER_VAULT_USER,
-      // As duas chamadas (shortlist e escolha) compartilham o prompt-base
-      // inteiro em três blocos (global+flow, loja, e-mail); a cauda de cada
-      // uma vai solta. Sem isto o user de ~100k chars era pago duas vezes.
-      cache_user_prefix: true,
+      // As chamadas compartilham o prompt-base inteiro em três blocos
+      // (global+flow, loja, e-mail); a cauda de cada uma vai solta. Sem
+      // isto o user de ~100k chars era pago duas vezes.
+      //
+      // **Só quando existe um SEGUNDO leitor.** Escrever no cache custa
+      // +25%, e desde 14/09 a shortlist é pulada quando nenhuma posição
+      // passa de 5 elegíveis — aí existe UMA chamada só e os 56.906 tokens
+      // do prefixo eram escritos mais caros para ninguém ler: US$ 0,14 por
+      // e-mail em ~2/3 das runs (medido em `29c3f906` e `f6a9565a`,
+      // `tokens_cache: 0` com `tokens_cache_escrita: 56.906`). O plano da
+      // shortlist é conhecido antes da primeira chamada, e no leque há N
+      // leitores por construção.
+      cache_user_prefix: false,
     }
 
     /**
@@ -1389,23 +1403,24 @@ export async function runCuradorShadow(
     }
     // Guarda de ENTRADA do leque contra o relógio da fase 1.
     //
-    // A régua é conservadora e usa um número JÁ MEDIDO: se o restante da
-    // janela não cobre nem o custo típico de UMA chamada do Curador, o
-    // leque — que faz N — não tem por que começar. Estimar "N × custo de
-    // uma posição" seria chute: a chamada do leque é menor que a do e-mail
-    // inteiro e ninguém mediu quanto.
+    // O piso é o custo de UMA POSIÇÃO, não o do e-mail inteiro. A régua
+    // anterior usava o custo típico do Curador (340s medidos) e tinha o
+    // sinal invertido: com a janela curta ela DESLIGAVA o leque e caía na
+    // chamada única, que precisa de mais tempo, não de menos — trocava um
+    // caminho capaz de decidir duas posições e continuar depois por um que
+    // certamente não caberia.
     //
-    // O caso "cabe uma, não cabem seis" fica coberto pela degradação por
-    // POSIÇÃO: `invokeAgent` lança quando a janela acaba, o `try` do laço
-    // transforma isso em posição vazia com motivo `orcamento_esgotado`, e a
-    // régua de fracasso do caller decide o desfecho. Desistir do leque
-    // inteiro por causa dele seria abrir mão de quatro posições que
-    // caberiam.
+    // Com o progresso gravado posição a posição
+    // (`curador-leque-progresso.ts`), janela curta deixou de ser motivo
+    // para não começar: o que couber é decidido, gravado, e a invocação
+    // seguinte retoma dali. Só não vale começar quando não cabe nem UMA —
+    // aí não há progresso possível, só uma chamada morta a pagar.
+    const tetoPorPosicao = tetoDaPosicao(maxTokens, p.liveSections.length, CURADOR_SHADOW_MAX_TOKENS_MIN)
     if (lequeUser !== null) {
       const restante = restanteDoOrcamento()
-      const piso = custoTipicoDoAgente("assembler_chooser", maxTokens)
+      const piso = relogioParaTeto(tetoPorPosicao)
       if (restante !== null && restante < piso) {
-        lequeIndisponivel = `sem_janela: restam ${Math.round(restante / 1000)}s e o piso é ${Math.round(piso / 1000)}s`
+        lequeIndisponivel = `sem_janela: restam ${Math.round(restante / 1000)}s e uma posição pede ${Math.round(piso / 1000)}s`
         lequeUser = null
         log.warn("leque.sem_janela", { restanteMs: restante, pisoMs: piso })
       }
@@ -1491,6 +1506,11 @@ export async function runCuradorShadow(
       forcarChamada: !usarLeque && process.env.CURADOR_SHORTLIST_SEMPRE === "1",
       nuncaChamar: usarLeque,
     })
+    // Agora — e só agora — dá para saber se o prefixo vai ter LEITOR: são
+    // duas chamadas quando a shortlist acontece, e N quando o leque roda.
+    // Uma chamada só não paga os +25% da escrita (ver `cache_user_prefix`
+    // na montagem da config).
+    config.cache_user_prefix = planoShortlist.chamar || usarLeque
     const etapas = planoShortlist.chamar ? "shortlist + escolha" : "escolha (shortlist por código)"
     const inputSummary: InputSummaryItem[] = [
       {
@@ -1677,11 +1697,37 @@ export async function runCuradorShadow(
       const acumulado = { tokensInput: 0, tokensOutput: 0, costUsd: 0 }
       const brutas: string[] = []
       let finishPior: string | undefined
-      const lequeConfig = { ...config, system_prompt: systemEfetivo, user_template: `${lequeUser}${CAUDA_POSICAO_USER}` }
+      // O teto é o de UMA posição, não o do e-mail inteiro: o OpenRouter
+      // reserva `prompt + max_tokens` em voo, e herdar o teto grande em
+      // cada uma das N chamadas bloqueia N vezes um saldo que nenhuma vai
+      // usar — o caminho conhecido do `402 in-flight` deste projeto.
+      const lequeConfig = {
+        ...config,
+        system_prompt: systemEfetivo,
+        user_template: `${lequeUser}${CAUDA_POSICAO_USER}`,
+        max_tokens: tetoPorPosicao,
+        // O relógio anda junto do teto (a mesma regra da config acima): com
+        // 8.192 tokens a 90 tok/s são ~106s, e manter os 360s do e-mail
+        // inteiro deixaria UMA posição travada comer a janela de todas.
+        timeoutMs: relogioParaTeto(tetoPorPosicao),
+      }
+
+      // Retomada: o que uma invocação anterior desta MESMA geração já
+      // decidiu e gravou. Sem isto, um processo morto no meio faz a
+      // próxima invocação recomeçar da posição 0 e pagar tudo de novo.
+      const jaGravadas = await carregarEscolhasGravadas({
+        emailId: p.emailId,
+        batchId: p.batchId,
+        exceptRunId: runId,
+      })
 
       leque = await escolherPorPosicao({
         posicoes,
+        jaGravadas,
         nomePorVariante: new Map(p.catalogComExtras.compact.entries.map((e) => [e.variant_id, e.title])),
+        // Grava assim que CADA posição fecha — é o que faz "continuar até
+        // acabar" sobreviver ao fim do `maxDuration`. Fail-open por dentro.
+        onDecidida: (_escolha, todas) => gravarProgressoDoLeque(runId, todas),
         chamar: async (pos, ja) => {
           const posVars = {
             ...vars,
@@ -1915,6 +1961,11 @@ export async function runCuradorShadow(
               ajustes: leque?.ajustes ?? [],
               falhas: leque?.falhas ?? [],
               chamadas: chamadasDoLeque,
+              // Posições que vieram de uma invocação anterior desta mesma
+              // geração — decisão já paga, não rechamada. Sem este número,
+              // uma run retomada parece uma run barata por sorte.
+              retomadas: leque?.retomadas ?? [],
+              teto_por_posicao: tetoPorPosicao,
             }
           : null,
         // Por que o leque NÃO rodou nesta geração, quando foi pedido. Sem

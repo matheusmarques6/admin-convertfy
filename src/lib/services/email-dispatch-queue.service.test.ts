@@ -504,6 +504,11 @@ describe("SETTLED_REFERENCE_SOURCES", () => {
       // Passo 11: lacuna de biblioteca é desfecho, não tentativa — o e-mail
       // já está `failed: lacuna_biblioteca` e o dispatch o pula.
       lacuna: true,
+      // 16/09: a chamada de uma posição não aconteceu (relógio, provedor,
+      // processo morto). NÃO settla: as posições já decididas estão
+      // gravadas e a próxima passada retoma dali — settlar enterraria uma
+      // peça a uma retomada de distância.
+      retomavel: false,
     }
     for (const [source, settla] of Object.entries(decisao)) {
       expect(SETTLED_REFERENCE_SOURCES.has(source as ReferenceSource)).toBe(

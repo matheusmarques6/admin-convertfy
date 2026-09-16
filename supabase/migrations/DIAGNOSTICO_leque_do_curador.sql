@@ -113,3 +113,58 @@ where r.agent = 'assembler_chooser'
   and r.created_at > now() - interval '14 days'
   and not (r.parsed_output ? k)
 order by r.created_at desc;
+
+-- ─────────────────────────────────────────────────────────────────────
+-- 8. A DURABILIDADE (16/09): quanto foi retomado, e quanto foi perdido.
+--
+-- O leque grava cada posição assim que ela fecha
+-- (`curador-leque-progresso.ts`), então uma função morta no meio deixa o
+-- trabalho gravado e a invocação seguinte continua de onde parou. Estas
+-- duas linhas dizem se isso está acontecendo:
+--
+--   `retomadas` > 0  → houve morte no meio E a retomada funcionou (a
+--                      decisão não foi repaga).
+--   run `running` velha SEM run seguinte no mesmo batch → morreu e
+--                      ninguém voltou: o job não foi re-tentado.
+--
+-- A segunda é a que denuncia regressão. Com `source: "retomavel"` o
+-- dispatch NÃO settla o e-mail (ele volta para `pending`), então a
+-- ausência de uma segunda run no mesmo batch significa que o job esgotou
+-- as tentativas ou que o cron parou de rodar.
+select
+  r.created_at,
+  r.batch_id,
+  r.email_id,
+  r.status,
+  jsonb_array_length(coalesce(r.parsed_output -> 'leque' -> 'retomadas', '[]'::jsonb)) as posicoes_retomadas,
+  (r.parsed_output -> 'leque' ->> 'chamadas')::int as chamadas,
+  jsonb_array_length(coalesce(r.parsed_output -> 'leque' -> 'posicoes', '[]'::jsonb)) as posicoes,
+  (r.parsed_output -> 'leque' ->> 'teto_por_posicao')::int as teto_por_posicao,
+  -- Gravação parcial que sobrou: a run morreu sem fechar.
+  (r.parsed_output -> 'leque' ->> 'parcial')::boolean as morreu_no_meio,
+  round(r.cost_cents / 100.0, 2) as usd
+from email_generation_runs r
+where r.agent = 'assembler_chooser'
+  and r.created_at > now() - interval '14 days'
+  and r.parsed_output ? 'leque'
+order by r.created_at desc;
+
+-- 9. Peças que NÃO fecharam: de quem foi a culpa.
+--
+-- `lacuna_causa` separa o que antes era um rótulo só. `biblioteca` é
+-- pedido de cadastro; `relogio` é chamada que não aconteceu — e essa NÃO
+-- marca o e-mail como `failed`, NÃO vira pauta no vault e volta para a
+-- fila. Linha com `relogio` e sem uma run seguinte no mesmo batch é o
+-- sinal de que a retomada não está acontecendo.
+select
+  r.created_at,
+  r.batch_id,
+  r.parsed_output ->> 'lacuna_causa' as causa,
+  (r.parsed_output ->> 'lacuna_biblioteca')::boolean as conta_como_biblioteca,
+  jsonb_array_length(coalesce(r.parsed_output -> 'posicoes_sem_variante', '[]'::jsonb)) as posicoes_vazias,
+  r.parsed_output -> 'posicoes_sem_variante' as detalhe
+from email_generation_runs r
+where r.agent = 'assembler'
+  and r.created_at > now() - interval '14 days'
+  and r.parsed_output ? 'lacuna_causa'
+order by r.created_at desc;

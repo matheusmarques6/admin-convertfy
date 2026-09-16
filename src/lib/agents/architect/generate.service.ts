@@ -785,12 +785,31 @@ export async function generateBlueprintAndReference(
   // blueprint nem para o n8n — antes ia com o template global e morria
   // em `hero_failed` três minutos e três agentes depois.
   if (lacuna?.fatal) {
+    const posicoes = lacuna.posicoes.map(
+      (p) => `${p.block_index}:${p.section}:${p.dispositivo_pedido ?? "-"}:${p.motivo}`,
+    )
+    // Relógio não é lacuna de biblioteca (16/09, `causaDaLacuna`). A
+    // chamada daquela posição não aconteceu: não há veredito sobre a
+    // biblioteca, as posições já decididas estão gravadas na run e a
+    // próxima passada retoma dali. Marcar `failed` aqui enterraria uma
+    // peça a uma retomada de distância, e o rótulo mandaria a curadoria
+    // cadastrar bloco que já existe.
+    if (lacuna.causa === "relogio") {
+      log.warn("architect.lacuna_por_relogio", {
+        storeId: input.storeId,
+        flowType: input.flowType,
+        emailNumber: input.emailNumber,
+        emailId,
+        posicoes,
+      })
+      return { referenceSource: "retomavel" }
+    }
     log.warn("architect.lacuna_biblioteca", {
       storeId: input.storeId,
       flowType: input.flowType,
       emailNumber: input.emailNumber,
       emailId,
-      posicoes: lacuna.posicoes.map((p) => `${p.block_index}:${p.section}:${p.dispositivo_pedido ?? "-"}:${p.motivo}`),
+      posicoes,
     })
     if (emailId) {
       await marcarEmailFalhoNaFase1(admin, emailId, "lacuna_biblioteca", {

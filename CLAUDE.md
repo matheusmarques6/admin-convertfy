@@ -7779,6 +7779,74 @@ anteriores; e `aplicarOrcamentoDaCauda` passou a **parar na primeira nota
 que não cabe** — antes pulava e servia as menores, premiando nota CURTA em
 vez de nota bem colocada.
 
+## O leque continua até acabar: durabilidade, teto por posição e o rótulo certo (16/09)
+
+Três correções para o leque poder ser LIGADO. A primeira nasceu de uma
+proposta minha que estava errada: eu ia pôr um freio no laço (parar de
+chamar ao ficar sem janela). O dono apontou que isso é limitador — o desenho
+é uma chamada nova assim que a anterior termina, até acabar as posições. O
+laço já fazia isso; o que faltava era **durabilidade**.
+
+**Quem interrompe não é o laço, é o RUNTIME.** Quando o `maxDuration` acaba,
+o processo é morto sem `catch`, sem `finally` e sem resposta, e as posições
+já decididas morrem com ele — a invocação seguinte recomeçava do zero,
+pagando o Curador inteiro de novo (US$ 1,69–2,45 medidos em 14–15/09). É o
+mesmo defeito que o cron tinha antes da Fase 0. Agora
+`curador-leque-progresso.ts` grava cada decisão assim que ela fecha
+(`updateGenerationRun`, run em `running`) e a entrada do laço lê a run
+anterior do MESMO (email_id, batch_id) e retoma da primeira posição sem
+escolha gravada. "Continuar até acabar" passa a **atravessar** o limite do
+runtime em vez de esbarrar nele.
+
+A linha entre "já foi decidido" e "não chegou a acontecer" é o TIPO do erro,
+não a presença de `variant_id` (`precisaRechamar`): `sem_escolha`,
+`ids_fora_das_candidatas` e `repetida_sem_reserva` são veredictos — rechamar
+gasta de novo pelo mesmo resultado, e ainda com um `<ja_decididas>`
+diferente; só `chamada_falhou:` é refeito. A retomada **preserva o arco**: a
+posição reaproveitada entra em `<ja_decididas>` da seguinte como se tivesse
+acabado de ser tomada. Gravar é fail-open — falhar ao gravar não custa a
+decisão, que ainda vai no fechamento da run.
+
+**O risco de verdade não era o relógio, era CRÉDITO.** Cada chamada herdava
+o teto de 32.000 tokens para escrever ~2.000, e o OpenRouter reserva
+`prompt + max_tokens` em voo — a causa dos `402 in-flight` deste projeto
+(duas runs do Curador mortas assim em 08–09/09). `tetoDaPosicao` derruba
+isso para o piso já calibrado (8.192; **não** `teto/N`, porque o raciocínio
+não encolhe com a fatia — o piso nasceu do Sonnet gastando 8.327 tokens
+antes do JSON), e o relógio acompanha (~106 s em vez de 360 s). Junto,
+`cache_user_prefix` deixou de ser incondicional: só liga com um SEGUNDO
+leitor (`planoShortlist.chamar || usarLeque`) — com a shortlist pulada havia
+UMA chamada e 56.906 tokens eram escritos a +25% para ninguém ler, US$ 0,14
+por e-mail em ~2/3 das runs.
+
+**A guarda de entrada estava com o sinal invertido.** Ela desligava o leque
+quando a janela não cobria o custo do Curador inteiro (340 s) — e caía na
+chamada única, que precisa de MAIS tempo. Com o progresso gravado, janela
+curta deixou de ser motivo para não começar: o piso agora é o custo de UMA
+posição, e só não vale começar quando não cabe nem ela.
+
+**Timeout deixou de se chamar lacuna de biblioteca** (`causaDaLacuna`). As
+duas causas descartam a referência igual (peça com buraco não representa a
+decisão), e nada depois disso: `biblioteca` marca `failed:
+lacuna_biblioteca`, settla a fila e vira pauta de cadastro no vault;
+`relogio` devolve o `ReferenceSource` novo **`retomavel`**, que NÃO settla —
+o e-mail volta para `pending` e a passada seguinte retoma. **Uma posição por
+relógio basta para a causa ser `relogio`**: com a peça decidida pela metade,
+qualquer veredito sobre a biblioteca é sobre o que ainda não foi perguntado.
+O teste de exaustividade de `SETTLED_REFERENCE_SOURCES` obrigou a decisão
+explícita, como foi escrito para fazer.
+
+**A garantia "cada bloco sai com sua variante" já existia e foi medida**:
+posição sem escolha cai no resgate por código (`menosIncompativel` entre as
+elegíveis) e a biblioteca tem hoje **42 variantes ativas e 0 sem
+dispositivo** — o pool existe em toda seção do welcome (os docs ainda diziam
+"8 heroes sem dispositivo"; não é mais verdade). A hero é a posição 0, a
+primeira do laço, e a única cuja ausência é fatal sozinha.
+
+Acompanhamento: itens 8 e 9 de `DIAGNOSTICO_leque_do_curador.sql`. O gate
+segue em `off`; ligar é `update email_generation_settings set
+curador_leque_mode = 'on'` (sem UI, como `qa_mode` e `lint_mode`).
+
 ---
 
 ## Estúdio — família "Thread": o formato era a lacuna, não o construtor (set/2026)

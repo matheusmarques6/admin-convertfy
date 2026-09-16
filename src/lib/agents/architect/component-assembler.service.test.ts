@@ -7,6 +7,7 @@ vi.mock("@/lib/supabase/server", () => ({
 
 import type { EmailComponentVariant } from "@/types/email-generation"
 import {
+  causaDaLacuna,
   lacunaEhFatal,
   parseAssemblerOutput,
   resolveChoices,
@@ -158,6 +159,27 @@ describe("lacunaEhFatal (Passo 11)", () => {
   })
   it("duas ou mais posições vazias são fatais", () => {
     expect(lacunaEhFatal([{ section: "body" }, { section: "products" }])).toBe(true)
+  })
+})
+
+describe("causaDaLacuna (16/09)", () => {
+  it("sem posição por relógio, a causa é a biblioteca", () => {
+    expect(causaDaLacuna([{ motivo: "sem_candidata" }])).toBe("biblioteca")
+    expect(
+      causaDaLacuna([{ motivo: "todas_descartadas" }, { motivo: "dispositivo_indisponivel" }]),
+    ).toBe("biblioteca")
+  })
+
+  // Uma basta: com a peça decidida pela metade, qualquer veredito sobre a
+  // biblioteca é sobre o que ainda não foi perguntado.
+  it("uma posição por relógio já muda a causa", () => {
+    expect(
+      causaDaLacuna([{ motivo: "sem_candidata" }, { motivo: "orcamento_esgotado" }]),
+    ).toBe("relogio")
+  })
+
+  it("lista vazia não acusa relógio", () => {
+    expect(causaDaLacuna([])).toBe("biblioteca")
   })
 })
 
