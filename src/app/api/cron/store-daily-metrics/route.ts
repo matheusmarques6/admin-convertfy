@@ -41,6 +41,21 @@ export async function GET(request: NextRequest) {
 
     log.info("Store daily metrics snapshot started")
     const result = await snapshotStoreDailyMetrics(admin)
+    // Zero linhas COM campanhas lidas é falha, não rotina: a agregação
+    // encontrou envios de ontem e não gravou nenhum dia. Sem campanha,
+    // zero é a resposta certa (ninguém enviou) e passa.
+    if (result.rowsWritten === 0 && result.campaignsRead > 0) {
+      log.error("Store daily metrics: campanhas lidas e nenhuma linha gravada", result)
+      return NextResponse.json(
+        {
+          success: false,
+          mode: "snapshot",
+          error: `${result.campaignsRead} campanha(s) na janela e nenhuma linha gravada`,
+          ...result,
+        },
+        { status: 500 },
+      )
+    }
     log.info("Store daily metrics snapshot completed", result)
     return NextResponse.json({ success: true, mode: "snapshot", ...result })
   } catch (error) {
