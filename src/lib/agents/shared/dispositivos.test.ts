@@ -85,6 +85,6 @@ describe("dispositivo no contrato (field-roles)", () => {
         ],
       },
     ]
-    expect(elegiveisPorPosicao(["body"], [{ dispositivo: "body_tese" }], catalogo).get(0)).toEqual(["tese", "semclass"])
+    expect(elegiveisPorPosicao(["body"], [{ dispositivo: "body_tese" }], catalogo).get(0)).toEqual({ ids: ["tese", "semclass"], zerou: false })
   })
 })

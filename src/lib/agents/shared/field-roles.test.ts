@@ -221,13 +221,28 @@ describe("n_itens null conta como 1 item; elegíveis por posição (14/09)", () 
   })
   it("elegíveis = seção menos eliminadas; seção normalizada; posição sem seção fica fora do mapa", () => {
     const e = elegiveisPorPosicao(["hero", "products", "reviews"], [null, { n_itens: { min: 2 } }, null], cat)
-    expect(e.get(0)).toEqual(["h3"])
-    expect(e.get(1)).toEqual(["p9"])
+    expect(e.get(0)).toEqual({ ids: ["h3"], zerou: false })
+    expect(e.get(1)).toEqual({ ids: ["p9"], zerou: false })
     expect(e.has(2)).toBe(false)
   })
-  it("fail-open: requisito que zera a seção mantém todas elegíveis", () => {
+  // 16/09: a lista do fail-open é o pool cru, e sem `zerou` ela é
+  // indistinguível de uma seleção real — quem a lê conta como candidatas
+  // variantes que o contrato reprova, e a lacuna de biblioteca some.
+  it("fail-open: requisito que zera a seção mantém todas elegíveis, e DIZ que zerou", () => {
     const e = elegiveisPorPosicao(["products"], [{ n_itens: { min: 2, max: 3 }, preco: true }], cat)
-    expect(e.get(0)).toEqual(["p9", "p4"])
+    expect(e.get(0)).toEqual({ ids: ["p9", "p4"], zerou: true })
+  })
+  // As duas liam o catálogo por chaves diferentes: `elegiveisPorPosicao`
+  // normalizava e `eliminarPorRequisitos` não. Com caixa/espaço diferentes,
+  // a primeira achava a seção e a segunda devolvia [] — o prompt dizia
+  // "nenhuma eliminada" sobre a mesma posição que a régua filtrou.
+  it("as duas leituras do catálogo normalizam a seção do MESMO jeito", () => {
+    const sujo = [{ section: " PRODUCTS ", variantes: cat[0].variantes }]
+    const req = [{ n_itens: { min: 2 } }]
+    expect(elegiveisPorPosicao(["products"], req, sujo).get(0)?.ids).toEqual(["p9"])
+    const elim = eliminarPorRequisitos(["products"], req, sujo)
+    expect(elim).toHaveLength(1)
+    expect(elim[0].eliminadas.map((x) => x.variant_id)).toEqual(["p4"])
   })
 })
 

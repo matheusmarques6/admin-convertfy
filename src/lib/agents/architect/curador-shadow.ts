@@ -68,6 +68,7 @@ import {
   indiceDeEliminadas,
   resumirContrato,
   type ContratoResumo,
+  type ElegiveisDaPosicao,
   type EliminacaoDaPosicao,
 } from "../shared/field-roles"
 
@@ -127,11 +128,23 @@ export interface PlanoDaShortlist {
   obrigatorias: number[]
   porCodigo: Map<number, RankedChoice[]>
   elegiveis: Map<number, Set<string>>
+  /**
+   * Posições cuja lista de elegíveis veio do FAIL-OPEN — o requisito
+   * eliminaria todas e nenhuma foi eliminada, então a contagem é o pool
+   * cru, não uma seleção.
+   *
+   * NÃO muda a régua de chamar, e é de propósito: pool grande em fail-open
+   * é justamente onde a shortlist serve (reduzir 17 candidatas a 3 antes de
+   * carregar as notas). O que ela muda é a LEITURA — "7 elegíveis" na
+   * telemetria, com todas reprovadas pelo contrato, esconde a lacuna de
+   * biblioteca que a curadoria precisa ver.
+   */
+  emFailOpen: number[]
 }
 
 export function planejarShortlist(p: {
   sections: string[]
-  elegiveisPorPosicao?: Map<number, string[]> | null
+  elegiveisPorPosicao?: Map<number, ElegiveisDaPosicao> | null
   forcarChamada?: boolean
   /** Default `limiarSemChamada()`. */
   limiar?: number
@@ -139,20 +152,24 @@ export function planejarShortlist(p: {
   const limiar = Math.max(SHORTLIST_TOP_N, p.limiar ?? limiarSemChamada())
   const todas = p.sections.map((_, i) => i)
   const elegiveis = new Map<number, Set<string>>()
-  for (const [i, ids] of p.elegiveisPorPosicao ?? []) elegiveis.set(i, new Set(ids))
+  const emFailOpen: number[] = []
+  for (const [i, e] of p.elegiveisPorPosicao ?? []) {
+    elegiveis.set(i, new Set(e.ids))
+    if (e.zerou) emFailOpen.push(i)
+  }
   if (!p.elegiveisPorPosicao || p.forcarChamada) {
-    return { puladas: [], limiar, chamar: true, obrigatorias: todas, porCodigo: new Map(), elegiveis }
+    return { puladas: [], limiar, chamar: true, obrigatorias: todas, porCodigo: new Map(), elegiveis, emFailOpen }
   }
   const puladas: number[] = []
   const porCodigo = new Map<number, RankedChoice[]>()
   for (const i of todas) {
-    const ids = p.elegiveisPorPosicao.get(i)
+    const ids = p.elegiveisPorPosicao.get(i)?.ids
     if (!ids || ids.length > limiar) continue
     puladas.push(i)
     if (ids.length > 0) porCodigo.set(i, ids.map((variant_id) => ({ variant_id, motivo: "elegível por contrato (shortlist por código)" })))
   }
   const obrigatorias = todas.filter((i) => !puladas.includes(i))
-  return { puladas, limiar, chamar: obrigatorias.length > 0, obrigatorias, porCodigo, elegiveis }
+  return { puladas, limiar, chamar: obrigatorias.length > 0, obrigatorias, porCodigo, elegiveis, emFailOpen }
 }
 
 /**
@@ -161,11 +178,11 @@ export function planejarShortlist(p: {
  * uso volta a ser só o histórico.
  */
 export function elegiveisDaGeracao(
-  porPosicao?: Map<number, string[]> | null,
+  porPosicao?: Map<number, ElegiveisDaPosicao> | null,
 ): Set<string> | undefined {
   if (!porPosicao || porPosicao.size === 0) return undefined
   const out = new Set<string>()
-  for (const ids of porPosicao.values()) for (const id of ids) out.add(id)
+  for (const e of porPosicao.values()) for (const id of e.ids) out.add(id)
   return out.size ? out : undefined
 }
 
@@ -1123,7 +1140,7 @@ export interface CuradorShadowParams {
    * catálogo da seção menos as eliminadas por contrato. É o que decide se
    * a shortlist chama o modelo e o que restringe as finalistas.
    */
-  elegiveisPorPosicao?: Map<number, string[]> | null
+  elegiveisPorPosicao?: Map<number, ElegiveisDaPosicao> | null
 }
 
 /** O que o Curador legado herda de um JSON do vault que não pôde ser consumido. */
@@ -1485,9 +1502,10 @@ export async function runCuradorShadow(
       tokensInput: shortlistConsumo.tokensInput + finalCall.tokensInput,
       tokensOutput: shortlistConsumo.tokensOutput + finalCall.tokensOutput,
       costUsd: shortlistConsumo.costUsd + finalCall.costUsd,
-      consultas: [],
-      voltas: retomada?.feita ? 3 : 2,
-      fallback_sem_ferramentas: false,
+      // `voltas` é o número REAL de chamadas ao modelo, não um literal: a
+      // shortlist é pulada quando nenhuma posição passa do limiar, e o
+      // `retomada ? 3 : 2` de antes contava uma chamada que não aconteceu.
+      voltas: (planoShortlist.chamar ? 1 : 0) + 1 + (retomada?.feita ? 1 : 0),
       shortlist,
       finalistNotes,
       finalistIds,
@@ -1583,6 +1601,10 @@ export async function runCuradorShadow(
         ),
         shortlist_intersecao_vazia: mesclaShortlist.intersecaoVazia,
         elegiveis_por_posicao: Object.fromEntries(Array.from(planoShortlist.elegiveis, ([i, ids]) => [i, ids.size])),
+        // Sem isto a contagem acima se lê como seleção: posição em fail-open
+        // tem TODAS as candidatas reprovadas pelo contrato, e a lacuna de
+        // biblioteca fica invisível para a curadoria.
+        elegiveis_em_fail_open: planoShortlist.emFailOpen,
         // Custo do índice (15/09): `chars_por_variante` é o que diz se a
         // biblioteca pode crescer sem encarecer a geração; `linhas_longas`
         // é cadastro a revisar, não biblioteca grande.
@@ -1641,8 +1663,6 @@ export async function runCuradorShadow(
         lacunas_servidas: p.vault.lacunas.length,
         aprendizados_do_toque: p.aprendizadosPorToque?.doToque.map((a) => a.slug) ?? [],
         aprendizados_descartados_por_toque: p.aprendizadosPorToque?.fora ?? [],
-        consultou_vault: res.consultas.length > 0,
-        consultas_ao_vault: res.consultas,
         variantes_inicialmente_candidatas: p.catalogComExtras.sections.flatMap((s) => s.variantes.map((v) => v.variant_id)),
         tamanhos_segmentos: (promptSegments ?? []).map((s) => ({ rotulo: s.rotulo, parte: s.parte ?? null, chars: s.chars })),
         reducao_catalogo: {
@@ -1652,7 +1672,6 @@ export async function runCuradorShadow(
           tokens_estimados_reduzidos: Math.ceil(Math.max(0, p.catalogComExtras.json.length - p.catalogComExtras.enxuto.length) / 4),
         },
         voltas: res.voltas,
-        fallback_sem_ferramentas: res.fallback_sem_ferramentas,
         // A estrutura VIGENTE (a da arquitetura, com os papéis casados) e,
         // separada, a que ele devolveu. Guardar as duas é o que permite ver
         // se ele obedeceu sem ter de reler o raw_output.
@@ -1713,7 +1732,6 @@ export async function runCuradorShadow(
       flowType: p.flowType,
       emailNumber: p.emailNumber,
       estruturadorOn,
-      consultas: res.consultas.length,
       voltas: res.voltas,
       positions: ranking?.byBlock.size ?? 0,
       violations: violations.length,

@@ -2136,7 +2136,7 @@ export async function assembleStoreReference(
     if (!variant) {
       // Pool = elegíveis por contrato (fail-open: seção zerada devolve
       // todas). Sem o filtro o resgate podia pôr uma eliminada na posição.
-      const elegiveisIds = elegiveisDaPosicao.get(i)
+      const elegiveisIds = elegiveisDaPosicao.get(i)?.ids
       const pool = (variantesDaSecao.get(normalizarSecao(section)) ?? [])
         .filter((c) => !elegiveisIds || elegiveisIds.includes(c.variant_id))
         .map((c) => ({ ...c, usos: usosPorVariante.get(c.variant_id) ?? 0 }))

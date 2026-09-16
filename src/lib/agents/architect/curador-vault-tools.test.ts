@@ -73,7 +73,7 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: () => ({}),
 }))
 
-import { extratoParaDecisao, listarPasta, lerNota, loadFinalistNotes } from "./curador-vault-tools"
+import { extratoParaDecisao, loadFinalistNotes } from "./curador-vault-tools"
 
 const nota = (
   file_path: string,
@@ -96,48 +96,11 @@ beforeEach(() => {
   ]
 })
 
-// Incidente 07/09: as ferramentas filtravam is_active da NOTA e nunca da
-// VARIANTE. O Curador leu a nota da offer-4, escolheu o bloco — que está
-// desativado e fora do catálogo servido — e a escolha morreu em
-// invalid_ids, deixando a posição vazia.
-describe("ferramentas do vault — variante desativada não é servida", () => {
-  it("listar_pasta omite a nota da variante desativada", async () => {
-    const saida = await listarPasta("componentes/variantes/offer")
-    expect(saida).toContain("offer-3-lembrete-de-cupom.md")
-    expect(saida).not.toContain("offer-4-manifesto-antes-do-cupom.md")
-  })
-
-  it("ler_nota recusa a variante desativada dizendo o motivo", async () => {
-    const saida = await lerNota("componentes/variantes/offer/offer-4-manifesto-antes-do-cupom.md")
-    expect(saida).toContain("desativada")
-    expect(saida).not.toContain("corpo de")
-  })
-
-  it("variante ativa continua servida inteira", async () => {
-    const saida = await lerNota("componentes/variantes/offer/offer-3-lembrete-de-cupom.md")
-    expect(saida).toContain("corpo de componentes/variantes/offer/offer-3")
-  })
-
-  it("nota que não é de variante nunca é filtrada", async () => {
-    // Seção, eixo, requisito, lacuna: não têm variant_id e não são escolhíveis.
-    h.variantesInativas = []
-    const saida = await lerNota("componentes/secoes/offer.md")
-    expect(saida).toContain("corpo de componentes/secoes/offer.md")
-  })
-
-  it("erro na checagem serve demais em vez de calar o vault", async () => {
-    h.erroNaChecagem = true
-    const saida = await listarPasta("componentes/variantes/offer")
-    // Esconder as 36 boas para proteger contra 4 seria pior: o parser ainda
-    // recusa o id inválido no fim da linha.
-    expect(saida).toContain("offer-4-manifesto-antes-do-cupom.md")
-  })
-
-  it("pasta sem nota devolve texto, não erro", async () => {
-    const saida = await listarPasta("componentes/inexistente")
-    expect(saida).toContain("nenhuma nota sincronizada")
-  })
-})
+// As ferramentas de consulta sob demanda (`listar_pasta`, `ler_nota`,
+// `buscar_doutrina`) foram REMOVIDAS em 16/09: existiram de 02/09 a 16/09 e
+// nunca tiveram importador de produção — só estes testes. O caminho vivo é
+// `loadFinalistNotes`, por código, que já filtra `is_active` da variante na
+// própria consulta (era o que o incidente da offer-4 exigia das ferramentas).
 
 describe("notas das finalistas em lote", () => {
   it("deduplica ids e distingue nota aberta de ausente", async () => {

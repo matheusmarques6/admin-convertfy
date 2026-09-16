@@ -20,6 +20,7 @@
  */
 
 import { conflitoDeDispositivo } from "./dispositivos"
+import { normalizarSecao } from "../architect/repeticao"
 
 export type FamiliaDeItem = "product" | "review" | "item" | "feature"
 
@@ -289,19 +290,32 @@ export function conflitoDeContrato(c: ContratoResumo, r: RequisitosDuros | null 
  * Posição cuja seção não existe no catálogo fica FORA do mapa (o chamador
  * distingue "sem seção" de "zero elegíveis").
  */
+export interface ElegiveisDaPosicao {
+  ids: string[]
+  /**
+   * A lista veio do FAIL-OPEN de `filtrarPorRequisitos` — o requisito
+   * eliminaria todas e nenhuma foi eliminada.
+   *
+   * Sem este campo a lista é indistinguível de uma seleção real, e quem a
+   * lê conta candidatas que o contrato reprova: era assim que
+   * `planejarShortlist` via "7 elegíveis", passava do limiar e pagava uma
+   * chamada para escolher entre variantes que já estavam todas fora.
+   */
+  zerou: boolean
+}
+
 export function elegiveisPorPosicao(
   sections: string[],
   requisitos: Array<RequisitosDuros | null | undefined>,
   catalogo: Array<{ section: string; variantes: Array<{ variant_id: string; contrato?: ContratoResumo }> }>,
-): Map<number, string[]> {
-  const norm = (x: string) => x.trim().toLowerCase()
-  const porSecao = new Map(catalogo.map((c) => [norm(c.section), c.variantes]))
-  const out = new Map<number, string[]>()
+): Map<number, ElegiveisDaPosicao> {
+  const porSecao = new Map(catalogo.map((c) => [normalizarSecao(c.section), c.variantes]))
+  const out = new Map<number, ElegiveisDaPosicao>()
   sections.forEach((section, i) => {
-    const candidatas = porSecao.get(norm(section))
+    const candidatas = porSecao.get(normalizarSecao(section))
     if (!candidatas) return
     const r = filtrarPorRequisitos(candidatas, requisitos[i])
-    out.set(i, r.elegiveis.map((v) => v.variant_id))
+    out.set(i, { ids: r.elegiveis.map((v) => v.variant_id), zerou: r.zerou })
   })
   return out
 }
@@ -490,12 +504,16 @@ export function eliminarPorRequisitos(
   requisitos: Array<RequisitosDuros | null | undefined>,
   catalogo: Array<{ section: string; variantes: Array<{ variant_id: string; name?: string; contrato?: ContratoResumo }> }>,
 ): EliminacaoDaPosicao[] {
-  const porSecao = new Map(catalogo.map((c) => [c.section, c.variantes]))
+  // A MESMA normalização de `elegiveisPorPosicao`. Sem ela, caixa ou espaço
+  // diferente entre `sections` e `catalogo.section` faziam esta função não
+  // achar a seção e devolver [] — enquanto a irmã, sobre os mesmos dados,
+  // achava. O prompt recebia "nenhuma eliminada" e a régua, a lista cheia.
+  const porSecao = new Map(catalogo.map((c) => [normalizarSecao(c.section), c.variantes]))
   const out: EliminacaoDaPosicao[] = []
   sections.forEach((section, i) => {
     const req = requisitos[i]
     if (!req) return
-    const candidatas = porSecao.get(section) ?? []
+    const candidatas = porSecao.get(normalizarSecao(section)) ?? []
     if (candidatas.length === 0) return
     const r = filtrarPorRequisitos(candidatas, req)
     if (r.eliminadas.length === 0) return

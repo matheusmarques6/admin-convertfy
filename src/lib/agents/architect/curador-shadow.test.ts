@@ -440,11 +440,14 @@ describe("rank1ByBlock + blocos da fase 1", () => {
   })
 
   it("elegiveisDaGeracao achata as posições e descarta o vazio", () => {
-    expect(elegiveisDaGeracao(new Map([[0, ["a", "b"]], [1, ["b", "c"]]]))).toEqual(new Set(["a", "b", "c"]))
+    const e = (ids: string[], zerou = false) => ({ ids, zerou })
+    expect(elegiveisDaGeracao(new Map([[0, e(["a", "b"])], [1, e(["b", "c"])]]))).toEqual(new Set(["a", "b", "c"]))
     expect(elegiveisDaGeracao(new Map())).toBeUndefined()
     expect(elegiveisDaGeracao(null)).toBeUndefined()
     // Chamador antigo sem o mapa: o bloco não deve inventar `0×`.
-    expect(elegiveisDaGeracao(new Map([[0, []]]))).toBeUndefined()
+    expect(elegiveisDaGeracao(new Map([[0, e([])]]))).toBeUndefined()
+    // Fail-open entra igual: a variante É escolhível, o que muda é a leitura.
+    expect(elegiveisDaGeracao(new Map([[0, e(["a"], true)]]))).toEqual(new Set(["a"]))
   })
 
   it("o system carrega protocolo, papéis e zero-elegíveis", () => {
@@ -921,9 +924,11 @@ describe("user do Curador do vault — ordem dos blocos e marcas de cache (14/09
 // catálogo chegava inteiro e uma eliminada podia virar finalista.
 describe("shortlist por código quando não há o que rankear (14/09)", () => {
   const sections = ["hero", "body", "reviews", "products", "footer"]
-  const batch = new Map<number, string[]>([
-    [0, ["h1", "h2", "h3"]], [1, ["b1", "b2"]], [2, ["r1", "r2", "r3"]], [3, ["p1"]], [4, ["f1", "f2", "f3"]],
-  ])
+  // `elegiveisPorPosicao` devolve `{ids, zerou}` desde 16/09 — `zerou:false`
+  // é a seleção de verdade; o caso do fail-open tem teste próprio abaixo.
+  const eleg = (m: Record<number, string[]>, zerou: number[] = []) =>
+    new Map(Object.entries(m).map(([i, ids]) => [Number(i), { ids, zerou: zerou.includes(Number(i)) }]))
+  const batch = eleg({ 0: ["h1", "h2", "h3"], 1: ["b1", "b2"], 2: ["r1", "r2", "r3"], 3: ["p1"], 4: ["f1", "f2", "f3"] })
   it("o cenário do batch: zero chamadas, shortlist inteira por código", () => {
     const plano = planejarShortlist({ sections, elegiveisPorPosicao: batch })
     expect(plano.chamar).toBe(false)
@@ -936,13 +941,13 @@ describe("shortlist por código quando não há o que rankear (14/09)", () => {
     expect(shortlist.malformed).toBe(false)
   })
   it("posição com zero elegíveis fica vazia por código, sem chamar o modelo", () => {
-    const plano = planejarShortlist({ sections: ["hero", "body"], elegiveisPorPosicao: new Map([[0, ["h1"]], [1, []]]) })
+    const plano = planejarShortlist({ sections: ["hero", "body"], elegiveisPorPosicao: eleg({ 0: ["h1"], 1: [] }) })
     expect(plano.chamar).toBe(false)
     const { shortlist } = mesclarShortlist({ plano, llm: null, sections: ["hero", "body"] })
     expect(shortlist.emptyBlocks).toEqual([1])
   })
   it("uma seção com 6 elegíveis chama o modelo só para ela; as outras vêm do código e o resultado é intersectado", () => {
-    const elegiveis = new Map<number, string[]>([[0, ["h1", "h2"]], [1, ["b1", "b2", "b3", "b4", "b5", "b6"]]])
+    const elegiveis = eleg({ 0: ["h1", "h2"], 1: ["b1", "b2", "b3", "b4", "b5", "b6"] })
     const plano = planejarShortlist({ sections: ["hero", "body"], elegiveisPorPosicao: elegiveis })
     expect(plano.chamar).toBe(true)
     expect(plano.puladas).toEqual([0])
@@ -963,7 +968,7 @@ describe("shortlist por código quando não há o que rankear (14/09)", () => {
   })
   it("modelo que só aponta eliminadas cai nas três primeiras elegíveis, registrado", () => {
     // 6 elegíveis: acima do limiar de 5, senão a posição nem chega ao modelo.
-    const elegiveis = new Map<number, string[]>([[0, ["b1", "b2", "b3", "b4", "b5", "b6"]]])
+    const elegiveis = eleg({ 0: ["b1", "b2", "b3", "b4", "b5", "b6"] })
     const plano = planejarShortlist({ sections: ["body"], elegiveisPorPosicao: elegiveis })
     const typeIndex = new Map([["b9", "body"], ["b1", "body"]])
     const llm = parseValidatedShortlist({ raw: JSON.stringify([{ block_index: 0, escolhas: [{ variant_id: "b9" }] }]), sections: ["body"], typeIndex })
@@ -976,9 +981,7 @@ describe("shortlist por código quando não há o que rankear (14/09)", () => {
   // shortlist para escolher 3 de 4 em duas posições. Até 5 elegíveis,
   // TODAS viram finalistas e a escolha lê as notas de todas.
   it("até 5 elegíveis a posição é resolvida por código com todas as candidatas; 6 chama o modelo", () => {
-    const medido = new Map<number, string[]>([
-      [0, ["h1", "h2", "h3", "h4"]], [1, ["b1", "b2"]], [2, ["c1", "c2", "c3", "c4"]], [3, ["r1", "r2", "r3"]], [4, ["p1", "p2"]], [5, ["f1", "f2"]],
-    ])
+    const medido = eleg({ 0: ["h1", "h2", "h3", "h4"], 1: ["b1", "b2"], 2: ["c1", "c2", "c3", "c4"], 3: ["r1", "r2", "r3"], 4: ["p1", "p2"], 5: ["f1", "f2"] })
     const plano = planejarShortlist({ sections: ["hero", "body", "body", "reviews", "products", "footer"], elegiveisPorPosicao: medido })
     expect(plano.limiar).toBe(5)
     expect(plano.chamar).toBe(false)
@@ -986,13 +989,13 @@ describe("shortlist por código quando não há o que rankear (14/09)", () => {
     expect(fonte).toBe("codigo")
     expect(shortlist.byBlock.get(0)?.map((c) => c.variant_id)).toEqual(["h1", "h2", "h3", "h4"])
 
-    const cinco = planejarShortlist({ sections: ["body"], elegiveisPorPosicao: new Map([[0, ["a", "b", "c", "d", "e"]]]) })
+    const cinco = planejarShortlist({ sections: ["body"], elegiveisPorPosicao: eleg({ 0: ["a", "b", "c", "d", "e"] }) })
     expect(cinco.chamar).toBe(false)
     expect(cinco.porCodigo.get(0)).toHaveLength(5)
-    const seis = planejarShortlist({ sections: ["body"], elegiveisPorPosicao: new Map([[0, ["a", "b", "c", "d", "e", "f"]]]) })
+    const seis = planejarShortlist({ sections: ["body"], elegiveisPorPosicao: eleg({ 0: ["a", "b", "c", "d", "e", "f"] }) })
     expect(seis.chamar).toBe(true)
     // O limiar nunca desce abaixo de SHORTLIST_TOP_N, mesmo pedido.
-    expect(planejarShortlist({ sections: ["body"], elegiveisPorPosicao: new Map([[0, ["a", "b", "c"]]]), limiar: 1 }).chamar).toBe(false)
+    expect(planejarShortlist({ sections: ["body"], elegiveisPorPosicao: eleg({ 0: ["a", "b", "c"] }), limiar: 1 }).chamar).toBe(false)
   })
   it("sem elegíveis informadas, ou forçando, tudo vai ao modelo (comportamento anterior)", () => {
     expect(planejarShortlist({ sections }).chamar).toBe(true)

@@ -133,8 +133,10 @@ export function CuradorRankingView({ output }: { output: unknown }) {
     | undefined
   const modo = typeof o.curador_vault_mode === "string" ? o.curador_vault_mode : null
   const ehShadow = o.shadow === true
-  // Consultas ao Obsidian sob demanda (02/09): cada chamada de ferramenta,
-  // na ordem. `consultou_vault` false = decidiu só com o prompt.
+  // Consultas ao Obsidian sob demanda: só em runs ATÉ 16/09. As ferramentas
+  // foram removidas — nunca tiveram importador de produção, e `consultas`
+  // era literal `[]`, então `consultou_vault: false` nessas runs é constante
+  // gravada, não medição. Run nova não traz as chaves e as pílulas somem.
   const consultas = asArray<{
     ferramenta?: string
     argumento?: string
