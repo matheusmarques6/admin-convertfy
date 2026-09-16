@@ -47,6 +47,7 @@ import { aplicarPropostas, ehTextoGuia, novaVersao, propostasDeLinhas, setTexto 
 import { agendarDocumento } from "@/lib/conteudo/data"
 import { chamarIA } from "@/lib/conteudo/ia/client"
 import { resumoDocumento } from "@/lib/conteudo/ia/prompt"
+import { familiaDe, tracoDe } from "@/lib/conteudo/familias"
 import { CAMPO_LABEL, camposExcedidos } from "@/lib/conteudo/limites"
 import type { BrandKit, Campo, DocFrame, Documento, EstiloTexto, Perfil, PerfilEditavel } from "@/lib/conteudo/types"
 import { ROUTES } from "@/lib/routes"
@@ -260,7 +261,10 @@ export function Editor({ doc: docInicial, perfis, brandKits, onSalvarBrandKit, m
   }
 
   const ehGuia = f ? ehTextoGuia(f) : false
-  const excedidos = f ? camposExcedidos(f) : []
+  // O limite depende da IDENTIDADE: no print de tweet o texto ocupa a peça
+  // inteira e cabe muito mais, então o aviso de "corpo longo" com a régua
+  // do tipo apareceria sobre um texto que cabe.
+  const excedidos = f ? camposExcedidos(f, tracoDe(familiaDe(doc)).cartaoPerfil) : []
   const imgAtivo = imgSel ? doc.frames.find((x) => x.frameId === imgSel.frameId) : null
   const [stL, stC] = ST_STATUS[doc.status]
   const versoes = useMemo(() => {

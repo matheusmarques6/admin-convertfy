@@ -168,6 +168,10 @@ const ESTILO_POR_FAMILIA: Record<FamiliaVisual, string> = {
   editorial: "Direção de matéria impressa: luz quente e lateral, fundo bege claro com leve grão de papel, sombras curtas e suaves, objetos reais sobre superfície fosca. Nada de brilho digital, nada de fundo preto.",
   alternado:
     "Direção editorial-técnica: luz de estúdio direcional e limpa, fundo liso (off-white ou quase-preto, conforme o slide), contraste alto, geometria evidente, uma cor de destaque só. Nada de textura de papel, nada de cena quente de casa.",
+  // O slide da família Post é um print de tweet: a "imagem" dele é uma
+  // CAPTURA DE TELA, não uma cena fotografada. Pedir foto de estúdio ali
+  // devolveria justamente o que o formato não usa.
+  post: "A imagem é uma CAPTURA DE TELA nítida (página, painel ou app) sobre fundo claro, com as bordas retas e o conteúdo legível — não é fotografia. Sem cena, sem pessoas, sem objeto físico.",
 }
 
 function blocoReferencias(porQueFunciona?: string[]): string {

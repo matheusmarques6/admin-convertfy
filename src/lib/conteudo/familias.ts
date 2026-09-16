@@ -15,6 +15,7 @@
  */
 
 import { CORES_PADRAO, GRADIENTE_PADRAO, SLIDE } from "./brand"
+import { POST_CORES } from "./formato-post"
 import { paletaDeUmaCor, tintaSobre, type Paleta } from "./paleta"
 import type { Documento, FamiliaVisual, FrameTipo, Gradiente } from "./types"
 
@@ -65,6 +66,14 @@ export interface TracoFamilia {
    * aqui vem da POSIÇÃO, que é o que dá o ritmo do formato.
    */
   alternaFundo: boolean
+  /**
+   * O slide é um CARTÃO DE PERFIL (o print de tweet): avatar, nome com
+   * selo, `@handle` e o texto embaixo — um desenho só, para todo tipo de
+   * frame. Ligada, ela também tira o rodapé de marca, o contador e o
+   * filete: a peça imita uma captura de tela, e enfeite da casa denuncia
+   * que não é uma. Medidas em `formato-post.ts`.
+   */
+  cartaoPerfil: boolean
 }
 
 export interface Familia {
@@ -85,6 +94,8 @@ const FONTE_SERIF = "Georgia, 'Times New Roman', serif"
 const FONTE_SANS = "'Inter Slides', Inter, -apple-system, BlinkMacSystemFont, sans-serif"
 const FONTE_SERIF_DISPLAY = "'Instrument Serif', Georgia, 'Times New Roman', serif"
 const FONTE_MANUSCRITA = "'Caveat', 'Segoe Script', cursive"
+/** Geométrica arredondada do print de tweet (self-hosted, OFL). */
+const FONTE_POST = "'Poppins', 'Inter Slides', Inter, -apple-system, sans-serif"
 
 /**
  * A família Alternado inteira sai de UMA cor: é o que permite a mesma peça
@@ -127,6 +138,7 @@ export function alternadoDaPaleta(p: Paleta): Omit<Familia, "key" | "nome" | "de
       barraTopo: true,
       barraProgresso: true,
       alternaFundo: true,
+      cartaoPerfil: false,
     },
   }
 }
@@ -160,6 +172,7 @@ export const FAMILIAS: Record<FamiliaVisual, Familia> = {
       barraTopo: false,
       barraProgresso: false,
       alternaFundo: false,
+      cartaoPerfil: false,
     },
   },
   editorial: {
@@ -199,6 +212,7 @@ export const FAMILIAS: Record<FamiliaVisual, Familia> = {
       barraTopo: false,
       barraProgresso: false,
       alternaFundo: false,
+      cartaoPerfil: false,
     },
   },
   alternado: {
@@ -207,16 +221,56 @@ export const FAMILIAS: Record<FamiliaVisual, Familia> = {
     descricao: "Claro e escuro alternados, filete no topo e barra de progresso; paleta derivada de uma cor só.",
     ...alternadoDaPaleta(paletaDeUmaCor(COR_PRIMARIA_PADRAO)),
   },
+  post: {
+    key: "post",
+    nome: "Post",
+    descricao: "Print de tweet: fundo quase preto, avatar com nome e @handle, texto grande. Sem contador nem rodapé.",
+    cores: {
+      hook: POST_CORES.texto,
+      destaque: POST_CORES.selo,
+      metadado: POST_CORES.handle,
+      "fundo-bloco": "#1A1A1A",
+    },
+    // O gradiente existe porque o tipo pede, mas o formato não o usa: todo
+    // slide é o mesmo preto, que é o que faz os quatro parecerem a mesma
+    // captura de tela.
+    gradiente: { de: "#1A1A1A", meio: "#131313", ate: POST_CORES.fundo, angulo: 160 },
+    fundoClaro: POST_CORES.fundo,
+    fundoEscuro: POST_CORES.fundo,
+    cta: { fundo: "#FFFFFF", cor: POST_CORES.fundo },
+    traco: {
+      fonteTitulo: FONTE_POST,
+      fonteGancho: FONTE_POST,
+      fonteCorpo: FONTE_POST,
+      fonteMeta: FONTE_POST,
+      fonteAnotacao: FONTE_MANUSCRITA,
+      tituloCaixaAlta: false,
+      tituloPeso: 700,
+      tituloTracking: "0",
+      tituloEntrelinha: 1.32,
+      corpoItalico: false,
+      cta: "pilula",
+      raio: 10,
+      anotacaoRotacao: -3,
+      ganchoFator: 1,
+      ganchoCor: "tinta",
+      barraTopo: false,
+      barraProgresso: false,
+      alternaFundo: false,
+      cartaoPerfil: true,
+    },
+  },
 }
 
 export const FAMILIA_OPCOES: Array<[FamiliaVisual, string]> = [
   ["padrao", FAMILIAS.padrao.nome],
   ["editorial", FAMILIAS.editorial.nome],
   ["alternado", FAMILIAS.alternado.nome],
+  ["post", FAMILIAS.post.nome],
 ]
 
 export function ehFamilia(v: unknown): v is FamiliaVisual {
-  return v === "padrao" || v === "editorial" || v === "alternado"
+  return v === "padrao" || v === "editorial" || v === "alternado" || v === "post"
 }
 
 export function familiaDe(doc: Pick<Documento, "familia">): FamiliaVisual {
@@ -247,6 +301,10 @@ export function fundoPadraoDaFamilia(
   total?: number,
 ): string {
   const f = FAMILIAS[familia]
+  // No print de tweet TODO slide tem o mesmo preto: é isso que faz os
+  // quatro parecerem capturas da mesma tela. Gradiente na capa quebraria a
+  // ilusão no primeiro slide.
+  if (f.traco.cartaoPerfil) return f.fundoClaro
   if (f.traco.alternaFundo) {
     if (tipo === "capa") return "gradiente"
     if (tipo === "cta") return f.fundoClaro
@@ -355,7 +413,10 @@ export function aplicarFamilia(doc: Documento, nova: FamiliaVisual): Documento {
   // antiga vira o padrão da nova. Quando a alternância entra ou sai de
   // cena, "o padrão da nova" depende da POSIÇÃO — daí recalcular pela
   // lista de frames em vez de trocar cor por cor.
-  const recalcula = de.traco.alternaFundo !== para.traco.alternaFundo
+  // Recalcular também ao entrar ou sair do print de tweet: lá o fundo é o
+  // MESMO preto em todo slide, e trocar cor por cor deixaria o "gradiente"
+  // da capa intacto — o degradê sutil que denuncia que não é uma captura.
+  const recalcula = de.traco.alternaFundo !== para.traco.alternaFundo || de.traco.cartaoPerfil !== para.traco.cartaoPerfil
   const ehPadraoDaAntiga = (v: string) => v === de.fundoClaro || v === de.fundoEscuro || v === "gradiente"
   const fundoPorFrame: Record<string, string> = { ...doc.fundoPorFrame }
   doc.frames.forEach((f, i) => {

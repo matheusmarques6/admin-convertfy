@@ -104,6 +104,24 @@ export const ST_TEMPLATES: Template[] = [
     ],
   },
   {
+    id: "molde-post",
+    nome: "Print de post",
+    etapaFunil: "topo",
+    descricao: "Sequência da referência: gancho, print comentado, por que funciona e chamada. Use com a identidade Post.",
+    cor: "#0D0D0D",
+    familia: "post",
+    frames: [
+      // A capa é o gancho solto ("New Ecom Website Hack…"): só a linha em
+      // negrito, sem imagem — é o slide que para o dedo.
+      fr("f1", "capa", "Gancho", 0, TC),
+      // O slide do print: texto curto em cima e a captura embaixo. É o
+      // único com slot de imagem, e é ele que abre no topo do slide.
+      fr("f2", "texto", "Print", 1, TC),
+      fr("f3", "texto", "Por que funciona", 0, TC),
+      fr("f4", "cta", "Chamada", 0, CTA),
+    ],
+  },
+  {
     id: "molde-bastidor",
     nome: "Bastidor",
     etapaFunil: "fundo",
@@ -150,6 +168,7 @@ export const ST_MOLDE_KEY: Record<string, MoldeKey> = {
   "Benchmark de marca": "Benchmark",
   "Lista prática": "Lista",
   Bastidor: "Bastidor",
+  "Print de post": "Post",
 }
 
 export function moldeKeyDoTemplate(t: Template): MoldeKey {

@@ -25,7 +25,15 @@ export type Formato = "Carrossel" | "Reels" | "Imagem" | "Vídeo"
 
 export type Pilar = "Case" | "Educacional" | "Bastidor" | "Benchmark"
 
-export type MoldeKey = "Turbo" | "MEC" | "Benchmark" | "Lista" | "Bastidor"
+/**
+ * Moldes de conteúdo — o vocabulário da classificação dos posts e dos
+ * templates do Estúdio. A lista é a FONTE: três telas repetiam o array à
+ * mão, então acrescentar um molde acertava o tipo e deixava os filtros
+ * para trás, em silêncio.
+ */
+export const MOLDE_KEYS = ["Turbo", "MEC", "Benchmark", "Lista", "Bastidor", "Post"] as const
+
+export type MoldeKey = (typeof MOLDE_KEYS)[number]
 
 export interface Perfil {
   /** id do canal (`crm_channels.id`). */
@@ -233,7 +241,7 @@ export type Campo = "titulo" | "subtitulo" | "corpo" | "botao" | "gancho" | "ano
  * molde decide a sequência dos slides; a família decide como eles são
  * desenhados. Ausente = "padrao" (a identidade azul da casa).
  */
-export type FamiliaVisual = "padrao" | "editorial" | "alternado"
+export type FamiliaVisual = "padrao" | "editorial" | "alternado" | "post"
 
 export type EtapaFunil = "topo" | "meio" | "fundo"
 
@@ -252,6 +260,14 @@ export interface Template {
   nome: string
   etapaFunil: EtapaFunil
   descricao: string
+  /**
+   * Identidade visual que este molde PRESSUPÕE. O molde e a família são
+   * independentes por desenho, mas há sequência que só faz sentido numa
+   * identidade — o "Print de post" montado na paleta azul da casa vira
+   * outra coisa. A escolha continua do usuário: o diálogo troca o seletor
+   * e ele pode mudar depois.
+   */
+  familia?: FamiliaVisual
   cor: string
   frames: TemplateFrame[]
 }

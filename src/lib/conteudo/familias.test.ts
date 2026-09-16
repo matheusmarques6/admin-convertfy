@@ -75,6 +75,10 @@ describe("família visual", () => {
   it("sem alternância, o fundo vem do TIPO: capa, prova e CTA no gradiente", () => {
     for (const key of Object.keys(FAMILIAS) as FamiliaVisual[]) {
       if (FAMILIAS[key].traco.alternaFundo) continue
+      // O print de tweet é a exceção declarada: lá TODO slide tem o mesmo
+      // preto, e um gradiente na capa denuncia que a peça não é uma
+      // captura de tela (coberto em `formato-post.test.ts`).
+      if (FAMILIAS[key].traco.cartaoPerfil) continue
       expect(fundoPadraoDaFamilia(key, "capa", 0)).toBe("gradiente")
       expect(fundoPadraoDaFamilia(key, "prova", 4)).toBe("gradiente")
       expect(fundoPadraoDaFamilia(key, "cta", 6)).toBe("gradiente")

@@ -19,6 +19,7 @@
 import type { CSSProperties, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react"
 import { SLIDE, clarear, fundoEscuro, gradienteCss, hex6 } from "@/lib/conteudo/brand"
 import { familiaDe, tracoDe } from "@/lib/conteudo/familias"
+import { POST_CORES, SUBIDA_OPTICA, medidasPost, posePost } from "@/lib/conteudo/formato-post"
 import { fitFactor, limiteDe } from "@/lib/conteudo/limites"
 import { partesDestacadas, textoLimpo } from "@/lib/conteudo/rich"
 import type { Campo, DocFrame, Documento, EstiloTexto, FrameTipo } from "@/lib/conteudo/types"
@@ -64,6 +65,20 @@ const IconCheck = ({ s }: { s: number }) => (
     <polyline points="20 6 9 17 4 12" />
   </svg>
 )
+/**
+ * Selo verificado da rede: a borda em lóbulos, não um círculo liso — é a
+ * forma que o olho reconhece como "conta verificada", e um círculo com um
+ * check dentro lê como ícone genérico.
+ */
+const IconSelo = ({ s, cor }: { s: number; cor: string }) => (
+  <svg width={s} height={s} viewBox="0 0 24 24" style={{ display: "block" }}>
+    <path
+      fill={cor}
+      d="M22.25 12c0-1.43-.88-2.67-2.19-3.34.46-1.39.2-2.9-.81-3.91s-2.52-1.27-3.91-.81C14.67 2.63 13.43 1.75 12 1.75s-2.67.88-3.34 2.19c-1.39-.46-2.9-.2-3.91.81s-1.27 2.52-.81 3.91C2.63 9.33 1.75 10.57 1.75 12s.88 2.67 2.19 3.34c-.46 1.39-.2 2.9.81 3.91s2.52 1.27 3.91.81c.67 1.31 1.91 2.19 3.34 2.19s2.67-.88 3.34-2.19c1.39.46 2.9.2 3.91-.81s1.27-2.52.81-3.91c1.31-.67 2.19-1.91 2.19-3.34z"
+    />
+    <path fill="#FFFFFF" d="M10.54 16.2 6.8 12.46l1.41-1.42 2.26 2.26 4.8-5.23 1.47 1.36-6.2 6.77z" />
+  </svg>
+)
 const IconInbox = ({ s }: { s: number }) => (
   <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
@@ -107,7 +122,7 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
   const T = (campo: Campo, base: BaseTexto) => {
     const e = est(campo)
     const texto = f.textos[campo] ?? ""
-    const sz = base.fontSize * ((e.escala ?? 100) / 100) * fitFactor(textoLimpo(texto).length, limiteDe(f.tipo, campo))
+    const sz = base.fontSize * ((e.escala ?? 100) / 100) * fitFactor(textoLimpo(texto).length, limiteDe(f.tipo, campo, tr.cartaoPerfil))
     const cor = e.cor && doc.cores[e.cor] ? doc.cores[e.cor] : base.color
     const on = isSel(campo) && Boolean(interactive)
     const editing = on && Boolean(sel?.editing)
@@ -330,6 +345,56 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
       </div>
     )
 
+  /**
+   * Cabeçalho do print de tweet: avatar redondo, nome em 700 com o selo ao
+   * lado e o `@handle` LOGO ABAIXO, no mesmo corpo do nome — é o que a
+   * referência faz, e um handle menor vira legenda.
+   *
+   * O nome, o handle, a foto e o selo saem do brand kit (o perfil do canal
+   * conectado), então trocar de perfil reescreve os quatro slides sem
+   * ninguém digitar nada.
+   */
+  const cartaoPerfil = (m: ReturnType<typeof medidasPost>) => (
+    <div style={{ display: "flex", alignItems: "center", gap: S(m.gapAvatar) }}>
+      {!oc.avatar &&
+        (bk.avatar ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={bk.avatar} alt="" crossOrigin="anonymous" style={{ width: S(m.avatar), height: S(m.avatar), borderRadius: "50%", objectFit: "cover", flexShrink: 0, display: "block" }} />
+        ) : (
+          <span
+            style={{
+              width: S(m.avatar),
+              height: S(m.avatar),
+              borderRadius: "50%",
+              background: "#2A2A2A",
+              color: POST_CORES.handle,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: S(m.avatar * 0.42),
+              fontWeight: 700,
+              flexShrink: 0,
+            }}
+          >
+            {(bk.brandName2 || bk.brandName || "?").replace("@", "").charAt(0).toUpperCase()}
+          </span>
+        ))}
+      <span style={{ minWidth: 0, lineHeight: 1.18 }}>
+        {!oc.brandName2 && (
+          <span style={{ display: "flex", alignItems: "center", gap: S(m.nome * 0.26) }}>
+            <span style={{ fontSize: S(m.nome), fontWeight: 700, color: POST_CORES.texto, whiteSpace: "nowrap" }}>{bk.brandName2}</span>
+            {bk.verificado && !oc.verificado && (
+              <span style={{ display: "inline-flex", flexShrink: 0 }}>
+                <IconSelo s={S(m.selo)} cor={POST_CORES.selo} />
+              </span>
+            )}
+          </span>
+        )}
+        {!oc.brandName && <span style={{ display: "block", fontSize: S(m.nome), fontWeight: 400, color: POST_CORES.handle, whiteSpace: "nowrap" }}>{bk.brandName}</span>}
+      </span>
+    </div>
+  )
+
   const imgSlot = (style: CSSProperties, overlay?: string): ReactNode =>
     img ? (
       <div
@@ -462,6 +527,62 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
   let body: ReactNode
   if (slideInteiro) {
     body = imgSlot({ inset: 0 })
+  } else if (tr.cartaoPerfil) {
+    // Print de tweet: UM desenho para todo tipo de frame. A pose vem da
+    // imagem (com print abre no topo, só texto fica no centro óptico), e as
+    // medidas são as da referência, convertidas em `formato-post.ts`.
+    const comImagem = Boolean(img) || f.slotsImagem > 0
+    const pose = posePost(comImagem, f.variante)
+    const m = medidasPost(pose, f.tipo)
+    const temTitulo = (f.textos.titulo ?? "").trim().length > 0
+    body = (
+      <div
+        style={{
+          position: "absolute",
+          left: S(m.margem),
+          right: S(m.margem),
+          ...(pose === "topo"
+            ? { top: S(off + m.topo), bottom: S(off + m.topo) }
+            : { top: "50%", transform: `translateY(calc(-50% - ${S(H * SUBIDA_OPTICA)}px))` }),
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        {cartaoPerfil(m)}
+        <div style={{ marginTop: S(m.gapCabecalho) }}>
+          {temTitulo && T("titulo", { fontFamily: tr.fonteTitulo, fontWeight: 700, fontSize: m.texto, color: POST_CORES.texto, lineHeight: m.entrelinha, letterSpacing: "0" })}
+          {T("corpo", { fontFamily: tr.fonteCorpo, fontWeight: 400, fontSize: m.texto, color: POST_CORES.texto, lineHeight: m.entrelinha, marginTop: temTitulo ? S(m.gapTitulo) : 0 })}
+        </div>
+        {comImagem && (
+          // A imagem tem margem lateral PRÓPRIA, maior que a do texto — é
+          // assim na referência, e é o recuo que faz o print parecer um
+          // anexo do post em vez de o fundo do slide.
+          <div style={{ flex: 1, position: "relative", minHeight: S(300), marginTop: S(m.gapImagem), marginLeft: S(m.margemImagem - m.margem), marginRight: S(m.margemImagem - m.margem) }}>
+            {imgSlot({ inset: 0, borderRadius: S(tr.raio) })}
+          </div>
+        )}
+        {f.tipo === "cta" && doc.cta.mostrar && (f.textos.botao || doc.cta.texto) && (
+          <div style={{ marginTop: S(m.gapCabecalho) }}>
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: S(14),
+                background: doc.cta.fundo,
+                color: doc.cta.cor,
+                borderRadius: 999,
+                padding: `${S(m.texto * 0.5)}px ${S(m.texto * 1.15)}px`,
+                fontSize: S(m.texto * 0.78),
+                fontWeight: 600,
+              }}
+            >
+              <IconInbox s={S(m.texto * 0.7)} />
+              {f.textos.botao || doc.cta.texto}
+            </span>
+          </div>
+        )}
+      </div>
+    )
   } else if (f.tipo === "capa") {
     body = (
       <>
@@ -637,7 +758,9 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
     <div id={domId} data-frame={f.frameId} style={{ width: S(W), height: S(H), background: bg, position: "relative", overflow: "hidden", flexShrink: 0, fontFamily: tr.fonteMeta }}>
       {body}
       {!slideInteiro && filete}
-      {!slideInteiro && brandRow}
+      {/* O print de tweet não tem rodapé de marca nem contador: a peça imita
+          uma captura de tela, e o enfeite da casa denuncia que não é uma. */}
+      {!slideInteiro && !tr.cartaoPerfil && brandRow}
       {zonas && (
         <>
           <div style={{ position: "absolute", left: 0, right: 0, top: 0, height: S(off + 150), background: `repeating-linear-gradient(135deg, ${SLIDE.zona} 0 8px, transparent 8px 16px)`, borderBottom: `2px dashed ${SLIDE.zonaLinha}`, pointerEvents: "none" }}>
@@ -648,7 +771,7 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
           </div>
         </>
       )}
-      {tr.barraProgresso ? (
+      {tr.cartaoPerfil ? null : tr.barraProgresso ? (
         !slideInteiro && progresso
       ) : (
         <span style={{ position: "absolute", bottom: S(off + 52), right: S(80), fontSize: S(22), color: numeroClaro ? "rgba(255,255,255,0.65)" : meta, fontFamily: tr.fonteMeta, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>

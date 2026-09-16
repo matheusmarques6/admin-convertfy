@@ -7243,6 +7243,62 @@ informa quantos ficaram fora), mas o painel só passa a responder depois
 que alguém classificar — e `PATCH /api/conteudo/posts` já classifica a
 seleção da tabela em lote, com os filtros "Sem pilar"/"Sem molde".
 
+## Estúdio — família "Post": o print de tweet, medido do print (16/09)
+
+Pedido: templates **idênticos** à referência (quatro prints de tweet), com
+fonte, dimensão, espaçamento e corpo copiados, e editáveis. Virou a
+família visual `post` + o molde `molde-post`; medidas, tabela de/para e
+limites declarados em `docs/conteudo/formatos/post-print-de-tweet.md`.
+
+**A régua é a conversão, não o olho**: a referência tem 1170 px de
+largura e o canvas tem 1080, então toda medida de `formato-post.ts` é
+`doPrint(medida) = medida × 0,923`, gravada já convertida — quem mexer
+compara com a coluna do print na tabela do módulo, sem refazer a conta.
+
+**O formato é um LAYOUT, não uma paleta**, e por isso entrou como flag no
+traço (`TracoFamilia.cartaoPerfil`) em vez de tipo de frame novo: ligada,
+o renderer desenha o MESMO cartão para todo tipo (avatar + nome com selo
++ `@handle` + texto) e **suprime rodapé de marca, contador e filete** — a
+peça imita uma captura de tela, e enfeite da casa denuncia que não é uma.
+Nome, handle, foto e selo saem do **brand kit** (o canal Instagram
+conectado): trocar de perfil reescreve os quatro slides sem digitar nada.
+
+**Três poses, e a pose vem da IMAGEM** (`posePost`): gancho (a capa, com
+a frase 22% maior e o dobro de respiro — é o slide que para o dedo),
+com print (cabeçalho maior no topo, captura até quase a borda) e só texto
+(centro ÓPTICO, 3% acima do geométrico; centralizar no meio exato deixa o
+bloco afundado, e é onde os três slides de texto da referência estão).
+
+**Limite próprio** (`LIMITES_POST`): o texto ocupa a peça inteira e o
+slide de "por que funciona" tem 232 caracteres. Com o limite do TIPO
+(`corpo: 180`) o auto-fit encolheria a fonte e a peça deixaria de ser
+idêntica **sem nada avisar** — daí `limiteDe(tipo, campo, cartaoPerfil)`,
+com teste fixando `fitFactor(232, …) === 1`, e o aviso de "corpo longo"
+do editor lendo a mesma régua.
+
+**Poppins 400/600/700** entrou self-hosted (OFL) no CSS **e** na lista da
+exportação — sem os dois o PNG sai com a sans do sistema e a peça
+exportada não é a que está na tela. É uma aproximação declarada: a
+referência é uma captura, não um arquivo.
+
+**Verificado renderizando** (`renderToStaticMarkup` + Chromium contra a
+referência), que é o que pegou os três defeitos invisíveis a teste: o
+**gradiente sutil** que sobrava no fundo da capa (`novoDocumento` grava
+`"gradiente"` antes de a família ser aplicada, e `aplicarFamilia` trocava
+cor por cor — agora recalcula ao entrar ou sair do cartão), o selo em
+círculo liso (a forma em lóbulos é o que o olho lê como verificado) e o
+gancho pequeno demais. Fidelidade medida: a linha longa saiu em **79,6%**
+da largura contra **79,0%** na referência, com a mesma quebra.
+
+**`Template.familia`**: o molde declara a identidade que PRESSUPÕE e o
+diálogo troca o seletor ao escolhê-lo — "Print de post" montado na paleta
+azul da casa vira outra coisa. Continua editável ao lado; o molde e a
+família seguem independentes por desenho.
+
+De passagem, `MOLDE_KEYS` virou lista ÚNICA em `types.ts`: três telas
+repetiam o array à mão, então acrescentar um molde acertava o tipo e
+deixava os filtros do dashboard para trás, em silêncio.
+
 ---
 
 *Última atualização: Setembro 2026*

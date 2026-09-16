@@ -18,11 +18,11 @@ import { useMediaQuery } from "@/hooks/use-media-query"
 import { CT_MOLDE_COR, CT_PILAR_COR } from "@/lib/conteudo/brand"
 import { PILARES } from "@/lib/conteudo/config"
 import { classificarPost, getLeadsDoPost } from "@/lib/conteudo/data"
-import type { LeadDoPost, MoldeKey, Perfil, Pilar, Post } from "@/lib/conteudo/types"
+import { MOLDE_KEYS, type LeadDoPost, type MoldeKey, type Perfil, type Pilar, type Post } from "@/lib/conteudo/types"
 import { ROUTES } from "@/lib/routes"
 import { CtAvatar, CtAvatarComCanal, CtBadge, CtFmt, CtSkel, CtThumbPost, TNUM, fmtNum, inputCls, selectCls } from "../ui"
 
-const MOLDES: MoldeKey[] = ["Turbo", "MEC", "Benchmark", "Lista", "Bastidor"]
+const MOLDES: readonly MoldeKey[] = MOLDE_KEYS
 
 const ESTAGIO_COR: Record<string, string> = {
   "Cliente fechado": "#047857",

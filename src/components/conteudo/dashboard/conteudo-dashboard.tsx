@@ -22,7 +22,7 @@ import { OpsCard, SectionTitle, Td, Th } from "@/components/dashboard/ops/primit
 import { CT_MOLDE_COR, CT_PILAR_COR } from "@/lib/conteudo/brand"
 import { PILARES } from "@/lib/conteudo/config"
 import { classificarPosts, getDashboard, sincronizarInstagram } from "@/lib/conteudo/data"
-import { PERFIL_CONSOLIDADO, type DashboardData, type Kpi, type MoldeKey, type PerfilFiltro, type Pilar, type Post } from "@/lib/conteudo/types"
+import { MOLDE_KEYS, PERFIL_CONSOLIDADO, type DashboardData, type Kpi, type MoldeKey, type PerfilFiltro, type Pilar, type Post } from "@/lib/conteudo/types"
 import { ROUTES } from "@/lib/routes"
 import { motivoDaAusencia } from "@/lib/conteudo/metricas/sinais"
 import { CtAvatar, CtAvatarComCanal, CtBadge, CtBtn, CtEmpty, CtFmt, CtSeg, CtSkel, CtThumbPost, CtTile, TNUM, fmtDec, fmtNum, inputCls, selectCls } from "../ui"
@@ -34,7 +34,7 @@ import { SeguidoresChart } from "./seguidores-chart"
 type SortKey = "alc" | "sav" | "sh" | "seg" | "com" | "leads"
 type FmtFiltro = "Todos" | "Carrossel" | "Reels" | "Imagem"
 
-const MOLDES: MoldeKey[] = ["Turbo", "MEC", "Benchmark", "Lista", "Bastidor"]
+const MOLDES: readonly MoldeKey[] = MOLDE_KEYS
 /** "" = todos; "-" = só os SEM classificação (é onde o trabalho está). */
 const SEM = "-"
 

@@ -431,6 +431,11 @@ export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, meuTemplat
                         onClick={() => {
                           setTpl(t.id)
                           setMeuTpl(null)
+                          // Molde que pressupõe uma identidade troca o
+                          // seletor: o "Print de post" montado na paleta
+                          // azul da casa vira outra coisa. Continua
+                          // editável ao lado.
+                          if (t.familia) setFamilia(t.familia)
                         }}
                       />
                     ))}

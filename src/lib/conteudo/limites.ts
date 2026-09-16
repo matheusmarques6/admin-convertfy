@@ -4,6 +4,7 @@
  * slide) e a pill de contexto avisa "título longo".
  */
 
+import { limitePost } from "./formato-post"
 import { textoLimpo } from "./rich"
 import type { Campo, DocFrame, FrameTipo, Limites } from "./types"
 
@@ -20,7 +21,16 @@ export const ST_LIMITES: Limites = {
 /** Piso do encolhimento: abaixo disso a legibilidade a 1080px já foi. */
 export const FIT_MINIMO = 0.58
 
-export function limiteDe(tipo: FrameTipo, campo: Campo): number | null {
+/**
+ * Limite do campo naquele frame.
+ *
+ * `cartaoPerfil` é a família Post (o print de tweet): ali o texto ocupa a
+ * peça inteira, sem título gigante concorrendo, e o limite do TIPO faria o
+ * auto-fit encolher a fonte de um texto que cabe — a peça deixaria de ser
+ * idêntica à referência sem nada avisar.
+ */
+export function limiteDe(tipo: FrameTipo, campo: Campo, cartaoPerfil = false): number | null {
+  if (cartaoPerfil) return limitePost(campo)
   const lim = ST_LIMITES[tipo]?.[campo]
   return typeof lim === "number" ? lim : null
 }
@@ -35,9 +45,9 @@ export function fitFactor(comprimento: number, limite: number | null): number {
 }
 
 /** Campos do frame cujo texto passou do limite (para o aviso da pill). */
-export function camposExcedidos(frame: DocFrame): Campo[] {
+export function camposExcedidos(frame: DocFrame, cartaoPerfil = false): Campo[] {
   return frame.campos.filter((c) => {
-    const lim = limiteDe(frame.tipo, c)
+    const lim = limiteDe(frame.tipo, c, cartaoPerfil)
     // Conta o texto SEM os marcadores de destaque: `**` não ocupa pixel.
     return lim != null && textoLimpo(frame.textos[c] ?? "").length > lim
   })

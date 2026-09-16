@@ -10,6 +10,7 @@ import { porAlcance, segundosDeWatchTime, sinaisDoPeriodo } from "@/lib/conteudo
 import type { FollowerSnapshot } from "@/lib/services/instagram-followers"
 import { MIX_ALVO } from "../config"
 import { ST_TEMPLATES, moldeKeyDoTemplate } from "../templates"
+import { MOLDE_KEYS } from "../types"
 import type {
   Agendado,
   Cadencia,
@@ -170,7 +171,7 @@ export function formatoDaMidia(media_type: string | null, product_type: string |
 }
 
 const PILARES: Pilar[] = ["Case", "Educacional", "Bastidor", "Benchmark"]
-const MOLDES: MoldeKey[] = ["Turbo", "MEC", "Benchmark", "Lista", "Bastidor"]
+const MOLDES: readonly MoldeKey[] = MOLDE_KEYS
 
 export function pilarValido(v: string | null): Pilar | null {
   return PILARES.includes(v as Pilar) ? (v as Pilar) : null
