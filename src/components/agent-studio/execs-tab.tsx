@@ -782,6 +782,7 @@ export function NodeRunPanel({
             onRascunho={onRascunho}
             disparando={rerunning}
             onDispararSoEste={() => onSoEsteNo?.(nodeKey)}
+            custoUsd={run.usd}
           />
         </div>
       )}

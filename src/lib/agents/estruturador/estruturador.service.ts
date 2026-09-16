@@ -219,6 +219,14 @@ export interface RunEstruturadorInput {
    * auditoria confere contra `requisitos.cupom`. Null = não conferir.
    */
   incentivo?: DecisaoDeIncentivo | null
+  /**
+   * Pinado numa execução manual: reusa a decisão vigente em vez de chamar o
+   * modelo. Desce inteiro para `decidirPelaJanela`, que já sabe reusar — o
+   * caminho de gravação da run (`skipped`, `model: "reuso"`) é o MESMO da
+   * janela apertada, de propósito: duas formas de registrar o mesmo reuso
+   * divergiriam na primeira mudança.
+   */
+  pinado?: boolean
 }
 
 export interface RunEstruturadorResult {
@@ -690,6 +698,7 @@ export async function runEstruturador(
     restanteMs: restanteDoOrcamento(),
     reservaMs: RESERVA_POS_ESTRUTURADOR_MS,
     temVigente: vigente != null,
+    pinado: input.pinado === true,
   })
   if (janela.acao === "reusar" && vigente) {
     const motivo = `decisão de ${new Date(vigente.quando).toISOString()} reusada: ${janela.motivo}`

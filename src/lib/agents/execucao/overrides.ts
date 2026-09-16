@@ -192,6 +192,40 @@ export interface Recusa {
 const ordem = (node: string): number =>
   (MAIN_ORDER as readonly string[]).indexOf(node)
 
+/**
+ * Os nós onde a execução SABE parar — e é uma lista, não uma dedução.
+ *
+ * `deveParar` é consultado em dois lugares: `generate.service` (fase 1) e
+ * `phase2-runner` (cadeia de formatação). Todo nó fora destes dois roda até
+ * o fim, e até 16/09 pedir `stop_after` neles passava na validação e não
+ * fazia nada — sem erro e sem aviso, que é o modo de falha que esta lista
+ * fecha. `SYNC com os call sites`: um teste lê os dois arquivos e compara.
+ *
+ * Quem fica de fora, e por quê:
+ *   • `seletor` — roda no pré-passo (`ensureObjectionTargets`), antes e
+ *     fora do `generate.service`; parar ali é parar antes de começar.
+ *   • `copy_dispatch` / `copy` — a copy é assíncrona (POST ao n8n +
+ *     callback). "Parar depois da copy" é não rodar a fase 2, que é o que
+ *     `stop_after` num nó da fase 2 já faz, com o ponto declarado.
+ *   • `image`, `copy_merge`, `background_fit`, `lint_envio`, `qa`,
+ *     `qavision` — dentro da fase 2, mas sem ponto de parada escrito.
+ *     Acrescentar é uma linha em `phase2-runner` mais uma entrada aqui.
+ */
+export const NOS_QUE_PARAM: readonly string[] = [
+  // fase 1 — generate.service
+  "estruturador",
+  "assembler_chooser",
+  "assembler",
+  "blueprint",
+  "subject",
+  // fase 2 — phase2-runner
+  "hero_section",
+  "text_format",
+  "image_format",
+  "typography",
+  "color_format",
+]
+
 /** O nó existe no grafo do pipeline? */
 export function nodeExiste(node: string): boolean {
   return node in STUDIO_NODE_BY_KEY
@@ -238,6 +272,14 @@ export function validarOverrides(ov: ExecutionOverrides): Recusa[] {
       out.push({
         node: ov.stop_after,
         motivo: "não é um nó que possa encerrar a execução",
+      })
+    } else if (!NOS_QUE_PARAM.includes(ov.stop_after)) {
+      // Recusar é melhor que esconder o botão: a tela já renderiza a recusa
+      // com o motivo, e assim quem pedir por `curl` recebe a mesma resposta.
+      out.push({
+        node: ov.stop_after,
+        motivo:
+          "este nó não tem ponto de parada — a execução seguiria até o fim como se nada tivesse sido pedido. Escolha o nó seguinte que pare",
       })
     } else if (disabled.has(ov.stop_after) && !pinned[ov.stop_after]) {
       // Parar depois de um nó que não vai rodar é pedir para parar num
@@ -336,6 +378,19 @@ export function deveParar(
  * cadeia de formatação recomeçaria da hero e reescreveria o HTML que se
  * quer preservar.
  */
+/**
+ * "Rodar só este nó" funciona neste nó?
+ *
+ * O atalho monta `stop_after`, e `stop_after` só vale onde há ponto de
+ * parada escrito. Sem esta régua a tela oferece o botão em todo nó e o
+ * clique gera override que o servidor recusa — botão que existe para
+ * falhar. A tela lê daqui, e não de uma segunda lista no `.tsx`: duas
+ * listas divergem na primeira vez que um ponto de parada é acrescentado.
+ */
+export function podeRodarSoEsteNo(node: string): boolean {
+  return NOS_QUE_PARAM.includes(node)
+}
+
 export function overridesSoEsteNo(node: string): ExecutionOverrides {
   const i = ordem(node)
   const pinned: Record<string, PinRef> = {}

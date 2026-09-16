@@ -208,10 +208,34 @@ async function verificarPins(
   }
   const out: Recusa[] = []
 
+  const precisaDecisao = pinned.includes("estruturador")
   const precisaReferencia =
     pinned.includes("assembler_chooser") || pinned.includes("assembler")
   const precisaBlueprint = pinned.includes("blueprint")
   const precisaCopy = pinned.includes("copy") || pinned.includes("copy_dispatch")
+
+  // O artefato do Estruturador não é uma tabela própria: é o
+  // `parsed_output` da última run bem-sucedida dele neste e-mail, que é o
+  // que `loadDecisaoVigenteDesteEmail` lê para reusar. Sem ela o pin não
+  // vira reuso — cai em "rodar", e o operador que pediu "não execute" paga
+  // a chamada sem entender por quê.
+  if (precisaDecisao) {
+    const { data } = await admin
+      .from("email_generation_runs")
+      .select("id")
+      .eq("agent", "estruturador")
+      .eq("email_id", emailId)
+      .eq("status", "success")
+      .limit(1)
+      .maybeSingle()
+    if (!data) {
+      out.push({
+        node: "estruturador",
+        motivo:
+          "não existe decisão gravada do Estruturador para este e-mail — não há o que reusar. Rode a fase 1 uma vez antes de pinar",
+      })
+    }
+  }
 
   if (precisaReferencia) {
     const { data } = await admin

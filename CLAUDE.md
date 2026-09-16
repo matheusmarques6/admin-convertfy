@@ -7488,6 +7488,58 @@ LER a saída do módulo, não por teste:
 ao lado já mostrava a identidade escolhida e o `criar` não chamava
 `comFamilia` — o mesmo defeito da prateleira de templates, no outro botão.
 
+## "Rodar só este nó" deixou de ser botão inerte (16/09)
+
+Dois defeitos na execução manual, nenhum dos dois dando erro.
+
+**`stop_after` era declarado, validado, gravado — e nunca consultado na fase
+1.** `deveParar` tinha UM call site em todo o repositório
+(`phase2-runner`). Pedir `stop_after: "assembler_chooser"` criava a
+execução, passava em `validarOverrides` e a fase 1 seguia até Montador →
+Blueprint → Subject e, em `full_pipeline`, disparava a copy ao n8n. O
+operador clicava e nada acontecia. Agora são cinco pontos em
+`generate.service` (estruturador, assembler_chooser, assembler, blueprint,
+subject), todos pelo helper `pararAqui`, que pausa a execução
+(`stopped_at_node`) e devolve `pausada: true`;
+`test-generation.service` propaga como `status: "paused"` e **bloqueia os
+dois caminhos de gasto** — o dispatch de copy (com `rollbackClaim()` antes)
+e o `triggerPhase2`. Parar sem bloquear os dois deixaria a bancada custando
+a peça inteira.
+
+**A lista é verificada, não afirmada**: `NOS_QUE_PARAM` declara quem tem
+ponto de parada e um teste lê os dois arquivos e compara com os call sites
+reais — mais um que garante que `deveParar` só é consultado de dentro do
+`pararAqui`, senão a lista voltaria a ser comentário (o modo de falha que
+ela fecha). `validarOverrides` RECUSA `stop_after` em nó real sem ponto de
+parada: recusar é melhor que esconder o botão, porque quem pedir por `curl`
+recebe a mesma resposta. A tela lê a MESMA régua (`podeRodarSoEsteNo`) e
+mostra **o que o nó custou nesta execução** — medido, não estimado: custo
+por nó varia com a loja e com a biblioteca, e uma tabela fixa envelheceria
+em silêncio.
+
+**O pin do Estruturador prometia uma coisa e entregava outra.** `gateFor`
+devolve `disabled: true` também para o pinado, e o `generate.service` lia só
+`.disabled` — pinar, que declara "a decisão gravada vale", caía no ramo de
+desativado e a estrutura vinha do OUTLINE. `pinado` agora é separado de
+`desligado` e desce até `decidirPelaJanela`, que já sabia reusar a decisão
+vigente quando a janela aperta — o pin usa o MESMO caminho e a run já é
+gravada como reuso. Pedido de quem está na tela vence a conta de tempo,
+inclusive sem janela aberta (a bancada roda fora do cron), e
+`verificarPins` exige decisão vigente: pin sem artefato é tão fatal quanto
+desativar sem pin.
+
+**Para que serve**: `overridesSoEsteNo("assembler_chooser")` custa o Curador
+sozinho (~US$ 1,6) em vez dos US$ 3,89–5,16 de uma geração, repetível no
+mesmo e-mail, sem imagem, sem copy, sem n8n e sem fase 2.
+
+**Fora de `NOS_QUE_PARAM`, com o motivo**: `seletor` roda no pré-passo, fora
+do `generate.service`; `copy_dispatch`/`copy` são assíncronos via n8n
+("parar depois da copy" é não rodar a fase 2, que `stop_after` num nó da
+fase 2 já faz); `image`, `copy_merge`, `background_fit`, `lint_envio`, `qa`
+e `qavision` estão na fase 2 sem ponto de parada escrito — acrescentar é uma
+linha em cada arquivo.
+
+
 ---
 
 *Última atualização: Setembro 2026*

@@ -1721,3 +1721,71 @@ dinheiro esta semana.
 — as mesmas seis queries que produziram os números acima, com o retrato de
 16/09 no cabeçalho. Trocar o modelo de um agente da fase 1 obriga a rodá-las
 de novo.
+
+---
+
+## Executado — Fase 1a · A bancada (16/09)
+
+Dois defeitos, e nenhum deles dava erro. Depois deles, "Rodar só este nó"
+passa a custar **o Curador sozinho (~US$ 1,6)** em vez dos US$ 3,89–5,16 de
+uma geração inteira, repetível no mesmo e-mail, sem imagem, sem copy, sem
+n8n e sem fase 2 — é o instrumento com que o leque vai ser medido, e ele
+fica para a próxima vez que alguém mexer num prompt da fase 1.
+
+**1. `stop_after` era declarado, validado, gravado — e nunca consultado na
+fase 1.** `deveParar` tinha **um** call site em todo o repositório
+(`phase2-runner.service.ts`). Pedir `stop_after: "assembler_chooser"` criava
+a execução, passava em `validarOverrides` e a fase 1 seguia até Montador →
+Blueprint → Subject e, em `full_pipeline`, disparava a copy ao n8n. O botão
+existia, o operador clicava, e nada acontecia.
+
+Agora `generate.service` tem cinco pontos de parada (`estruturador`,
+`assembler_chooser`, `assembler`, `blueprint`, `subject`), todos por um
+helper `pararAqui` que pausa a execução (`stopped_at_node`) e devolve
+`pausada: true`. `test-generation.service` propaga isso como
+`status: "paused"` e **bloqueia os dois caminhos de gasto**: o dispatch de
+copy ao n8n (com `rollbackClaim()` antes) e o `triggerPhase2`. Parar sem
+bloquear os dois deixaria a bancada custando a peça inteira, que é o oposto
+do que ela existe para fazer.
+
+**A lista é verificada, não afirmada.** `NOS_QUE_PARAM` declara quem tem
+ponto de parada, e um teste lê `generate.service.ts` e
+`phase2-runner.service.ts` e compara com os call sites reais — mais um que
+garante que `deveParar` só é consultado de dentro do `pararAqui`, senão a
+lista voltaria a ser comentário. `validarOverrides` passou a RECUSAR
+`stop_after` em nó real sem ponto de parada: recusar é melhor que esconder
+o botão, porque quem pedir por `curl` recebe a mesma resposta.
+
+**A tela e o servidor leem a MESMA régua.** `podeRodarSoEsteNo` desabilita
+"Parar aqui" e "Rodar só este" onde não funciona, com o motivo no título, e
+dois testes travam os dois lados: todo nó que a tela oferece passa na
+validação, e todo nó que ela bloqueia seria recusado — o segundo é a prova
+de que esconder o botão não é capricho de UI. Uma lista só, porque duas
+divergem na primeira vez que um ponto de parada é acrescentado.
+
+O botão mostra **o que o nó custou nesta execução** (`run.usd`), medido e
+não estimado: custo por nó varia com a loja e com o tamanho da biblioteca,
+e uma tabela fixa na tela envelheceria em silêncio.
+
+**2. O pin do Estruturador prometia uma coisa e entregava outra.** Pin é
+"não execute; a saída gravada vale", mas `gateFor` devolve `disabled: true`
+**também** para o pinado, e o `generate.service` lia só `.disabled` — a
+estrutura caía no OUTLINE em vez da decisão gravada. A bancada mediria o
+Curador sobre uma entrada que a produção nunca usa.
+
+Agora `pinado` é separado de `desligado` e desce até `decidirPelaJanela`
+(`reuso-da-decisao.ts`), que já sabia reusar a decisão vigente quando a
+janela aperta: o pin usa o MESMO caminho, que já grava a run como reuso.
+Pedido explícito de quem está na tela vence a conta de tempo, inclusive sem
+janela aberta — a bancada roda fora do cron. E `verificarPins` passou a
+exigir decisão vigente para pinar o Estruturador: **pin sem artefato é tão
+fatal quanto desativar sem pin**, e a régua já existia para reference,
+blueprint e HTML.
+
+**Quem ficou de fora de `NOS_QUE_PARAM`, e por quê**: `seletor` (roda no
+pré-passo, fora do `generate.service` — parar ali é parar antes de
+começar), `copy_dispatch`/`copy` (assíncronos via n8n; "parar depois da
+copy" é não rodar a fase 2, que `stop_after` num nó da fase 2 já faz) e
+`image`, `copy_merge`, `background_fit`, `lint_envio`, `qa`, `qavision`
+(dentro da fase 2, sem ponto de parada escrito — acrescentar é uma linha
+em cada arquivo).

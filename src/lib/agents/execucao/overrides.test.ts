@@ -8,15 +8,19 @@
  */
 
 import { describe, it, expect } from "vitest"
+import { readFileSync } from "node:fs"
+
 import { MAIN_ORDER } from "@/lib/agents/studio-graph"
 import {
   DEGRADACAO,
   ESTAGIO_ANTES,
   NOS_COM_OVERRIDE,
+  NOS_QUE_PARAM,
   deveParar,
   gateFor,
   nodeExiste,
   overridesSoEsteNo,
+  podeRodarSoEsteNo,
   resumirOverrides,
   validarOverrides,
   type ExecutionOverrides,
@@ -181,12 +185,25 @@ describe("overridesSoEsteNo — o atalho do 'Execute step'", () => {
     expect(ov.stop_after).toBe("blueprint")
   })
 
-  it("o atalho NUNCA produz override que o servidor recusa", () => {
+  it("o atalho NUNCA produz override que o servidor recusa — onde é oferecido", () => {
     // A invariante que importa: o botão da tela monta os overrides, e se o
     // atalho pudesse gerar algo reprovado pela régua, o clique daria 422 —
-    // um botão que existe para falhar.
-    for (const node of NOS_COM_OVERRIDE) {
+    // um botão que existe para falhar. Ele vale para onde o botão APARECE,
+    // e quem decide isso é `podeRodarSoEsteNo`, não a lista inteira de nós
+    // override-áveis: `stop_after` num nó sem ponto de parada é recusado.
+    for (const node of NOS_COM_OVERRIDE.filter(podeRodarSoEsteNo)) {
       expect(validarOverrides(overridesSoEsteNo(node)), node).toEqual([])
+    }
+  })
+
+  it("onde o atalho não é oferecido, ele seria recusado — por isso não é", () => {
+    // O outro lado da mesma invariante: sem a régua da tela, estes nós
+    // dariam um clique que falha. É a prova de que esconder o botão não é
+    // capricho de UI.
+    const fora = NOS_COM_OVERRIDE.filter((n) => !podeRodarSoEsteNo(n))
+    expect(fora.length, "se nenhum nó ficou de fora, a régua virou ruído").toBeGreaterThan(0)
+    for (const node of fora) {
+      expect(validarOverrides(overridesSoEsteNo(node)), node).not.toEqual([])
     }
   })
 
@@ -213,5 +230,76 @@ describe("resumirOverrides", () => {
   it("execução sem override diz isso, em vez de string vazia", () => {
     expect(resumirOverrides(null)).toBe("sem overrides")
     expect(resumirOverrides({})).toBe("sem overrides")
+  })
+})
+
+describe("NOS_QUE_PARAM", () => {
+  // A lista é uma AFIRMAÇÃO sobre outros dois arquivos: "estes nós têm
+  // ponto de parada escrito". Afirmação em comentário foi exatamente o que
+  // deixou `stop_after` inerte na fase 1 por meses — `deveParar` tinha UM
+  // call site em todo o repositório e a validação aceitava qualquer nó.
+  // Este teste é a afirmação.
+  const fonteDe = (rel: string) =>
+    readFileSync(new URL(rel, import.meta.url), "utf-8")
+
+  const chamadasDe = (fonte: string): string[] =>
+    [...fonte.matchAll(/\bpararAqui\("([a-z_0-9]+)"\)/g)].map((m) => m[1])
+
+  it("é exatamente o conjunto dos call sites de `pararAqui`", () => {
+    const encontrados = new Set([
+      ...chamadasDe(fonteDe("../architect/generate.service.ts")),
+      ...chamadasDe(fonteDe("../phase2-runner.service.ts")),
+    ])
+    expect([...encontrados].sort()).toEqual([...NOS_QUE_PARAM].sort())
+  })
+
+  // O helper é o que torna a lista verificável: um `deveParar` solto, fora
+  // do `pararAqui`, seria um ponto de parada que a régua acima não enxerga
+  // — e a lista voltaria a ser comentário. O único uso legítimo por arquivo
+  // é o corpo do próprio helper.
+  it("`deveParar` só é consultado de dentro do `pararAqui`", () => {
+    for (const rel of ["../architect/generate.service.ts", "../phase2-runner.service.ts"]) {
+      const linhas = fonteDe(rel).split("\n")
+      const usos = linhas
+        .map((l, i) => ({ l, i }))
+        .filter(({ l }) => /\bdeveParar\(/.test(l) && !/^\s*[*/]/.test(l))
+      expect(usos, rel).toHaveLength(1)
+      // O corpo do helper começa na linha logo acima; qualquer outra
+      // distância é um `deveParar` fora dele.
+      const acima = linhas.slice(Math.max(0, usos[0].i - 3), usos[0].i).join("\n")
+      expect(acima, rel).toContain("const pararAqui")
+    }
+  })
+
+  // Parar num nó que o pipeline não conhece, ou num sintético, já era
+  // recusado; o que faltava era o nó REAL sem ponto de parada.
+  it("todo nó da lista aceita override", () => {
+    for (const node of NOS_QUE_PARAM) {
+      expect(nodeExiste(node), node).toBe(true)
+      expect(NOS_COM_OVERRIDE, node).toContain(node)
+    }
+  })
+
+  it("recusa `stop_after` num nó real que não para", () => {
+    // `qa` roda, é override-ável e NÃO tem ponto de parada. Antes: a
+    // execução seguia até o fim como se nada tivesse sido pedido.
+    const recusas = validarOverrides({ stop_after: "qa" })
+    expect(recusas).toHaveLength(1)
+    expect(recusas[0].node).toBe("qa")
+    expect(recusas[0].motivo).toContain("não tem ponto de parada")
+  })
+
+  it("aceita `stop_after` em quem para", () => {
+    for (const node of NOS_QUE_PARAM) {
+      expect(validarOverrides({ stop_after: node }), node).toEqual([])
+    }
+  })
+
+  // `overridesSoEsteNo` monta `stop_after` sozinho; se ele apontasse para
+  // nó sem parada, o botão da tela nasceria recusado pela própria régua.
+  it("`overridesSoEsteNo` nunca produz override que o servidor recusa", () => {
+    for (const node of NOS_QUE_PARAM) {
+      expect(validarOverrides(overridesSoEsteNo(node)), node).toEqual([])
+    }
   })
 })

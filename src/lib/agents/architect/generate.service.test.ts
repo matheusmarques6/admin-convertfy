@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 
 // Controla o source do blueprint + spies dos passos.
 const h = vi.hoisted(() => ({
+  execucao: { executionId: null as string | null, mode: "producao" as "producao" | "manual", overrides: null as unknown },
+  pausarSpy: vi.fn(),
   blueprintSource: "ai" as "ai" | "manual",
   textOnly: false,
   // Guard de reuso: existência de reference/blueprint persistidos por loja.
@@ -117,6 +119,14 @@ vi.mock("./blueprint-loader", () => ({
   isTextOnlyEmail: () => Promise.resolve(h.textOnly),
 }))
 
+// Execução manual: o contexto real lê o banco: aqui ele é o do teste.
+// `producao` é o default e devolve gate NEUTRO — é o que garante que os
+// testes acima seguem medindo o caminho de produção.
+vi.mock("../execucao/execution.service", () => ({
+  contextoDaExecucao: () => Promise.resolve(h.execucao),
+  pausarExecucao: (...a: unknown[]) => h.pausarSpy(...a),
+}))
+
 import { generateBlueprintAndReference } from "./generate.service"
 
 const input = { storeId: "store1", flowType: "welcome", emailNumber: 1, batchId: "b1" }
@@ -139,6 +149,8 @@ beforeEach(() => {
   h.blueprintSpy.mockReset()
   h.lacuna = null
   h.updateSpy.mockReset()
+  h.execucao = { executionId: null, mode: "producao", overrides: null }
+  h.pausarSpy.mockReset()
 })
 
 describe("generateBlueprintAndReference — lacuna de biblioteca (Passo 11)", () => {
@@ -314,5 +326,65 @@ describe("generateBlueprintAndReference — Estruturador ligado (02/09)", () => 
   it("modo off: não chama o Estruturador", async () => {
     await generateBlueprintAndReference(input)
     expect(h.estruturadorSpy).not.toHaveBeenCalled()
+  })
+})
+
+describe("generateBlueprintAndReference — parar no nó (stop_after)", () => {
+  // O defeito: `deveParar` era declarado, validado por `validarOverrides` e
+  // gravado pela rota manual, e tinha UM call site em todo o repositório —
+  // no `phase2-runner`. Pedir `stop_after: "assembler_chooser"` passava na
+  // validação e a fase 1 seguia até Blueprint e Subject. O botão "Rodar só
+  // este nó" existia na tela e não fazia nada, sem erro e sem aviso.
+  const manual = (stop: string) => ({
+    executionId: "exec-1",
+    mode: "manual" as const,
+    overrides: { stop_after: stop },
+  })
+
+  it("para depois do Curador: sem Blueprint, sem reconcile, execução pausada", async () => {
+    h.execucao = manual("assembler_chooser")
+    const res = await generateBlueprintAndReference(input)
+    expect(res.pausada).toBe(true)
+    expect(h.assembleSpy).toHaveBeenCalled()
+    expect(h.blueprintSpy).not.toHaveBeenCalled()
+    expect(h.reconcileSpy).not.toHaveBeenCalled()
+    expect(h.pausarSpy).toHaveBeenCalledWith("exec-1", "assembler_chooser")
+  })
+
+  // A referência gravada é o que o pin da rodada seguinte reusa — inventar
+  // "lacuna" aqui faria a fila settlar o e-mail por um motivo que não é o
+  // verdadeiro.
+  it("a parada preserva o source real da montagem", async () => {
+    h.execucao = manual("assembler_chooser")
+    const res = await generateBlueprintAndReference(input)
+    expect(res.referenceSource).toBe("llm")
+  })
+
+  it("para depois do Blueprint: o reconcile dos email_blocks não roda", async () => {
+    // Antes do reconcile de propósito: reescrever os blocos deixaria o
+    // e-mail com a estrutura nova e sem copy nenhuma.
+    h.execucao = manual("blueprint")
+    const res = await generateBlueprintAndReference(input)
+    expect(res.pausada).toBe(true)
+    expect(h.blueprintSpy).toHaveBeenCalled()
+    expect(h.reconcileSpy).not.toHaveBeenCalled()
+    expect(h.pausarSpy).toHaveBeenCalledWith("exec-1", "blueprint")
+  })
+
+  // A linha dura de `gateFor`: em produção o override é NEUTRO, sempre. Um
+  // `stop_after` gravado por engano não pode interromper geração de cliente.
+  it("em produção o stop_after é ignorado", async () => {
+    h.execucao = { executionId: "exec-1", mode: "producao", overrides: { stop_after: "assembler_chooser" } }
+    const res = await generateBlueprintAndReference(input)
+    expect(res.pausada).toBeUndefined()
+    expect(h.blueprintSpy).toHaveBeenCalled()
+    expect(h.pausarSpy).not.toHaveBeenCalled()
+  })
+
+  it("sem stop_after nada muda", async () => {
+    h.execucao = { executionId: "exec-1", mode: "manual", overrides: {} }
+    const res = await generateBlueprintAndReference(input)
+    expect(res.pausada).toBeUndefined()
+    expect(h.reconcileSpy).toHaveBeenCalled()
   })
 })

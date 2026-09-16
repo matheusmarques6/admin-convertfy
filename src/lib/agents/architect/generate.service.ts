@@ -33,8 +33,8 @@ import { reconcileEmailStructure } from "@/lib/services/reconcile-blocks.service
 import { resolveStructure, clampStructure } from "./outline-sections"
 import { generateStoreBlueprint } from "./blueprint-generator.service"
 import { runEstruturador } from "../estruturador/estruturador.service"
-import { contextoDaExecucao } from "../execucao/execution.service"
-import { gateFor } from "../execucao/overrides"
+import { contextoDaExecucao, pausarExecucao } from "../execucao/execution.service"
+import { deveParar, gateFor } from "../execucao/overrides"
 import { ALVO_AUSENTE_CURADOR, alvoParaMedicao, renderAlvo } from "../objecoes/alvo-render"
 import { loadObjectionTarget } from "../objecoes/seletor.service"
 import type { AlvoDoEmail } from "../objecoes/vocabulario"
@@ -104,7 +104,7 @@ export async function isArchitectConfigured(): Promise<boolean> {
 
 export async function generateBlueprintAndReference(
   input: GenerateArchitectInput,
-): Promise<{ referenceSource: ReferenceSource }> {
+): Promise<{ referenceSource: ReferenceSource; pausada?: boolean }> {
   const admin = createAdminClient()
 
   // Email "somente texto" (email_blueprints.text_only): NUNCA gera arquitetura
@@ -155,6 +155,38 @@ export async function generateBlueprintAndReference(
   // neutro: ligar a feature não muda o caminho de produção.
   const execucao = await contextoDaExecucao(emailId, input.batchId)
   const gate = (node: string) => gateFor(node, execucao.overrides, execucao.mode)
+
+  /**
+   * A execução para DEPOIS deste nó?
+   *
+   * `deveParar` existia, era validado por `validarOverrides` e gravado pela
+   * rota manual — e tinha UM call site em todo o repositório, no
+   * `phase2-runner`. Pedir `stop_after: "assembler_chooser"` passava na
+   * validação e a fase 1 seguia até Montador → Blueprint → Subject e, em
+   * `full_pipeline`, disparava a copy ao n8n: o botão "Rodar só este nó"
+   * existia, o operador clicava, e nada acontecia — sem erro e sem aviso.
+   *
+   * `paused`, não `success`, pela mesma razão da fase 2: execução parada de
+   * propósito não pode ser varrida como geração travada. Aqui não há
+   * estágio de HTML para o watchdog tocar — o e-mail nem saiu de `draft` —,
+   * então parar é barato: o que ficou gravado (reference, decisão) é
+   * exatamente o que o pin da próxima rodada reusa.
+   *
+   * É o que torna a bancada possível: com o Estruturador pinado, "parar
+   * depois do Curador" custa o Curador sozinho em vez de uma geração.
+   */
+  const pararAqui = async (node: string): Promise<boolean> => {
+    if (!deveParar(node, execucao.overrides, execucao.mode)) return false
+    if (execucao.executionId) await pausarExecucao(execucao.executionId, node)
+    log.info("architect.pausada_no_no", {
+      storeId: input.storeId,
+      flowType: input.flowType,
+      emailNumber: input.emailNumber,
+      emailId,
+      node,
+    })
+    return true
+  }
 
   // Fase 1 PINADA = "a referência gravada serve".
   //
@@ -492,8 +524,18 @@ export async function generateBlueprintAndReference(
   // estrutura é a do outline e a marca precisa dizer isso.
   let estruturadorStatus: EstruturadorStatus =
     estruturadorMode === "on" ? "falhou" : "desligado"
+  // Pinado NÃO é desativado, e tratar os dois como um só foi um defeito
+  // silencioso: `gateFor` devolve `disabled: true` para ambos, então pinar o
+  // Estruturador — que declara "a decisão gravada vale" — caía no ramo de
+  // baixo e a estrutura vinha do OUTLINE. A bancada ("Rodar só o Curador")
+  // mediria o Curador sobre uma entrada que a produção nunca usa.
+  //
+  // Quem reusa é `runEstruturador`, pelo MESMO caminho da janela apertada
+  // (`decidirPelaJanela`), que já grava a run como `skipped: reuso`.
+  const gateEstruturador = gate("estruturador")
+  const estruturadorPinado = gateEstruturador.pinned === true
   const estruturadorDesligado =
-    estruturadorMode === "off" || gate("estruturador").disabled
+    estruturadorMode === "off" || (gateEstruturador.disabled && !estruturadorPinado)
   let estruturadorIncoerente: string | null = null
   if (estruturadorDesligado) {
     // Run 'skipped' em vez de silêncio. O Estruturador é passo do pipeline
@@ -542,6 +584,7 @@ export async function generateBlueprintAndReference(
         // Decisão de incentivo do toque (14/09): a auditoria confere
         // `requisitos.cupom` contra ela.
         incentivo,
+        pinado: estruturadorPinado,
       })
       if (r.status === "falhou" && r.motivo === "incoerente") {
         // Auditoria dos requisitos reprovou nas duas tentativas com o gate
@@ -587,6 +630,17 @@ export async function generateBlueprintAndReference(
     // Nomeado para a fila de dispatch (que conta tentativas e cai para o
     // template global só depois de esgotá-las) e para a aba Teste.
     throw new Error(`estruturador_incoerente: ${estruturadorIncoerente}`)
+  }
+
+  // Parar depois do Estruturador. A decisão dele já está gravada na run, que
+  // é o artefato que o pin da rodada seguinte reusa — é o ponto de bancada
+  // para "mexi no prompt do Estruturador e quero ver o que ele decide", sem
+  // pagar Curador, Blueprint e Subject atrás.
+  //
+  // `"none"` porque nada foi montado: dizer "store" faria o guard de reuso
+  // da próxima geração achar que existe referência desta rodada.
+  if (await pararAqui("estruturador")) {
+    return { referenceSource: "none", pausada: true }
   }
 
   // Passo 1 — Montador: gera o HTML seguindo a estrutura decidida pelo
@@ -746,6 +800,14 @@ export async function generateBlueprintAndReference(
     return { referenceSource: "lacuna" }
   }
 
+  // Parar DEPOIS do Curador: a referência já está persistida (ou descartada
+  // com o motivo), e o Blueprint, o Subject e o dispatch de copy não
+  // acontecem. `source` sai como está — dizer "lacuna" ou inventar um
+  // desfecho aqui faria a fila settlar o e-mail por um motivo que não é o
+  // verdadeiro.
+  if (await pararAqui("assembler_chooser")) return { referenceSource: source, pausada: true }
+  if (await pararAqui("assembler")) return { referenceSource: source, pausada: true }
+
   // A INTENÇÃO humana de cada posição (Arquitetura) vem PRIMEIRO no purpose
   // do blueprint; o papel do agente (Curador do vault) entra embaixo como
   // detalhe. Sem agente, a intenção sozinha já ancora a posição — antes
@@ -845,6 +907,13 @@ export async function generateBlueprintAndReference(
     estruturadorStatus,
     decisao,
   })
+
+  // Parar depois do Blueprint. O Subject roda DENTRO de
+  // `generateStoreBlueprint`, então os dois nós param no mesmo ponto — e é
+  // aqui, antes do reconcile, porque reescrever os `email_blocks` é o que
+  // deixaria o e-mail com a estrutura nova e sem copy nenhuma.
+  if (await pararAqui("blueprint")) return { referenceSource: source, pausada: true }
+  if (await pararAqui("subject")) return { referenceSource: source, pausada: true }
 
   // Passo 3 — Propaga a estrutura recém-gerada para os `email_blocks`.
   // Só quando o Blueprint foi REALMENTE gerado pelo LLM (source='ai' →

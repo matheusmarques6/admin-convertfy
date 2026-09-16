@@ -17,7 +17,11 @@ import {
   projetarRascunho,
   rascunhoVazio,
 } from "./execucao-manual"
-import { validarOverrides } from "@/lib/agents/execucao/overrides"
+import {
+  NOS_COM_OVERRIDE,
+  podeRodarSoEsteNo,
+  validarOverrides,
+} from "@/lib/agents/execucao/overrides"
 
 describe("alternarDesativado", () => {
   it("liga, desliga e volta ao rascunho vazio", () => {
@@ -100,5 +104,28 @@ describe("projetarRascunho", () => {
   it("não muta o objeto de entrada", () => {
     projetarRascunho(runs, { disabled: ["typography"] })
     expect(runs.typography.status).toBe("sucesso")
+  })
+})
+
+describe("a régua da tela é a do servidor", () => {
+  // O painel desabilita "Parar aqui" e "Rodar só este" por
+  // `podeRodarSoEsteNo`. Se a tela e a régua do servidor divergissem, o
+  // operador teria um botão clicável que devolve 422 — ou, pior, um botão
+  // escondido num nó que funciona. Uma lista só, lida pelos dois.
+  it("todo nó que a tela deixa parar passa na validação do servidor", () => {
+    for (const node of NOS_COM_OVERRIDE.filter(podeRodarSoEsteNo)) {
+      const ov = alternarParada(RASCUNHO_VAZIO, node)
+      expect(validarOverrides(ov), node).toEqual([])
+    }
+  })
+
+  it("todo nó que a tela bloqueia seria recusado pelo servidor", () => {
+    const fora = NOS_COM_OVERRIDE.filter((n) => !podeRodarSoEsteNo(n))
+    expect(fora.length, "sem nó bloqueado, a régua da tela é ruído").toBeGreaterThan(0)
+    for (const node of fora) {
+      const recusas = validarOverrides(alternarParada(RASCUNHO_VAZIO, node))
+      expect(recusas, node).not.toEqual([])
+      expect(recusas[0].motivo, node).toContain("ponto de parada")
+    }
   })
 })
