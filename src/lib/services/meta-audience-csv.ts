@@ -21,6 +21,7 @@
  */
 
 import { CSV_BOM } from "./crm-csv"
+import { documentoDoCliente, lerPagador, resumoDoPagador } from "@/lib/clients/pagador"
 
 export interface ExportClient {
   id: string
@@ -29,6 +30,8 @@ export interface ExportClient {
   phone: string | null
   company: string | null
   cpf_cnpj?: string | null
+  /** Onde moram o documento legado e o pagador do exterior. */
+  custom_fields?: Record<string, unknown> | null
   status?: string | null
   created_at?: string | null
   address?: {
@@ -241,6 +244,9 @@ export const FULL_HEADERS = [
   "Estado",
   "Status",
   "Cadastrado em",
+  // Quem paga: vazio no caso brasileiro (é o CPF/CNPJ ao lado) e a empresa
+  // no exterior quando a cobrança é por fora do Asaas.
+  "Pagador no exterior",
 ] as const
 
 const SEP = ";"
@@ -269,6 +275,7 @@ export function buildFullClientsCsv(clients: ExportClient[]): string {
   const lines = [FULL_HEADERS.join(SEP)]
   for (const c of clients) {
     const a = c.address ?? {}
+    const pagador = lerPagador(c)
     lines.push(
       [
         c.id,
@@ -276,7 +283,9 @@ export function buildFullClientsCsv(clients: ExportClient[]): string {
         c.email ?? "",
         c.phone ?? "",
         c.company ?? "",
-        c.cpf_cnpj ?? "",
+        // O documento de metade da base mora em `custom_fields`; a coluna
+        // sozinha deixaria a planilha vazia para eles.
+        documentoDoCliente(c).valor,
         a.street ?? "",
         a.number ?? "",
         a.complement ?? "",
@@ -286,6 +295,7 @@ export function buildFullClientsCsv(clients: ExportClient[]): string {
         a.state ?? "",
         c.status ? (STATUS_LABEL[c.status] ?? c.status) : "",
         c.created_at ? new Date(c.created_at).toLocaleDateString("pt-BR") : "",
+        pagador.tipo === "exterior" ? resumoDoPagador(pagador) : "",
       ]
         .map(fullCell)
         .join(SEP),

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
-import { AlertCircle, CheckCircle2, ChevronUp, ChevronDown } from "lucide-react"
+import { AlertCircle, CheckCircle2, ChevronUp, ChevronDown, Globe } from "lucide-react"
 import { Icon } from "@/components/ui/icon"
 import { createClient } from "@/lib/supabase/client"
 import { Input } from "@/components/ui/input"
@@ -24,6 +24,13 @@ import { FormField } from "@/components/ui/form-field"
 import { SaveBar } from "@/components/ui/save-bar"
 import { toast } from "@/lib/hooks/use-toast"
 import { ROUTES } from "@/lib/routes"
+import { PayerFields, PayerTypeSelect } from "@/components/clients/payer-fields"
+import {
+  gravarPagador,
+  podeCriarNoAsaas,
+  validarPagador,
+  type EntradaDePagador,
+} from "@/lib/clients/pagador"
 
 const clientSchema = z.object({
   name: z.string().min(2, "Nome deve ter pelo menos 2 caracteres"),
@@ -31,7 +38,14 @@ const clientSchema = z.object({
   phone: z.string().optional(),
   company: z.string().optional(),
   website: z.string().url("URL inválida").optional().or(z.literal("")),
+  // A régua do documento é `validarPagador` (lib/clients/pagador): ela muda
+  // com o tipo de pagador, coisa que o schema sozinho não sabe fazer.
   cpf_cnpj: z.string().optional(),
+  payer_type: z.enum(["br", "exterior"]),
+  payer_legal_name: z.string().optional(),
+  payer_tax_id: z.string().optional(),
+  payer_country: z.string().optional(),
+  payer_address: z.string().optional(),
   asaas_customer_id: z.string().optional(),
   status: z.enum(["active", "inactive", "prospect", "onboarding", "churned"]),
   notes: z.string().optional(),
@@ -56,14 +70,29 @@ export default function NewClientPage() {
     register,
     handleSubmit,
     setValue,
+    setError: setFieldError,
     watch,
     formState: { errors },
   } = useForm<ClientForm>({
     resolver: zodResolver(clientSchema),
     defaultValues: {
       status: "prospect",
+      payer_type: "br",
     },
   })
+
+  const payerType = watch("payer_type") ?? "br"
+
+  function entradaDePagador(data: Partial<ClientForm>): EntradaDePagador {
+    return {
+      tipo: data.payer_type ?? "br",
+      cpf_cnpj: data.cpf_cnpj,
+      razao_social: data.payer_legal_name,
+      tax_id: data.payer_tax_id,
+      pais: data.payer_country,
+      endereco: data.payer_address,
+    }
+  }
 
   // Check if client has all required Asaas fields
   const hasRequiredAsaasFields = () => {
@@ -71,13 +100,35 @@ export default function NewClientPage() {
     const cpfCnpj = watch("cpf_cnpj")
     const email = watch("email")
     const phone = watch("phone")
-    return name && cpfCnpj && (email || phone)
+    return Boolean(name && cpfCnpj && (email || phone))
   }
+
+  // Pagador do exterior não vai para o Asaas — a tela diz o porquê em vez de
+  // pedir um CPF/CNPJ que ele não tem.
+  const vetoDoAsaas = payerType === "exterior" ? podeCriarNoAsaas({ tipo: "exterior", razao_social: watch("payer_legal_name") }).motivo : null
 
   async function onSubmit(data: ClientForm) {
     setIsLoading(true)
 
     try {
+      // Régua do pagador: no exterior o documento brasileiro não é exigido;
+      // no Brasil ele continua com 11/14 dígitos. Erro vai para o CAMPO.
+      const entrada = entradaDePagador(data)
+      const veredito = validarPagador(entrada)
+      if (!veredito.ok) {
+        for (const [campo, mensagem] of Object.entries(veredito.erros)) {
+          const alvo = campo === "razao_social" ? "payer_legal_name" : campo === "pais" ? "payer_country" : campo === "endereco" ? "payer_address" : campo === "tax_id" ? "payer_tax_id" : "cpf_cnpj"
+          setFieldError(alvo as keyof ClientForm, { message: mensagem })
+        }
+        toast({ variant: "destructive", title: "Dados do pagador incompletos", description: Object.values(veredito.erros)[0] })
+        setIsLoading(false)
+        return
+      }
+      if (veredito.avisos.cpf_cnpj) {
+        toast({ title: "Confira o CPF/CNPJ", description: veredito.avisos.cpf_cnpj })
+      }
+      if (data.cpf_cnpj) data.cpf_cnpj = data.cpf_cnpj.replace(/\D/g, "")
+
       const supabase = createClient()
 
       // Get current user
@@ -114,8 +165,11 @@ export default function NewClientPage() {
       // If "000" is used, skip Asaas creation (for international clients or clients outside Asaas)
       const skipAsaas = data.asaas_customer_id === "000"
 
+      // O Asaas exige CPF/CNPJ: pagador do exterior não é criado lá.
+      const asaasPermitido = podeCriarNoAsaas(entrada)
+
       // If we have all required fields and not skipping, create customer in Asaas
-      if (!skipAsaas && !asaasCustomerId && data.name && data.cpf_cnpj && (data.email || data.phone)) {
+      if (!skipAsaas && asaasPermitido.pode && !asaasCustomerId && data.name && data.cpf_cnpj && (data.email || data.phone)) {
         try {
           const asaasResponse = await fetch("/api/integrations/asaas/customers/create", {
             method: "POST",
@@ -172,11 +226,16 @@ export default function NewClientPage() {
           website: data.website || null,
           status: data.status,
           owner_id: null,
+          // Na COLUNA, que é o que o casamento de faturas do Asaas, a
+          // exportação e o sync leem. Esta tela gravava só em
+          // `custom_fields` e por isso 26 cadastros ficaram com o documento
+          // invisível para todos eles.
+          cpf_cnpj: data.cpf_cnpj || null,
           custom_fields: {
-            cpf_cnpj: data.cpf_cnpj || null,
             asaas_customer_id: asaasCustomerId,
             address: address,
             skip_asaas: skipAsaas || false,
+            pagador: gravarPagador(entrada),
           },
           tags: [],
           health_score: 100,
@@ -228,7 +287,18 @@ export default function NewClientPage() {
 
       <div className="max-w-2xl mx-auto mt-6">
         {/* Asaas Fields Warning */}
-        {!hasRequiredAsaasFields() && (
+        {vetoDoAsaas ? (
+          <Card className="border-[#C7CDEF] dark:border-[rgba(168,184,240,0.15)] mb-6">
+            <CardContent className="flex items-start gap-3 py-4">
+              <Icon icon={Globe} size={20} className="text-[#4E62D8] dark:text-[#7B8CEA] mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-[#4E62D8] dark:text-[#7B8CEA]">Cobrança fora do Asaas</p>
+                <p className="text-xs text-gray-500 dark:text-[#5C6378] mt-0.5">{vetoDoAsaas}</p>
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
+        {!vetoDoAsaas && !hasRequiredAsaasFields() && (
           <Card className="border-[#FDE68A] dark:border-[rgba(252,211,77,0.15)] mb-6">
             <CardContent className="flex items-start gap-3 py-4">
               <Icon icon={AlertCircle} size={20} className="text-[#92400E] dark:text-[#FCD34D] mt-0.5" />
@@ -242,7 +312,7 @@ export default function NewClientPage() {
           </Card>
         )}
 
-        {hasRequiredAsaasFields() && (
+        {!vetoDoAsaas && hasRequiredAsaasFields() && (
           <Card className="border-[#A7F3D0] dark:border-[rgba(110,231,183,0.15)] mb-6">
             <CardContent className="flex items-start gap-3 py-4">
               <Icon icon={CheckCircle2} size={20} className="text-[#065F46] dark:text-[#6EE7B7] mt-0.5" />
@@ -292,15 +362,20 @@ export default function NewClientPage() {
                     disabled={isLoading}
                   />
                 </FormField>
-                <FormField label="CPF/CNPJ" htmlFor="cpf_cnpj" hint="Obrigatório para criar cliente no Asaas">
-                  <Input
-                    id="cpf_cnpj"
-                    placeholder="00.000.000/0001-00"
-                    {...register("cpf_cnpj")}
-                    disabled={isLoading}
-                  />
-                </FormField>
+                <PayerTypeSelect
+                  tipo={payerType}
+                  onChangeTipo={(t) => setValue("payer_type", t)}
+                  disabled={isLoading}
+                />
               </div>
+
+              <PayerFields
+                tipo={payerType}
+                register={register}
+                errors={errors}
+                disabled={isLoading}
+                hintDocumento="Obrigatório para criar cliente no Asaas"
+              />
               <FormField label="Empresa" htmlFor="company">
                 <Input
                   id="company"

@@ -6,7 +6,7 @@ import Link from "next/link"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
-import { Loader2, AlertCircle, CheckCircle2, ChevronUp, ChevronDown, Trash2, Archive } from "lucide-react"
+import { Loader2, AlertCircle, CheckCircle2, ChevronUp, ChevronDown, Trash2, Archive, Globe } from "lucide-react"
 import { Icon } from "@/components/ui/icon"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
@@ -35,6 +35,17 @@ import { FormField } from "@/components/ui/form-field"
 import { SaveBar } from "@/components/ui/save-bar"
 import { toast } from "@/lib/hooks/use-toast"
 import { ROUTES } from "@/lib/routes"
+import { PayerFields, PayerTypeSelect } from "@/components/clients/payer-fields"
+import {
+  documentoDoCliente,
+  formatarDocumento,
+  gravarPagador,
+  lerPagador,
+  podeCriarNoAsaas,
+  podeSincronizarNoAsaas,
+  validarPagador,
+  type EntradaDePagador,
+} from "@/lib/clients/pagador"
 import { use } from "react"
 
 const clientSchema = z.object({
@@ -43,7 +54,14 @@ const clientSchema = z.object({
   phone: z.string().min(10, "Telefone deve ter pelo menos 10 caracteres").optional().or(z.literal("")),
   company: z.string().optional(),
   website: z.string().optional().or(z.literal("")),
-  cpf_cnpj: z.string().min(11, "CPF/CNPJ inválido").optional().or(z.literal("")),
+  // A régua do documento é `validarPagador` (lib/clients/pagador): ela muda
+  // com o tipo de pagador, coisa que um `min(11)` no schema não sabe fazer.
+  cpf_cnpj: z.string().optional().or(z.literal("")),
+  payer_type: z.enum(["br", "exterior"]),
+  payer_legal_name: z.string().optional(),
+  payer_tax_id: z.string().optional(),
+  payer_country: z.string().optional(),
+  payer_address: z.string().optional(),
   asaas_customer_id: z.string().optional(),
   status: z.enum(["active", "inactive", "prospect", "onboarding", "churned"]),
   notes: z.string().optional(),
@@ -96,19 +114,35 @@ export default function EditClientPage({
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [isArchiving, setIsArchiving] = useState(false)
+  const [conflitoDeDocumento, setConflitoDeDocumento] = useState<{ coluna: string; custom_fields: string } | null>(null)
 
   const {
     register,
     handleSubmit,
     setValue,
+    setError: setFieldError,
     watch,
     formState: { errors, isDirty },
   } = useForm<ClientForm>({
     resolver: zodResolver(clientSchema),
     defaultValues: {
       status: "prospect",
+      payer_type: "br",
     },
   })
+
+  const payerType = watch("payer_type") ?? "br"
+
+  function entradaDePagador(data: Partial<ClientForm>): EntradaDePagador {
+    return {
+      tipo: data.payer_type ?? "br",
+      cpf_cnpj: data.cpf_cnpj,
+      razao_social: data.payer_legal_name,
+      tax_id: data.payer_tax_id,
+      pais: data.payer_country,
+      endereco: data.payer_address,
+    }
+  }
 
   function onValidationError() {
     toast({
@@ -139,11 +173,26 @@ export default function EditClientPage({
         setValue("company", data.company || "")
         setValue("website", data.website || "")
 
-        // Read cpf_cnpj from root (preferred) or custom_fields (legacy)
+        // A coluna vence; `custom_fields` é fallback de leitura e sobe para
+        // a coluna ao salvar. Dígitos diferentes nos dois lugares viram
+        // aviso — escolher por código seria decidir quem é o cliente.
         const customFields = data.custom_fields as Record<string, unknown> || {}
-        setValue("cpf_cnpj", data.cpf_cnpj || (customFields.cpf_cnpj as string) || "")
+        const doc = documentoDoCliente(data)
+        setValue("cpf_cnpj", doc.valor)
+        setConflitoDeDocumento(doc.conflito ?? null)
         setValue("asaas_customer_id", (customFields.asaas_customer_id as string) || "")
         setValue("status", data.status || "prospect")
+
+        // Quem paga: BR (CPF/CNPJ) ou empresa no exterior. Cadastro sem
+        // `pagador` é BR — é o que todos os cadastros antigos são.
+        const pagador = lerPagador(data)
+        setValue("payer_type", pagador.tipo)
+        if (pagador.tipo === "exterior") {
+          setValue("payer_legal_name", pagador.razao_social)
+          setValue("payer_tax_id", pagador.tax_id || "")
+          setValue("payer_country", pagador.pais || "")
+          setValue("payer_address", pagador.endereco || "")
+        }
 
         // Address from custom_fields
         const addressData = (customFields.address as Record<string, string>) || null
@@ -185,20 +234,28 @@ export default function EditClientPage({
         data.phone = hasPlus ? `+${digits}` : digits
       }
 
-      // Normalize CPF/CNPJ: keep only digits, validate length
-      if (data.cpf_cnpj) {
-        const cpfCnpjDigits = data.cpf_cnpj.replace(/\D/g, "")
-        if (cpfCnpjDigits.length !== 11 && cpfCnpjDigits.length !== 14) {
-          toast({
-            variant: "destructive",
-            title: "CPF/CNPJ inválido",
-            description: "CPF deve ter 11 dígitos e CNPJ deve ter 14 dígitos.",
-          })
-          setIsLoading(false)
-          return
+      // Régua do pagador: no exterior o documento brasileiro não é exigido;
+      // no Brasil ele continua com 11/14 dígitos. O erro vai para o CAMPO,
+      // não só para um toast que some.
+      const entrada = entradaDePagador(data)
+      const veredito = validarPagador(entrada)
+      if (!veredito.ok) {
+        for (const [campo, mensagem] of Object.entries(veredito.erros)) {
+          const alvo = campo === "razao_social" ? "payer_legal_name" : campo === "pais" ? "payer_country" : campo === "endereco" ? "payer_address" : campo === "tax_id" ? "payer_tax_id" : "cpf_cnpj"
+          setFieldError(alvo as keyof ClientForm, { message: mensagem })
         }
-        data.cpf_cnpj = cpfCnpjDigits
+        toast({
+          variant: "destructive",
+          title: "Dados do pagador incompletos",
+          description: Object.values(veredito.erros)[0],
+        })
+        setIsLoading(false)
+        return
       }
+      if (veredito.avisos.cpf_cnpj) {
+        toast({ title: "Confira o CPF/CNPJ", description: veredito.avisos.cpf_cnpj })
+      }
+      if (data.cpf_cnpj) data.cpf_cnpj = data.cpf_cnpj.replace(/\D/g, "")
 
       const supabase = createClient()
 
@@ -222,8 +279,13 @@ export default function EditClientPage({
       // If "000" is used, skip Asaas creation
       const skipAsaas = data.asaas_customer_id === "000"
 
+      // O Asaas exige CPF/CNPJ: pagador do exterior não é criado nem
+      // sincronizado lá. O vínculo que já existir NÃO é apagado — cliente
+      // que migrou de BR para LLC continua ligado ao histórico de faturas.
+      const asaasPermitido = podeCriarNoAsaas(entrada)
+
       // If no Asaas ID and we have all required fields and not skipping, create customer in Asaas
-      if (!skipAsaas && !asaasCustomerId && data.name && data.cpf_cnpj && (data.email || data.phone)) {
+      if (!skipAsaas && asaasPermitido.pode && !asaasCustomerId && data.name && data.cpf_cnpj && (data.email || data.phone)) {
         try {
           const asaasResponse = await fetch("/api/integrations/asaas/customers/create", {
             method: "POST",
@@ -293,6 +355,13 @@ export default function EditClientPage({
             address: address,
             notes: data.notes || undefined,
             skip_asaas: skipAsaas || (client?.custom_fields as Record<string, unknown>)?.skip_asaas || false,
+            // O documento legado do JSONB some ao salvar: o valor que o
+            // operador acabou de ver e confirmar passa a ser o único, na
+            // coluna. É o que desfaz as duas verdades, cadastro a cadastro.
+            cpf_cnpj: undefined,
+            // `undefined` no modo BR faz a chave sumir do JSONB: quem paga
+            // pelo exterior vira uma consulta de uma linha no banco.
+            pagador: gravarPagador(entrada),
           },
           updated_at: new Date().toISOString(),
         })
@@ -308,7 +377,7 @@ export default function EditClientPage({
       // Sync to Asaas AFTER local save
       let asaasSyncSuccess = false
       let asaasSyncAttempted = false
-      if (!skipAsaas && asaasCustomerId && asaasCustomerId !== "000") {
+      if (!skipAsaas && podeSincronizarNoAsaas(entrada).pode && asaasCustomerId && asaasCustomerId !== "000") {
         asaasSyncAttempted = true
         try {
           const asaasUpdateResponse = await fetch("/api/integrations/asaas/customers/update", {
@@ -420,8 +489,12 @@ export default function EditClientPage({
     const cpfCnpj = watch("cpf_cnpj")
     const email = watch("email")
     const phone = watch("phone")
-    return name && cpfCnpj && (email || phone)
+    return Boolean(name && cpfCnpj && (email || phone))
   }
+
+  // Pagador do exterior não vai para o Asaas — e a tela diz o porquê e o
+  // caminho que existe, em vez de pedir um CPF/CNPJ que ele não tem.
+  const vetoDoAsaas = payerType === "exterior" ? podeCriarNoAsaas({ tipo: "exterior", razao_social: watch("payer_legal_name") }).motivo : null
 
   if (error) {
     return (
@@ -480,7 +553,17 @@ export default function EditClientPage({
 
       <div className="max-w-2xl mx-auto mt-6">
         {/* Asaas Status */}
-        {watch("asaas_customer_id") ? (
+        {vetoDoAsaas && !watch("asaas_customer_id") ? (
+          <Card className="border-[#C7CDEF] dark:border-[rgba(168,184,240,0.15)] mb-6">
+            <CardContent className="flex items-start gap-3 py-4">
+              <Icon icon={Globe} size={20} className="text-[#4E62D8] dark:text-[#7B8CEA] mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-[#4E62D8] dark:text-[#7B8CEA]">Cobrança fora do Asaas</p>
+                <p className="text-xs text-gray-500 dark:text-[#5C6378] mt-0.5">{vetoDoAsaas}</p>
+              </div>
+            </CardContent>
+          </Card>
+        ) : watch("asaas_customer_id") ? (
           <Card className="border-[#A7F3D0] dark:border-[rgba(110,231,183,0.15)] mb-6">
             <CardContent className="flex items-start gap-3 py-4">
               <Icon icon={CheckCircle2} size={20} className="text-[#065F46] dark:text-[#6EE7B7] mt-0.5" />
@@ -518,6 +601,21 @@ export default function EditClientPage({
           </Card>
         )}
 
+        {conflitoDeDocumento && payerType === "br" ? (
+          <Card className="border-[#FDE68A] dark:border-[rgba(252,211,77,0.15)] mb-6">
+            <CardContent className="flex items-start gap-3 py-4">
+              <Icon icon={AlertCircle} size={20} className="text-[#92400E] dark:text-[#FCD34D] mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-[#92400E] dark:text-[#FCD34D]">Dois CPF/CNPJ gravados para este cliente</p>
+                <p className="text-xs text-gray-500 dark:text-[#5C6378] mt-0.5">
+                  Em uso: <strong>{formatarDocumento(conflitoDeDocumento.coluna)}</strong>. Há outro no cadastro antigo:{" "}
+                  <strong>{formatarDocumento(conflitoDeDocumento.custom_fields)}</strong>. Confirme qual é o certo no campo abaixo — salvar descarta o outro.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
+
         <form onSubmit={handleSubmit(onSubmit, onValidationError)} className="space-y-6">
           {/* Seção 1: Dados do Cliente */}
           <Card>
@@ -553,15 +651,20 @@ export default function EditClientPage({
                     disabled={isLoading}
                   />
                 </FormField>
-                <FormField label="CPF/CNPJ" error={errors.cpf_cnpj?.message} htmlFor="cpf_cnpj" hint="Obrigatório para assinaturas via Asaas">
-                  <Input
-                    id="cpf_cnpj"
-                    placeholder="000.000.000-00 ou 00.000.000/0000-00"
-                    {...register("cpf_cnpj")}
-                    disabled={isLoading}
-                  />
-                </FormField>
+                <PayerTypeSelect
+                  tipo={payerType}
+                  onChangeTipo={(t) => setValue("payer_type", t, { shouldDirty: true })}
+                  disabled={isLoading}
+                />
               </div>
+
+              <PayerFields
+                tipo={payerType}
+                register={register}
+                errors={errors}
+                disabled={isLoading}
+                documentoGuardado={watch("cpf_cnpj")}
+              />
               <FormField label="Empresa" htmlFor="company">
                 <Input
                   id="company"

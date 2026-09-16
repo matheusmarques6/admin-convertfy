@@ -8130,6 +8130,64 @@ ganhou `assuntosDaBase` — o mapa de pastas com a contagem, para propor pauta
 que a casa consegue SUSTENTAR. Custo medido: 5.949 chars no caso real, teto
 de 3 notas / 9.000 chars; `pautas` usa teto menor (2 / 4.500).
 
+## Cliente que paga pela LLC, e as duas verdades sobre o documento (set/2026)
+
+Relatado com print: o campo **CPF/CNPJ** com `JFJA DIGITAL LLC 30 N GOULD ST
+STE R` dentro — razão social e endereço americano no campo do documento,
+porque não havia outro lugar — e o save recusado.
+
+Medido antes de desenhar (56 clientes): 29 com documento, **1 com
+`0000000000000000000000`** (a fuga: encher de zeros até o formulário deixar
+passar), 25 com `asaas_customer_id` e nenhum documento aqui, e **zero** usos
+do `skip_asaas` — o atalho do "000" que já existia na tela de criação com o
+comentário *"for international clients"*. A necessidade era conhecida e
+estava resolvida por gambiarra que ninguém descobriu.
+
+**Seletor "Quem paga"**: Brasil (CPF/CNPJ, comportamento de sempre) ou
+**empresa no exterior** (razão social obrigatória, Tax ID, país ISO,
+endereço em uma linha). A régua é `lib/clients/pagador.ts` (puro, 18 testes)
+e vale nas **três** portas que editam cliente — criar, editar e o painel de
+configurações, que **não validava nada** e é por onde os 22 zeros entraram.
+O JSX do bloco virou `components/clients/payer-fields.tsx`: duplicar o
+formulário entre duas telas é a mesma assimetria, na camada de cima.
+
+**O nome da LLC não pode morar em `cpf_cnpj`**: é por essa coluna que o Asaas
+casa cliente (`listCustomers({cpfCnpj})`) e cria cadastro — texto livre ali
+faz a busca comparar lixo e a criação mandar lixo ao provedor, que recusa
+depois do save como aviso amarelo. Afrouxar a validação resolveria o sintoma
+e quebraria a integração em silêncio. **O exterior não vai para o Asaas**
+(ele exige CPF/CNPJ) e a tela DIZ o caminho que já existe: pagamento por fora
+(`receiveInCash`). Vínculo existente **não é apagado** — quem migrou de BR
+para LLC continua ligado ao histórico de faturas. O dado mora em
+`custom_fields.pagador` (sem migration) e no modo BR a chave nem é gravada:
+quem paga pelo exterior é uma consulta de uma linha.
+
+**DV é aviso, não bloqueio**: bloquear criaria atrito retroativo (abrir
+cadastro antigo com documento torto para mexer em outro campo passaria a não
+salvar), e não deu para medir quantos DVs inválidos existem sem despejar CPF
+no log. A régua fica onde dá para afirmar — tamanho e sequência repetida, os
+dois medidos — e o DV aparece com o que significa: "o Asaas vai recusar".
+
+**O achado paralelo: duas verdades sobre o documento.** A tela de CRIAÇÃO
+gravava `cpf_cnpj` só em `custom_fields`; a de EDIÇÃO grava na coluna.
+Resultado medido: **26 dos 56 têm o documento só no JSONB** — invisível para
+o casamento de faturas, a exportação e o sync, que leem a coluna — e **6 têm
+dígitos DIFERENTES** nos dois lugares. `documentoDoCliente` é a leitura
+canônica (a coluna vence, o JSONB é fallback e some ao salvar — auto-cura
+cadastro a cadastro); divergência de dígitos vira aviso com os dois valores,
+porque escolher por código seria decidir quem é o cliente. Diferença só de
+pontuação (5 dos 11) não é conflito. Ligado na ficha, na exportação (a
+planilha saía vazia para metade da base), no casamento do sync e na criação.
+
+**A sincronização deixou de travar por um CPF torto**: `customers/update`
+mandava o documento como estivesse, o Asaas recusa a requisição INTEIRA, e
+nome/email/telefone deixavam de sincronizar por causa dele — em silêncio.
+Documento inválido agora é omitido (o provedor mantém o dele) com `log.warn`.
+
+**Não endurecido de propósito**: o onboarding público, onde quem preenche é o
+cliente final — bloquear o cadastro dele por documento torto o faz abandonar.
+Documentação: `docs/clients/pagador-no-exterior.md`.
+
 ---
 
 *Última atualização: Setembro 2026*

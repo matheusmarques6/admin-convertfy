@@ -6,6 +6,7 @@ import { createAsaasService } from "@/lib/integrations/asaas"
 import { decryptCredentialsJson } from "@/lib/crypto"
 import { logger } from "@/lib/logger"
 import { stripBrazilCountryCode } from "@/lib/utils/phone"
+import { documentoBRValido, documentoDoCliente, lerPagador, podeSincronizarNoAsaas } from "@/lib/clients/pagador"
 
 const log = logger.child("IntegrationsAsaasCustomersUpdate")
 
@@ -64,8 +65,23 @@ export async function PATCH(request: Request) {
     // Extract address from custom_fields
     const addressData = (customFields.address as Record<string, string>) || {}
 
+    // Pagador do exterior não tem cadastro no Asaas para sincronizar.
+    const pagador = lerPagador(client)
+    if (!podeSincronizarNoAsaas(pagador).pode) {
+      throw new AppError(podeSincronizarNoAsaas(pagador).motivo ?? "Cliente não sincroniza com o Asaas", 400)
+    }
+
     // Sanitize inputs: strip non-digits from cpfCnpj, phone, postalCode
-    const cleanCpfCnpj = client.cpf_cnpj?.replace(/\D/g, "") || undefined
+    //
+    // Documento inválido NÃO é enviado: o Asaas recusa a requisição inteira,
+    // e com isso nome, email e telefone deixavam de sincronizar por causa de
+    // um CPF torto — em silêncio, como "Aviso" na tela. Omitido, o provedor
+    // mantém o documento que ele já tem e o resto sobe.
+    const documento = documentoDoCliente(client)
+    const cleanCpfCnpj = documentoBRValido(documento.valor) ? documento.valor.replace(/\D/g, "") : undefined
+    if (documento.valor && !cleanCpfCnpj) {
+      log.warn("asaas.documento_invalido_nao_enviado", { clientId: body.clientId })
+    }
     const cleanPhone = stripBrazilCountryCode(client.phone)
     const cleanPostalCode = addressData.postal_code?.replace(/\D/g, "") || undefined
 

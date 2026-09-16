@@ -52,7 +52,10 @@ export async function GET(request: NextRequest) {
     for (let offset = 0; offset < MAX_ROWS; offset += CHUNK) {
       let q = supabase
         .from("clients")
-        .select("id, name, email, phone, company, cpf_cnpj, status, created_at, address")
+        // `custom_fields` entra porque o documento de 26 dos 56 cadastros
+        // mora só lá (a tela de criação nunca escreveu na coluna) — sem ele
+        // a planilha sai com a coluna CPF/CNPJ vazia para metade da base.
+        .select("id, name, email, phone, company, cpf_cnpj, custom_fields, status, created_at, address")
         .order("created_at", { ascending: false })
         .range(offset, offset + CHUNK - 1)
       if (onlyStatus) q = q.eq("status", onlyStatus)
