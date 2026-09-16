@@ -2,12 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import type { ContratoResumo } from "../shared/field-roles"
 
-import {
-  custoDeIncompatibilidade,
-  descartesEfetivos,
-  doDispositivoPedido,
-  menosIncompativel,
-} from "./resgate-de-posicao"
+import { custoDeIncompatibilidade, descartesEfetivos, doDispositivoPedido, menosIncompativel, ordenarCandidatas } from "./resgate-de-posicao"
 
 function contrato(p: Partial<ContratoResumo> = {}): ContratoResumo {
   return {
@@ -525,5 +520,57 @@ describe("menosIncompativel — dispositivo pedido (Passo 19)", () => {
     )
     expect(escolha?.variant_id).toBe("hero-1")
     expect(escolha?.fora_do_dispositivo).toBe(0)
+  })
+})
+
+// ── A ordem, isolada (16/09) ────────────────────────────────────────────
+//
+// Ela decide qual peça vai ao cliente quando o Curador deixou a posição
+// vazia, e viveu meses inline dentro do `menosIncompativel`, sem teste
+// próprio — foi assim que o desempate por "anatomia mais rica" sobreviveu.
+
+describe("ordenarCandidatas", () => {
+  const c = (id: string, over: Record<string, unknown> = {}) => ({
+    variant_id: id,
+    contrato: { copy: 3, n_itens: null, dispositivo: null } as never,
+    usos: 0,
+    ...over,
+  })
+
+  it("é pura: não muta nem reordena o array recebido", () => {
+    const entrada = [c("b"), c("a")]
+    const copia = entrada.map((x) => x.variant_id)
+    ordenarCandidatas(entrada, null)
+    expect(entrada.map((x) => x.variant_id)).toEqual(copia)
+  })
+
+  it("custo vence tudo — inclusive a mais rica e a nunca usada", () => {
+    // A que entrega MENOS itens do que o mínimo pedido custa caro; a outra
+    // ganha mesmo tendo mais campos e mais usos.
+    const r = ordenarCandidatas(
+      [
+        c("faltando", { usos: 0, contrato: { copy: 9, n_itens: 1, dispositivo: null } as never }),
+        c("cabe", { usos: 9, contrato: { copy: 1, n_itens: 4, dispositivo: null } as never }),
+      ],
+      { n_itens: { min: 4 } } as never,
+    )
+    expect(r[0].variant_id).toBe("cabe")
+    expect(r[0].custo).toBeLessThan(r[1].custo)
+  })
+
+  it("empatada em custo, vence a MENOS usada — nunca a de mais campos", () => {
+    const r = ordenarCandidatas([c("usada", { usos: 9 }), c("nova", { usos: 0, contrato: { copy: 1, n_itens: null, dispositivo: null } as never })], null)
+    expect(r[0].variant_id).toBe("nova")
+  })
+
+  it("empate total desempata por id — a escolha é estável entre execuções", () => {
+    const r1 = ordenarCandidatas([c("z"), c("a")], null)
+    const r2 = ordenarCandidatas([c("a"), c("z")], null)
+    expect(r1.map((x) => x.variant_id)).toEqual(r2.map((x) => x.variant_id))
+    expect(r1[0].variant_id).toBe("a")
+  })
+
+  it("lista vazia devolve lista vazia", () => {
+    expect(ordenarCandidatas([], null)).toEqual([])
   })
 })

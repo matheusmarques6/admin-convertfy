@@ -276,10 +276,48 @@ export function menosIncompativel(
   const { dentro, fora } = doDispositivoPedido(pool, requisitos)
   if (dentro.length === 0) return null
 
+  const pontuadas = ordenarCandidatas(dentro, requisitos, descartes)
+
+  const descartadas = pontuadas.filter((p) => p.custo === Infinity).length
+  const finitas = pontuadas.filter((p) => p.custo !== Infinity)
+  if (finitas.length === 0) return null
+  const { variant_id, custo, motivo } = finitas[0]
+  return { variant_id, custo, motivo, descartadas_por_dispositivo: descartadas, fora_do_dispositivo: fora }
+}
+
+/** Uma candidata pontuada, na ordem em que o resgate a consideraria. */
+export interface CandidataPontuada {
+  variant_id: string
+  custo: number
+  motivo: string
+  distancia: number
+  usos: number
+  copy: number
+}
+
+/**
+ * A ordem em que o resgate considera as candidatas de uma posição. Pura.
+ *
+ * Extraída de dentro do `menosIncompativel` (16/09) por dois motivos: ela é
+ * a régua que decide qual peça vai ao cliente quando o Curador deixou a
+ * posição vazia, e estava inline, sem teste próprio — o desempate por
+ * "anatomia mais rica" sobreviveu meses assim.
+ *
+ * **Ficou de fora, e é dívida declarada**: cobrar custo por slug de
+ * convivência já consumido na peça. O resgate não recebe as convivências
+ * (elas moram em `CuradorVaultKnowledge`, que este módulo não vê), e
+ * inventar a régua sem o dado seria a armadilha de sempre — regra servida
+ * sobre campo que não chega.
+ */
+export function ordenarCandidatas(
+  candidatas: ReadonlyArray<CandidataParaResgate>,
+  requisitos: RequisitosDuros | null | undefined,
+  descartes: ReadonlyArray<Pick<DecisaoDescarte, "dispositivo">> | null | undefined = null,
+): CandidataPontuada[] {
   // Alvo de itens: o mínimo pedido, senão o máximo, senão indiferente.
   const alvoDeItens = requisitos?.n_itens?.min ?? requisitos?.n_itens?.max ?? null
 
-  const pontuadas = dentro
+  return candidatas
     .map((c) => ({
       variant_id: c.variant_id,
       custo: custoDeIncompatibilidade(c.contrato, requisitos, descartes),
@@ -317,10 +355,4 @@ export function menosIncompativel(
         // cada geração.
         a.variant_id.localeCompare(b.variant_id),
     )
-
-  const descartadas = pontuadas.filter((p) => p.custo === Infinity).length
-  const finitas = pontuadas.filter((p) => p.custo !== Infinity)
-  if (finitas.length === 0) return null
-  const { variant_id, custo, motivo } = finitas[0]
-  return { variant_id, custo, motivo, descartadas_por_dispositivo: descartadas, fora_do_dispositivo: fora }
 }

@@ -76,7 +76,7 @@ import {
   type PreferenciasDoVault,
 } from "./curador-shadow"
 import { fieldOrMissing, renderTopProducts } from "./store-context"
-import { requisitosDaDecisao } from "../estruturador/estruturador-consume"
+import { recorteDaDecisao, requisitosDaDecisao } from "../estruturador/estruturador-consume"
 import {
   eliminarPorRequisitos,
   elegiveisPorPosicao,
@@ -1147,6 +1147,8 @@ export async function assembleStoreReference(
   // Zero código veta a escolha — o prompt proíbe e o medidor registra
   // `requisito_violado`; quem fecha a porta é o Blueprint (`omitir`).
   const requisitosPorPosicao = requisitosDaDecisao(input.estruturadorDecisao)
+  // Recorte do MESMO JSON, para a cauda por posição do leque.
+  const recorteDoEstruturador = recorteDaDecisao(input.estruturadorDecisao)
   const eliminadasPorRequisito = eliminarPorRequisitos(
     sections,
     requisitosPorPosicao,
@@ -1527,6 +1529,8 @@ export async function assembleStoreReference(
       // Sem call vivo não há com o que comparar — a comparação era da fase
       // de ensaio.
       candidatasImpreenchiveis: excludedUntagged,
+      decisaoPorPosicao: recorteDoEstruturador.posicoes,
+      fioDoEstruturador: recorteDoEstruturador.fio,
       liveViolations: [],
       liveRank1: new Map(),
       baseInputSummary: chooserInputSummary,
@@ -1803,6 +1807,8 @@ export async function assembleStoreReference(
       aliasIndex,
       liveSections: sections,
       candidatasImpreenchiveis: excludedUntagged,
+      decisaoPorPosicao: recorteDoEstruturador.posicoes,
+      fioDoEstruturador: recorteDoEstruturador.fio,
       liveViolations: measureProtocolViolations({
         rank1ByBlock: liveRank1,
         extras: shadowExtras,
