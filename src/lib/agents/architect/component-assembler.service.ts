@@ -30,7 +30,7 @@
 import { REGRAS_PENDENTES } from "@/lib/agents/shared/validadores/tipos"
 import { ALVO_AUSENTE_CURADOR } from "../objecoes/alvo-render"
 import { INTENCAO_NAO_SERVIDA } from "../estruturador/estruturador-prompt"
-import { cabeNaJanela, relogioParaTeto, restanteDoOrcamento } from "../fase1-orcamento"
+import { cabeNaJanela, custoTipicoDoAgente, restanteDoOrcamento } from "../fase1-orcamento"
 import type { AlvoParaMedicao } from "./curador-shadow"
 import crypto from "crypto"
 
@@ -1592,7 +1592,7 @@ export async function assembleStoreReference(
     // o desfecho que `fase1-orcamento` existe para evitar. O relógio por
     // chamada já encolhe sozinho; o que faltava era não COMEÇAR.
     const cabe = cabeNaJanela({
-      custoMs: relogioParaTeto(chooserConfig.max_tokens),
+      custoMs: custoTipicoDoAgente("assembler_chooser", chooserConfig.max_tokens),
       restanteMs: restanteDoOrcamento(),
     })
     if (!cabe.cabe) {
@@ -2233,22 +2233,6 @@ export async function assembleStoreReference(
 
   const chosen = slots.flatMap((s) => (s.kind === "variant" ? [s.variant] : []))
 
-  // Registra as escolhas desta geração no histórico append-only (memória do
-  // Curador). Fire-and-forget: não bloqueia o run nem falha a geração.
-  const choiceEntries: ChoiceEntry[] = slots.flatMap((s) =>
-    s.kind === "variant"
-      ? [{ section: s.section, variant_id: s.variant.id, variant_name: s.variant.name }]
-      : [],
-  )
-  void logCuradorChoice({
-    storeId: input.storeId,
-    orgId: memory.orgId,
-    flowType: input.flowType,
-    emailNumber: input.emailNumber,
-    batchId: input.batchId,
-    choices: choiceEntries,
-  })
-
   // Com o Curador do vault vigente, quem fechou o run foi ele.
   if (chooserRunId) {
     await finishGenerationRun(chooserRunId, {
@@ -2377,6 +2361,37 @@ export async function assembleStoreReference(
       motivo: cobertura.motivo,
       blocos: assembled.stats.blocks,
       skipped: assembled.stats.skipped,
+    })
+  }
+
+  // Histórico append-only das escolhas (memória do Curador). Duas coisas
+  // mudaram aqui, e as duas são de correção:
+  //
+  // 1. `await`, não `void`. Em serverless a promise solta morre quando o
+  //    processo congela depois do `return` — é a mesma armadilha que perdeu
+  //    os eventos de conversão da Meta. A tabela que deveria registrar cada
+  //    escolha registrava as que dessem sorte de o processo ainda existir.
+  // 2. Só quando a referência foi PERSISTIDA (`source === "code"`). Escolha
+  //    de montagem recusada (lacuna fatal ou cobertura insuficiente) não
+  //    virou e-mail nenhum: a referência foi apagada e o consumidor caiu no
+  //    template global. Guardá-la faria a memória do Curador desaconselhar
+  //    uma variante que nunca chegou a ser usada.
+  //
+  // Falha de gravação continua sendo `log.warn` dentro de `logCuradorChoice`
+  // — registrar histórico não pode derrubar uma geração que deu certo.
+  if (source === "code") {
+    const choiceEntries: ChoiceEntry[] = slots.flatMap((s) =>
+      s.kind === "variant"
+        ? [{ section: s.section, variant_id: s.variant.id, variant_name: s.variant.name }]
+        : [],
+    )
+    await logCuradorChoice({
+      storeId: input.storeId,
+      orgId: memory.orgId,
+      flowType: input.flowType,
+      emailNumber: input.emailNumber,
+      batchId: input.batchId,
+      choices: choiceEntries,
     })
   }
 

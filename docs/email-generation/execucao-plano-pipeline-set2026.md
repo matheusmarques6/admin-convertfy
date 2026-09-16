@@ -1647,3 +1647,77 @@ Estimativa: Curador 2,45 → 1,3–1,5 por e-mail no lote; total ≈ 5,9 →
 4,5–4,7. Qualidade esperada igual ou melhor (mesmo conteúdo, só ordem;
 escolha com as notas completas de até 5 candidatas), medida por B6,
 auditoria de requisitos e QA contra as 3 últimas gerações.
+
+---
+
+## Executado — Leque do Curador, Fase 0 (16/09)
+
+Seis defeitos de produção que o plano do leque expôs, e que valem por si.
+O leque não sobe antes disto; a medição que fecha a fase é uma geração real
+com `ARCHITECT_BATCH=1`, que dirá se seis chamadas em série cabem na janela.
+
+**O que a medição derrubou.** Três afirmações que viviam em comentário:
+
+| afirmação | o que o banco diz |
+|---|---|
+| `45s + 240s ≤ maxDuration 300s` dimensionava o tick | a fase 1 de UM e-mail leva **363s de mediana, 681s no p90, 1213s no máximo** (43 e-mails, 14 dias). Nunca coube |
+| a reserva de 150s cobre o Curador (97s no 4.6, n=3) | o Curador está em **210s de mediana, 336s no p90, 376s no máximo** — a reserva era menor que a mediana da etapa que ela protege |
+| a ordem dos e-mails do job | **três jobs** têm o welcome como `2,5,8,6,4,1,3,7` — a mesma permutação, porque era a ordem determinística do PostgREST |
+
+**O que mudou:**
+
+- **`CUSTO_TIPICO_MS`** (`fase1-orcamento.ts`): custo MEDIDO por agente, que
+  `cabeNaJanela` passa a usar no lugar do teto de tokens. Os dois respondem
+  perguntas diferentes — o teto é o RELÓGIO (o provedor reserva
+  `prompt + max_tokens` em voo), o medido é "vale a pena começar". Estimar
+  pelo teto **e** reservar para o Curador é pedir duas vezes o mesmo tempo,
+  e foi exatamente isso que desligou o Estruturador em 11/09. Agente fora da
+  tabela cai no teto — nada fora da fase 1 muda. Um teste reprova quem
+  "simplificar" de volta para `relogioParaTeto`.
+- **`RESERVA_POS_ESTRUTURADOR_MS` 150s → 400s** (Curador 340 + Blueprint 22
+  + Subject 7 + folga). A conta só fecha porque o custo do Estruturador
+  passou a ser medido (270s) e não o teto (371s): dos 742s que restam quando
+  ele é consultado sobram 342 — 72s acima do pior caso dele.
+- **`maxDuration` do cron 300 → 800** (o teto da Vercel, o mesmo das rotas
+  de fase 2), com `CRON_MAX_DURATION_S` no serviço e um teste que lê o
+  arquivo da rota e compara. A fase 1 não é retomável no meio: a função
+  morria, o lease expirava e o e-mail **recomeçava pagando o Curador de
+  novo**. `JANELA_DO_TICK_MS`, `TICK_BUDGET_MS` e `LEASE_MS` passaram a ser
+  derivados dela, com a invariante em teste.
+- **`comOrcamentoDeFase1` aberto no dispatch.** Sem ele
+  `restanteDoOrcamento()` era `null` no cron e TODO o guard de
+  `fase1-orcamento` era código morto justamente em produção — o módulo só
+  estava ligado na aba Teste e em três rotas do Catalogador.
+- **O pré-passo do Seletor para limpo quando a janela acaba.** Abrir o
+  orçamento criou um caminho de falha novo: `invokeAgent` LANÇA "sem
+  orçamento", e o laço do pré-passo não tem `try` por e-mail — o throw
+  abortaria o pré-passo inteiro e os e-mails seguintes iriam para a fase 1
+  **sem alvo, em silêncio**. Agora a guarda vem antes da chamada, o
+  resultado traz `semOrcamento` (que não é `skipped`: não foram
+  dispensados, foram adiados) e o próximo tick continua de onde parou.
+- **`ordemDosEmails`** é a fonte única: o enqueue ordena o que grava e o
+  tick reordena o que lê, porque o array desordenado mora no JSONB dos jobs
+  antigos e nenhuma migration o alcança. A ordem é decisão, não
+  apresentação — o `ja_atacadas` do Seletor depende dela.
+- **`logCuradorChoice` com `await`, depois da persistência, e só quando
+  `source === "code"`.** `void` em serverless morre no congelamento (a
+  armadilha dos eventos de conversão da Meta), e escolha de montagem
+  recusada não virou e-mail nenhum: gravá-la faria a janela de repetição
+  (B1) tratar como entrega o que foi descartado.
+- **Heartbeat por e-mail** dentro do lote. Não é o que impede a reclamação
+  (o lease é derivado do `maxDuration`); é o que mantém o progresso visível
+  num lote de 11 minutos, e o que mantém a premissa de pé quando o lote for
+  de um e-mail só.
+
+**Honestidade sobre o risco.** A corrida de lease é **latente, não
+observada**: dos 25 e-mails que pagaram o Curador duas vezes no mesmo
+batch, a maioria é retry legítimo (`error` → `success`), não reclamação
+concorrente. O caminho do cron também é pouco usado hoje — **1 job em 30
+dias**; tudo tem passado pela aba Teste, que já tinha janela. Os defeitos
+eram reais e agora estão fechados, mas nenhum deles estava queimando
+dinheiro esta semana.
+
+**Leitura pós-deploy**: `supabase/migrations/DIAGNOSTICO_fase1_relogio.sql`
+— as mesmas seis queries que produziram os números acima, com o retrato de
+16/09 no cabeçalho. Trocar o modelo de um agente da fase 1 obriga a rodá-las
+de novo.

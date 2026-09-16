@@ -100,8 +100,10 @@ vi.mock("@/lib/stores/prontidao.service", () => ({
 import {
   enqueueDispatchJob,
   processDispatchJobs,
+  JANELA_DO_TICK_MS,
   SETTLED_REFERENCE_SOURCES,
 } from "./email-dispatch-queue.service"
+import { restanteDoOrcamento } from "@/lib/agents/fase1-orcamento"
 import type { ReferenceSource } from "@/lib/agents/architect/component-assembler.service"
 
 function reset() {
@@ -121,7 +123,7 @@ beforeEach(() => {
   generateBlueprintAndReference.mockReset()
   isArchitectConfigured.mockReset().mockResolvedValue(true)
   dispatchEmailCopyWebhook.mockReset().mockResolvedValue({ ok: true, flow_count: 1, email_count: 2 })
-  ensureObjectionTargets.mockReset().mockResolvedValue({ mode: "off", targets: [], ran: 0, reused: 0, skipped: 0 })
+  ensureObjectionTargets.mockReset().mockResolvedValue({ mode: "off", targets: [], ran: 0, reused: 0, skipped: 0, semOrcamento: 0 })
   aplicarGate.mockReset().mockResolvedValue({ mode: "on", bloqueada: false, prontidao: { pronta: true, bloqueios: [], avisos: [] } })
   // por padrão, "gerar" persiste a reference (Montador genuíno → source 'llm')
   generateBlueprintAndReference.mockImplementation(async (input: { storeId: string; flowType: string; emailNumber: number }) => {
@@ -258,7 +260,7 @@ describe("processDispatchJobs", () => {
     const ordem: string[] = []
     ensureObjectionTargets.mockImplementation(async (input: { emails: Array<{ flowType: string; emailNumber: number }> }) => {
       ordem.push(`seletor:${input.emails.map((e) => `${e.flowType}#${e.emailNumber}`).join(",")}`)
-      return { mode: "shadow", targets: [], ran: input.emails.length, reused: 0, skipped: 0 }
+      return { mode: "shadow", targets: [], ran: input.emails.length, reused: 0, skipped: 0, semOrcamento: 0 }
     })
     generateBlueprintAndReference.mockImplementation(async (input: { storeId: string; flowType: string; emailNumber: number }) => {
       ordem.push(`architect:${input.flowType}#${input.emailNumber}`)
@@ -398,6 +400,97 @@ describe("processDispatchJobs", () => {
 // novo de ReferenceSource que fique de fora da lista faz TODA geração
 // bem-sucedida repagar o Curador e terminar como `failed` — foi o que quase
 // aconteceu com o "code".
+describe("o orçamento da fase 1 no caminho do cron", () => {
+  // O defeito: `comOrcamentoDeFase1` só era aberto em `test-generation` e em
+  // três rotas do Catalogador. No cron `restanteDoOrcamento()` devolvia
+  // `null`, o relógio de cada chamada virava o teto absoluto e
+  // `cabeNaJanela` respondia sempre "cabe" — TODO o guard de orçamento da
+  // fase 1 era código morto justamente no caminho de produção.
+  it("o Architect enxerga a janela aberta", async () => {
+    await enqueueDispatchJob("store1", { flowIds: ["flow1"], onlyDrafts: true })
+    const vistos: Array<number | null> = []
+    generateBlueprintAndReference.mockImplementation(async (input: { storeId: string; flowType: string; emailNumber: number }) => {
+      vistos.push(restanteDoOrcamento())
+      h.tables.store_email_references.push({ store_id: input.storeId, flow_type: input.flowType, email_number: input.emailNumber })
+      return { referenceSource: "llm" }
+    })
+    await processDispatchJobs()
+    expect(vistos.length).toBeGreaterThan(0)
+    for (const v of vistos) {
+      expect(v).not.toBeNull()
+      expect(v!).toBeGreaterThan(0)
+      expect(v!).toBeLessThanOrEqual(JANELA_DO_TICK_MS)
+    }
+  })
+
+  // O Seletor roda no pré-passo e também é fase 1 — se ficasse fora do
+  // escopo, ele comeria janela sem nunca ser cortado por ela.
+  it("o pré-passo do Seletor também enxerga a janela", async () => {
+    await enqueueDispatchJob("store1", { flowIds: ["flow1"], onlyDrafts: true })
+    let visto: number | null = null
+    ensureObjectionTargets.mockImplementation(async () => {
+      visto = restanteDoOrcamento()
+      return { mode: "shadow", targets: [], ran: 0, reused: 0, skipped: 0, semOrcamento: 0 }
+    })
+    await processDispatchJobs()
+    expect(visto).not.toBeNull()
+  })
+
+  // Fora do tick nada muda: quem chama estes serviços por fora da fase 1
+  // continua sem janela, que é o contrato de `fase1-orcamento`.
+  it("fora do tick não há janela aberta", () => {
+    expect(restanteDoOrcamento()).toBeNull()
+  })
+})
+
+describe("a ordem dos e-mails do job", () => {
+  // O job b6d89e4c (24/07) tem o welcome gravado como 2,5,8,6,4,1,3,7 — a
+  // ordem em que o PostgREST devolveu. O pré-passo do Seletor decide o alvo
+  // em sequência (welcome-2 recebe o `ja_atacadas` de welcome-1), então essa
+  // ordem é a decisão, não apresentação.
+  it("o tick reordena o array desordenado que veio do banco", async () => {
+    h.tables.email_dispatch_jobs = [
+      {
+        id: "job-legado",
+        store_id: "store1",
+        flow_ids: ["flow1"],
+        only_drafts: true,
+        trigger_source: "pesquisa_completa",
+        triggered_by: null,
+        status: "pending",
+        emails: [2, 5, 1, 4, 3].map((n) => ({
+          flow_type: "welcome",
+          email_number: n,
+          architect: "pending",
+          attempts: 0,
+        })),
+        architect_total: 5,
+        architect_done: 0,
+        updated_at: new Date(0).toISOString(),
+      },
+    ]
+    let ordemDoSeletor: string[] = []
+    ensureObjectionTargets.mockImplementation(async (input: { emails: Array<{ emailNumber: number }> }) => {
+      ordemDoSeletor = input.emails.map((e) => String(e.emailNumber))
+      return { mode: "shadow", targets: [], ran: 0, reused: 0, skipped: 0, semOrcamento: 0 }
+    })
+    await processDispatchJobs()
+    expect(ordemDoSeletor).toEqual(["1", "2", "3", "4", "5"])
+  })
+
+  // Jobs novos já nascem ordenados — o tick não é a única defesa.
+  it("o enqueue grava o array em ordem", async () => {
+    h.tables.email_flow_emails = [
+      { id: "e3", flow_id: "flow1", number: 3, status: "draft" },
+      { id: "e1", flow_id: "flow1", number: 1, status: "draft" },
+      { id: "e2", flow_id: "flow1", number: 2, status: "draft" },
+    ]
+    await enqueueDispatchJob("store1", { flowIds: ["flow1"], onlyDrafts: true })
+    const job = h.tables.email_dispatch_jobs[0] as { emails: Array<{ email_number: number }> }
+    expect(job.emails.map((e) => e.email_number)).toEqual([1, 2, 3])
+  })
+})
+
 describe("SETTLED_REFERENCE_SOURCES", () => {
   it("cobre explicitamente cada valor de ReferenceSource", () => {
     // Exaustividade checada em tempo de compilação: o Record obriga uma

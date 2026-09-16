@@ -73,6 +73,15 @@ vi.mock("./llm-invoke", async (importActual) => {
   }
 })
 
+// Histórico append-only das escolhas. O spy existe porque a gravação
+// mudou de `void` para `await` e de "sempre" para "só quando a referência
+// foi persistida" — as duas coisas são invisíveis sem um teste.
+const logCuradorChoice = vi.fn().mockResolvedValue(undefined)
+vi.mock("./curador-memory", async (importActual) => {
+  const actual = await importActual<typeof import("./curador-memory")>()
+  return { ...actual, logCuradorChoice: (...a: unknown[]) => logCuradorChoice(...a) }
+})
+
 const finishGenerationRun = vi.fn().mockResolvedValue("run-1")
 const logGenerationRun = vi.fn().mockResolvedValue("")
 vi.mock("../callbacks/telemetry.callback", () => ({
@@ -170,6 +179,7 @@ beforeEach(() => {
   invokeAgent.mockReset()
   finishGenerationRun.mockClear()
   logGenerationRun.mockClear()
+  logCuradorChoice.mockClear()
   loadActiveAgentConfig.mockReset()
   loadActiveAgentConfig.mockResolvedValue(null)
   // Default: o Montador confirma o rank 1. Testes do Curador usam
@@ -376,6 +386,50 @@ describe("assembleStoreReference — escolha (LLM) + montagem (código)", () => 
 })
 
 // ── CM-3: retry, guard de catálogo e caminhos de falha ────────────────
+describe("o histórico de escolhas do Curador", () => {
+  // Em serverless a promise solta morre quando o processo congela depois do
+  // `return` — a mesma armadilha que perdeu os eventos de conversão da Meta.
+  // A tabela que deveria registrar cada escolha registrava as que dessem
+  // sorte de o processo ainda existir. O `await` é o conserto, e este teste
+  // é o que impede alguém de "otimizar" de volta para `void`.
+  it("é aguardado antes de a montagem devolver", async () => {
+    invokeAgent.mockResolvedValueOnce(CHOICE_V1)
+    let concluiu = false
+    logCuradorChoice.mockImplementationOnce(async () => {
+      await new Promise((r) => setTimeout(r, 5))
+      concluiu = true
+    })
+    await assembleStoreReference(baseInput)
+    expect(logCuradorChoice).toHaveBeenCalledTimes(1)
+    expect(concluiu).toBe(true)
+  })
+
+  it("grava a escolha quando a referência foi persistida", async () => {
+    invokeAgent.mockResolvedValueOnce(CHOICE_V1)
+    const res = await assembleStoreReference(baseInput)
+    expect(res.source).toBe("code")
+    expect(logCuradorChoice).toHaveBeenCalledTimes(1)
+    expect(logCuradorChoice.mock.calls[0][0]).toMatchObject({
+      storeId: "s1",
+      flowType: "welcome",
+      emailNumber: 1,
+      choices: [{ section: "hero", variant_id: "v1" }],
+    })
+  })
+
+  // Montagem recusada não virou e-mail nenhum: a referência foi apagada e o
+  // consumidor caiu no template global. Gravar a escolha faria a memória do
+  // Curador desaconselhar uma variante que nunca chegou a ser usada — e a
+  // janela de repetição (B1) leria esse histórico como se fosse entrega.
+  it("não grava quando a cobertura foi recusada", async () => {
+    h.variants = [variant("v1", "hero", "<!-- {{HERO_HEADLINE}} -->")]
+    invokeAgent.mockResolvedValueOnce(CHOICE_V1)
+    const res = await assembleStoreReference(baseInput)
+    expect(res.source).toBe("none")
+    expect(logCuradorChoice).not.toHaveBeenCalled()
+  })
+})
+
 describe("Curador — retry e falha", () => {
   it("1ª tentativa com JSON quebrado, 2ª boa → segue e conta 2 tentativas", async () => {
     invokeAgent

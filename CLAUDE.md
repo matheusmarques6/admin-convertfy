@@ -7385,6 +7385,75 @@ medidas da Neon vêm da DESCRIÇÃO do formato, não do arquivo da referência**
 ao contrário das duas famílias de print, que têm tabela de/para medida pixel
 a pixel.
 
+## O relógio da fase 1 no cron: três comentários que eram falsos (16/09)
+
+Fase 0 do plano do leque do Curador — seis defeitos de produção que valem
+por si. Medidos em `email_generation_runs` antes de qualquer linha de
+código; as queries estão em `DIAGNOSTICO_fase1_relogio.sql`.
+
+**A conta que dimensionava o tick (`45s + 240s ≤ maxDuration 300s`) era
+falsa.** A fase 1 de UM e-mail leva **363s de mediana, 681s no p90, 1213s no
+máximo** (43 e-mails, 14 dias) — e não é retomável no meio. O cron sobrevivia
+morrendo: a função era morta aos 300s, o lease expirava, outro tick reclamava
+o job e o e-mail **recomeçava pagando o Curador de novo**. `maxDuration` foi
+para **800** (o teto da Vercel, o mesmo das rotas de fase 2), com
+`CRON_MAX_DURATION_S` no serviço e um teste que lê o arquivo da rota e
+compara — o Next exige literal, então os dois números só ficam juntos por
+verificação.
+
+**`comOrcamentoDeFase1` nunca era aberto no dispatch**: `restanteDoOrcamento()`
+devolvia `null` e TODO o guard de `fase1-orcamento.ts` era código morto
+justamente em produção (o módulo só rodava na aba Teste e em três rotas do
+Catalogador). `JANELA_DO_TICK_MS`, `TICK_BUDGET_MS` e `LEASE_MS` agora derivam
+do `maxDuration` — o lease pelo motivo certo: **um tick não pode segurar o
+job por mais tempo do que a função dele vive**, e amarrá-lo à latência de um
+agente é o que o fazia envelhecer a cada troca de modelo.
+
+**`CUSTO_TIPICO_MS` × teto de tokens.** As duas perguntas são diferentes: o
+teto é o RELÓGIO (o provedor reserva `prompt + max_tokens` em voo), o medido
+é "vale a pena começar". `cabeNaJanela` usava o teto e era pessimista por 3×
+— o Curador tem teto de 32.000 tokens (371s pela conta) e escreve ~12.000
+(210s). Estimar pelo teto **e** reservar para o Curador é pedir duas vezes o
+mesmo tempo: foi assim que o Estruturador parou de rodar em 11/09.
+`RESERVA_POS_ESTRUTURADOR_MS` subiu 150 → **400s** (o Curador medido está em
+336s no p90, não nos 97s de n=3 que o comentário citava) e só fecha porque o
+custo do Estruturador virou medido (270s). Um teste reprova quem
+"simplificar" de volta para `relogioParaTeto`. **Trocar o modelo de um
+agente da fase 1 obriga a remedir.**
+
+**Abrir o orçamento criou um caminho de falha novo, e ele foi fechado
+junto**: `invokeAgent` LANÇA "sem orçamento" quando a janela acaba, e o laço
+do pré-passo do Seletor não tem `try` por e-mail — o throw abortaria o
+pré-passo inteiro e os e-mails seguintes iriam para a fase 1 **sem alvo, em
+silêncio**. A guarda agora vem antes da chamada e o resultado traz
+`semOrcamento`, que **não é `skipped`**: eles não foram dispensados, foram
+adiados, e o próximo tick reusa o que já saiu (`catalog_sha8`) e continua.
+
+**A ordem dos e-mails do job não vinha de lugar nenhum.** O enqueue lia
+`email_flow_emails` sem `.order()`; **três jobs** têm o welcome gravado como
+`2,5,8,6,4,1,3,7` — a mesma permutação nos três, porque era a ordem
+determinística do PostgREST. Ela é decisão, não apresentação: o pré-passo do
+Seletor roda em sequência e welcome-2 recebe o `ja_atacadas` de welcome-1.
+`ordemDosEmails` é a fonte única — o enqueue ordena o que grava e o tick
+reordena o que lê, porque o array desordenado mora no JSONB dos jobs antigos
+e nenhuma migration o alcança.
+
+**`logCuradorChoice` era `void`** — em serverless a promise solta morre no
+congelamento (a armadilha dos eventos de conversão da Meta), e a tabela que
+deveria registrar toda escolha registrava as que dessem sorte. Agora é
+`await`, **depois** da persistência e só quando `source === "code"`: escolha
+de montagem recusada (lacuna fatal ou cobertura insuficiente) não virou
+e-mail nenhum, e gravá-la faria a janela de repetição tratar como entrega o
+que foi descartado. Heartbeat passou a ser por e-mail dentro do lote — não é
+o que impede a reclamação, é o que mantém o progresso visível num lote de 11
+minutos.
+
+**Honestidade sobre o risco**: a corrida de lease é **latente, não
+observada** (dos 25 e-mails que pagaram o Curador duas vezes no mesmo batch,
+a maioria é retry `error` → `success`), e o caminho do cron tem **1 job em 30
+dias** — tudo vem passando pela aba Teste, que já tinha janela. Os defeitos
+eram reais; nenhum estava queimando dinheiro esta semana.
+
 ---
 
 *Última atualização: Setembro 2026*

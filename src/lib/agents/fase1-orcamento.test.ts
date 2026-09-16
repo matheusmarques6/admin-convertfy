@@ -11,6 +11,8 @@ import {
   relogioParaTeto,
   LATENCIA_BASE_MS,
   RESERVA_POS_ESTRUTURADOR_MS,
+  CUSTO_TIPICO_MS,
+  custoTipicoDoAgente,
 } from "./fase1-orcamento"
 
 describe("msParaGerar", () => {
@@ -182,29 +184,53 @@ describe("a fase 1 cabe nos três agentes", () => {
   // quando o Estruturador é consultado. Número tirado da run de 11/09
   // 06:21, que dizia "restam 742s".
   const JANELA_NO_ESTRUTURADOR_MS = 742_000
-  // `relogioParaTeto(32_000)` — o teto do Estruturador em produção.
-  const ESTRUTURADOR_PEDE_MS = 371_000
 
   // O defeito de 11/09: 742 − 490 = 252 disponíveis contra 371 pedidos. Não
   // era "cede quando aperta", era nunca caber. O Estruturador parou de rodar
   // e a tela só dizia "pulado".
   it("o Estruturador cabe na janela depois da reserva", () => {
     const r = cabeNaJanela({
-      custoMs: ESTRUTURADOR_PEDE_MS,
+      custoMs: custoTipicoDoAgente("estruturador", 32_000),
       restanteMs: JANELA_NO_ESTRUTURADOR_MS,
       reservaMs: RESERVA_POS_ESTRUTURADOR_MS,
     })
     expect(r.cabe).toBe(true)
   })
 
-  // A reserva existe para o Curador, que não tem substituto. Ela precisa
-  // cobrir o pior caso MEDIDO no modelo vigente (97s no sonnet-4.6) mais
-  // Blueprint e Subject — uma reserva menor que isso o cortaria.
+  // A armadilha de 11/09 na forma em que ela dispara: reserva dimensionada
+  // pelo Curador medido, custo do Estruturador ainda vindo do teto de
+  // tokens. São dois pedidos do mesmo tempo, e a conta nunca fecha — o
+  // agente seria desligado outra vez, em silêncio. Este teste existe para
+  // impedir que alguém "simplifique" `custoTipicoDoAgente` de volta ao
+  // `relogioParaTeto`.
+  it("estimar pelo teto de tokens desligaria o Estruturador de novo", () => {
+    const r = cabeNaJanela({
+      custoMs: relogioParaTeto(32_000),
+      restanteMs: JANELA_NO_ESTRUTURADOR_MS,
+      reservaMs: RESERVA_POS_ESTRUTURADOR_MS,
+    })
+    expect(r.cabe).toBe(false)
+  })
+
+  // A reserva existe para o Curador, que não tem substituto.
+  //
+  // O número de antes — 97s de pior caso no sonnet-4.6 — tinha n=3 e não
+  // sobreviveu: em 7 dias até 15/09 o Curador está em 210s de mediana, 336s
+  // no p90 e 376s no máximo. A reserva de 150s ficou MENOR que a mediana da
+  // etapa que ela protege.
   it("a reserva cobre o Curador medido, com folga", () => {
-    const CURADOR_PIOR_CASO_MS = 97_000
-    const BLUEPRINT_E_SUBJECT_MS = 26_000
+    const BLUEPRINT_E_SUBJECT_MS = 29_000
     expect(RESERVA_POS_ESTRUTURADOR_MS).toBeGreaterThan(
-      CURADOR_PIOR_CASO_MS + BLUEPRINT_E_SUBJECT_MS,
+      CUSTO_TIPICO_MS.assembler_chooser + BLUEPRINT_E_SUBJECT_MS,
     )
+  })
+
+  // O custo típico é uma medição, não uma estimativa: acima do teto de
+  // tokens ele seria um relógio disfarçado, e abaixo do p50 recusaria a
+  // etapa em metade das gerações.
+  it("cada custo medido é plausível contra o teto de tokens do agente", () => {
+    expect(CUSTO_TIPICO_MS.estruturador).toBeLessThan(relogioParaTeto(32_000))
+    expect(CUSTO_TIPICO_MS.assembler_chooser).toBeLessThan(relogioParaTeto(32_000))
+    expect(CUSTO_TIPICO_MS.seletor).toBeLessThan(relogioParaTeto(24_000))
   })
 })

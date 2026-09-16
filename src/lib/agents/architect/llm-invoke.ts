@@ -77,13 +77,18 @@ export interface AgentInvokeConfig {
   /**
    * Teto de relógio DESTE agente, quando ele difere do global.
    *
-   * Existe porque `ARCHITECT_INVOKE_TIMEOUT_MS` (240s) não pode subir: é
-   * compartilhado, e o `DISPATCH_TICK_BUDGET_MS` do cron foi dimensionado
-   * por escrito sobre ele (`45s + 240s <= maxDuration 300s`). Agente com
-   * teto de token alto declara o relógio dele aqui — os dois números têm de
-   * andar juntos, senão o teto de token vira só reserva de crédito em voo
-   * (a origem dos `402 in-flight` deste projeto). Ver `TETO_DE_RELOGIO_MS`
-   * em `fase1-orcamento.ts`.
+   * Existe porque `ARCHITECT_INVOKE_TIMEOUT_MS` (240s) é compartilhado com
+   * o Montador e o catalogador — subi-lo mexe em quem não pediu. Agente com
+   * teto de token alto declara o relógio dele aqui, e os dois números têm de
+   * andar juntos: teto de token que o relógio nunca deixa atingir vira só
+   * reserva de crédito em voo (a origem dos `402 in-flight` deste projeto).
+   * Ver `TETO_DE_RELOGIO_MS` em `fase1-orcamento.ts`.
+   *
+   * Quem garante que a chamada cabe na função NÃO é este teto — é a janela
+   * (`comOrcamentoDeFase1`), que encolhe o relógio de cada chamada pelo que
+   * resta. A conta que esta doc afirmava (`45s + 240s <= maxDuration 300s`)
+   * era falsa e sobreviveu meses; hoje ela vive em
+   * `email-dispatch-queue.relogio.test.ts`, onde é verificada.
    */
   timeoutMs?: number
   system_prompt: string

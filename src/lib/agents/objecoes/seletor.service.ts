@@ -18,7 +18,12 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 import { montarInsumos, normalizarPoliticas, type PoliticasDaLoja } from "@/lib/stores/politicas"
 import { classificarFalha, planejarRetentativa, avisoDeContaPerdida } from "../retry-teto"
-import { tetoDeRelogioDoAgente } from "../fase1-orcamento"
+import {
+  cabeNaJanela,
+  custoTipicoDoAgente,
+  restanteDoOrcamento,
+  tetoDeRelogioDoAgente,
+} from "../fase1-orcamento"
 import { loadTopProducts } from "../top-products"
 import { renderTopProducts } from "../architect/store-context"
 import {
@@ -517,6 +522,12 @@ export interface EnsureTargetsResult {
   ran: number
   reused: number
   skipped: number
+  /**
+   * E-mails que ficaram sem alvo porque a janela da fase 1 acabou no meio
+   * do pré-passo. NÃO é `skipped`: eles não foram dispensados, foram
+   * adiados — o próximo tick reaproveita o que já saiu e continua daqui.
+   */
+  semOrcamento: number
   error?: string
 }
 
@@ -531,9 +542,13 @@ const MOTIVO_LEGIVEL: Record<string, string> = {
 /**
  * O único caminho para ter alvos antes da fase 1. Sequencial por flow e por
  * `email_number` (ja_atacadas depende da ordem). Nunca lança.
+ *
+ * Respeita a janela da fase 1 quando há uma aberta: acabou o orçamento,
+ * para no e-mail em que estava e devolve `semOrcamento`. Os que ficaram
+ * seguem `pending` no job e o próximo tick continua daqui.
  */
 export async function ensureObjectionTargets(input: EnsureTargetsInput): Promise<EnsureTargetsResult> {
-  const result: EnsureTargetsResult = { mode: "off", targets: [], ran: 0, reused: 0, skipped: 0 }
+  const result: EnsureTargetsResult = { mode: "off", targets: [], ran: 0, reused: 0, skipped: 0, semOrcamento: 0 }
   try {
     const mode = await loadSeletorMode(input.storeId)
     result.mode = mode
@@ -590,7 +605,9 @@ export async function ensureObjectionTargets(input: EnsureTargetsInput): Promise
     const brandName = s.store_name || "Loja"
     const topProductsTexto = renderTopProducts(await loadTopProducts(admin, input.storeId, s.store_url ?? null))
 
+    let semOrcamento = false
     for (const [flowType, nums] of porFlow) {
+      if (semOrcamento) break
       const [intents, vigentes] = await Promise.all([loadIntents(flowType), loadCurrentTargets(input.storeId, flowType)])
       const porNumero = new Map(vigentes.map((t) => [t.email_number, t]))
       for (const n of Array.from(new Set(nums)).sort((a, b) => a - b)) {
@@ -620,6 +637,22 @@ export async function ensureObjectionTargets(input: EnsureTargetsInput): Promise
           flowType,
           incentivo,
         })
+        // A janela da fase 1 passou a valer no cron (set/2026). Sem esta
+        // guarda o `invokeAgent` LANÇA "sem orçamento" quando a janela
+        // acaba, e como este laço não tem try por e-mail o throw abortaria
+        // o pré-passo INTEIRO: os e-mails seguintes iriam para a fase 1 sem
+        // alvo nenhum, em silêncio. Parar limpo os deixa `pending` para o
+        // próximo tick, que reusa o que já saiu (`catalog_sha8`) e continua
+        // daqui — que é o desenho da fila.
+        const janela = cabeNaJanela({
+          custoMs: custoTipicoDoAgente("seletor", 24_000),
+          restanteMs: restanteDoOrcamento(),
+        })
+        if (!janela.cabe) {
+          result.semOrcamento++
+          semOrcamento = true
+          break
+        }
         const anteriores = Array.from(porNumero.values()).filter((t) => t.email_number < n)
         const jaAtacadas = jaAtacadasDe(anteriores.map((t) => ({ email_number: t.email_number, target: t.target })))
         const row = await runSeletor({
@@ -635,7 +668,7 @@ export async function ensureObjectionTargets(input: EnsureTargetsInput): Promise
         }
       }
     }
-    log.info("seletor.ensure_done", { storeId: input.storeId, mode, ran: result.ran, reused: result.reused, skipped: result.skipped })
+    log.info("seletor.ensure_done", { storeId: input.storeId, mode, ran: result.ran, reused: result.reused, skipped: result.skipped, semOrcamento: result.semOrcamento })
     return result
   } catch (err) {
     result.error = err instanceof Error ? err.message : String(err)

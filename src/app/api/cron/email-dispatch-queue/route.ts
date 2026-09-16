@@ -23,7 +23,17 @@ import { logger } from "@/lib/logger"
 const log = logger.child("EmailDispatchQueueCron")
 
 export const dynamic = "force-dynamic"
-export const maxDuration = 300
+// SYNC com `CRON_MAX_DURATION_S` em `email-dispatch-queue.service.ts` — a
+// janela da fase 1 é derivada deste número e o teste
+// `email-dispatch-queue.relogio.test.ts` lê este arquivo para compará-los.
+// Precisa ser literal: o Next só aceita config de rota estaticamente
+// analisável, então importar a constante não funciona.
+//
+// Era 300, com a conta escrita de que `45s + 240s ≤ 300s`. A fase 1 de um
+// e-mail leva 363s de mediana (p90 681s, 43 e-mails em 14 dias) e não é
+// retomável no meio: a função morria, o lease expirava e o e-mail
+// recomeçava pagando o Curador de novo.
+export const maxDuration = 800
 
 export async function GET(request: NextRequest) {
   const authError = requireCronAuth(request)

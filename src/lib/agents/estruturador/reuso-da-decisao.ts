@@ -26,7 +26,7 @@
  * Puro (zero I/O) — a leitura do banco fica no service.
  */
 
-import { cabeNaJanela, relogioParaTeto } from "../fase1-orcamento"
+import { cabeNaJanela, custoTipicoDoAgente } from "../fase1-orcamento"
 
 export interface DecisaoDaJanela {
   /** `rodar` chama o modelo; `reusar` usa a decisão vigente. */
@@ -48,8 +48,11 @@ export function decidirPelaJanela(input: {
   // Sem janela aberta o comportamento é o de sempre: roda. É o caminho de
   // quem chama estes serviços por fora da fase 1.
   if (input.restanteMs == null) return { acao: "rodar" }
+  // O custo é o MEDIDO, não o teto de tokens. Estimar pelo teto (371s para
+  // 32.000) e reservar para o Curador ao mesmo tempo é pedir duas vezes o
+  // mesmo tempo — foi assim que este agente parou de rodar em 11/09.
   const cabe = cabeNaJanela({
-    custoMs: relogioParaTeto(input.maxTokens),
+    custoMs: custoTipicoDoAgente("estruturador", input.maxTokens),
     restanteMs: input.restanteMs,
     reservaMs: input.reservaMs,
   })

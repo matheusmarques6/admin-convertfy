@@ -30,6 +30,7 @@ import {
 } from "@/lib/agents/architect/generate.service"
 import type { ReferenceSource } from "@/lib/agents/architect/component-assembler.service"
 import { ensureObjectionTargets } from "@/lib/agents/objecoes/seletor.service"
+import { comOrcamentoDeFase1 } from "@/lib/agents/fase1-orcamento"
 import { aplicarGate } from "@/lib/stores/prontidao.service"
 import { loadTextOnlyBlueprints } from "@/lib/agents/architect/blueprint-loader"
 import {
@@ -44,24 +45,74 @@ const log = logger.child("EmailDispatchQueue")
 const MAX_ARCHITECT_ATTEMPTS = Number(process.env.DISPATCH_MAX_ARCHITECT_ATTEMPTS ?? 2)
 // Emails gerados em paralelo por lote dentro de um tick.
 const ARCHITECT_BATCH = Number(process.env.DISPATCH_ARCHITECT_BATCH ?? 4)
-// Janela para INICIAR um novo lote no tick. Um lote lento dura ≈ INVOKE_TIMEOUT_MS
-// (240s em llm-invoke.ts), então para o lote fechar dentro do maxDuration=300 do
-// route precisamos de TICK_BUDGET + 240s ≤ 300s. Por isso 45s (não 240): um lote
-// que começa no limite da janela ainda termina em ~285s.
-// CM-2: o agente lento do lote deixou de ser o Montador (que gerava 40KB de
-// HTML) e passou a ser o Curador. O teto continua sendo o timeout do invoke,
-// não o modelo, então o valor não muda — baixá-lo depende de medir a latência
-// real do Curador com o catálogo completo (CM-3) em produção.
-// Lotes rápidos (reference já existe) rodam vários dentro dos 45s; o resto
-// continua no próximo tick (cron de minuto em minuto). Ajustável via env.
-const TICK_BUDGET_MS = Number(process.env.DISPATCH_TICK_BUDGET_MS ?? 45_000)
-// Lease: um job tocado há menos disso é considerado "em processamento" por
-// outro tick e não é reclamado (evita gerar o mesmo email 2x = $$). Precisa
-// ser MAIOR que a duração de um lote sem heartbeat (Montador ≈ INVOKE_TIMEOUT_MS
-// = 240s) + folga. O heartbeat roda após CADA lote, e os emails do lote rodam
-// em paralelo (ARCHITECT_BATCH) — a janela sem heartbeat ≈ o email mais lento,
-// não a soma. 360s > 240s + folga.
-const LEASE_MS = Number(process.env.DISPATCH_LEASE_MS ?? 360_000)
+
+/**
+ * ── O relógio deste cron, com os números medidos ─────────────────────
+ *
+ * A conta que estava escrita aqui era `45s + 240s ≤ maxDuration 300s`, com
+ * o 240 vindo do `ARCHITECT_INVOKE_TIMEOUT_MS`. Ela era FALSA por duas
+ * razões independentes: o Curador tem teto próprio de 360s
+ * (`TETO_DE_RELOGIO_MS`) e faz até duas chamadas, e a fase 1 de um e-mail
+ * inteiro leva muito mais que uma chamada.
+ *
+ * Medido em 14 dias (43 e-mails, `email_generation_runs`): **363s de
+ * mediana, 681s no p90, 1213s no máximo**. Ou seja, um e-mail nunca coube
+ * numa função de 300s. O cron sobrevivia porque morrer no meio é
+ * recuperável: o lease expira, outro tick reclama o job e o e-mail
+ * RECOMEÇA — pagando o Curador de novo, sem nada em tela dizendo isso.
+ *
+ * A fase 1 de um e-mail não é retomável no meio (o Curador não tem
+ * checkpoint), então a única saída honesta é uma função que caiba UM
+ * e-mail. 800s é o teto da Vercel neste plano e é o que as rotas de fase 2
+ * já usam.
+ */
+export const CRON_MAX_DURATION_S = 800
+const CRON_MAX_DURATION_MS = CRON_MAX_DURATION_S * 1_000
+
+/**
+ * O que sobra para o dispatch depois que a fase 1 fecha: o
+ * seed/reconcile de blocos de todos os e-mails do job, o POST ao n8n
+ * (`TIMEOUT_MS` de 15s em `email-copy-webhook.service.ts`) e os updates
+ * finais do job.
+ */
+const RESERVA_DO_DISPATCH_MS = 60_000
+
+/**
+ * A janela da fase 1 dentro deste tick. É ela que `comOrcamentoDeFase1`
+ * abre — sem isso `restanteDoOrcamento()` é `null` e todo guard de
+ * orçamento da fase 1 vira código morto no caminho de produção, que era o
+ * estado até aqui.
+ */
+export const JANELA_DO_TICK_MS = CRON_MAX_DURATION_MS - RESERVA_DO_DISPATCH_MS
+
+/**
+ * Custo de um lote, que é o do e-mail mais lento dele (os e-mails do lote
+ * rodam em paralelo). p90 medido: 681s. Arredondado para cima.
+ */
+const CUSTO_DE_UM_LOTE_MS = 690_000
+
+/**
+ * Janela para INICIAR um novo lote — derivada, não escolhida: um lote que
+ * começa no limite ainda tem de caber na janela. Continua batendo com os
+ * 45s que estavam aqui, mas agora por conta e com teste
+ * (`email-dispatch-queue.relogio.test.ts`), não por afirmação.
+ */
+const TICK_BUDGET_MS = Number(
+  process.env.DISPATCH_TICK_BUDGET_MS ?? JANELA_DO_TICK_MS - CUSTO_DE_UM_LOTE_MS,
+)
+
+/**
+ * Lease: um job tocado há menos disso é considerado "em processamento" por
+ * outro tick e não é reclamado (evita gerar o mesmo e-mail 2x = $$).
+ *
+ * O número é DERIVADO do `maxDuration`, não da latência dos agentes: um
+ * tick não pode segurar o job por mais tempo do que a função dele vive, e
+ * quando a função morre o job tem de voltar para a fila. Amarrá-lo à
+ * latência de um agente é o que fazia o lease envelhecer a cada troca de
+ * modelo — e com um e-mail de 681s no p90 contra um lease de 360s, outro
+ * tick reclamaria o job com o primeiro ainda rodando.
+ */
+const LEASE_MS = Number(process.env.DISPATCH_LEASE_MS ?? CRON_MAX_DURATION_MS + 60_000)
 
 // "skipped": email marcado "somente texto" (email_blueprints.text_only) —
 // nunca roda o Montador/Blueprint por loja; settla imediatamente (o critério
@@ -79,6 +130,26 @@ export interface JobEmail {
    * do generate.service). Viaja no JSONB do job — sem coluna nova.
    */
   force?: boolean
+}
+
+/**
+ * A ordem em que os e-mails do job são processados.
+ *
+ * Importa porque o pré-passo do Seletor decide o alvo de objeção em
+ * sequência: welcome-2 recebe `ja_atacadas` de welcome-1. Sem ordem, o
+ * `ja_atacadas` de um e-mail é o de um irmão arbitrário.
+ *
+ * Não vinha de lugar nenhum: o enqueue lia `email_flow_emails` sem
+ * `.order()` e gravava o array na ordem que o PostgREST devolvesse. O job
+ * b6d89e4c (24/07) tem o welcome como **2, 5, 8, 6, 4, 1, 3, 7**.
+ *
+ * Este comparador é a fonte única — o enqueue ordena o que grava e o tick
+ * reordena o que lê, porque os jobs já enfileirados carregam o array
+ * desordenado dentro do JSONB e nenhuma migration alcança isso.
+ */
+export function ordemDosEmails(a: JobEmail, b: JobEmail): number {
+  if (a.flow_type !== b.flow_type) return a.flow_type < b.flow_type ? -1 : 1
+  return a.email_number - b.email_number
 }
 
 export interface EnqueueOptions {
@@ -187,10 +258,13 @@ export async function enqueueDispatchJob(
   const flowIds = flows.map((f) => f.id)
 
   // Emails-alvo (mesma semântica do dispatch: filtro de draft opcional).
+  // `.order` aqui é higiene (query determinística); quem garante a ordem do
+  // job é `ordemDosEmails`, aplicada ao array mapeado logo abaixo.
   let emailsQuery = admin
     .from("email_flow_emails")
     .select("flow_id, number")
     .in("flow_id", flowIds)
+    .order("number", { ascending: true })
   if (onlyDrafts) emailsQuery = emailsQuery.eq("status", "draft")
   const { data: emailsData, error: emailErr } = await emailsQuery
   if (emailErr) {
@@ -264,6 +338,7 @@ export async function enqueueDispatchJob(
       }
     })
     .filter((e): e is JobEmail => e !== null)
+    .sort(ordemDosEmails)
 
   const { data: job, error: insErr } = await admin
     .from("email_dispatch_jobs")
@@ -449,43 +524,65 @@ export async function processDispatchJobs(): Promise<{
   const job = await claimNextJob(admin)
   if (!job) return { claimed: false, architectRan: 0, dispatched: false, done: false }
 
+  // Jobs enfileirados antes de `ordemDosEmails` existir carregam o array na
+  // ordem que o PostgREST devolveu. Reordenar aqui é o único caminho: o
+  // array mora no JSONB do job e nenhuma migration o alcança.
+  job.emails = [...job.emails].sort(ordemDosEmails)
+
   let architectRan = 0
 
-  // Pré-passo do SELETOR de objeções (set/2026): o alvo de cada email nasce
-  // AQUI, em ordem de email_number, antes dos lotes paralelos — welcome-2
-  // precisa saber o que welcome-1 atacou. Reaproveita o alvo vigente quando
-  // o catálogo não mudou (sem LLM nos ticks seguintes). Nunca derruba o job.
-  const pendentesSeletor = job.emails.filter((e) => e.architect === "pending")
-  if (pendentesSeletor.length > 0) {
-    const r = await ensureObjectionTargets({
-      storeId: job.store_id,
-      emails: pendentesSeletor.map((e) => ({ flowType: e.flow_type, emailNumber: e.email_number })),
-      triggeredBy: job.triggered_by ?? undefined,
-      batchId: job.id,
-      logSkipped: pendentesSeletor.every((e) => e.attempts === 0),
-    })
-    if (r.mode !== "off") {
-      log.info("seletor.pre_passo", { jobId: job.id, mode: r.mode, ran: r.ran, reused: r.reused, skipped: r.skipped, error: r.error })
+  // A JANELA da fase 1 vale para tudo que roda aqui dentro — Seletor,
+  // Estruturador, Curador, Montador, Blueprint, Subject. Sem este escopo
+  // aberto, `restanteDoOrcamento()` devolve `null` no caminho do cron e
+  // TODO o guard de `fase1-orcamento.ts` é código morto em produção: o
+  // relógio de cada chamada vira o teto absoluto e `cabeNaJanela` responde
+  // sempre "cabe". Era o estado até aqui — o módulo só estava ligado na aba
+  // Teste e nas rotas do Catalogador.
+  await comOrcamentoDeFase1(JANELA_DO_TICK_MS, async () => {
+    // Pré-passo do SELETOR de objeções (set/2026): o alvo de cada email nasce
+    // AQUI, em ordem de email_number, antes dos lotes paralelos — welcome-2
+    // precisa saber o que welcome-1 atacou. Reaproveita o alvo vigente quando
+    // o catálogo não mudou (sem LLM nos ticks seguintes). Nunca derruba o job.
+    const pendentesSeletor = job.emails.filter((e) => e.architect === "pending")
+    if (pendentesSeletor.length > 0) {
+      const r = await ensureObjectionTargets({
+        storeId: job.store_id,
+        emails: pendentesSeletor.map((e) => ({ flowType: e.flow_type, emailNumber: e.email_number })),
+        triggeredBy: job.triggered_by ?? undefined,
+        batchId: job.id,
+        logSkipped: pendentesSeletor.every((e) => e.attempts === 0),
+      })
+      if (r.mode !== "off") {
+        log.info("seletor.pre_passo", {
+          jobId: job.id, mode: r.mode, ran: r.ran, reused: r.reused,
+          skipped: r.skipped, semOrcamento: r.semOrcamento, error: r.error,
+        })
+      }
     }
-  }
 
-  // Roda o Architect dos pendentes em lotes paralelos até esgotar ou estourar
-  // o orçamento de tempo do tick.
-  while (Date.now() - t0 < TICK_BUDGET_MS) {
-    const pending = job.emails.filter((e) => e.architect === "pending")
-    if (pending.length === 0) break
+    // Roda o Architect dos pendentes em lotes paralelos até esgotar ou estourar
+    // o orçamento de tempo do tick.
+    while (Date.now() - t0 < TICK_BUDGET_MS) {
+      const pending = job.emails.filter((e) => e.architect === "pending")
+      if (pending.length === 0) break
 
-    const batch = pending.slice(0, ARCHITECT_BATCH)
-    await Promise.all(
-      batch.map(async (e) => {
-        const next = await runArchitectForEmail(job, e)
-        e.attempts += 1
-        e.architect = next
-        architectRan += 1
-      }),
-    )
-    await heartbeat(admin, job)
-  }
+      const batch = pending.slice(0, ARCHITECT_BATCH)
+      await Promise.all(
+        batch.map(async (e) => {
+          const next = await runArchitectForEmail(job, e)
+          e.attempts += 1
+          e.architect = next
+          architectRan += 1
+          // Heartbeat por E-MAIL, não por lote. O lease é derivado do
+          // `maxDuration` e não da latência dos agentes, então esta linha não
+          // é o que impede a reclamação — ela é o que mantém o progresso
+          // VISÍVEL enquanto um lote de 11 minutos roda, e o que manterá a
+          // premissa de pé quando o lote for de um e-mail só.
+          await heartbeat(admin, job)
+        }),
+      )
+    }
+  })
 
   const allSettled = job.emails.every((e) => e.architect !== "pending")
   if (!allSettled) {
