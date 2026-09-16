@@ -21,7 +21,7 @@
  *    o id de origem sobrescreveria o fundo e o estilo do slide que já
  *    ocupa aquele id no documento.
  * 2. **A identidade é a do DESTINO.** O slide entra desenhado pela família
- *    do documento; trazer o preto da Neon para dentro de um carrossel Post
+ *    do documento; trazer o preto da Manchete para dentro de um carrossel Post
  *    seria importar uma segunda identidade sem ninguém ter escolhido. Por
  *    isso o fundo sai de `ritmoDeFundos`, e não do molde de origem.
  * 3. **Slot de imagem só onde o tipo DESENHA foto** (`tipoDesenhaImagem`):
@@ -80,7 +80,7 @@ export function formatosParaOTipo(templateIdAtual: string, tipo: FrameTipo): Sli
 
 function frameImportado(s: SlideImportavel, cartaoPerfil: boolean): DocFrame {
   // Os campos são os da IDENTIDADE DE DESTINO, não os do molde de origem:
-  // a capa da Neon tem subtítulo e o cartão de perfil não o desenha — o
+  // a capa da Manchete tem subtítulo e o cartão de perfil não o desenha — o
   // texto-guia nasceria invisível.
   const campos = camposDaIdentidade(cartaoPerfil, s.tipo)
   return {
@@ -133,7 +133,7 @@ export function aplicarSlideNoFrame(doc: Documento, i: number, s: SlideImportave
   if (!atual) return doc
   // Trocar o FORMATO não mexe no conjunto de campos: ele é da identidade do
   // documento, e recompô-lo a partir do molde de origem descartava o
-  // parágrafo do operador (achado renderizando — a capa da Neon apagava o
+  // parágrafo do operador (achado renderizando — a capa da Manchete apagava o
   // corpo de um carrossel Post). Quando o TIPO muda, quem decide os campos
   // é `trocarTipoFrame`, que já preserva o texto.
   const comTipo = atual.tipo === s.tipo ? doc : trocarTipoFrame(doc, i, s.tipo)

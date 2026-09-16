@@ -19,29 +19,37 @@
 
 import type { Campo, DocFrame, FrameTipo } from "./types"
 
-export type CampoOpcional = "gancho" | "anotacao"
+export type CampoOpcional = "gancho" | "anotacao" | "destaque"
 
-export const CAMPOS_OPCIONAIS: CampoOpcional[] = ["gancho", "anotacao"]
+export const CAMPOS_OPCIONAIS: CampoOpcional[] = ["gancho", "anotacao", "destaque"]
 
 /** Onde o `frame.tsx` desenha cada campo opcional. */
 const DESENHA: Record<CampoOpcional, FrameTipo[]> = {
   gancho: ["capa", "dado", "texto", "prova", "lista", "mec"],
   anotacao: ["dado", "texto", "lista", "mec"],
+  // A CAIXA sólida de destaque é a assinatura da identidade Manchete e o
+  // renderer só a desenha lá (`traco.caixaDeDestaque`) — por isso ela
+  // também é filtrada por FAMÍLIA em `camposOpcionaisDaPeca`. Aqui fica o
+  // recorte por tipo: na capa e no fecho ela competiria com o próprio
+  // título, que já é o bloco de impacto do slide.
+  destaque: ["dado", "texto", "prova", "lista", "mec"],
 }
 
 export const CAMPO_OPCIONAL_LABEL: Record<CampoOpcional, string> = {
   gancho: "Gancho",
   anotacao: "Anotação",
+  destaque: "Caixa de destaque",
 }
 
 /** Texto-guia de quando o campo nasce (o operador substitui). */
 export const CAMPO_OPCIONAL_GUIA: Record<CampoOpcional, string> = {
   gancho: "a linha que prepara",
   anotacao: "e é aqui que trava",
+  destaque: "a frase que fica na cabeça",
 }
 
 export function ehCampoOpcional(campo: Campo): campo is CampoOpcional {
-  return campo === "gancho" || campo === "anotacao"
+  return campo === "gancho" || campo === "anotacao" || campo === "destaque"
 }
 
 export function aceitaCampoOpcional(tipo: FrameTipo, campo: CampoOpcional): boolean {
@@ -51,6 +59,18 @@ export function aceitaCampoOpcional(tipo: FrameTipo, campo: CampoOpcional): bool
 /** Os opcionais que ESTE tipo de slide sabe desenhar. */
 export function camposOpcionaisDoTipo(tipo: FrameTipo): CampoOpcional[] {
   return CAMPOS_OPCIONAIS.filter((c) => aceitaCampoOpcional(tipo, c))
+}
+
+/**
+ * Os opcionais que ESTE slide, NESTA identidade, sabe desenhar.
+ *
+ * O recorte por tipo não basta desde que a caixa de destaque entrou: ela é
+ * desenhada só onde a família a declara, e oferecê-la nas outras criaria o
+ * campo fantasma que este módulo existe para impedir — o operador escreve,
+ * o texto é gravado e nunca aparece na tela.
+ */
+export function camposOpcionaisDaPeca(tipo: FrameTipo, traco: { caixaDeDestaque: boolean }): CampoOpcional[] {
+  return camposOpcionaisDoTipo(tipo).filter((c) => c !== "destaque" || traco.caixaDeDestaque)
 }
 
 /**

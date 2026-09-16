@@ -10,7 +10,7 @@
  * identidade não desenha — presente no documento, invisível na tela, sem
  * erro nenhum.
  *
- * Achado RENDERIZANDO: aplicar o formato da capa da Neon (`titulo` +
+ * Achado RENDERIZANDO: aplicar o formato da capa da Manchete (`titulo` +
  * `subtitulo`) num carrossel Post apagou o parágrafo da tela.
  *
  * A outra metade é a MIGRAÇÃO: quando um campo de texto sai e outro entra,

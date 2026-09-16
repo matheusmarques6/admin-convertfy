@@ -10,7 +10,7 @@ import { clarear } from "./brand"
 import type { DocFrame, Documento, FamiliaVisual } from "./types"
 
 const agora = new Date("2026-09-09T10:00:00-03:00")
-const doc = (): Documento => novoDocumento("x", "canal-1", "molde-neon", { agora })
+const doc = (): Documento => novoDocumento("x", "canal-1", "molde-manchete", { agora })
 
 describe("família visual", () => {
   it("documento sem família é o padrão, e toda família tem traço completo", () => {
@@ -79,9 +79,9 @@ describe("família visual", () => {
       // preto, e um gradiente na capa denuncia que a peça não é uma
       // captura de tela (coberto em `formato-post.test.ts`).
       if (FAMILIAS[key].traco.cartaoPerfil) continue
-      // A Neon é a outra exceção: bloco preto do começo ao fim, com UM
-      // slide claro de respiro (coberto em "identidade Neon", abaixo).
-      if (FAMILIAS[key].traco.respiroClaro) continue
+      // A Manchete é a outra exceção: peça clara com os escuros por
+      // POSIÇÃO (coberto em `familia-manchete.test.ts`).
+      if (FAMILIAS[key].traco.respiroEscuro) continue
       expect(fundoPadraoDaFamilia(key, "capa", 0)).toBe("gradiente")
       expect(fundoPadraoDaFamilia(key, "prova", 4)).toBe("gradiente")
       expect(fundoPadraoDaFamilia(key, "cta", 6)).toBe("gradiente")
@@ -225,9 +225,9 @@ describe("campos opcionais do slide", () => {
   })
 
   it("só oferece o campo onde o renderer o desenha", () => {
-    expect(camposOpcionaisDoTipo("texto")).toEqual(["gancho", "anotacao"])
+    expect(camposOpcionaisDoTipo("texto")).toEqual(["gancho", "anotacao", "destaque"])
     expect(camposOpcionaisDoTipo("capa")).toEqual(["gancho"])
-    expect(camposOpcionaisDoTipo("prova")).toEqual(["gancho"])
+    expect(camposOpcionaisDoTipo("prova")).toEqual(["gancho", "destaque"])
     expect(camposOpcionaisDoTipo("cta")).toEqual([])
     expect(aceitaCampoOpcional("capa", "anotacao")).toBe(false)
   })

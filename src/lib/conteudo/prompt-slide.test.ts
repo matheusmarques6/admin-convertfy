@@ -187,7 +187,7 @@ describe("integração com o documento salvo", () => {
   })
 
   it("o documento com prompt e modo sobrevive à validação da rota de salvamento", () => {
-    const base = novoDocumento("Carrossel", "canal-1", "molde-neon", { agora: new Date("2026-09-09T10:00:00-03:00") })
+    const base = novoDocumento("Carrossel", "canal-1", "molde-manchete", { agora: new Date("2026-09-09T10:00:00-03:00") })
     const doc = {
       ...base,
       frames: base.frames.map((fr, i) =>
@@ -205,7 +205,7 @@ describe("integração com o documento salvo", () => {
 
 describe("a anatomia é da FAMÍLIA, não da casa", () => {
   const post: ContextoPrompt["doc"] = { ...doc, familia: "post" }
-  const neon: ContextoPrompt["doc"] = { ...doc, familia: "neon", cores: { ...FAMILIAS.neon.cores } }
+  const manchete: ContextoPrompt["doc"] = { ...doc, familia: "manchete", cores: { ...FAMILIAS.manchete.cores } }
   const comFoto = frame({ tipo: "texto", slotsImagem: 1, textos: { titulo: "Why it works:", corpo: "The biggest option wins." } })
 
   it("nada de instrução contraditória: a Post nega fotografia e o fundo é declarado UMA vez", () => {
@@ -236,21 +236,27 @@ describe("a anatomia é da FAMÍLIA, não da casa", () => {
     expect(capa).not.toContain("a fotografia descrita abaixo")
   })
 
-  it("onde a foto acende, ela é bloco recortado — sangrar apagaria o brilho", () => {
-    const capa = construirPromptDeSlide({ frame: frame({ tipo: "capa", slotsImagem: 1 }), indice: 0, total: 6, doc: neon, modo: "hibrido" })
-    expect(capa).toMatch(/bloco recortado/)
-    expect(capa).not.toMatch(/ocupa o slide inteiro/)
+  it("na Manchete a foto é CARD entre margens, nunca o fundo do slide", () => {
+    const t = construirPromptDeSlide({ frame: frame({ tipo: "texto", slotsImagem: 1, textos: { titulo: "O erro", corpo: "x" } }), indice: 1, total: 5, doc: manchete, modo: "hibrido" })
+    expect(t).toMatch(/card entre margens/)
+    // Fundo do slide ela nunca é: a peça alterna preto e branco chapados.
+    expect(t).not.toMatch(/ocupa o slide inteiro/)
   })
 
   it("o CTA sai na forma que a família desenha", () => {
     const cta = frame({ tipo: "cta", textos: { titulo: "Quer o passo a passo?", botao: "Comente TURBO" } })
-    expect(construirPromptDeSlide({ frame: cta, indice: 5, total: 6, doc: neon, modo: "completo" })).toMatch(/Caixa sólida/)
+    expect(construirPromptDeSlide({ frame: cta, indice: 5, total: 6, doc: manchete, modo: "completo" })).toMatch(/Caixa sólida/)
     expect(construirPromptDeSlide({ frame: cta, indice: 5, total: 6, doc, modo: "completo" })).toMatch(/Pílula sólida/)
   })
 
-  it("a régua entre título e corpo só existe onde a família a declara", () => {
-    const t = frame({ tipo: "texto", textos: { titulo: "Corte três campos", corpo: "Nome, e-mail e pagamento." } })
-    expect(construirPromptDeSlide({ frame: t, indice: 3, total: 6, doc: neon, modo: "completo" })).toMatch(/régua horizontal curta/)
-    expect(construirPromptDeSlide({ frame: t, indice: 3, total: 6, doc, modo: "completo" })).not.toMatch(/régua horizontal curta/)
+  it("a CAIXA sólida de destaque é descrita onde a família a desenha — e só com texto dentro", () => {
+    const comCaixa = frame({ tipo: "texto", campos: ["titulo", "corpo", "destaque"], textos: { titulo: "Corte três campos", corpo: "Nome, e-mail e pagamento.", destaque: "O problema não é a data." } })
+    expect(construirPromptDeSlide({ frame: comCaixa, indice: 3, total: 6, doc: manchete, modo: "completo" })).toMatch(/CAIXA SÓLIDA/)
+    // Na casa o campo nem é oferecido; descrevê-lo mandaria o modelo
+    // desenhar um retângulo que o renderer não põe na peça.
+    expect(construirPromptDeSlide({ frame: comCaixa, indice: 3, total: 6, doc, modo: "completo" })).not.toMatch(/CAIXA SÓLIDA/)
+    // Caixa vazia não vira barra de cor sem motivo.
+    const sem = frame({ tipo: "texto", campos: ["titulo", "corpo", "destaque"], textos: { titulo: "x", corpo: "y", destaque: "  " } })
+    expect(construirPromptDeSlide({ frame: sem, indice: 3, total: 6, doc: manchete, modo: "completo" })).not.toMatch(/CAIXA SÓLIDA/)
   })
 })

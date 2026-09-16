@@ -65,7 +65,7 @@ export const PROMPTS_PRONTOS: PromptPronto[] = [
   {
     n: "Oferta com prazo",
     d: "Afirmação em massa, promessa, prova e a caixa do fecho",
-    tpl: "molde-neon",
+    tpl: "molde-manchete",
     pilar: "Case",
     pauta:
       "Oferta de fundo de funil para quem já acompanha a marca: afirmação forte na capa, a promessa em uma linha, a prova do resultado (use SOMENTE números informados na pauta; o resto fica [confirmar]), a oferta com o prazo e o fecho com convite. Tom direto, sem urgência inventada.",

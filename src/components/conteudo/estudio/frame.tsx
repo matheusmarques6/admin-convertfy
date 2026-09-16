@@ -17,9 +17,10 @@
  */
 
 import type { CSSProperties, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react"
-import { SLIDE, brilhoCor, clarear, fundoEscuro, gradienteCss, hex6 } from "@/lib/conteudo/brand"
+import { SLIDE, clarear, fundoEscuro, gradienteCss, hex6 } from "@/lib/conteudo/brand"
 import { familiaDe, tracoDe } from "@/lib/conteudo/familias"
 import { POST_CORES, medidasPost, posePost, subidaOptica } from "@/lib/conteudo/formato-post"
+import { MANCHETE, fatoresDaEscada, linhasDoTitulo } from "@/lib/conteudo/formato-manchete"
 import { fitFactor, limiteDe } from "@/lib/conteudo/limites"
 import { partesDestacadas, textoLimpo } from "@/lib/conteudo/rich"
 import type { Campo, DocFrame, Documento, EstiloTexto, FrameTipo } from "@/lib/conteudo/types"
@@ -59,7 +60,47 @@ export interface FrameProps {
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v))
 
 type EstiloBase = Omit<CSSProperties, "fontSize" | "marginTop" | "maxWidth">
-type BaseTexto = EstiloBase & { fontSize: number; marginTop?: number; maxWidth?: number }
+type BaseTexto = EstiloBase & {
+  fontSize: number
+  marginTop?: number
+  maxWidth?: number
+  /**
+   * Fatores por LINHA do texto (a escada da Manchete). Cada `\n` vira uma
+   * linha com o seu corpo; a quebra automática não entra na conta porque
+   * não há como dar corpo diferente a uma linha que o navegador criou.
+   */
+  escada?: number[]
+}
+
+/** `**x**` na cor de destaque. Fora da edição, sempre. */
+function partesRicas(texto: string, corDestaque: string) {
+  return partesDestacadas(texto).map((parte, k) =>
+    parte.destaque ? (
+      <strong key={k} style={{ color: corDestaque, fontWeight: 700 }}>
+        {parte.texto}
+      </strong>
+    ) : (
+      <span key={k}>{parte.texto}</span>
+    ),
+  )
+}
+
+/**
+ * O título em ESCADA: uma linha por `\n`, cada uma um passo menor.
+ *
+ * O `fontSize` do bloco já é o da primeira linha, então o fator entra como
+ * `em` — assim o auto-fit por comprimento continua valendo para a escada
+ * inteira, em vez de encolher só a linha maior e desmontar a proporção.
+ */
+function escadaDeLinhas(texto: string, fatores: number[], _sz: number, corDestaque: string, _S: (v: number) => number) {
+  return linhasDoTitulo(texto).map((linha, i) => (
+    <span key={i} style={{ display: "block", fontSize: `${fatores[Math.min(i, fatores.length - 1)]}em` }}>
+      {/* Linha vazia ainda ocupa altura: sem o zero-width a quebra dupla
+          do operador some do desenho e o respiro que ele pediu não existe. */}
+      {linha.length > 0 ? partesRicas(linha, corDestaque) : "\u200b"}
+    </span>
+  ))
+}
 
 // Ícones inline (a exportação serializa o DOM: nada pode depender de CSS externo).
 const IconCheck = ({ s }: { s: number }) => (
@@ -120,13 +161,59 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
   const ganchoEstilo: EstiloBase = { fontFamily: tr.fonteGancho, fontStyle: "italic", fontWeight: 400, lineHeight: 1.1 }
   // Destaque legível nos dois fundos: a mesma cor, clareada no escuro.
   const corDestaque = escuro ? clarear(doc.cores.destaque ?? SLIDE.destaque, 0.55) : (doc.cores.destaque ?? SLIDE.destaque)
+  // Margem lateral da IDENTIDADE. A casa usa 80; a Manchete respira mais
+  // (135 medidos na referência), e é essa folga que faz a peça ler como
+  // editorial em vez de card cheio até a borda.
+  const ML = S(tr.logoNoTopo ? MANCHETE.margem : 80)
+  /**
+   * A escada só entra no fundo ESCURO. Lido dos cinco slides: os dois
+   * pretos têm título em escada, os três brancos têm o título todo do
+   * mesmo corpo. É a diferença entre o modo "manchete" e o "artigo".
+   */
+  const escadaDoTitulo = (campo: "titulo") => (tr.escadaNoTitulo && escuro ? { escada: fatoresDaEscada(linhasDoTitulo(f.textos[campo] ?? "").length) } : {})
+  /**
+   * A CAIXA sólida de destaque: retângulo na cor de acento com o texto do
+   * campo `destaque` dentro. Sem texto não desenha nada — caixa vazia é
+   * uma barra de cor que o operador não sabe de onde veio.
+   */
+  const caixaDestaque = () => {
+    if (!tr.caixaDeDestaque || !f.campos.includes("destaque")) return null
+    if (!(f.textos.destaque ?? "").trim()) return null
+    return (
+      <div style={{ marginTop: S(48), background: doc.cores.destaque ?? SLIDE.destaque, borderRadius: S(MANCHETE.destaqueRaio), padding: `${S(MANCHETE.destaquePadY)}px ${S(MANCHETE.destaquePadX)}px` }}>
+        {T("destaque", { ...serif, fontSize: MANCHETE.destaqueTexto, color: "#FFFFFF", lineHeight: 1.35 })}
+      </div>
+    )
+  }
+  /**
+   * O ÍCONE da marca no topo — só ele, sem nome nem `@handle`. Sem avatar
+   * no brand kit nada é desenhado: inventar uma marca é pior que o vazio.
+   */
+  const logoTopo = (centro = false) =>
+    tr.logoNoTopo && !oc.avatar && bk.avatar ? (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={bk.avatar}
+        alt=""
+        crossOrigin="anonymous"
+        style={{
+          position: "absolute",
+          top: S(off + MANCHETE.logoTopo),
+          ...(centro ? { left: "50%", transform: "translateX(-50%)" } : { left: ML }),
+          width: S(MANCHETE.logoTam),
+          height: S(MANCHETE.logoTam),
+          objectFit: "cover",
+          borderRadius: S(8),
+        }}
+      />
+    ) : null
 
   const isSel = (campo: Campo) => Boolean(sel && sel.frameId === f.frameId && sel.campo === campo)
 
   const T = (campo: Campo, base: BaseTexto) => {
     const e = est(campo)
     const texto = f.textos[campo] ?? ""
-    const sz = base.fontSize * ((e.escala ?? 100) / 100) * fitFactor(textoLimpo(texto).length, limiteDe(f.tipo, campo, tr.cartaoPerfil))
+    const sz = base.fontSize * ((e.escala ?? 100) / 100) * fitFactor(textoLimpo(texto).length, limiteDe(f.tipo, campo, familiaDe(doc)))
     const cor = e.cor && doc.cores[e.cor] ? doc.cores[e.cor] : base.color
     const on = isSel(campo) && Boolean(interactive)
     const editing = on && Boolean(sel?.editing)
@@ -207,17 +294,7 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
           {/* Editando, o texto vai CRU: o contentEditable devolve
               `textContent`, e formatar aqui apagaria os `**` no primeiro
               clique. Fora da edição, `**x**` sai na cor de destaque. */}
-          {editing
-            ? texto
-            : partesDestacadas(texto).map((parte, k) =>
-                parte.destaque ? (
-                  <strong key={k} style={{ color: corDestaque, fontWeight: 700 }}>
-                    {parte.texto}
-                  </strong>
-                ) : (
-                  <span key={k}>{parte.texto}</span>
-                ),
-              )}
+          {editing ? texto : base.escada ? escadaDeLinhas(texto, base.escada, sz, corDestaque, S) : partesRicas(texto, corDestaque)}
         </div>
         {on && (
           <>
@@ -432,10 +509,6 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
           overflow: "hidden",
           cursor: interactive ? "pointer" : "default",
           outline: imgSel && imgSel.frameId === f.frameId ? `${Math.max(1, S(3))}px dashed ${SLIDE.selecao}` : "none",
-          // Brilho neon: a foto ACENDE sobre o bloco preto. Fica fora do
-          // `overflow: hidden` porque `box-shadow` desenha para fora da
-          // caixa — é por isso que ele não some com o recorte da imagem.
-          ...(tr.brilhoImagem ? { boxShadow: `0 0 ${S(tr.brilhoImagem)}px ${brilhoCor(doc.cores.destaque ?? SLIDE.destaque, 0.45)}` } : {}),
           ...style,
         }}
       >
@@ -632,24 +705,19 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
         )}
       </div>
     )
-  } else if (f.tipo === "capa" && tr.brilhoImagem > 0 && (img || f.slotsImagem > 0)) {
-    // Capa das famílias em que a foto ACENDE: ela é um bloco recortado com
-    // brilho, não o fundo do slide. Sangrar a foto de borda a borda aqui
-    // apagaria o brilho (não há preto em volta para ele aparecer) e o véu
-    // escuro por cima faria o oposto do que o formato quer — a foto é a
-    // única fonte de luz da peça.
+  } else if (f.tipo === "capa" && tr.escadaNoTitulo) {
+    // Capa da Manchete: a foto sangra, o véu desce até o preto e a tese
+    // fecha no rodapé em ESCADA, centralizada. O véu vai mais longe que o
+    // da casa (0,55 no meio contra 0,35) porque a referência é uma foto em
+    // preto e branco com o título por cima — com pouco véu a escada some.
     body = (
-      <div style={{ position: "absolute", left: S(80), right: S(80), top: S(off + 150), bottom: S(off + 130), display: "flex", flexDirection: "column", justifyContent: img ? "flex-start" : "center" }}>
-        {/* SEM foto a composição ENCOLHE e se centraliza: o slot vira um
-            convite de 320px e o título fecha logo abaixo. Com `flex: 1` no
-            bloco vazio a capa virava um retângulo tracejado oco com a
-            frase espremida no rodapé — é o que se via na prateleira, onde
-            nenhum molde tem foto. */}
-        <div style={{ flex: img ? 1 : "0 0 auto", height: img ? undefined : S(320), position: "relative", marginBottom: S(78) }}>{imgSlot({ inset: 0, borderRadius: S(tr.raio) })}</div>
-        {gancho(58, fg2)}
-        {T("titulo", { ...cond, fontSize: 104, color: fg })}
-        {T("subtitulo", { ...serif, fontSize: 40, color: fg2, marginTop: S(26), lineHeight: 1.3 })}
-      </div>
+      <>
+        {imgSlot({ inset: 0 }, `linear-gradient(180deg, ${veu(0.1)} 0%, ${veu(0.55)} 42%, ${veu(0.98)} 82%, ${veu(1)} 100%)`)}
+        <div style={{ position: "absolute", left: ML, right: ML, bottom: S(off + 112), textAlign: "center" }}>
+          {T("titulo", { ...cond, fontSize: MANCHETE.tituloCapa, color: "#FFFFFF", textAlign: "center", ...escadaDoTitulo("titulo") })}
+          {T("subtitulo", { ...serif, fontSize: MANCHETE.texto + 3, color: "rgba(255,255,255,0.92)", marginTop: S(30), lineHeight: 1.3, textAlign: "center" })}
+        </div>
+      </>
     )
   } else if (f.tipo === "capa") {
     body = (
@@ -711,6 +779,17 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
         {anotacao(42)}
       </div>
     )
+  } else if (f.tipo === "cta" && tr.logoNoTopo) {
+    // Chamada da Manchete: título à ESQUERDA, uma régua fina e o pedido em
+    // caixa mista. Sem pílula: na referência o CTA é texto, e um botão
+    // desenhado ali devolveria a peça para a cara de card de rede social.
+    body = (
+      <div style={{ position: "absolute", left: ML, right: ML, top: "50%", transform: "translateY(-50%)" }}>
+        {T("titulo", { ...cond, fontSize: MANCHETE.titulo, color: fg })}
+        <div style={{ height: Math.max(1, S(2)), background: escuro ? "rgba(255,255,255,0.45)" : "rgba(0,0,0,0.85)", margin: `${S(MANCHETE.reguaRespiro)}px 0` }} />
+        {T("subtitulo", { ...serif, fontSize: MANCHETE.texto + 3, color: fg2, lineHeight: MANCHETE.entrelinhaTexto })}
+      </div>
+    )
   } else if (f.tipo === "cta") {
     body = (
       <div style={{ position: "absolute", left: S(80), right: S(80), top: "50%", transform: "translateY(-50%)", textAlign: "center" }}>
@@ -736,7 +815,7 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
                 ? { border: `${Math.max(1, S(2))}px solid ${doc.cta.cor}`, letterSpacing: "0.02em" }
                 : tr.cta === "bloco"
                   ? // Caixa sólida: canto quase reto, texto condensado em
-                    // caixa alta e nada de sombra. Na Neon ela é um elemento
+                    // caixa alta e nada de sombra. Na Manchete ela é um elemento
                     // do DESENHO — o bloco de cor que fecha a peça —, não um
                     // botão imitando interface.
                     { borderRadius: S(10), padding: `${S(34)}px ${S(56)}px`, fontFamily: tr.fonteTitulo, fontWeight: tr.tituloPeso, textTransform: "uppercase" as const, letterSpacing: "0.01em", fontSize: S(46) }
@@ -751,23 +830,30 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
     )
   } else {
     const comImg = f.slotsImagem > 0
+    /**
+     * Na Manchete a foto entra ENTRE o título e o corpo (variante "a") ou
+     * ABRE o slide (variante "b") — são os dois arranjos da referência. Nas
+     * famílias da casa a imagem fecha o bloco, como sempre.
+     */
+    const fotoNoMeio = tr.logoNoTopo && variante === "a"
     const bloco = (
       <>
         {avatarRow(escuro)}
         {gancho(52, fg2, variante === "c" ? "center" : "left")}
-        {T("titulo", { ...cond, fontSize: 96, color: fg, textAlign: variante === "c" ? "center" : "left" })}
+        {T("titulo", { ...cond, fontSize: tr.logoNoTopo ? MANCHETE.titulo : 96, color: fg, textAlign: variante === "c" ? "center" : "left", ...escadaDoTitulo("titulo") })}
         {/* Régua entre a afirmação e o argumento: no slide sem foto não há
             outro corte, e os dois blocos de texto se colam. */}
         {tr.reguaSobCorpo && (f.textos.corpo ?? "").trim() ? (
           <div style={{ width: S(140), height: S(8), background: escuro ? corDestaque : doc.cores.destaque, marginTop: S(40), borderRadius: S(4), ...(variante === "c" ? { marginLeft: "auto", marginRight: "auto" } : {}) }} />
         ) : null}
-        {T("corpo", { ...serif, fontSize: 42, color: fg2, marginTop: S(36), lineHeight: 1.35, textAlign: variante === "c" ? "center" : "left" })}
+        {fotoNoMeio && comImg ? slotEmFluxo(44, 0) : null}
+        {T("corpo", { ...serif, fontSize: tr.logoNoTopo ? MANCHETE.texto : 42, color: fg2, marginTop: S(fotoNoMeio ? 44 : 36), lineHeight: tr.logoNoTopo ? MANCHETE.entrelinhaTexto : 1.35, textAlign: variante === "c" ? "center" : "left" })}
         {anotacao(44, variante === "c" ? "left" : "right")}
       </>
     )
-    const imagem = comImg && variante !== "c" && slotEmFluxo(variante === "a" ? 56 : 0, variante === "b" ? 56 : 0)
+    const imagem = comImg && variante !== "c" && !fotoNoMeio && slotEmFluxo(variante === "a" ? 56 : 0, variante === "b" ? 56 : 0)
     body = (
-      <div style={{ position: "absolute", left: S(80), right: S(80), top: S(off + 180), bottom: S(off + 100), display: "flex", flexDirection: "column", justifyContent: variante === "c" ? "center" : "flex-start" }}>
+      <div style={{ position: "absolute", left: ML, right: ML, top: S(off + (tr.logoNoTopo ? 230 : 180)), bottom: S(off + 100), display: "flex", flexDirection: "column", justifyContent: variante === "c" ? "center" : "flex-start" }}>
         {variante === "b" ? (
           <>
             {imagem}
@@ -779,6 +865,7 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
             {imagem}
           </>
         )}
+        {caixaDestaque()}
       </div>
     )
   }
@@ -839,7 +926,11 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
       {!slideInteiro && filete}
       {/* O print de tweet não tem rodapé de marca nem contador: a peça imita
           uma captura de tela, e o enfeite da casa denuncia que não é uma. */}
-      {!slideInteiro && !tr.cartaoPerfil && brandRow}
+      {/* O rodapé de marca é das famílias da casa. Na Manchete quem carrega
+          a marca é o ícone no topo, e repetir handle e copyright embaixo
+          devolveria a peça para a cara de card de rede social. */}
+      {!slideInteiro && !tr.cartaoPerfil && !tr.logoNoTopo && brandRow}
+      {!slideInteiro && logoTopo(f.tipo === "capa")}
       {zonas && (
         <>
           <div style={{ position: "absolute", left: 0, right: 0, top: 0, height: S(off + 150), background: `repeating-linear-gradient(135deg, ${SLIDE.zona} 0 8px, transparent 8px 16px)`, borderBottom: `2px dashed ${SLIDE.zonaLinha}`, pointerEvents: "none" }}>
@@ -850,7 +941,7 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
           </div>
         </>
       )}
-      {tr.cartaoPerfil ? null : tr.barraProgresso ? (
+      {tr.cartaoPerfil || tr.logoNoTopo ? null : tr.barraProgresso ? (
         !slideInteiro && progresso
       ) : (
         <span style={{ position: "absolute", bottom: S(off + 52), right: S(80), fontSize: S(22), color: numeroClaro ? "rgba(255,255,255,0.65)" : meta, fontFamily: tr.fonteMeta, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>

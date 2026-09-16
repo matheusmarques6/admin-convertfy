@@ -69,19 +69,19 @@ describe("trocar de identidade", () => {
    * documento, invisível na tela, sem erro nenhum.
    */
   it("o subtítulo da capa vira corpo ao entrar no cartão de perfil — e volta ao sair", () => {
-    const base: Documento = novoDocumento("x", "canal-1", "molde-neon")
+    const base: Documento = novoDocumento("x", "canal-1", "molde-manchete")
     const escrito: Documento = { ...base, frames: base.frames.map((f, i) => (i === 0 ? { ...f, textos: { titulo: "Afirmação", subtitulo: "o apoio" } } : f)) }
     const post = aplicarFamilia(escrito, "post")
     expect(post.frames[0].campos).toEqual(["titulo", "corpo"])
     expect(post.frames[0].textos.corpo).toBe("o apoio")
 
-    const volta = aplicarFamilia(post, "neon")
+    const volta = aplicarFamilia(post, "manchete")
     expect(volta.frames[0].campos).toEqual(["titulo", "subtitulo"])
     expect(volta.frames[0].textos.subtitulo).toBe("o apoio")
   })
 
   it("entre duas famílias da casa os campos não são tocados", () => {
-    const base: Documento = novoDocumento("x", "canal-1", "molde-neon")
+    const base: Documento = novoDocumento("x", "canal-1", "molde-manchete")
     expect(aplicarFamilia(base, "editorial").frames).toBe(base.frames)
   })
 

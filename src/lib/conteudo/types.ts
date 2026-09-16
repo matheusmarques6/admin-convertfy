@@ -31,7 +31,7 @@ export type Pilar = "Case" | "Educacional" | "Bastidor" | "Benchmark"
  * mão, então acrescentar um molde acertava o tipo e deixava os filtros
  * para trás, em silêncio.
  */
-export const MOLDE_KEYS = ["Turbo", "MEC", "Benchmark", "Lista", "Bastidor", "Post", "Neon"] as const
+export const MOLDE_KEYS = ["Turbo", "MEC", "Benchmark", "Lista", "Bastidor", "Post", "Manchete"] as const
 
 export type MoldeKey = (typeof MOLDE_KEYS)[number]
 
@@ -234,14 +234,14 @@ export interface DashboardData {
 
 export type FrameTipo = "capa" | "dado" | "texto" | "prova" | "lista" | "mec" | "cta"
 
-export type Campo = "titulo" | "subtitulo" | "corpo" | "botao" | "gancho" | "anotacao"
+export type Campo = "titulo" | "subtitulo" | "corpo" | "botao" | "gancho" | "anotacao" | "destaque"
 
 /**
  * Identidade visual do documento (paleta, tipografia, forma do CTA). O
  * molde decide a sequência dos slides; a família decide como eles são
  * desenhados. Ausente = "padrao" (a identidade azul da casa).
  */
-export type FamiliaVisual = "padrao" | "editorial" | "alternado" | "post" | "post-largo" | "neon"
+export type FamiliaVisual = "padrao" | "editorial" | "alternado" | "post" | "post-largo" | "manchete"
 
 export type EtapaFunil = "topo" | "meio" | "fundo"
 

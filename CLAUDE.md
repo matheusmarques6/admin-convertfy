@@ -7369,7 +7369,11 @@ famílias de print passam a usar a mesma pilha, o que é o certo: elas simulam
 a MESMA interface, e o que as separa é a métrica. Os arquivos, os
 `@font-face` e as entradas da exportação foram removidos juntos.
 
-**Identidade `neon`** (`docs/conteudo/formatos/neon.md`): bloco preto com
+**Identidade `neon`** — **SUPERADA em 16/09** pela `manchete` (seção "a
+identidade Manchete corrige a que foi feita de descrição", no fim deste
+arquivo): com os cinco slides da referência em mãos, ela errava em seis
+eixos e o `brilhoImagem` foi REMOVIDO do código. O que está abaixo é o
+registro do que foi construído da descrição — bloco preto com
 título condensado em caixa alta alternando azul elétrico e branco (pelo
 `**palavra**` que já existia), foto recortada com brilho, **um** slide claro
 de respiro no meio (`respiroClaro` — não é a alternância do Alternado) e
@@ -7549,10 +7553,10 @@ e péssimos"*. Eram cinco — Turbo, Benchmark, Lista prática, MEC e Bastidor �
 cartões iguais em que a escolha não mudava a peça. Medido antes de apagar:
 **zero documentos e zero templates do time no banco**, então a retirada não
 alcança dado nenhum. Ficam os três que DECLARAM identidade (`Template.familia`):
-Print de post, História em posts e Oferta em neon.
+Print de post, História em posts e Tese em manchete.
 
 **O vocabulário de CLASSIFICAÇÃO não foi mexido.** `MoldeKey` (Turbo, MEC,
-Benchmark, Lista, Bastidor, Post, Neon) é o que classifica post PUBLICADO no
+Benchmark, Lista, Bastidor, Post, Manchete) é o que classifica post PUBLICADO no
 dashboard — outro eixo. `montarMoldes` derivava as linhas de `ST_TEMPLATES`:
 aposentar um molde apagaria da tabela os posts classificados com ele, em
 silêncio, com o post intacto no banco. Agora a lista vem de `MOLDE_KEYS`, nome
@@ -7574,7 +7578,7 @@ ninguém achava onde editar a arroba, que foi o pedido literal. `handleComArroba
 põe o @ que falta e **uma arroba sozinha esvazia o campo** (senão sobra um "@"
 preso no slide). O `copyright` sai da lista nas famílias de print: elas não têm
 rodapé, e campo que não aparece é lido como editor quebrado. O selo verificado
-diz ONDE aparece e fica desabilitado na Neon, que não desenha assinatura no
+diz ONDE aparece e fica desabilitado na Manchete, que não desenha assinatura no
 slide.
 
 **Slide emprestado de outro molde** (`slide-de-outro-template.ts`, puro, 15
@@ -7584,7 +7588,7 @@ INSERE um passo com texto-guia (molde é forma, não conteúdo) e
 `aplicarSlideNoFrame` troca o FORMATO do slide atual **preservando o que o
 operador escreveu** — é o "usar outro formato de capa". Regras: `frameId` novo
 (`fundoPorFrame`, `estilos` e imagens são chaveados por ele, e os moldes usam
-`f1`, `f2`…); o fundo sai de `ritmoDeFundos` do DESTINO (importar da Neon não
+`f1`, `f2`…); o fundo sai de `ritmoDeFundos` do DESTINO (importar da Manchete não
 traz o preto); slot só onde o tipo desenha foto; a variação volta ao padrão
 (ela endereçava o desenho do molde anterior); a imagem FICA quando o formato
 novo não tem slot. Na tela: "Adicionar" virou menu com miniaturas REAIS do
@@ -7592,7 +7596,7 @@ documento de destino, e "Trocar" ganhou "Formato de outro molde" — aberto
 também para o CTA, com o seletor de tipo fechado em capa e CTA.
 
 **O conjunto de campos é da IDENTIDADE, não do molde** (`campos-da-identidade.ts`,
-puro, 10 testes). Achado RENDERIZANDO: aplicar a capa da Neon (`titulo` +
+puro, 10 testes). Achado RENDERIZANDO: aplicar a capa da Manchete (`titulo` +
 `subtitulo`) num carrossel Post **apagou o parágrafo da tela** — o renderer do
 cartão de perfil desenha `titulo` e `corpo` e mais nada. `camposPost` já
 declarava isso e **nada consumia**. Agora `camposDaIdentidade` decide e
@@ -7602,21 +7606,84 @@ simétrica (ir e voltar devolve o parágrafo ao campo de origem). Ligado em
 até aqui trocava a identidade e deixava o subtítulo da capa no documento,
 invisível na tela, sem erro nenhum.
 
-**A capa da Neon SEM foto encolhe e se centraliza**: com `flex: 1` no bloco
-vazio ela virava um retângulo tracejado oco com a frase espremida no rodapé, e
-é assim que ela aparece na prateleira, onde nenhum molde tem foto. As medidas
-da identidade Neon seguem vindo da DESCRIÇÃO, não de um arquivo de referência
-— o limite está declarado em `docs/conteudo/formatos/neon.md` e só sai com a
-referência em mãos.
+**A capa da Neon SEM foto encolhia e se centralizava** — com `flex: 1` no
+bloco vazio ela virava um retângulo tracejado oco com a frase espremida no
+rodapé, e é assim que ela aparecia na prateleira, onde nenhum molde tem
+foto. **Esse ramo saiu do código em 16/09** junto com o `brilhoImagem` que o
+guardava: a capa da Manchete sangra a foto com véu, como as da casa.
 
 *A fonte do print continua sendo Inter* à frente da pilha que o próprio X
 declara (`Segoe UI, Roboto, Helvetica, Arial`): Chirp é proprietária e não
 pode ser embarcada, e a exportação precisa de fonte determinística.
 
 *Verificado renderizando* (`renderToStaticMarkup` + Chromium) os três cartões
-da prateleira e os dois sentidos do empréstimo (capa da Neon num Post, "Por
-que funciona" do Post numa Neon). Foi o render que pegou a perda de copy
-acima — nenhum teste quebrava.
+da prateleira e os dois sentidos do empréstimo (capa da Manchete num Post,
+"Por que funciona" do Post numa Manchete). Foi o render que pegou a perda de
+copy acima — nenhum teste quebrava.
+
+---
+
+## Estúdio — a identidade "Manchete" corrige a que foi feita de descrição (set/2026)
+
+A família `neon` tinha sido construída a partir da DESCRIÇÃO escrita de uma
+referência que não estava em mãos, com o limite declarado no fim do próprio
+documento ("as medidas NÃO foram tiradas da referência"). Com os cinco
+slides na mesa (o carrossel "DATAS SAZONAIS foram criadas para você vender
+mais" / Black Friday), ela errava em **seis eixos**, e não por pouco: dizia
+peça toda PRETA com foto ACESA; a real é toda BRANCA com dois escuros (capa
+e slide do problema), foto sem brilho nenhum, preto e branco PUROS, título
+preto/branco com o azul só em realce pontual, régua apenas no fecho, e a
+marca reduzida ao ÍCONE no topo. Virou `manchete` + molde `molde-manchete`
+("Tese em manchete"); de/para completo em
+`docs/conteudo/formatos/manchete.md`.
+
+**Substituir em vez de somar uma sexta família foi decisão de DADO**: o
+banco tem zero documentos e zero templates do time, então renomear a chave,
+o molde e o `MoldeKey` não alcança nenhuma linha. As medidas moram em
+`formato-manchete.ts` e a procedência delas é declarada no topo do módulo —
+**lidas da referência renderizada**, um degrau acima da `neon` (só descrição)
+e um abaixo dos prints de tweet (tabela pixel a pixel do arquivo).
+
+**A escada do título é o que dá o tom de manchete**: cada linha um passo
+menor (`ESCADA = [1, 0.66, 0.56, 0.5]`, aplicada em `em` para o auto-fit
+continuar escalando a escada inteira). Dois limites declarados, os dois
+LIDOS e não inventados: ela **vale só no fundo escuro** (os dois slides
+pretos a têm, os três brancos trazem o título todo do mesmo corpo — é a
+diferença entre o modo "manchete" e o modo "artigo" dentro da mesma peça) e
+é sempre **decrescente** (o slide do problema põe a frase entre aspas no
+meio, MAIOR que as vizinhas; reproduzir isso exigiria marcar a linha
+protagonista, campo que ninguém pediu). A quebra é a do TEXTO (`\n`), nunca
+a automática — quebra automática não tem como receber corpo diferente.
+
+**`respiroEscuro` é o inverso do `respiroClaro`**: a peça é CLARA e o preto
+é o corte, na capa e no slide do meio (`Math.floor(total / 2)`). Sem saber o
+total, só a capa escurece — inventar a posição do corte o poria no slide
+errado, e corte no lugar errado é pior que nenhum; peça com menos de 4
+slides não tem o segundo escuro.
+
+**A caixa de destaque é campo novo com gate DUPLO**: o tipo de frame
+(`DESENHA.destaque` — fora da capa e do fecho, onde competiria com o próprio
+título) **e** a família (`camposOpcionaisDaPeca` só o oferece onde
+`traco.caixaDeDestaque`). Campo que a identidade não desenha é campo
+fantasma: o operador escreve e nada aparece, sem erro nenhum.
+
+**`brilhoImagem` foi REMOVIDO, não zerado.** Era o traço mais visível da
+`neon` (90 px de `box-shadow` na cor de destaque) e a referência o
+desmentiu; com as seis famílias em 0 ele virava código morto com um ramo de
+capa INTEIRO atrás (`capa && brilhoImagem > 0`) que ninguém alcança, mais
+três ramos no prompt da via B e o helper `brilhoCor`. Traço que nenhuma
+família liga, com layout próprio por trás, é convite a alguém ligá-lo e
+receber uma capa que nunca foi desenhada na tela.
+
+**O arnês de render mentiu a sessão inteira, em silêncio.** Ele substituía
+`url(/fonts/` e o `conteudo-slides.css` escreve `url("/fonts/...")` **com
+aspas**: **Barlow Condensed nunca carregou em render nenhum** — todas as
+verificações visuais anteriores (Post, Post largo, prateleira, empréstimo)
+rodaram no fallback Inter sem nada avisar, e são justamente as identidades
+que existem para COPIAR a fonte. Corrigido para `/url\(("|')?\/fonts\//`. A
+lição operacional é a mesma do `EMAIL_QA_ENABLED` e da chave em branco do
+Serper: fallback não avisa, e "a fonte está no CSS" nunca é prova de que ela
+carregou — quem responde é o render, olhando.
 
 ---
 

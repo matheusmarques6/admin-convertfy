@@ -110,7 +110,7 @@ describe("família Post", () => {
   })
 
   it("ida e volta devolve o documento à família de origem", () => {
-    const base: Documento = novoDocumento("x", "", "molde-neon")
+    const base: Documento = novoDocumento("x", "", "molde-manchete")
     const volta = aplicarFamilia(aplicarFamilia(base, "post"), "padrao")
     expect(volta.fundoPorFrame).toEqual(base.fundoPorFrame)
     expect(volta.cores).toEqual(base.cores)

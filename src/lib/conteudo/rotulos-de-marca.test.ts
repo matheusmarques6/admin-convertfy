@@ -20,7 +20,7 @@ describe("camposDeMarca", () => {
   })
 
   it("nas famílias com rodapé os três campos aparecem", () => {
-    for (const f of ["padrao", "editorial", "alternado", "neon"] as const) {
+    for (const f of ["padrao", "editorial", "alternado", "manchete"] as const) {
       expect(camposDeMarca(traco(f)).map((x) => x.campo).sort()).toEqual(["brandName", "brandName2", "copyright"])
     }
   })
@@ -41,8 +41,8 @@ describe("seloDeVerificado", () => {
     expect(seloDeVerificado(traco("padrao")).desenha).toBe(true)
   })
 
-  it("na Neon não é desenhado, e a tela recebe o motivo em vez de um controle mudo", () => {
-    const s = seloDeVerificado(traco("neon"))
+  it("na Manchete não é desenhado, e a tela recebe o motivo em vez de um controle mudo", () => {
+    const s = seloDeVerificado(traco("manchete"))
     expect(s.desenha).toBe(false)
     expect(s.onde).toMatch(/assinatura/i)
   })

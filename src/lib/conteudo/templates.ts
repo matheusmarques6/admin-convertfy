@@ -86,24 +86,25 @@ export const ST_TEMPLATES: Template[] = [
     ],
   },
   {
-    id: "molde-neon",
-    nome: "Oferta em neon",
-    etapaFunil: "fundo",
-    descricao: "Bloco preto com título condensado, foto acesa e caixa sólida no fecho. Use com a identidade Neon.",
-    cor: "#3B5BFD",
-    familia: "neon",
+    id: "molde-manchete",
+    nome: "Tese em manchete",
+    etapaFunil: "meio",
+    descricao: "A sequência da referência: capa de impacto sobre foto, o erro, o problema, a virada e a chamada. Use com a identidade Manchete.",
+    cor: "#3355FF",
+    familia: "manchete",
     frames: [
-      // A capa é a afirmação em massa condensada sobre a foto acesa: o
-      // slide inteiro é título, e a foto entra como luz, não como ilustração.
-      fr("f1", "capa", "Afirmação", 1, CAPA),
-      fr("f2", "texto", "Promessa", 1, TC),
-      fr("f3", "texto", "Prova", 1, TC),
-      // O RESPIRO: o único slide claro da peça. A posição importa — é
-      // `fundoPadraoDaFamilia` que o acha pelo meio da sequência, então
-      // mover este frame muda qual slide respira.
-      fr("f4", "texto", "Respiro", 0, TC),
-      fr("f5", "texto", "Oferta", 1, TC),
-      fr("f6", "cta", "Chamada", 0, CTA),
+      // A capa é a tese em ESCADA sobre a foto: a primeira linha é a
+      // maior, e a linha em caixa mista embaixo prepara o resto.
+      fr("f1", "capa", "Tese", 1, CAPA),
+      // O erro: título grande (na referência, todo em azul pelo realce),
+      // a foto do contexto e o parágrafo curto.
+      fr("f2", "texto", "O erro", 1, TC),
+      // O PROBLEMA é o único slide preto do meio — é ali que a caixa de
+      // destaque aparece pela primeira vez. A posição importa: quem acha
+      // o escuro é `fundoPadraoDaFamilia`, pelo meio da sequência.
+      fr("f3", "texto", "O problema", 1, TC),
+      fr("f4", "texto", "A virada", 1, TC),
+      fr("f5", "cta", "Chamada", 0, CTA),
     ],
   },
 ]
@@ -179,7 +180,7 @@ export const ST_MOLDE_KEY: Record<string, MoldeKey> = {
   Bastidor: "Bastidor",
   "Print de post": "Post",
   "História em posts": "Post",
-  "Oferta em neon": "Neon",
+  "Tese em manchete": "Manchete",
 }
 
 export function moldeKeyDoTemplate(t: Template): MoldeKey {

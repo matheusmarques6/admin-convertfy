@@ -35,7 +35,7 @@ describe("familiaDaPrevia", () => {
     // Um "Print de post" salvo na paleta da casa é uma decisão da peça; o
     // molde base não pode desfazê-la na prateleira.
     expect(familiaDaPrevia(tpl("molde-post", "padrao"))).toBe("padrao")
-    expect(familiaDaPrevia(tpl("molde-neon", "post"))).toBe("post")
+    expect(familiaDaPrevia(tpl("molde-manchete", "post"))).toBe("post")
   })
 
   it("template anterior à coluna herda do molde base — nunca a padrão fixa", () => {
@@ -44,7 +44,7 @@ describe("familiaDaPrevia", () => {
 
   it("valor inválido vindo do banco não vira família", () => {
     // Cai no molde base em vez de virar família — nunca no valor do banco.
-    expect(familiaDaPrevia({ templateId: "molde-neon", familia: "roxo" as never })).toBe("neon")
+    expect(familiaDaPrevia({ templateId: "molde-manchete", familia: "roxo" as never })).toBe("manchete")
   })
 })
 
@@ -63,10 +63,10 @@ describe("previaDoMolde", () => {
   })
 
   it("a legenda pousa no campo que a capa DESENHA", () => {
-    // Capa com subtítulo (Neon). Print de post: desenha corpo — e
+    // Capa com subtítulo (Manchete). Print de post: desenha corpo — e
     // escrever no subtítulo fazia a descrição sumir da prévia em silêncio.
-    const casa = previaDoMolde(getTemplate("molde-neon"))
-    expect(casa.frames[0].textos.subtitulo).toBe(getTemplate("molde-neon").descricao.split(".")[0])
+    const casa = previaDoMolde(getTemplate("molde-manchete"))
+    expect(casa.frames[0].textos.subtitulo).toBe(getTemplate("molde-manchete").descricao.split(".")[0])
     const post = previaDoMolde(getTemplate("molde-post"))
     expect(post.frames[0].textos.corpo).toBe(getTemplate("molde-post").descricao.split(".")[0])
     expect(post.frames[0].textos.titulo).toBe("Print de post")
@@ -80,7 +80,7 @@ describe("previaDoMolde", () => {
 
 describe("previaDoMeuTemplate", () => {
   it("desenha na identidade gravada com o template", () => {
-    expect(familiaDe(previaDoMeuTemplate(tpl("molde-neon", "post-largo"), ""))).toBe("post-largo")
+    expect(familiaDe(previaDoMeuTemplate(tpl("molde-manchete", "post-largo"), ""))).toBe("post-largo")
   })
 
   it("mantém os textos-guia: a prévia é o que criar a partir dele entrega", () => {

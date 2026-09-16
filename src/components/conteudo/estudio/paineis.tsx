@@ -13,7 +13,7 @@ import { Icon } from "@/components/ui/icon"
 import { CORES_PADRAO, GRADIENTE_PADRAO, SLIDE, brandKitPadrao, fundoValido, gradienteCss } from "@/lib/conteudo/brand"
 import { PILARES } from "@/lib/conteudo/config"
 import { slotDeUrl, uploadImagem } from "@/lib/conteudo/data"
-import { CAMPO_OPCIONAL_GUIA, CAMPO_OPCIONAL_LABEL, camposOpcionaisDoTipo } from "@/lib/conteudo/campos"
+import { CAMPO_OPCIONAL_GUIA, CAMPO_OPCIONAL_LABEL, camposOpcionaisDaPeca } from "@/lib/conteudo/campos"
 import { FAMILIAS, FAMILIA_OPCOES, aplicarCorPrimaria, aplicarFamilia, corPrimariaDe, familiaDe, tracoDe } from "@/lib/conteudo/familias"
 import { medidasPost } from "@/lib/conteudo/formato-post"
 import { camposDeMarca, handleComArroba, seloDeVerificado } from "@/lib/conteudo/rotulos-de-marca"
@@ -421,7 +421,7 @@ function CamposOpcionais({ api }: { api: EditorApi }) {
   if (!f) return null
   // Só o que ESTE tipo de slide sabe desenhar — oferecer o resto criaria
   // campo que o operador preenche e nunca vê na tela.
-  const OPCIONAIS = camposOpcionaisDoTipo(f.tipo).map((c) => [c, CAMPO_OPCIONAL_LABEL[c], CAMPO_OPCIONAL_GUIA[c]] as const)
+  const OPCIONAIS = camposOpcionaisDaPeca(f.tipo, tracoDe(familiaDe(doc))).map((c) => [c, CAMPO_OPCIONAL_LABEL[c], CAMPO_OPCIONAL_GUIA[c]] as const)
   if (OPCIONAIS.length === 0) return null
   const alternar = (campo: Campo, guia: string) => {
     const tem = f.campos.includes(campo)
@@ -462,7 +462,7 @@ function CamposOpcionais({ api }: { api: EditorApi }) {
           )
         })}
       </div>
-      <div className="mt-1 text-[10.5px] leading-relaxed text-[var(--ops-mut)]">O gancho é a linha em itálico acima do título; a anotação é o rabisco à mão, inclinado, na cor de destaque.</div>
+      <div className="mt-1 text-[10.5px] leading-relaxed text-[var(--ops-mut)]">O gancho é a linha em itálico acima do título; a anotação é o rabisco à mão; a caixa de destaque é o retângulo sólido na cor de acento.</div>
     </div>
   )
 }

@@ -61,7 +61,7 @@ export interface SeloDeVerificado {
 /**
  * O selo azul só existe onde há um nome para ele acompanhar: ao lado do
  * nome exibido no cartão de perfil, ou ao lado da assinatura nas famílias
- * que a desenham. Na Neon não há assinatura no slide — o interruptor
+ * que a desenham. Na Manchete não há assinatura no slide — o interruptor
  * continua na tela, dizendo que ali não muda nada, em vez de sumir sem
  * explicação quando alguém troca de identidade.
  */
