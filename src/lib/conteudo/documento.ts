@@ -427,9 +427,10 @@ export function trocarTipoFrame(doc: Documento, i: number, tipo: FrameTipo): Doc
   // desenha só título e corpo, e pegar o conjunto do tipo mandava a copy
   // para um campo invisível. Gancho e anotação sobrevivem pela mesma
   // regra de sempre, e o parágrafo migra em vez de sumir.
-  const base = camposDaIdentidade(tracoDe(familiaDe(doc)).cartaoPerfil, tipo)
+  const tr = tracoDe(familiaDe(doc))
+  const base = camposDaIdentidade(tr.cartaoPerfil, tipo)
   const guia = textosGuia(tipo, base)
-  const { campos, textos: preservados } = reconciliarCampos({ ...o, tipo }, base)
+  const { campos, textos: preservados } = reconciliarCampos({ ...o, tipo }, base, { caixaDeDestaque: tr.caixaDeDestaque })
   const textos = Object.fromEntries(campos.map((c) => [c, (preservados[c] ?? "").trim() ? preservados[c] : (guia[c] ?? preservados[c] ?? "")]))
   return comHistorico(
     { ...doc, frames: doc.frames.map((f, j) => (j === i ? { ...f, tipo, campos, textos } : f)) },

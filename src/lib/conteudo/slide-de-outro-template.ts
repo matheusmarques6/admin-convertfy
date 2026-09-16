@@ -138,7 +138,8 @@ export function aplicarSlideNoFrame(doc: Documento, i: number, s: SlideImportave
   // é `trocarTipoFrame`, que já preserva o texto.
   const comTipo = atual.tipo === s.tipo ? doc : trocarTipoFrame(doc, i, s.tipo)
   const f = comTipo.frames[i]
-  const { campos, textos } = reconciliarCampos(f, camposDaIdentidade(tracoDe(familiaDe(doc)).cartaoPerfil, s.tipo))
+  const trDoc = tracoDe(familiaDe(doc))
+  const { campos, textos } = reconciliarCampos(f, camposDaIdentidade(trDoc.cartaoPerfil, s.tipo), { caixaDeDestaque: trDoc.caixaDeDestaque })
   const slot = (s.slotsImagem && tipoDesenhaImagem(s.tipo) ? 1 : 0) as 0 | 1
   return comHistorico(
     {

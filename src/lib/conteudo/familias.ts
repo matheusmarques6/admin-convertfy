@@ -664,10 +664,14 @@ export function aplicarFamilia(doc: Documento, nova: FamiliaVisual): Documento {
   // parágrafo num campo que a nova não desenha — presente no documento,
   // invisível na tela, sem erro nenhum. A migração é simétrica: voltar à
   // identidade anterior devolve o texto ao campo de origem.
-  const frames =
-    de.traco.cartaoPerfil === para.traco.cartaoPerfil
-      ? doc.frames
-      : doc.frames.map((f) => ({ ...f, ...reconciliarCampos(f, camposDaIdentidade(para.traco.cartaoPerfil, f.tipo)) }))
+  // A caixa de destaque entra na mesma conta: ela é opcional e só UMA
+  // família a desenha, então trocar de identidade pode ter de tirá-la (ou
+  // devolvê-la) mesmo quando o cartão de perfil não muda.
+  const desenho = { caixaDeDestaque: para.traco.caixaDeDestaque }
+  const mesmoConjunto = de.traco.cartaoPerfil === para.traco.cartaoPerfil && de.traco.caixaDeDestaque === para.traco.caixaDeDestaque
+  const frames = mesmoConjunto
+    ? doc.frames
+    : doc.frames.map((f) => ({ ...f, ...reconciliarCampos(f, camposDaIdentidade(para.traco.cartaoPerfil, f.tipo), desenho) }))
 
   return { ...doc, familia: nova, cores, gradiente, fundoPorFrame, cta, frames }
 }

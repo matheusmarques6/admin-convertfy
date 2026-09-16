@@ -34,7 +34,6 @@ molde e o `MoldeKey` não alcança nenhuma linha.
 | tinta (`hook`) | `#111111` | a cor do corpo sobre o claro — preto puro no corpo cansa a leitura |
 | título | Barlow Condensed 800, caixa alta, entrelinha **0,92** | é a massa da peça: em todo slide ele ocupa mais espaço que o corpo |
 | raio | 18 | o canto da foto; o resto é reto |
-| brilho da foto | **0** | era o traço mais visível da `neon` e a referência não o tem |
 | CTA | `bloco` | mas o slide de chamada da referência **não tem pílula**: é título, régua e subtítulo |
 | logo no topo | **sim** | é a única marca da peça; não há rodapé nem contador |
 | assinatura no slide | não | seria a segunda marca |
@@ -96,6 +95,14 @@ fantasma: o operador escreve e nada aparece, sem erro nenhum — é o defeito
 que o gating fecha.
 
 Sem texto, a caixa não desenha nada — não fica um retângulo azul vazio.
+
+**Trocar de identidade tira o campo e GUARDA o texto** (`reconciliarCampos`
+recebe `DesenhoDaIdentidade`, sem valor padrão): `preservarCamposOpcionais`
+julga pelo TIPO do frame, então a caixa passaria intacta para dentro de uma
+família que não a desenha — o mesmo fantasma, entrando pela outra porta.
+Quem volta à Manchete recebe o campo de volta escrito; apagar seria perder
+copy na troca de identidade, que é o que este módulo existe para impedir. A
+capa e o fecho não a recebem nem com texto guardado.
 
 ## O molde
 

@@ -7667,6 +7667,15 @@ título) **e** a família (`camposOpcionaisDaPeca` só o oferece onde
 `traco.caixaDeDestaque`). Campo que a identidade não desenha é campo
 fantasma: o operador escreve e nada aparece, sem erro nenhum.
 
+**O campo `destaque` tinha uma segunda porta para virar fantasma**:
+`preservarCamposOpcionais` julga pelo TIPO do frame, então trocar da
+Manchete para qualquer outra identidade levava a caixa junto — no
+documento, invisível na tela, sem erro nenhum, que é exatamente o que o
+gate do painel fecha. `reconciliarCampos` passou a receber
+`DesenhoDaIdentidade` (sem valor padrão: chamada nova é obrigada a
+decidir), tira o campo e **guarda o texto**; quem volta à Manchete recebe a
+caixa de volta escrita. Apagar seria perder copy na troca de identidade.
+
 **`brilhoImagem` foi REMOVIDO, não zerado.** Era o traço mais visível da
 `neon` (90 px de `box-shadow` na cor de destaque) e a referência o
 desmentiu; com as seis famílias em 0 ele virava código morto com um ramo de

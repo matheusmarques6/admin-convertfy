@@ -23,7 +23,7 @@
  * daqui.
  */
 
-import { preservarCamposOpcionais } from "./campos"
+import { aceitaCampoOpcional, preservarCamposOpcionais } from "./campos"
 import { camposPost } from "./formato-post"
 import { camposDoTipo } from "./templates"
 import type { Campo, DocFrame, FrameTipo } from "./types"
@@ -41,12 +41,35 @@ export interface CamposReconciliados {
 }
 
 /**
+ * O que a identidade de destino DESENHA entre os campos opcionais.
+ *
+ * Não tem valor padrão de propósito: `preservarCamposOpcionais` julga pelo
+ * TIPO do frame, e um opcional que só uma família desenha (hoje a caixa de
+ * destaque) passaria por ele intacto para dentro de uma identidade que não
+ * o desenha — o campo fantasma que `camposOpcionaisDaPeca` fecha no painel,
+ * entrando pela outra porta. Chamada nova é obrigada a decidir.
+ */
+export interface DesenhoDaIdentidade {
+  caixaDeDestaque: boolean
+}
+
+/**
  * Ajusta o frame ao conjunto de campos da identidade preservando o que
  * está escrito: campo que continua mantém o texto, campo que sai entrega o
  * dele para o primeiro campo longo que entra e está vazio, e os opcionais
  * (gancho, anotação) sobrevivem pela mesma regra de sempre.
+ *
+ * O opcional que a identidade de destino não desenha sai de `campos` mas o
+ * TEXTO fica guardado em `textos` — quem volta para a identidade que o
+ * desenha recebe o campo de volta escrito. Apagar seria perder copy na
+ * troca de identidade, que é justamente o que este módulo existe para
+ * impedir.
  */
-export function reconciliarCampos(frame: Pick<DocFrame, "tipo" | "campos" | "textos">, campos: Campo[]): CamposReconciliados {
+export function reconciliarCampos(
+  frame: Pick<DocFrame, "tipo" | "campos" | "textos">,
+  campos: Campo[],
+  desenho: DesenhoDaIdentidade,
+): CamposReconciliados {
   const textos: Partial<Record<Campo, string>> = {}
   for (const c of campos) textos[c] = frame.textos[c] ?? ""
 
@@ -57,5 +80,29 @@ export function reconciliarCampos(frame: Pick<DocFrame, "tipo" | "campos" | "tex
     textos[destino] = frame.textos[c] ?? ""
   }
 
-  return preservarCamposOpcionais(frame, frame.tipo, campos, textos)
+  const r = preservarCamposOpcionais(frame, frame.tipo, campos, textos)
+  return desenho.caixaDeDestaque ? reporCaixaDeDestaque(frame, r) : semCaixaDeDestaque(frame, r)
+}
+
+/** Guarda o texto e tira o campo da lista. */
+function semCaixaDeDestaque(frame: Pick<DocFrame, "textos">, r: CamposReconciliados): CamposReconciliados {
+  if (!r.campos.includes("destaque")) return r
+  const guardado = r.textos.destaque ?? frame.textos.destaque
+  return {
+    campos: r.campos.filter((c) => c !== "destaque"),
+    textos: guardado === undefined ? r.textos : { ...r.textos, destaque: guardado },
+  }
+}
+
+/**
+ * Devolve o campo a quem volta para a identidade que o desenha.
+ *
+ * `preservarCamposOpcionais` só repõe o que está em `anterior.campos`, e a
+ * ida tirou de lá — sem este passo o texto ficaria no documento sem campo
+ * que o mostre, que é o mesmo fantasma de sinal trocado.
+ */
+function reporCaixaDeDestaque(frame: Pick<DocFrame, "tipo" | "textos">, r: CamposReconciliados): CamposReconciliados {
+  const guardado = (frame.textos.destaque ?? "").trim()
+  if (!guardado || r.campos.includes("destaque") || !aceitaCampoOpcional(frame.tipo, "destaque")) return r
+  return { campos: [...r.campos, "destaque"], textos: { ...r.textos, destaque: frame.textos.destaque ?? "" } }
 }
