@@ -710,7 +710,15 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
     // fecha no rodapé em ESCADA, centralizada. O véu vai mais longe que o
     // da casa (0,55 no meio contra 0,35) porque a referência é uma foto em
     // preto e branco com o título por cima — com pouco véu a escada some.
-    body = (
+    //
+    // SEM foto o slot deixa de sangrar: vira um convite na METADE de cima e
+    // a tese fecha logo abaixo dele. Com o título no rodapé de um retângulo
+    // preto vazio a capa parece um slide que não carregou — e é assim que
+    // ela aparece na prateleira do Estúdio e num carrossel recém-criado,
+    // que são justamente os dois momentos em que ninguém pôs foto ainda.
+    // Centralizar o texto sobre o slot sangrado não resolve: o convite
+    // "+ Imagem" é centrado no próprio slot e cairia POR BAIXO da letra.
+    body = img ? (
       <>
         {imgSlot({ inset: 0 }, `linear-gradient(180deg, ${veu(0.1)} 0%, ${veu(0.55)} 42%, ${veu(0.98)} 82%, ${veu(1)} 100%)`)}
         <div style={{ position: "absolute", left: ML, right: ML, bottom: S(off + 112), textAlign: "center" }}>
@@ -718,6 +726,12 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
           {T("subtitulo", { ...serif, fontSize: MANCHETE.texto + 3, color: "rgba(255,255,255,0.92)", marginTop: S(30), lineHeight: 1.3, textAlign: "center" })}
         </div>
       </>
+    ) : (
+      <div style={{ position: "absolute", left: ML, right: ML, top: S(off + 210), bottom: S(off + 150), display: "flex", flexDirection: "column", justifyContent: "center" }}>
+        <div style={{ height: S(470), position: "relative", marginBottom: S(74) }}>{imgSlot({ inset: 0, borderRadius: S(tr.raio) })}</div>
+        {T("titulo", { ...cond, fontSize: MANCHETE.tituloCapa, color: "#FFFFFF", textAlign: "center", ...escadaDoTitulo("titulo") })}
+        {T("subtitulo", { ...serif, fontSize: MANCHETE.texto + 3, color: "rgba(255,255,255,0.92)", marginTop: S(30), lineHeight: 1.3, textAlign: "center" })}
+      </div>
     )
   } else if (f.tipo === "capa") {
     body = (

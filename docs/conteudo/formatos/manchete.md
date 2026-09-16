@@ -122,7 +122,14 @@ Chromium, lado a lado com a referência. O que apareceu aí:
 2. **A foto do slide do erro fica ENTRE título e corpo** (variante "a"), não
    depois do corpo. É o que a referência faz no segundo e no quarto slide,
    com a ordem invertida entre eles.
-3. **A fonte condensada nunca tinha carregado em render nenhum desta
+3. **A capa SEM foto era um vazio preto** com o título caído no rodapé —
+   e é assim que ela aparece na prateleira do Estúdio e num carrossel
+   recém-criado, os dois momentos em que ninguém pôs foto ainda. Sem foto o
+   slot deixa de sangrar: vira um convite na metade de cima e a tese fecha
+   logo abaixo. Só centralizar o texto sobre o slot sangrado NÃO resolve —
+   o convite "+ Imagem" é centrado no próprio slot e cai por baixo da letra
+   (visto renderizando, entre a primeira e a segunda tentativa).
+4. **A fonte condensada nunca tinha carregado em render nenhum desta
    sessão.** O arnês substituía `url(/fonts/`, e o `conteudo-slides.css`
    escreve `url("/fonts/...")` **com aspas** — todo render anterior caiu no
    fallback Inter em silêncio. Corrigido para `/url\(("|')?\/fonts\//`. Vale
