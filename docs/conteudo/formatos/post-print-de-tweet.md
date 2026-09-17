@@ -234,3 +234,85 @@ formato:
   a direção do formato proíbe.
 - **`**palavra**` nunca vai cru**: é notação nossa, e o modelo escreveria os
   asteriscos dentro da imagem. Vira instrução de cor.
+
+---
+
+# O que a especificação do X acrescentou (set/2026)
+
+Pedido: olhar o componente Tweet do **Spell UI** (`spell.sh/docs/tweet`) e
+ver o que dá para aproveitar. O domínio está bloqueado pelo proxy desta
+sessão, mas a busca respondeu o que importava: o componente deles é o
+**`react-tweet`** da Vercel, que replica o embed OFICIAL do X. O pacote foi
+baixado do npm e lido — `twitter-theme/theme.css`, `tweet-header.module.css`
+e `tweet-body.module.css`.
+
+## O que já batia
+
+| item | nós | embed do X |
+|---|---|---|
+| razão avatar ÷ corpo do texto | 2,43 | 2,40 |
+| espaço avatar → nome ÷ avatar (formato largo) | 0,161 | 0,167 |
+| nome e `@handle` no MESMO corpo | sim | sim (0,9375rem) |
+| nome em peso 700, handle em 400 | sim | sim |
+| selo azul | `#1D9BF0` | `#1D9BF0` |
+| quebra de linha do autor preservada | `pre-wrap` | `pre-wrap` |
+| pilha de fontes grotesca | Inter à frente | `-apple-system…Segoe UI` |
+
+As medidas do nosso formato **não foram trocadas**: elas vieram do print da
+referência, e o `react-tweet` descreve o *embed* (corpo de 20px numa peça de
+550px), que é outro objeto. Trocar uma referência medida por outra seria
+perder o que o pedido original mandou copiar.
+
+## O que estava errado, e a especificação corrigiu
+
+- **O cinza do `@handle` era neutro** (`#808080`). O do X é **azulado**:
+  `#8B98A5` no escuro, `#536471` no claro. Sobre fundo escuro o neutro lê
+  como "desligado"; o azulado integra com o azul da interface.
+- **O texto era branco puro.** O do X é `#F7F9F9`.
+
+## O que passou a existir
+
+**Quatro temas** (`TEMAS_DO_X` em `formato-post.ts`), com as cores da
+especificação: `print` (o medido na referência — **o padrão**, zero
+regressão), `claro`, `dim` (`#15202B`) e `escuro` (`#000000`, o "Lights
+out"). Print de tweet no tema CLARO era impossível antes, e é o mais comum
+de todos.
+
+`aplicarTemaDoPost` segue a regra do `aplicarFamilia`: só troca o que ainda
+está no padrão do tema anterior, e leva o **fundo de cada slide** junto —
+sem isso o texto claro do tema escuro ficaria sobre o branco do claro,
+invisível e sem erro nenhum (o defeito que o cartão de thread já pagou).
+
+**`@menção`, `#hashtag` e link saem em AZUL** (`entidades-do-x.ts`). É o
+detalhe que mais denuncia um print falso: num tweet de verdade nenhuma
+dessas três é da cor do texto. As regras são as da lib **oficial** do
+Twitter (`twitter-text` 3.1.0, Apache-2.0), lida do pacote:
+
+- a menção precisa de fronteira à esquerda — sem isso `joao@convertfy.me`
+  sairia com `@convertfy` azul no meio de um e-mail;
+- ela morre pelo que vem **depois** (`endMentionMatch`): outro `@`, letra
+  acentuada ou `://`;
+- o handle vai até **20** caracteres (15 é o limite de CADASTRO — foi onde
+  meu palpite errou, e a lib corrigiu);
+- hashtag só de dígitos é TEXTO (`#2026`), senão data e preço viram link.
+
+**Verificado contra o oráculo**: o módulo foi comparado com
+`extractEntitiesWithIndices` da lib oficial em **35 casos** — 1 divergência,
+e é a que está declarada no módulo (domínio solto como `convertfy.me`, que o
+X linka e nós não: reconhecê-lo faria "comprou.Depois" virar link).
+
+## O que ficou de fora, e por quê
+
+- **Métricas (curtidas, respostas, visualizações).** O embed as mostra, e
+  um print de tweet real também. Mas o carrossel é feito ANTES de o post
+  existir: qualquer número ali seria inventado, e publicar engajamento
+  fabricado é conteúdo falso, não enfeite. Se o número for real, ele entra
+  como texto.
+- **Timestamp e o ícone do X no canto.** O ícone é do *embed* (é o botão
+  "ver no X"), não de uma captura; o print da referência não tem nenhum dos
+  dois.
+- **Cashtag (`$AAPL`).** O X a linka; num carrossel de e-commerce o `$`
+  aparece em preço, e o ganho não paga o risco.
+- **O selo continua AZUL no tema escuro.** O `react-tweet` o pinta de branco
+  ali (`--tweet-verified-blue-color: #fff`), mas isso é decisão do embed —
+  no X e no print da referência ele é azul em qualquer tema.

@@ -33,7 +33,7 @@
  * Puro e testado: quem desenha é o `frame.tsx`, que não tem medida própria.
  */
 
-import type { Campo, FrameTipo, VarianteLayout } from "./types"
+import type { Campo, FrameTipo, TemaDoPost, VarianteLayout } from "./types"
 
 /** Da largura da referência para a do canvas. */
 export const FATOR_DO_PRINT = 1080 / 1170
@@ -186,13 +186,168 @@ const TABELAS: Record<EstiloPost, { topo: MedidasPost; centro: MedidasPost; ganc
   "post-largo": { topo: POST_LARGO, centro: POST_LARGO, gancho: POST_LARGO_GANCHO },
 }
 
-/** Cores do formato — fundo quase preto, nunca #000 (o preto puro chapa). */
-export const POST_CORES = {
-  fundo: "#0D0D0D",
-  texto: "#FFFFFF",
-  handle: "#808080",
-  selo: "#1D9BF0",
-} as const
+/**
+ * Cores do formato, por TEMA.
+ *
+ * A primeira versão tinha quatro cores fixas tiradas a olho do print
+ * (`#FFFFFF` no texto, `#808080` no handle). Duas estavam erradas, e a
+ * fonte que corrige é a especificação PÚBLICA do embed do X — o
+ * `react-tweet` da Vercel, que é o que o componente Tweet do Spell UI usa
+ * por baixo (`spell.sh/docs/tweet`). As variáveis dele estão em
+ * `twitter-theme/theme.css` e foram lidas do pacote, não de memória:
+ *
+ * | variável                        | claro              | escuro             |
+ * |---------------------------------|--------------------|--------------------|
+ * | `--tweet-font-color`            | rgb(15, 20, 25)    | rgb(247, 249, 249) |
+ * | `--tweet-font-color-secondary`  | rgb(83, 100, 113)  | rgb(139, 152, 165) |
+ * | `--tweet-bg-color`              | #fff               | rgb(21, 32, 43)    |
+ * | `--tweet-border`                | rgb(207, 217, 222) | rgb(66, 83, 100)   |
+ * | `--tweet-color-blue-secondary`  | rgb(0, 111, 214)   | rgb(107, 201, 251) |
+ * | `--tweet-verified-blue-color`   | rgb(29, 155, 240)  | (o mesmo azul)     |
+ *
+ * **O cinza do handle é AZULADO, não neutro.** `#8B98A5` contra o
+ * `#808080` que estava aqui: sobre fundo escuro o cinza neutro lê como
+ * "desligado" e o azulado integra com o azul da interface — é um dos
+ * detalhes que fazem a peça parecer montada num gerador. E o texto do X
+ * **não é branco puro**: `#F7F9F9`.
+ *
+ * **Os temas escuros do X são dois** ("Dim", `#15202B`, e "Lights out",
+ * `#000000`) e nenhum deles é o `#0D0D0D` que medimos no print — que é o
+ * Lights out passado por compressão de imagem. Ele fica como tema `print`
+ * e continua sendo o PADRÃO: é o que a peça existente usa, e trocar o
+ * fundo dela por causa de uma tabela seria mudar o que já foi aprovado.
+ *
+ * O selo azul que já estava aqui bate com a especificação EXATAMENTE.
+ */
+export type { TemaDoPost }
+
+export interface CoresDoPost {
+  fundo: string
+  texto: string
+  /** `@handle`, e também o timestamp e qualquer texto secundário. */
+  handle: string
+  selo: string
+  /** `@menção`, `#hashtag` e URL dentro do texto. */
+  link: string
+  /** Fundo do círculo do avatar quando não há foto. */
+  avatarVazio: string
+}
+
+export const TEMAS_DO_X: Record<TemaDoPost, CoresDoPost> = {
+  // O medido no print da referência — o padrão, por compatibilidade.
+  print: {
+    fundo: "#0D0D0D",
+    texto: "#F7F9F9",
+    handle: "#8B98A5",
+    selo: "#1D9BF0",
+    link: "#6BC9FB",
+    avatarVazio: "#2A2A2A",
+  },
+  claro: {
+    fundo: "#FFFFFF",
+    texto: "#0F1419",
+    handle: "#536471",
+    selo: "#1D9BF0",
+    link: "#006FD6",
+    avatarVazio: "#CFD9DE",
+  },
+  // "Dim": o escuro azulado do X.
+  dim: {
+    fundo: "#15202B",
+    texto: "#F7F9F9",
+    handle: "#8B98A5",
+    selo: "#1D9BF0",
+    link: "#6BC9FB",
+    avatarVazio: "#38444D",
+  },
+  // "Lights out": o preto puro do X.
+  escuro: {
+    fundo: "#000000",
+    texto: "#F7F9F9",
+    handle: "#8B98A5",
+    selo: "#1D9BF0",
+    link: "#6BC9FB",
+    avatarVazio: "#2F3336",
+  },
+}
+
+export const TEMA_PADRAO_DO_POST: TemaDoPost = "print"
+
+export function ehTemaDoPost(v: unknown): v is TemaDoPost {
+  return typeof v === "string" && v in TEMAS_DO_X
+}
+
+/** Tema desconhecido (documento de outra versão) cai no padrão. */
+export function coresDoPost(tema?: string | null): CoresDoPost {
+  return ehTemaDoPost(tema) ? TEMAS_DO_X[tema] : TEMAS_DO_X[TEMA_PADRAO_DO_POST]
+}
+
+export const TEMA_ROTULOS: Record<TemaDoPost, string> = {
+  print: "Como no print (padrão)",
+  claro: "Claro",
+  dim: "Escuro azulado (Dim)",
+  escuro: "Preto (Lights out)",
+}
+
+/** Compatibilidade: quem não escolhe tema segue com o do print. */
+export const POST_CORES = TEMAS_DO_X[TEMA_PADRAO_DO_POST]
+
+/**
+ * Troca o tema da peça — e só o que ainda está no valor PADRÃO do tema
+ * anterior.
+ *
+ * É a mesma regra do `aplicarFamilia`: fundo pintado à mão e cor escolhida
+ * a dedo sobrevivem, senão trocar de tema viraria um rolo de tinta que
+ * apaga o que alguém ajustou. Ir e voltar devolve a peça ao estado
+ * original — é o teste que fixa isso.
+ *
+ * O fundo de CADA slide precisa entrar na conta porque no print de tweet
+ * ele é o fundo do tema em todo slide (é isso que faz os quatro parecerem
+ * a mesma captura); deixá-lo para trás poria o texto claro do tema escuro
+ * sobre o branco do claro — invisível, sem erro nenhum, que é o defeito que
+ * o cartão de thread já pagou uma vez.
+ */
+export function aplicarTemaDoPost<
+  T extends {
+    temaPost?: string
+    cores: Record<string, string>
+    fundoPorFrame: Record<string, string>
+    gradiente: { de: string; meio: string; ate: string; angulo: number }
+    cta: { mostrar: boolean; texto: string; fundo: string; cor: string }
+  },
+>(doc: T, novo: TemaDoPost): T {
+  const atual = ehTemaDoPost(doc.temaPost) ? doc.temaPost : TEMA_PADRAO_DO_POST
+  if (atual === novo) return { ...doc, temaPost: novo }
+  const de = TEMAS_DO_X[atual]
+  const para = TEMAS_DO_X[novo]
+
+  const troca = (valor: string | undefined, antigo: string, proximo: string) =>
+    valor === antigo ? proximo : valor
+
+  const cores = { ...doc.cores }
+  // `hook` é a tinta do texto e `metadado` o cinza secundário — os dois
+  // nomes que a família do print mapeia para as cores do X.
+  cores.hook = troca(cores.hook, de.texto, para.texto) ?? para.texto
+  cores.metadado = troca(cores.metadado, de.handle, para.handle) ?? para.handle
+  if (cores.destaque === de.selo) cores.destaque = para.selo
+
+  const fundoPorFrame = { ...doc.fundoPorFrame }
+  for (const [id, valor] of Object.entries(fundoPorFrame)) {
+    if (valor === de.fundo) fundoPorFrame[id] = para.fundo
+  }
+
+  return {
+    ...doc,
+    temaPost: novo,
+    cores,
+    fundoPorFrame,
+    gradiente: doc.gradiente.ate === de.fundo ? { ...doc.gradiente, ate: para.fundo } : doc.gradiente,
+    cta:
+      doc.cta.cor === de.fundo && doc.cta.fundo === de.texto
+        ? { ...doc.cta, fundo: para.texto, cor: para.fundo }
+        : doc.cta,
+  }
+}
 
 /**
  * Onde o bloco pousa no slide.

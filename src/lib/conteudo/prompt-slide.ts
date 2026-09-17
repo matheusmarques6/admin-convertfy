@@ -22,7 +22,7 @@
  */
 
 import { SLIDE, fundoEscuro } from "./brand"
-import { POST_CORES, medidasPost, posePost } from "./formato-post"
+import { coresDoPost, medidasPost, posePost } from "./formato-post"
 import { MANCHETE } from "./formato-manchete"
 import { FAMILIAS, familiaDe, tracoDe, type TracoFamilia } from "./familias"
 import type { PapelFrame } from "./editorial/papeis"
@@ -87,7 +87,7 @@ export interface ContextoPrompt {
   indice: number
   total: number
   papel?: PapelFrame | null
-  doc: Pick<Documento, "cores" | "brandKit" | "proporcaoExport" | "fundoPorFrame" | "gradiente" | "cta" | "ocultos" | "familia">
+  doc: Pick<Documento, "cores" | "brandKit" | "proporcaoExport" | "fundoPorFrame" | "gradiente" | "cta" | "ocultos" | "familia" | "temaPost">
   templateNome?: string | null
   /** "Por que funciona" das referências mais afins (vira orientação de estilo). */
   porQueFunciona?: string[]
@@ -309,12 +309,16 @@ function anatomiaCartaoPerfil(ctx: ContextoPrompt, tr: TracoFamilia): string[] {
   const fonte = nomeDaFonte(tr.fonteCorpo)
   const t = texto(frame, "titulo")
   const c = texto(frame, "corpo")
+  // O tema é do DOCUMENTO: descrever "quase preto" numa peça no tema
+  // claro faria o modelo desenhar o oposto do que o renderer mostra.
+  const cx = coresDoPost(doc.temaPost)
+  const claro = cx.fundo === "#FFFFFF"
   const linhas: string[] = [
-    `Captura de tela de um post: fundo ${POST_CORES.fundo} (quase preto) do topo ao rodapé, margem lateral de ${m.margem} px, nada de moldura nem de sombra.`,
-    `- Cabeçalho: foto de perfil redonda de ${m.avatar} px${bk.brandName2 ? `, e ao lado "${bk.brandName2}"` : ""} em ${fonte} peso 700, ${m.nome} px, branco${bk.verificado ? `, com um selo verificado azul (${POST_CORES.selo}) de ${m.selo} px ao lado do nome` : ""}${bk.brandName ? `; logo abaixo "${bk.brandName}" no MESMO corpo, peso normal, em cinza ${POST_CORES.handle}` : ""}.`,
+    `Captura de tela de um post: fundo ${cx.fundo} (${claro ? "branco" : "quase preto"}) do topo ao rodapé, margem lateral de ${m.margem} px, nada de moldura nem de sombra.`,
+    `- Cabeçalho: foto de perfil redonda de ${m.avatar} px${bk.brandName2 ? `, e ao lado "${bk.brandName2}"` : ""} em ${fonte} peso 700, ${m.nome} px, ${claro ? "quase preto" : "branco"} (${cx.texto})${bk.verificado ? `, com um selo verificado azul (${cx.selo}) de ${m.selo} px ao lado do nome` : ""}${bk.brandName ? `; logo abaixo "${bk.brandName}" no MESMO corpo, peso normal, em cinza ${cx.handle}` : ""}.`,
   ]
   if (t) linhas.push(`- ${m.gapCabecalho} px abaixo do cabeçalho, uma linha em NEGRITO: "${t}"`)
-  if (c) linhas.push(`- ${t ? `${m.gapTitulo} px abaixo dela` : `${m.gapCabecalho} px abaixo do cabeçalho`}, o texto do post em ${fonte} peso normal, ${m.texto} px, entrelinha ${m.entrelinha.toFixed(2).replace(".", ",")}, branco, alinhado à esquerda: "${c}"`)
+  if (c) linhas.push(`- ${t ? `${m.gapTitulo} px abaixo dela` : `${m.gapCabecalho} px abaixo do cabeçalho`}, o texto do post em ${fonte} peso normal, ${m.texto} px, entrelinha ${m.entrelinha.toFixed(2).replace(".", ",")}, ${claro ? "quase preto" : "branco"}, alinhado à esquerda: "${c}"`)
   if (comImagem) {
     linhas.push(
       m.gapGaleria > 0
@@ -329,7 +333,7 @@ function anatomiaCartaoPerfil(ctx: ContextoPrompt, tr: TracoFamilia): string[] {
     linhas.push(`- ${m.gapCabecalho} px abaixo do texto, uma pílula clara (${doc.cta.fundo} com texto ${doc.cta.cor}, ~${Math.round(m.texto * 0.78)} px, ícone de caixa de mensagens à esquerda) com o texto "${botao}".`)
   }
   linhas.push(`- SEM rodapé de marca, SEM contador de slides, SEM filete: a peça imita uma captura de tela.`)
-  const destaque = notaDeDestaque(frame, ["titulo", "corpo"], doc.cores.destaque ?? POST_CORES.selo)
+  const destaque = notaDeDestaque(frame, ["titulo", "corpo"], doc.cores.destaque ?? coresDoPost(doc.temaPost).selo)
   if (destaque) linhas.push(destaque)
   return linhas
 }

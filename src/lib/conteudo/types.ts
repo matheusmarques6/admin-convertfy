@@ -243,6 +243,14 @@ export type Campo = "titulo" | "subtitulo" | "corpo" | "botao" | "gancho" | "ano
  */
 export type FamiliaVisual = "padrao" | "editorial" | "alternado" | "post" | "post-largo" | "manchete" | "thread"
 
+/**
+ * Tema das identidades que simulam o X. `print` é o medido na referência
+ * (o padrão); `claro`, `dim` e `escuro` são os três temas da plataforma.
+ * As cores moram em `formato-post.ts` — o tipo fica aqui para `types.ts`
+ * continuar sem nenhum import.
+ */
+export type TemaDoPost = "print" | "claro" | "dim" | "escuro"
+
 export type EtapaFunil = "topo" | "meio" | "fundo"
 
 export type VarianteLayout = "a" | "b" | "c"
@@ -426,6 +434,12 @@ export interface Documento {
   editorial?: Editorial
   /** Identidade visual (paleta + tipografia). Ausente = "padrao". */
   familia?: FamiliaVisual
+  /**
+   * Tema das identidades que simulam o X (claro · Dim · Lights out · o
+   * medido no print). Ausente = o do print, que é o que as peças
+   * existentes usam. Cores em `formato-post.ts`.
+   */
+  temaPost?: TemaDoPost
   /**
    * Cor da marca da qual a paleta da família Alternado é derivada. Fica
    * gravada porque é ela que permite trocar de cor DE NOVO sem que a

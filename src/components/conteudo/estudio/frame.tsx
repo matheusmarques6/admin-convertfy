@@ -19,10 +19,11 @@
 import type { CSSProperties, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react"
 import { SLIDE, clarear, fundoEscuro, gradienteCss, hex6 } from "@/lib/conteudo/brand"
 import { familiaDe, tracoDe } from "@/lib/conteudo/familias"
-import { POST_CORES, medidasPost, posePost, subidaOptica } from "@/lib/conteudo/formato-post"
+import { coresDoPost, medidasPost, posePost, subidaOptica } from "@/lib/conteudo/formato-post"
 import { THREAD, THREAD_CORES, THREAD_PESO_CORPO, temBarraDeMetadados } from "@/lib/conteudo/formato-thread"
 import { MANCHETE, corDoTituloManchete, fatoresDaEscada, linhasDoTitulo } from "@/lib/conteudo/formato-manchete"
 import { fitFactor, limiteDe } from "@/lib/conteudo/limites"
+import { partesDeTweet } from "@/lib/conteudo/entidades-do-x"
 import { partesDestacadas, textoLimpo } from "@/lib/conteudo/rich"
 import { textoDoEditavel } from "@/lib/conteudo/texto-editavel"
 import type { Campo, DocFrame, Documento, EstiloTexto, FrameTipo } from "@/lib/conteudo/types"
@@ -75,7 +76,24 @@ type BaseTexto = EstiloBase & {
 }
 
 /** `**x**` na cor de destaque. Fora da edição, sempre. */
-function partesRicas(texto: string, corDestaque: string) {
+function partesRicas(texto: string, corDestaque: string, corLink?: string) {
+  // Nas identidades que simulam o X, `@menção`, `#hashtag` e link saem em
+  // AZUL — num tweet de verdade nenhuma delas é da cor do texto, e escrever
+  // tudo branco é o detalhe que mais denuncia um print falso. Fora delas o
+  // comportamento é o de sempre (só o `**destaque**`).
+  if (corLink) {
+    return partesDeTweet(texto).map((parte, k) => (
+      <span
+        key={k}
+        style={{
+          ...(parte.link ? { color: corLink } : null),
+          ...(parte.destaque ? { color: parte.link ? corLink : corDestaque, fontWeight: 700 } : null),
+        }}
+      >
+        {parte.texto}
+      </span>
+    ))
+  }
   return partesDestacadas(texto).map((parte, k) =>
     parte.destaque ? (
       <strong key={k} style={{ color: corDestaque, fontWeight: 700 }}>
@@ -163,6 +181,11 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
   const ganchoEstilo: EstiloBase = { fontFamily: tr.fonteGancho, fontStyle: "italic", fontWeight: 400, lineHeight: 1.1 }
   // Destaque legível nos dois fundos: a mesma cor, clareada no escuro.
   const corDestaque = escuro ? clarear(doc.cores.destaque ?? SLIDE.destaque, 0.55) : (doc.cores.destaque ?? SLIDE.destaque)
+  // Tema do X (claro · Dim · Lights out · o medido no print). Só as duas
+  // identidades que simulam a rede o consultam; nas demais é `undefined` e
+  // o texto não ganha cor de link nenhuma.
+  const coresX = coresDoPost(doc.temaPost)
+  const corLinkDoX = tr.cartaoPerfil || tr.cartaoThread ? coresX.link : undefined
   // Margem lateral da IDENTIDADE. A casa usa 80; a Manchete respira mais
   // (135 medidos na referência), e é essa folga que faz a peça ler como
   // editorial em vez de card cheio até a borda.
@@ -308,7 +331,7 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
           {/* Editando, o texto vai CRU: o contentEditable devolve
               `textContent`, e formatar aqui apagaria os `**` no primeiro
               clique. Fora da edição, `**x**` sai na cor de destaque. */}
-          {editing ? texto : base.escada ? escadaDeLinhas(texto, base.escada, sz, corDestaque, S) : partesRicas(texto, corDestaque)}
+          {editing ? texto : base.escada ? escadaDeLinhas(texto, base.escada, sz, corDestaque, S) : partesRicas(texto, corDestaque, corLinkDoX)}
         </div>
         {on && (
           <>
@@ -477,8 +500,8 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
               width: S(m.avatar),
               height: S(m.avatar),
               borderRadius: "50%",
-              background: "#2A2A2A",
-              color: POST_CORES.handle,
+              background: coresX.avatarVazio,
+              color: coresX.handle,
               display: "inline-flex",
               alignItems: "center",
               justifyContent: "center",
@@ -493,15 +516,15 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
       <span style={{ minWidth: 0, lineHeight: 1.18 }}>
         {!oc.brandName2 && (
           <span style={{ display: "flex", alignItems: "center", gap: S(m.nome * 0.26) }}>
-            <span style={{ fontSize: S(m.nome), fontWeight: 700, color: POST_CORES.texto, whiteSpace: "nowrap" }}>{bk.brandName2}</span>
+            <span style={{ fontSize: S(m.nome), fontWeight: 700, color: coresX.texto, whiteSpace: "nowrap" }}>{bk.brandName2}</span>
             {bk.verificado && !oc.verificado && (
               <span style={{ display: "inline-flex", flexShrink: 0 }}>
-                <IconSelo s={S(m.selo)} cor={POST_CORES.selo} />
+                <IconSelo s={S(m.selo)} cor={coresX.selo} />
               </span>
             )}
           </span>
         )}
-        {!oc.brandName && <span style={{ display: "block", fontSize: S(m.nome), fontWeight: 400, color: POST_CORES.handle, whiteSpace: "nowrap" }}>{bk.brandName}</span>}
+        {!oc.brandName && <span style={{ display: "block", fontSize: S(m.nome), fontWeight: 400, color: coresX.handle, whiteSpace: "nowrap" }}>{bk.brandName}</span>}
       </span>
     </div>
   )
@@ -768,8 +791,8 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
       >
         {cartaoPerfil(m)}
         <div style={{ marginTop: S(m.gapCabecalho) }}>
-          {temTitulo && T("titulo", { fontFamily: tr.fonteTitulo, fontWeight: 700, fontSize: m.texto, color: POST_CORES.texto, lineHeight: m.entrelinha, letterSpacing: "0" })}
-          {T("corpo", { fontFamily: tr.fonteCorpo, fontWeight: 400, fontSize: m.texto, color: POST_CORES.texto, lineHeight: m.entrelinha, marginTop: temTitulo ? S(m.gapTitulo) : 0 })}
+          {temTitulo && T("titulo", { fontFamily: tr.fonteTitulo, fontWeight: 700, fontSize: m.texto, color: coresX.texto, lineHeight: m.entrelinha, letterSpacing: "0" })}
+          {T("corpo", { fontFamily: tr.fonteCorpo, fontWeight: 400, fontSize: m.texto, color: coresX.texto, lineHeight: m.entrelinha, marginTop: temTitulo ? S(m.gapTitulo) : 0 })}
         </div>
         {comImagem && (
           // A imagem tem margem lateral PRÓPRIA — no desenhado ela é maior

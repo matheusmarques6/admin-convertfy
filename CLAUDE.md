@@ -8188,6 +8188,61 @@ Documento inválido agora é omitido (o provedor mantém o dele) com `log.warn`.
 cliente final — bloquear o cadastro dele por documento torto o faz abandonar.
 Documentação: `docs/clients/pagador-no-exterior.md`.
 
+## O print de tweet contra a especificação do X (set/2026)
+
+Pedido: olhar o componente Tweet do **Spell UI** (`spell.sh/docs/tweet`) e
+ver o que dá para aproveitar. O domínio está bloqueado pelo proxy desta
+sessão; a busca respondeu o que importava — o componente deles é o
+**`react-tweet`** da Vercel, que replica o embed OFICIAL do X. O pacote foi
+baixado do npm e LIDO (`twitter-theme/theme.css`, `tweet-header`,
+`tweet-body`), em vez de responder de memória.
+
+**Boa parte já batia**: avatar ÷ corpo 2,43 contra 2,40; espaço avatar→nome
+÷ avatar 0,161 contra 0,167 no formato largo; nome e `@handle` no mesmo
+corpo com pesos 700/400; `pre-wrap`; e o selo `#1D9BF0` **exato**. As
+medidas NÃO foram trocadas: as nossas vieram do print da referência e o
+`react-tweet` descreve o *embed* (corpo 20px em 550px de largura), que é
+outro objeto — trocar uma referência medida por outra perderia o que o
+pedido original mandou copiar.
+
+**Duas cores estavam erradas**: o `@handle` era cinza NEUTRO (`#808080`) e o
+do X é azulado (`#8B98A5` escuro, `#536471` claro) — sobre fundo escuro o
+neutro lê como "desligado"; e o texto era branco puro, sendo `#F7F9F9`.
+
+**Quatro temas** (`TEMAS_DO_X`): `print` (o medido na referência, **o
+padrão** — zero regressão para a peça que já existe), `claro`, `dim`
+(`#15202B`) e `escuro` (`#000000`). Tema claro era impossível antes, e é o
+print mais comum. `aplicarTemaDoPost` segue a regra do `aplicarFamilia` (só
+troca o que ainda é padrão do tema anterior) e leva o **fundo de cada
+slide** junto — sem isso o texto claro do escuro ficaria sobre o branco do
+claro, invisível e sem erro nenhum, que é o defeito que o cartão de thread
+já pagou. Seletor em Marca → Identidade visual, só nas duas identidades que
+simulam a rede.
+
+**`@menção`, `#hashtag` e link saem em AZUL** (`entidades-do-x.ts`, puro, 13
+testes) — é o detalhe que mais denuncia um print falso. As regras são da lib
+**oficial** do Twitter (`twitter-text` 3.1.0), lida do pacote: menção precisa
+de fronteira à esquerda (senão `joao@convertfy.me` sai com `@convertfy` azul
+no meio de um e-mail), morre pelo que vem DEPOIS (`endMentionMatch`: `@`,
+letra acentuada, `://`), vai até **20** caracteres (15 é o limite de
+CADASTRO — foi onde meu palpite errou e a lib corrigiu), e hashtag só de
+dígitos é TEXTO (senão data e preço viram link). **Comparado com o oráculo
+oficial em 35 casos: 1 divergência**, a que está declarada (domínio solto,
+que o X linka e nós não — reconhecê-lo faria "comprou.Depois" virar link).
+
+**Métricas fabricadas ficaram de fora, de propósito.** O embed as mostra e
+um print real também, mas o carrossel é feito ANTES de o post existir:
+qualquer número ali seria inventado, e engajamento fabricado é conteúdo
+falso, não enfeite. Fora também o ícone do X no canto (é o botão do *embed*,
+não de uma captura) e a cashtag (`$` aparece em preço). O selo continua AZUL
+no tema escuro — o `react-tweet` o pinta de branco ali, mas isso é decisão do
+embed; no X e no print da referência ele é azul em qualquer tema.
+
+A via B (`prompt-slide.ts`) passou a ler o tema: descrever "fundo quase
+preto" numa peça no tema claro faria o modelo desenhar o oposto do que o
+renderer mostra. Documentação:
+`docs/conteudo/formatos/post-print-de-tweet.md`.
+
 ---
 
 *Última atualização: Setembro 2026*

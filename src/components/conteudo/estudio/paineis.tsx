@@ -15,7 +15,7 @@ import { PILARES } from "@/lib/conteudo/config"
 import { slotDeUrl, uploadImagem } from "@/lib/conteudo/data"
 import { CAMPO_OPCIONAL_GUIA, CAMPO_OPCIONAL_LABEL, camposOpcionaisDaPeca } from "@/lib/conteudo/campos"
 import { FAMILIAS, FAMILIA_OPCOES, aplicarCorPrimaria, aplicarFamilia, corPrimariaDe, familiaDe, tracoDe } from "@/lib/conteudo/familias"
-import { medidasPost } from "@/lib/conteudo/formato-post"
+import { TEMAS_DO_X, TEMA_PADRAO_DO_POST, TEMA_ROTULOS, aplicarTemaDoPost, medidasPost, type TemaDoPost } from "@/lib/conteudo/formato-post"
 import { camposDeMarca, handleComArroba, seloDeVerificado } from "@/lib/conteudo/rotulos-de-marca"
 import { aceitaImagem, aplicarPerfil, aplicarPropostas, propostasDeLinhas, setTexto as setTextoDoc, slotsDeImagem, trocarTemplate } from "@/lib/conteudo/documento"
 import { chamarIA, gerarImagemIA } from "@/lib/conteudo/ia/client"
@@ -760,6 +760,40 @@ export function PainelFamilia({ api }: { api: EditorApi }) {
           </button>
         )
       })}
+      {tracoDe(atual).cartaoPerfil || tracoDe(atual).cartaoThread ? (
+        <div className="rounded-[10px] border border-[var(--ops-border)] px-2.5 py-2.5">
+          <CtLabel>Tema do X</CtLabel>
+          <div className="flex flex-col gap-1.5">
+            {(Object.keys(TEMAS_DO_X) as TemaDoPost[]).map((key) => {
+              const t = TEMAS_DO_X[key]
+              const ativo = key === (doc.temaPost ?? TEMA_PADRAO_DO_POST)
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => !ativo && api.set((d) => aplicarTemaDoPost(d, key), `Tema do X: ${TEMA_ROTULOS[key]}`)}
+                  className={cn(
+                    "flex items-center gap-2 rounded-[8px] border px-2 py-1.5 text-left transition-colors",
+                    ativo ? "border-[var(--ops-accent)] bg-[var(--ops-tile)]" : "border-[var(--ops-border)] hover:bg-[var(--ops-hover)]",
+                  )}
+                >
+                  <span className="flex overflow-hidden rounded-[4px] border border-[var(--ops-border)]">
+                    {[t.fundo, t.texto, t.handle, t.link].map((c) => (
+                      <span key={c} className="h-[14px] w-[14px]" style={{ background: c }} />
+                    ))}
+                  </span>
+                  <span className="text-[11px] text-[var(--ops-title)]">{TEMA_ROTULOS[key]}</span>
+                  {ativo && <span className="ml-auto text-[10px] font-semibold text-[var(--ops-accent)]">em uso</span>}
+                </button>
+              )
+            })}
+          </div>
+          <div className="mt-1.5 text-[10px] leading-relaxed text-[var(--ops-mut)]">
+            As cores vêm da especificação pública do embed do X. No texto, <span className="font-semibold text-[var(--ops-title)]">@menção</span>,{" "}
+            <span className="font-semibold text-[var(--ops-title)]">#hashtag</span> e link saem em azul, como na rede.
+          </div>
+        </div>
+      ) : null}
       {atual === "alternado" && (
         <div className="rounded-[10px] border border-[var(--ops-border)] px-2.5 py-2.5">
           <CtLabel>Cor da marca</CtLabel>
