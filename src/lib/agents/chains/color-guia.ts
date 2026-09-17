@@ -354,8 +354,11 @@ Responda APENAS este JSON, sem cercas e sem comentário:
   existe, pelo id; \`adicionar\` põe botão onde o bloco não tem nenhum;
   \`valores\` decide por VALOR de cor — é a conformidade de identidade que
   você já fazia.
-- \`decisao: "manter"\` numa faixa é uma resposta: registra que você olhou e
-  decidiu não mexer.
+- \`decisao\` aceita: manter, escurecer, clarear, recolorir. \`"manter"\` é
+  uma resposta: registra que você olhou e decidiu não mexer.
+- Pedir em \`fundo\` a cor que a faixa JÁ tem é \`"manter"\` escrito de outro
+  jeito. O código descarta, e a vaga de faixa fica para quem muda de verdade
+  — são só duas por peça.
 - \`gradiente\` é decisão SEPARADA de \`fundo\`: repinta as paradas do
   gradiente daquela faixa, na ordem, com o MESMO número de paradas que ela
   reportou. Convive com \`decisao: "manter"\` — manter o ritmo e conformar a
