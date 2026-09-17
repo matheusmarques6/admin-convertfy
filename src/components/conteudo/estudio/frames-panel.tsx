@@ -80,7 +80,6 @@ function AdicionarSlide({ api, onFeito }: { api: EditorApi; onFeito: () => void 
 export function FramesPanel({ api }: { api: EditorApi }) {
   const { doc, ativo, modoTemplate } = api
   const tracoDoDoc = tracoDe(familiaDe(doc))
-  const cartaoPerfil = tracoDoDoc.cartaoPerfil
   const [aba, setAba] = useState<"frames" | "legenda">("frames")
   const [trocar, setTrocar] = useState<string | null>(null)
   const [adicionar, setAdicionar] = useState(false)

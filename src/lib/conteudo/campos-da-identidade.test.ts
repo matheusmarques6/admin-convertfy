@@ -51,6 +51,21 @@ describe("camposDaIdentidade · cartão de thread", () => {
   })
 })
 
+describe("camposDaIdentidade · cartão do X", () => {
+  it("o cartão do X desenha os dois parágrafos, em todo tipo de slide", () => {
+    expect(camposDaIdentidade(TWEET_D, "capa")).toEqual(["titulo", "corpo"])
+    expect(camposDaIdentidade(TWEET_D, "texto")).toEqual(["titulo", "corpo"])
+    expect(camposDaIdentidade(TWEET_D, "prova")).toEqual(["titulo", "corpo"])
+  })
+
+  it("no fecho NÃO há botão — o cartão do X não tem, e o fecho é o próprio texto", () => {
+    expect(camposDaIdentidade(TWEET_D, "cta")).toEqual(["titulo", "corpo"])
+    // O cartão de perfil desenha o botão ali; herdar o conjunto dele daria
+    // um campo que o renderer do X nunca desenha.
+    expect(camposDaIdentidade(POST, "cta")).toContain("botao")
+  })
+})
+
 describe("reconciliarCampos", () => {
   it("o parágrafo MIGRA para o campo que fica em vez de sumir da tela", () => {
     const r = reconciliarCampos(frame(), camposDaIdentidade(POST, "capa"), CASA)
@@ -127,6 +142,15 @@ describe("trocar de identidade", () => {
     const volta = aplicarFamilia(post, "manchete")
     expect(volta.frames[0].campos).toEqual(["titulo", "subtitulo"])
     expect(volta.frames[0].textos.subtitulo).toBe("o apoio")
+  })
+
+  it("o mesmo vale para o cartão do X — era o subtítulo que ficava invisível", () => {
+    const base: Documento = novoDocumento("x", "canal-1", "molde-manchete")
+    const escrito: Documento = { ...base, frames: base.frames.map((f, i) => (i === 0 ? { ...f, textos: { titulo: "Afirmação", subtitulo: "o apoio" } } : f)) }
+    const tweet = aplicarFamilia(escrito, "tweet")
+    expect(tweet.frames[0].campos).toEqual(["titulo", "corpo"])
+    expect(tweet.frames[0].textos.corpo).toBe("o apoio")
+    expect(aplicarFamilia(tweet, "manchete").frames[0].textos.subtitulo).toBe("o apoio")
   })
 
   it("a caixa de destaque não vira campo fantasma ao sair da Manchete", () => {

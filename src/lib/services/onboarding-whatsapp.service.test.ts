@@ -24,10 +24,6 @@ const VARS_DISPONIVEIS = Object.keys(VARS_DO_TEMPLATE) as Array<
   keyof typeof VARS_DO_TEMPLATE
 >
 
-function varsDoTexto(tpl: string): string[] {
-  return [...tpl.matchAll(/\{\{\s*([a-zA-Z_]+)\s*\}\}/g)].map((m) => m[1])
-}
-
 const cheio = Object.fromEntries(
   VARS_DISPONIVEIS.map((k) => [k, `valor-${k}`]),
 ) as unknown as Parameters<typeof render>[1]
@@ -37,10 +33,10 @@ describe("templates do seed × variáveis que existem", () => {
     const orfas: Array<{ coluna: string; variavel: string }> = []
     for (const col of SEED_COLUMNS) {
       if (!col.whatsapp_template) continue
-      for (const v of varsDoTexto(col.whatsapp_template)) {
-        if (!(VARS_DISPONIVEIS as readonly string[]).includes(v)) {
-          orfas.push({ coluna: col.slug, variavel: v })
-        }
+      // `varsDesconhecidas` e o guard do editor sao a MESMA funcao: um
+      // segundo detector aqui aceitaria no seed o que o salvar recusa.
+      for (const v of varsDesconhecidas(col.whatsapp_template)) {
+        orfas.push({ coluna: col.slug, variavel: v })
       }
     }
     // Era aqui que `tutorial_link` × `tutorial_url` apareceria.

@@ -47,7 +47,7 @@ import { aplicarPropostas, ehTextoGuia, novaVersao, propostasDeLinhas, setTexto 
 import { agendarDocumento } from "@/lib/conteudo/data"
 import { chamarIA } from "@/lib/conteudo/ia/client"
 import { resumoDocumento } from "@/lib/conteudo/ia/prompt"
-import { familiaDe, tracoDe } from "@/lib/conteudo/familias"
+import { familiaDe } from "@/lib/conteudo/familias"
 import { CAMPO_LABEL, camposExcedidos } from "@/lib/conteudo/limites"
 import type { BrandKit, Campo, DocFrame, Documento, EstiloTexto, Perfil, PerfilEditavel } from "@/lib/conteudo/types"
 import { ROUTES } from "@/lib/routes"
