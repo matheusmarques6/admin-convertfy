@@ -8836,6 +8836,115 @@ flow**, sem mexer no admin — `docs/n8n/email-copy-patch-mecanica-e-assunto.md`
 Até ele ser colado, a mecânica do cupom e a régua de assunto continuam no
 payload e não chegam ao redator; quem as pega é o QA, depois do fato.
 
+## Prospecção ativa: a lista do parceiro vira operação (17/09)
+
+431 leads do parceiro Luan (mentoria de dropshipping) importados em
+produção para a BFCM 2026. Pacote e SQLs em `docs/prospeccao/luan-bf2026/`.
+Contagens conferidas contra o banco antes de escrever código: A 75, B 119,
+C 106, D 108, Aguardando 23; zero lead sem negócio, zero duplicado.
+
+**O cartão não dizia quem abrir primeiro.** Prioridade, segmento, alerta
+de dados e tentativas moravam em `deals.custom_fields` e só apareciam
+abrindo o card. `lib/crm/prospeccao.ts` (puro) lê os sinais e a régua de
+BLOQUEIO — `nao-contatar`, negociação com o parceiro e sem telefone —, e
+é o MESMO módulo que o filtro do board usa: duas leituras fariam o filtro
+esconder um negócio que o badge mostra. `--crm-orange` entrou como token
+porque P1..P4 é escala ORDINAL, não estado semântico; `--crm-warn` no P3
+leria "atenção".
+
+**Enviar T1/T2/T3** (`lib/crm/cadencia.ts` + `/deals/[id]/toque`) escolhe
+o script do segmento, troca as variáveis, abre o `wa.me`, registra
+`wa_message`, conta a tentativa, move de etapa e agenda a checagem no SLA
+do destino. **A janela é aberta VAZIA no clique** e só recebe a URL
+depois da resposta — `window.open` pós-await é bloqueado, e abrir já com
+o link mandaria mensagem a quem pediu pra parar quando a recusa viesse do
+servidor. Tudo que pode RECUSAR roda antes de qualquer escrita.
+
+Três armadilhas que os testes e a leitura do cliente pegaram:
+
+- **"Aguardando liberação Luan" começa com A** e pegaria o script do
+  aluno, que cita a mentoria. Os 23 dessa coluna guardam o segmento
+  depois que ele libera, então o engano sairia pra gente de verdade. A
+  letra vem de `segmentoCurto`, nunca do 1º caractere.
+- **Variável NÃO FORNECIDA ≠ fornecida VAZIA.** O composer do inbox
+  inseria `reply.body` CRU (nenhuma substituição existia); apagar
+  `{hora}` ali deixaria "confirmando amanhã às." em silêncio, enquanto
+  `{nome}` de contato sem nome tem de sumir com o espaço.
+- **O diálogo de perda grava `"Motivo — comentário"`.** Comparar a string
+  inteira contra `crm_lost_reasons` bloquearia TODA perda comentada; o
+  casamento é por prefixo, o mais longo vence, e a mesma régua marca a
+  tag `nao-contatar` (o comentário do vendedor não pode desligar a
+  proteção que a pessoa pediu).
+
+**`required_fields` passou a cobrar campo personalizado** (`custom:<key>`)
+— cobrar "URL da loja" ao entrar no diagnóstico é regra de operação, não
+`if` por nome de etapa. O que aquele mecanismo não expressa (condição de
+SAÍDA, confirmação humana, efeitos de ganho/perda) vive em
+`regras-de-coluna.ts`, com `regrasSemEtapa()` porque regra por NOME de
+coluna morre calada se alguém renomear a coluna.
+
+**A ETAPA é o sinal de resposta, não a caixa de entrada.** Medido: dos
+431, ZERO têm thread ligada e só 2 casam por telefone com conversa
+existente — a abordagem sai de um número que não é canal conectado, então
+resposta nenhuma chega ao banco. Daí o botão "Respondeu" no card.
+
+**O job de SLA nasce em `dry_run`** (`CRM_PROSPECCAO_SLA_MODE`), agendado
+às 08:00 BRT porque rota sob `/api/cron/` sem horário é código morto.
+T1/T2 vencidos marcam e criam tarefa, NUNCA movem; T3 vencido move pra
+perdido; qualificação parada só vira tarefa (perder quem RESPONDEU por
+demora nossa é o pior desfecho). **A idempotência não funcionaria**:
+`crm_automation_runs` tem UNIQUE (automation_id, idempotency_key) e o job
+insere com `automation_id` NULL — NULL é DISTINTO em Postgres, o 23505
+nunca dispararia e a tarefa nasceria de novo em toda rodada. Migration
+20261165 cria o índice parcial que falta.
+
+**Fila de hoje** (`/admin/comercial/fila`): ordem A→B→C→D depois pela
+posição, pendentes antes das novas, e o teto vale SÓ sobre as novas — ele
+é o limite do número de WhatsApp, não do trabalho. **Relatório**
+(`/admin/comercial/prospeccao`): o degrau alcançado vem de
+`crm_deal_history` + etapa atual, porque só a etapa ATUAL contaria o lead
+perdido por silêncio como "respondeu". Taxa sem denominador é `null` e
+aparece como "—", nunca 0%.
+
+Verificados renderizando no Chromium contra os 431 reais — foi o render
+que pegou a tela em branco antes de a pipeline resolver, o botão a meia
+tela do nome, o segmento repetido três vezes na linha e a barra do
+gráfico esticando a 400px com poucos dias.
+
+**Revisão antes de abordar (17/09)**: quatro defeitos de FRONTEIRA, entre
+réguas que deveriam ser a mesma. (1) `linkDoWhatsApp` mandava os dígitos
+crus — `wa.me/11999998888` NÃO resolve, e o erro só aparece na tela do
+WhatsApp depois do clique; passou a usar `normalizePhone`, a régua da
+casa (`+` = DDI explícito; 10-11 dígitos sem `+` = BR e ganha o 55), a
+MESMA que `motivoDeBloqueio` agora consulta — contar dígitos de um lado e
+normalizar do outro deixaria o botão habilitado para número que o link
+recusa. Medido: 429 dos 431 já vêm com `+55`; quem digita lead novo à mão
+não. (2) **"Nutrir · loja sem vendas" é `stage_type = archived` e o move
+deixa `status = open`**, então com `tentativas < 3` o lead voltava à fila
+do dia seguinte como abordagem NOVA e levaria o T2 depois de ter dito que
+a loja não vende; motivo `fora_da_cadencia`, que cobre também ganho e
+perdido (o card fechado mostrava "Enviar T2" habilitado). `status` é
+estrutural e sobrevive a renomear coluna; o nome cobre a nutrição, que
+continua `open` por não ser desfecho. (3) **Todo toque agenda a checagem
+para 48h e a fila tratava QUALQUER tarefa aberta como pendente** — os 40
+abordados de hoje entravam, no instante do envio, na lista que existe
+para mostrar quem está devendo, afogando o follow-up vencido de três dias
+atrás; `tarefaVenceHoje` (dia em São Paulo) promove só o que venceu,
+tarefa SEM prazo continua pendente (quem a criou à mão queria que fosse
+feita) e a marcada para depois vira `aguardando_resposta` — nem pendente
+nem abordagem nova, porque o T2 é D+2. (4) **Três cópias de cada nome de
+coluna** (`ETAPA_AGUARDANDO` em três módulos, `TAG_NAO_CONTATAR` e
+`ETAPA_QUALIFICAR` em dois): são DADO (`pipeline_stages.name`), e
+renomear a coluna na tela desligaria a regra em silêncio no módulo que
+ficasse para trás — `prospeccao.ts` virou a fonte única e os outros
+RE-EXPORTAM, o que torna divergir impossível por construção em vez de
+depender de um teste. Conferido com os dados de produção: script certo
+por segmento, "RENATO AMORIM" → "Renato", contato sem nome saindo "Oi,
+tudo bem?" sem vírgula órfã, `{hora}` não fornecida ficando como
+lembrete, e a etapa do parceiro recusada. As regras novas são **no-op na
+base de hoje** (0 em nutrição, 0 com tarefa aberta) — são guardas para o
+que acontece depois que a cadência começar.
+
 ---
 
 *Última atualização: Setembro 2026*

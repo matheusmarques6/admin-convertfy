@@ -10,6 +10,7 @@ import {
 import { Plus, Flag, MoreHorizontal, Pencil, Trash2 } from "lucide-react"
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu"
 import { DealCard, type DealCardData } from "./deal-card"
+import type { RespostaDoToque } from "./botao-toque"
 import { useIsMobile } from "@/hooks/use-is-mobile"
 
 export interface KanbanStage {
@@ -38,6 +39,11 @@ interface KanbanBoardProps {
   onDeleteDeal?: (dealId: string) => void
   onEditStage?: (stage: KanbanStage) => void
   onDeleteStage?: (stage: KanbanStage) => void
+  /** Toque da cadência saiu — o pai revalida o board. */
+  onToque?: (r: RespostaDoToque) => void
+  onToqueErro?: (msg: string) => void
+  /** O lead respondeu — move pra qualificação em um clique. */
+  onRespondeu?: (dealId: string) => void
   /** Modo compacto: cards enxutos (as larguras vêm das CSS vars do wrapper). */
   compact?: boolean
   /**
@@ -114,6 +120,9 @@ export function KanbanBoard({
   onDeleteDeal,
   onEditStage,
   onDeleteStage,
+  onToque,
+  onToqueErro,
+  onRespondeu,
   compact = false,
   renderCard,
 }: KanbanBoardProps) {
@@ -493,8 +502,15 @@ export function KanbanBoard({
                               })
                             ) : (
                               <DealCard
-                                deal={deal}
+                                // stage_name vem da COLUNA, nao do deal:
+                                // e ela que decide se a abordagem esta
+                                // bloqueada, e duplicar o nome em cada
+                                // negocio criaria duas verdades.
+                                deal={{ ...deal, stage_name: stage.name }}
                                 slaHours={stage.sla_hours}
+                                onToque={onToque}
+                                onToqueErro={onToqueErro}
+                                onRespondeu={onRespondeu}
                                 stageColor={color}
                                 onClick={onCardClick}
                                 onWin={!isTerminal ? onWinDeal : undefined}

@@ -20,6 +20,8 @@ import {
   Check,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { MATURIDADES, PRIORIDADES, SEGMENTOS, sinaisDoNegocio } from "@/lib/crm/prospeccao"
+import { normalizeForCompare } from "@/lib/tracking/normalizar-comparacao"
 
 export type SortOrder =
   | "created_desc"
@@ -39,6 +41,17 @@ export interface PipelineFilters {
   createdTo: string | null
   movedFrom: string | null
   movedTo: string | null
+  /* ── Prospecção ativa (lista de parceiro) ─────────────────────
+     Aditivos: visão salva antiga não os traz, e `applyView` faz
+     spread sobre EMPTY_FILTERS, então ela continua valendo. */
+  prioridades: string[]
+  segmentos: string[]
+  /** Maturidade da loja (`custom_fields.maturidade_loja`). */
+  maturidades: string[]
+  /** Só negócios com `alerta_dados` preenchido. */
+  comAlerta: boolean
+  /** Só negócios que o job de SLA marcou como follow-up vencido. */
+  followupVencido: boolean
 }
 
 export const EMPTY_FILTERS: PipelineFilters = {
@@ -53,11 +66,22 @@ export const EMPTY_FILTERS: PipelineFilters = {
   createdTo: null,
   movedFrom: null,
   movedTo: null,
+  prioridades: [],
+  segmentos: [],
+  maturidades: [],
+  comAlerta: false,
+  followupVencido: false,
 }
 
 interface PipelineFiltersBarProps {
   filters: PipelineFilters
   onFiltersChange: (next: PipelineFilters) => void
+  /**
+   * Mostra a seção de prospecção ativa (prioridade, segmento, alerta,
+   * follow-up vencido). Só faz sentido na pipeline que TEM esses
+   * campos — em qualquer outra o filtro só saberia devolver vazio.
+   */
+  mostrarProspeccao?: boolean
   sort: SortOrder
   onSortChange: (next: SortOrder) => void
   /** Opcoes computadas do conjunto de deals atual. */
@@ -77,6 +101,11 @@ function countActiveFilters(f: PipelineFilters): number {
   let n = 0
   if (f.tags.length) n++
   if (f.owners.length) n++
+  if (f.prioridades?.length) n++
+  if (f.segmentos?.length) n++
+  if (f.maturidades?.length) n++
+  if (f.comAlerta) n++
+  if (f.followupVencido) n++
   if (f.statuses.length) n++
   if (f.sources.length) n++
   if (f.lostReasons.length) n++
@@ -97,6 +126,7 @@ const SORT_OPTIONS: Array<{ id: SortOrder; label: string }> = [
 export function PipelineFiltersBar({
   filters,
   onFiltersChange,
+  mostrarProspeccao = false,
   sort,
   onSortChange,
   availableTags,
@@ -166,6 +196,7 @@ export function PipelineFiltersBar({
           <FiltersPopover
             filters={filters}
             onFiltersChange={onFiltersChange}
+            mostrarProspeccao={mostrarProspeccao}
             availableTags={availableTags}
             availableSources={availableSources}
             availableOwners={availableOwners}
@@ -227,11 +258,36 @@ export function PipelineFiltersBar({
   )
 }
 
+// ── CheckboxLinha (filtro booleano) ─────────────────────────────────────────
+
+function CheckboxLinha({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string
+  checked: boolean
+  onChange: (v: boolean) => void
+}) {
+  return (
+    <label className="flex cursor-pointer items-center gap-2 text-[13px] text-slate-700 dark:text-white/80">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="h-3.5 w-3.5 cursor-pointer accent-[var(--crm-brand)]"
+      />
+      {label}
+    </label>
+  )
+}
+
 // ── FiltersPopover ──────────────────────────────────────────────────────────
 
 function FiltersPopover({
   filters,
   onFiltersChange,
+  mostrarProspeccao,
   availableTags,
   availableSources,
   availableOwners,
@@ -240,6 +296,7 @@ function FiltersPopover({
 }: {
   filters: PipelineFilters
   onFiltersChange: (next: PipelineFilters) => void
+  mostrarProspeccao?: boolean
   availableTags: string[]
   availableSources: string[]
   availableOwners: Array<{ id: string; name: string }>
@@ -268,6 +325,64 @@ function FiltersPopover({
 
       {/* Sections (scroll) */}
       <div className="flex-1 overflow-y-auto py-1">
+        {mostrarProspeccao && (
+          <>
+            <FilterSection
+              title="Prioridade"
+              countSelected={draft.prioridades?.length ?? 0}
+            >
+              <MultiSelectList
+                options={PRIORIDADES.map((p) => ({ value: p, label: p }))}
+                selected={draft.prioridades ?? []}
+                onChange={(next) => setDraft({ ...draft, prioridades: next })}
+                emptyMsg=""
+              />
+            </FilterSection>
+
+            <FilterSection
+              title="Segmento da lista"
+              countSelected={draft.segmentos?.length ?? 0}
+            >
+              <MultiSelectList
+                options={SEGMENTOS.map((sg) => ({ value: sg, label: sg }))}
+                selected={draft.segmentos ?? []}
+                onChange={(next) => setDraft({ ...draft, segmentos: next })}
+                emptyMsg=""
+              />
+            </FilterSection>
+
+            <FilterSection
+              title="Maturidade da loja"
+              countSelected={draft.maturidades?.length ?? 0}
+            >
+              <MultiSelectList
+                options={MATURIDADES.map((m) => ({ value: m, label: m }))}
+                selected={draft.maturidades ?? []}
+                onChange={(next) => setDraft({ ...draft, maturidades: next })}
+                emptyMsg=""
+              />
+            </FilterSection>
+
+            <FilterSection
+              title="Situação"
+              countSelected={(draft.comAlerta ? 1 : 0) + (draft.followupVencido ? 1 : 0)}
+            >
+              <div className="px-3 py-1.5 flex flex-col gap-1.5">
+                <CheckboxLinha
+                  label="Com alerta de dados"
+                  checked={draft.comAlerta ?? false}
+                  onChange={(v) => setDraft({ ...draft, comAlerta: v })}
+                />
+                <CheckboxLinha
+                  label="Follow-up vencido"
+                  checked={draft.followupVencido ?? false}
+                  onChange={(v) => setDraft({ ...draft, followupVencido: v })}
+                />
+              </div>
+            </FilterSection>
+          </>
+        )}
+
         <FilterSection
           title="Tags"
           countSelected={draft.tags.length}
@@ -585,9 +700,40 @@ export function applyFiltersAndSort<
     client?: { id: string; name: string } | null
     created_at?: string | null
     lost_reason?: string | null
+    custom_fields?: Record<string, unknown> | null
   },
 >(deals: D[], filters: PipelineFilters, sort: SortOrder): D[] {
   let list = deals
+
+  // Prospecção ativa. Lê pelo MESMO módulo que o card, senão o filtro
+  // esconderia um negócio que o badge mostra (ou o contrário).
+  if (filters.prioridades?.length) {
+    list = list.filter((d) => {
+      const p = sinaisDoNegocio(d.custom_fields).prioridade
+      return p != null && filters.prioridades.includes(p)
+    })
+  }
+  if (filters.segmentos?.length) {
+    list = list.filter((d) => {
+      const seg = sinaisDoNegocio(d.custom_fields).segmento
+      return seg != null && filters.segmentos.includes(seg)
+    })
+  }
+  if (filters.maturidades?.length) {
+    // Comparação normalizada: o valor vem do select do campo, mas uma
+    // importação antiga pode ter gravado sem acento.
+    const alvo = filters.maturidades.map((m) => normalizeForCompare(m))
+    list = list.filter((d) => {
+      const m = sinaisDoNegocio(d.custom_fields).maturidade
+      return m != null && alvo.includes(normalizeForCompare(m))
+    })
+  }
+  if (filters.comAlerta) {
+    list = list.filter((d) => sinaisDoNegocio(d.custom_fields).alerta != null)
+  }
+  if (filters.followupVencido) {
+    list = list.filter((d) => sinaisDoNegocio(d.custom_fields).followupVencido)
+  }
 
   if (filters.tags.length) {
     list = list.filter((d) => d.tags?.some((t) => filters.tags.includes(t)))

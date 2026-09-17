@@ -18,6 +18,7 @@ import type { QuickReply } from "@/types/crm-inbox"
 import { INBOX_BRAND } from "./inbox-theme"
 import { AudioRecorder } from "./audio-recorder"
 import { QuickRepliesPicker } from "./quick-replies-picker"
+import { preencherVariaveis } from "@/lib/crm/cadencia"
 
 interface ComposerProps {
   disabled: boolean
@@ -32,6 +33,12 @@ interface ComposerProps {
   onOpenTemplates: () => void
   /** Chave do rascunho: o texto sobrevive à troca de conversa. */
   threadId?: string
+  /**
+   * Nome do contato da conversa. Usado pra trocar `{nome}` na resposta
+   * rápida — sem ele o atendente manda "Oi {nome}, tudo bem?" pro
+   * cliente, que era o que acontecia antes desta prop existir.
+   */
+  contactName?: string | null
 }
 
 /** Limite do `body` na API — passar disso volta um 400 genérico. */
@@ -59,6 +66,7 @@ export function Composer({
   onSendMedia,
   onOpenTemplates,
   threadId,
+  contactName,
 }: ComposerProps) {
   const [text, setText] = useState(() => (threadId ? drafts.get(threadId) ?? "" : ""))
   const [sending, setSending] = useState(false)
@@ -156,9 +164,17 @@ export function Composer({
     }
   }
 
-  /** Substitui só o "/atalho" que está sendo digitado. */
+  /**
+   * Substitui só o "/atalho" que está sendo digitado, já com as
+   * variáveis trocadas. O corpo ia CRU até aqui: todo script com
+   * `{nome}` chegava assim ao cliente.
+   *
+   * `{hora}` fica como está de propósito — só o atendente sabe a hora
+   * combinada, e inventar uma é pior que ele preencher na hora.
+   */
   const applyQuickReply = (reply: QuickReply) => {
-    setText((prev) => (prev.startsWith("/") ? reply.body : `${prev.replace(/\/\S*$/, "")}${reply.body}`))
+    const corpo = preencherVariaveis(reply.body, { nome: contactName })
+    setText((prev) => (prev.startsWith("/") ? corpo : `${prev.replace(/\/\S*$/, "")}${corpo}`))
     textareaRef.current?.focus()
   }
 

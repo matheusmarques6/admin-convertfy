@@ -88,6 +88,13 @@
   --crm-purple-bg: #F3E8FF;
   --crm-purple-border: #E0CBFF;
 
+  /* Laranja: existe pela escala ORDINAL de prioridade (P1..P4), que
+     precisa de um degrau entre o amarelo e o cinza. Nao e um estado
+     semantico — nao use pra "atencao", isso e o --crm-warn. */
+  --crm-orange: #C2410C;
+  --crm-orange-bg: #FFF7ED;
+  --crm-orange-border: #FED7AA;
+
   --crm-amber: #D97706;
 
   /* Aliases legados (mantidos pra retrocompat com componentes antigos) */
@@ -230,6 +237,7 @@
   --crm-info-bg: rgba(33, 55, 182, 0.18);
   --crm-neut-bg: rgba(255, 255, 255, 0.06);
   --crm-purple-bg: rgba(124, 58, 237, 0.18);
+  --crm-orange-bg: rgba(194, 65, 12, 0.18);
 
   --crm-border: rgba(255, 255, 255, 0.08);
   --crm-border-hover: rgba(255, 255, 255, 0.16);

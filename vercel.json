@@ -180,6 +180,10 @@
       "schedule": "35 7 * * *"
     },
     {
+      "path": "/api/cron/crm-prospeccao-sla",
+      "schedule": "0 11 * * *"
+    },
+    {
       "path": "/api/cron/forms-abandono",
       "schedule": "*/5 * * * *"
     }

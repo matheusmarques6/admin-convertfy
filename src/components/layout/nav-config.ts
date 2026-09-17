@@ -25,6 +25,7 @@ import {
   Filter,
   Briefcase,
   HeartHandshake,
+  ListChecks,
   Inbox,
   Workflow,
   BarChart3,
@@ -112,6 +113,7 @@ export const COMERCIAL_NAV: NavGroup[] = [
       { id: "comercial.automacoes", name: "Automações", href: ROUTES.ADMIN.COMERCIAL.AUTOMACOES.LIST, icon: Workflow },
       { id: "comercial.meetings", name: "Reuniões", href: ROUTES.ADMIN.MEETINGS.LIST, icon: Calendar },
       { id: "comercial.agenda", name: "Agenda", href: ROUTES.ADMIN.COMERCIAL.AGENDA, icon: CalendarDays },
+      { id: "comercial.fila", name: "Fila de hoje", href: ROUTES.ADMIN.COMERCIAL.FILA, icon: ListChecks },
     ],
   },
   {
@@ -119,6 +121,7 @@ export const COMERCIAL_NAV: NavGroup[] = [
     label: "Analise",
     items: [
       { id: "comercial.funil", name: "Funil", href: ROUTES.ADMIN.COMERCIAL.FUNIL, icon: Filter },
+      { id: "comercial.prospeccao", name: "Prospecção", href: ROUTES.ADMIN.COMERCIAL.PROSPECCAO, icon: Megaphone },
       { id: "comercial.reports", name: "Reports", href: ROUTES.ADMIN.COMERCIAL.REPORTS, icon: BarChart3 },
       // (Onda 1: nomes com acentuação correta — a UI mostra pt-BR real.)
     ],

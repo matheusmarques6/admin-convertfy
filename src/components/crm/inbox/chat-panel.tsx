@@ -468,6 +468,9 @@ export function ChatPanel({
         onSendMedia={sendMedia}
         onOpenTemplates={() => setTemplatesOpen(true)}
         threadId={thread.id}
+        // `contact_name` e não `contactLabel`: o label cai no id externo
+        // quando não há nome, e "Oi 5511999998888" é pior que "Oi,".
+        contactName={thread.contact_name}
       />
 
       {templatesOpen && (
