@@ -45,14 +45,33 @@ describe("o conhecimento chega ao agente", () => {
   })
 
   it("a alçada separa o que ele faz do que ele só registra", () => {
-    expect(ALCADA).toMatch(/VOCÊ EXECUTA/)
-    expect(ALCADA).toMatch(/VOCÊ NÃO EXECUTA/)
-    // As quatro regras cujo dono é outro — servir a regra sem a ferramenta é
-    // o modo de falha que o `momento` e o `exige` já custaram a este repo.
+    // 17/09: os títulos deixaram de ser "VOCÊ EXECUTA"/"VOCÊ NÃO EXECUTA".
+    // A lista de proibições vinha primeiro no olho e era metade do bloco —
+    // ler regra que não se pode cumprir é o que produzia a resposta
+    // defensiva (68,2% das faixas decididas saíam como `manter`).
+    expect(ALCADA).toMatch(/O QUE É SEU/)
+    expect(ALCADA).toMatch(/TEM OUTRO DONO/)
+    // As regras cujo dono é outro continuam NOMEADAS — servir a regra sem a
+    // ferramenta é o modo de falha que o `momento` e o `exige` já custaram a
+    // este repo, e apagá-las do texto seria o mesmo erro pelo outro lado.
     for (const fora of ["R1", "R4", "R7", "R8"]) {
       expect(ALCADA).toContain(fora)
     }
     expect(ALCADA).toMatch(/você não reprova nada/i)
+    // O que o agente decide tem de aparecer como obrigação, não como opção.
+    expect(ALCADA).toMatch(/ninguém decide no seu lugar/i)
+    expect(ALCADA).toMatch(/lacuna não substitui decisão/i)
+  })
+
+  it("o freio explícito saiu do bloco de faixas", () => {
+    // A frase dizia, com estas palavras, que não mudar nada era "resposta
+    // legítima e comum" — e era lida como recomendação. O TETO de 2 faixas
+    // fica, porque é do código; o que saiu foi o convite a não usar nenhuma.
+    expect(FAIXAS_E_RITMO).not.toMatch(/resposta\s+legítima/i)
+    expect(FAIXAS_E_RITMO).toMatch(/até 2 faixas por peça/)
+    expect(FAIXAS_E_RITMO).toMatch(/não é uma cota a economizar/)
+    // Manter passa a se justificar como qualquer outra decisão.
+    expect(FAIXAS_E_RITMO).toMatch(/Manter é uma decisão/)
   })
 
   it("a lista vazia de faixas tem instrução própria — bloco que some faz o modelo caçar", () => {

@@ -227,38 +227,40 @@ se decide aqui.
  * eliminar por um critério que não pode verificar.
  */
 export const ALCADA = `<sua_alcada>
-O guia acima é a especificação COMPLETA. Nem tudo nele é executável POR
-VOCÊ, e confundir os dois é o erro caro aqui.
+O guia acima é a especificação COMPLETA da cor nesta casa. Uma parte dela é
+sua; outra tem outro dono. Confundir as duas é o erro caro aqui — nos dois
+sentidos: decidir o que não é seu estraga a peça, e deixar de decidir o que é
+seu entrega um e-mail que ninguém escolheu.
 
-VOCÊ EXECUTA:
-- Passos 1 e 2 (validar a paleta, atribuir papéis) — é o que você devolve em
-  \`tokens\`.
-- Passo 3 (classificar a loja) — o campo \`paleta_eixo\`.
-- Passo 4, regras R2, R3, R5 e R6 — o ritmo, através de \`faixas\`.
-- Passo 5 inteiro (C1–C6) — através de \`botoes\` e \`adicionar\`.
-- Passo 7: você REPORTA o que decidiu; o código recalcula as checagens sobre
-  o resultado. Nunca afirme uma checagem que você não pode medir.
+O QUE É SEU — e ninguém decide no seu lugar:
+- A paleta e os papéis (Passos 1 e 2) → \`tokens\`.
+- O eixo da loja (Passo 3) → \`paleta_eixo\`.
+- O RITMO da peça (Passo 4: R2, R3, R5, R6) → \`faixas\`. É a decisão de maior
+  alcance que você toma, e a que mais muda o que o leitor vê.
+- O Passo 5 inteiro (C1–C6): a cor de cada botão, a inversão por faixa e o
+  botão que falta → \`botoes\` e \`adicionar\`.
+- As paradas de um gradiente que JÁ existe (R4, metade) → \`gradiente\` na
+  faixa.
+- A conformidade por valor → \`valores\`.
+- O Passo 7 você REPORTA; o código recalcula as checagens sobre o resultado.
+  Nunca afirme uma checagem que você não pode medir.
 
-VOCÊ NÃO EXECUTA — registre em \`lacunas\` e siga:
-- R1 (hero pela foto): a hero vem enxertada da variante e o texto sobre ela
-  já é tratado por código. Faixa com \`fundo: "foto"\` você deixa.
-- R4 (transição entre faixas), metade: você não INSERE gradiente nem forma
-  onde não há — troca de fundo sem transição segue lacuna. Onde o gradiente
-  JÁ existe, ele é seu: a faixa traz \`gradiente\` e você repinta as paradas
-  (ver <faixas_e_ritmo>).
-- R7 (rodapé fixo por loja): é decisão da loja, não desta peça.
-- R8 (raio e canto): o CÓDIGO unifica, e você não precisa pedir nada. Todo
-  botão da peça fica com o raio dominante dela — o mesmo que o botão novo já
-  herda. Peça que mistura canto vivo com pílula é decisão de FORMA, não de
-  acabamento: aí o código se cala e registra lacuna, porque escolher uma das
-  duas seria redesenhar o botão.
-- Passo 6 (ajuste por momento): você NÃO recebe o flow nem o número do
-  e-mail. Não deduza o momento pelo assunto.
-- "Bloqueia a peça": você não reprova nada. Falha grave é lacuna, e o QA
-  decide.
+TEM OUTRO DONO — uma linha em \`lacunas\`, e siga:
+- R1 — faixa com \`fundo: "foto"\`: a hero vem enxertada da variante e o texto
+  sobre ela já é tratado por código. Deixe.
+- R4, a outra metade — INSERIR gradiente ou forma onde não existe nenhum.
+- R7 — o rodapé é fixo por loja, não se decide nesta peça.
+- R8 — o código unifica o raio dos botões sozinho, e peça que mistura canto
+  vivo com pílula ele deixa para um humano. Não peça nada.
+- Passo 6 — você não recebe o flow nem o número do e-mail. Não deduza o
+  momento pelo assunto.
+- "Bloqueia a peça" — você não reprova nada; o QA decide.
 
-Registrar uma lacuna é trabalho feito, não desistência: é assim que o que
-falta chega a quem pode resolver.
+Lacuna é trabalho feito, não desistência: é assim que o que falta chega a
+quem pode resolver. Mas lacuna não substitui decisão. O que está na primeira
+lista é para ser DECIDIDO, mesmo quando a peça já parece aceitável — e
+principalmente aí, porque "aceitável" é o estado em que uma peça sem dono
+chega ao cliente.
 </sua_alcada>`
 
 /** O ritmo — a parte executável do Passo 4, com o dado que ela lê. */
@@ -290,9 +292,13 @@ Com \`<faixas>\`, decida nesta ordem:
    Repintar o gradiente NÃO conta no teto de 2 faixas: ele conforma a cor de
    uma faixa, não muda o ritmo.
 
-Mudar faixa é caro: no máximo 2 por peça. Não mudar nenhuma é resposta
-legítima e comum. Toda faixa que você mudar precisa de um \`porque\` que cite
-a regra que ela serve.
+Você pode mudar até 2 faixas por peça. O teto é do código e existe para um
+plano ruim não repintar o e-mail inteiro — não é uma cota a economizar, e
+devolver as duas vagas intactas não é, por si, um bom resultado.
+
+Toda faixa precisa de um \`porque\` que cite a regra que ela serve — inclusive
+a que você MANTÉM. Manter é uma decisão e se justifica como as outras: diga
+qual regra o fundo atual já cumpre.
 </faixas_e_ritmo>`
 
 /** Os botões: inversão, hierarquia e a regra da casa de que todo bloco tem um. */

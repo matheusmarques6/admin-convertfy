@@ -9683,3 +9683,46 @@ extrator lê — devolveria três cantos de um jeito e um de outro.
 faixas repintadas mudam a leitura do e-mail; dois cantos alinhados só fazem os
 botões parecerem da mesma peça. Telemetria em `ritmo.raios_unificados` — `0`
 ali significa "a peça já era coerente", nunca "o agente não quis".
+
+## O freio do agente de cor sai do prompt (17/09)
+
+Etapa 2 do plano, e ela sobe **sozinha**: soltar a conservadoria e ligar o
+Passo 6 no mesmo deploy tornaria impossível atribuir uma regressão a um dos
+dois.
+
+Medido antes: **68,2% das faixas decididas saíam como `manter`** (45 de 66 em
+30 dias). Duas causas no texto, nenhuma no modelo.
+
+**A frase que recomendava não agir.** `FAIXAS_E_RITMO` dizia, com estas
+palavras: *"Mudar faixa é caro: no máximo 2 por peça. Não mudar nenhuma é
+resposta legítima e comum."* A segunda sentença foi lida como recomendação, e
+o teto virou cota a economizar. O `TETO_DE_FAIXAS = 2` **fica** — ele é do
+código e existe para um plano ruim não repintar o e-mail inteiro —, mas agora
+o texto diz que devolver as duas vagas intactas não é, por si, bom resultado.
+E **manter passou a exigir `porque`** como qualquer outra decisão: dizer qual
+regra o fundo atual já cumpre é mais caro que dizer "está bom".
+
+**A alçada era uma lista de proibições.** Ela abria com o que ele executa em
+seis linhas e gastava o dobro disso em "VOCÊ NÃO EXECUTA", item a item, com
+parágrafo próprio — de 20k chars de especificação, menos da metade era dele.
+Os títulos viraram **"O QUE É SEU — e ninguém decide no seu lugar"** e **"TEM
+OUTRO DONO"**, a segunda lista foi comprimida a uma linha por regra, e o
+fecho passou a dizer que **lacuna não substitui decisão**: o que está na
+primeira lista é para ser decidido mesmo quando a peça já parece aceitável —
+e principalmente aí, porque "aceitável" é o estado em que uma peça sem dono
+chega ao cliente.
+
+**O que NÃO saiu, de propósito:** as regras de outro dono continuam NOMEADAS
+(R1, R4, R7, R8, Passo 6). Apagá-las do texto seria o mesmo erro do `momento`
+e do `exige` pelo lado oposto — o modelo procura o que não recebeu, ou deduz.
+O Passo 6 segue na lista até a Etapa 3 servir o flow e o número do e-mail.
+
+O teste que fixava `/VOCÊ EXECUTA/` foi atualizado, não removido: a
+invariante que ele guarda (a alçada separa os dois grupos, e as regras alheias
+aparecem pelo nome) continua, com duas asserções novas para o que a mudança
+comprou.
+
+**Leitura pós-deploy**: 20 runs antes × 20 depois de `color_format`, com o
+alvo sendo a queda de `manter` **sem** estourar o teto — `ritmo.faixas_pintadas`
+acima de 2 é impossível por construção, então o sinal de excesso é
+`plano_descartes` com motivo de teto.
