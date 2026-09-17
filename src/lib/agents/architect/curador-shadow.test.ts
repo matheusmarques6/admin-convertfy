@@ -600,12 +600,14 @@ describe("prompt do Curador — nada elimina por requisito de ativo", () => {
 
 
 // ── Dieta com o Estruturador ligado (02/09) ─────────────────────────────
-describe("template do Curador do vault — decisão do Estruturador, lacunas e índice", () => {
-  it("o user leva a decisão COMPLETA do Estruturador, as lacunas e o índice do Obsidian", () => {
+describe("template do Curador do vault — decisão do Estruturador e lacunas", () => {
+  it("o user leva a decisão COMPLETA do Estruturador e as lacunas, sem o índice do vault", () => {
     expect(DEFAULT_CHOOSER_VAULT_USER).toContain("<decisao_do_estruturador>\n{{estruturador_decisao}}")
     expect(DEFAULT_CHOOSER_VAULT_USER).toContain("<lacunas_da_biblioteca>\n{{lacunas_biblioteca}}")
-    expect(DEFAULT_CHOOSER_VAULT_USER).toContain("<indice_do_vault>")
-    expect(DEFAULT_CHOOSER_VAULT_USER).toContain("{{indice_vault}}")
+    // Saiu em 17/09: prometia "consulta sob demanda" e as ferramentas
+    // (`listar_pasta`/`ler_nota`) nunca tiveram importador de produção.
+    expect(DEFAULT_CHOOSER_VAULT_USER).not.toContain("<indice_do_vault>")
+    expect(DEFAULT_CHOOSER_VAULT_USER).not.toContain("{{indice_vault}}")
     // A decisão vem ANTES da sequência, que é o que ela explica.
     expect(DEFAULT_CHOOSER_VAULT_USER.indexOf("<decisao_do_estruturador>")).toBeLessThan(
       DEFAULT_CHOOSER_VAULT_USER.indexOf("<estrutura_do_email>"),
@@ -885,7 +887,7 @@ describe("user do Curador do vault — ordem dos blocos e marcas de cache (14/09
     for (let i = tpl.indexOf(CACHE_PREFIX_MARKER); i >= 0; i = tpl.indexOf(CACHE_PREFIX_MARKER, i + 1)) marcas.push(i)
     expect(marcas).toHaveLength(3)
     const [m1, m2, m3] = marcas
-    for (const tag of ["<indice_do_vault>", "<intencao_do_flow>", "<aprendizados>", "<estruturas_de_referencia>"]) {
+    for (const tag of ["<intencao_do_flow>", "<aprendizados>", "<estruturas_de_referencia>"]) {
       expect(pos(tag), tag).toBeLessThan(m1)
     }
     for (const tag of ["<store>", "<perfil_marca>", "<objecoes>", "<vocabulario>", "<top_products>"]) {
@@ -910,7 +912,7 @@ describe("user do Curador do vault — ordem dos blocos e marcas de cache (14/09
       "{{brand_name}}", "{{nicho}}", "{{outline_objective}}", "{{outline_guidance}}", "{{outline_tone_hint}}",
       "{{intencao_flow}}", "{{intencao_email}}", "{{outline_restricoes}}", "{{estruturas_ref}}", "{{secoes_notas}}",
       "{{lacunas_biblioteca}}", "{{aprendizados}}", "{{orientacao_coo}}", "{{revisao_humana}}", "{{briefing_marca}}",
-      "{{alvo}}", "{{objecoes}}", "{{vocabulario}}", "{{top_products}}", "{{memoria}}", "{{indice_vault}}",
+      "{{alvo}}", "{{objecoes}}", "{{vocabulario}}", "{{top_products}}", "{{memoria}}",
       "{{estruturador_decisao}}", "{{eliminadas_requisito}}", "{{blocks_json}}",
     ]) {
       expect(tpl, v).toContain(v)

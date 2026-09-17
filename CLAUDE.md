@@ -8935,3 +8935,63 @@ segue para X" embaixo diz a mesma coisa sem exigir posicionar caixas), e
 produz formulário que funciona; travar a publicação seria atrito novo num
 sistema com anúncio rodando — o erro aparece em vermelho na aba e no selo
 da tira, e quem decide é quem opera).
+
+## O índice do vault sai do Curador (17/09)
+
+O bloco `<indice_do_vault>` tinha **11.258 caracteres — 13% do prefixo** — e
+abria com *"consulta sob demanda, só se quiser conferir uma nota"*. As
+ferramentas `listar_pasta`/`ler_nota` foram removidas em 16/09 e **nunca
+tiveram importador de produção** (o caminho vivo sempre foi `invokeAgent`,
+não `invokeAgentWithTools`), então ele descrevia 21 pastas que ninguém podia
+abrir. O `consultas_ao_vault: []` da telemetria não era "o Curador não
+consultou": era constante gravada como se fosse medição.
+
+**O corte era silencioso, e pegava as duas seções que mais decidem.**
+`renderIndiceDoVault` rebaixava pastas da MAIOR para a menor até caber em
+`INDICE_MAX_CHARS = 12_000`, sem log e sem marcador no texto. No vault de
+17/09 isso deixou 9 pastas como linha opaca — entre elas
+`componentes/variantes/hero/` e `.../products/`, as duas com 9 notas. Medido:
+essas 9 linhas somavam **343 de 11.258 chars**; os outros 10.916 eram os 79
+resumos das 12 pastas que ficavam. Tirar só as opacas seria clareza e quase
+nada de custo — daí a decisão do dono de tirar o bloco inteiro.
+
+Saem `IndiceDoVault`, `buildIndiceDoVault`, `renderIndiceDoVault`,
+`loadIndiceDoVault` e `INDICE_MAX_CHARS`. **`primeiraFrase` FICA**: nasceu
+para o índice, mas é ela que monta o resumo de cada nota em
+`emails[].doutrina`, o bloco que vai ao redator no n8n. Sem migration — o
+`assembler_chooser` tem `system_prompt` e `user_template` VAZIOS no banco, e
+o DEFAULT in-code é o que roda. O leque não quebra: `indice_do_vault` não
+está em `BLOCOS_QUE_VIRAM_CAUDA`, então `removerBloco` não o procura. Os
+testes viraram regressão (`not.toContain`) em vez de sumir — é o que impede
+alguém de reintroduzir o bloco sem perceber.
+
+**O que se perde, declarado**: as 8 primeiras frases de
+`componentes/doutrina/` eram o único lugar onde a doutrina aparecia para o
+Curador. Ela continua indo ao redator pelo payload, que é onde tem efeito.
+Convivência, aprendizados e estruturas já eram servidos inteiros em blocos
+próprios, e as notas das finalistas continuam chegando por `variant_id`
+(teto de 3.000 por nota, 18.000 na cauda). De brinde, 4 queries a menos por
+geração — o loader lia `email_vault_docs`, `email_intents`,
+`email_structure_refs` e `email_learnings`.
+
+**Vinte e três variantes ativas estavam sem dispositivo**
+(`DADOS_20260917_backfill_dispositivo_23.sql`), cadastradas depois do
+backfill de 14/09. Como `conflitoDeDispositivo` é fail-open, elas concorriam
+em TODA posição da seção: é o que fez a posição de `body_tese` ver **11
+finalistas** contra 1 da de `body_garantias`. Três `body` que são oferta com
+cupom mudam de SEÇÃO para `offer` (o vocabulário de body não tem valor para
+oferta), e as duas `reviews` de um depoimento só usam
+`reviews_com_credencial` — o vocabulário pula de `reviews_2` para
+`reviews_3plus` e não nomeia "um", então quem controla a quantidade nelas
+passa a ser o `n_itens` do Estruturador. Endereçado por ID, nunca por nome:
+há **nome repetido** entre duas variantes diferentes ("body 21"), e nome
+duplicado faz o `buildAliasIndex` descartar o apelido por ambiguidade.
+
+**A linha do catálogo tem duas fontes, e é isso que explica variante fraca.**
+Sete campos o código DERIVA do `output_schema` (anatomia, forma, grades,
+slots de imagem) e nove vêm do frontmatter da nota do Obsidian (objeção,
+aliviador, profundidade, registro, registro vetado, paleta, papel, itens,
+peso). O ranking decide pelos nove — então variante sem nota entra na
+disputa com todos os critérios de desempate vazios. Na run de 17/09 a
+`hero section 11` concorreu à posição 0 com ~410 chars contra ~3.000 das
+duas rivais, que tinham nota.

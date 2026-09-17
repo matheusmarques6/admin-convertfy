@@ -7,9 +7,7 @@ import {
   buildEstruturasRefResumo,
   buildJulgamentoBlock,
   secoesDaDoutrina,
-  buildIndiceDoVault,
   buildLacunasBlock,
-  renderIndiceDoVault,
   secaoDaLacuna,
   buildProtocoloBlock,
   buildSecaoNotasBlock,
@@ -355,32 +353,11 @@ describe("julgamento e doutrina", () => {
   })
 })
 
-describe("índice do Obsidian", () => {
-  it("árvore de pastas com contagem, derivada do file_path; raiz e caminho sem pasta ficam fora", () => {
-    const idx = buildIndiceDoVault([
-      "componentes/secoes/_hero.md",
-      "componentes/secoes/_body.md",
-      "componentes/lacunas/offer-sem-isolamento.md",
-      "estruturas/welcome/avelmore-inspecao-antecipada.md",
-      "/estruturas/welcome/medicube-ultima-batida.md",
-      "_INDEX.md",
-    ])
-    expect(idx.pastas.map((p) => ({ pasta: p.pasta, notas: p.notas }))).toEqual([
-      { pasta: "componentes/lacunas", notas: 1 },
-      { pasta: "componentes/secoes", notas: 2 },
-      { pasta: "estruturas/welcome", notas: 2 },
-    ])
-    const r = renderIndiceDoVault(idx)
-    expect(r).toContain("- componentes/secoes/ (2 notas)")
-    expect(r).toContain("- componentes/lacunas/ (1 nota)")
-    // Só caminho, sem corpo: cada nota aparece com "(sem resumo)".
-    expect(r).toContain("  · _hero — (sem resumo)")
-    expect(renderIndiceDoVault({ pastas: [] })).toContain("não sincronizado")
-  })
-
-  // 09/09 — o índice passa a dizer DO QUE cada nota trata. Contagem sozinha
-  // não orienta a consulta sob demanda (consultou_vault era 3/8 runs).
-  it("primeiraFrase pula título, tabela, lista, citação e código", () => {
+describe("primeiraFrase — o resumo de uma nota do vault", () => {
+  // Nasceu para o índice de pastas, que saiu do prompt em 17/09. Ela ficou
+  // porque é quem monta o resumo de cada nota de doutrina em
+  // `emails[].doutrina`, o bloco que o redator lê no n8n.
+  it("pula título, tabela, lista, citação e código", () => {
     const body = [
       "# Hero 3 — cupom",
       "",
@@ -402,34 +379,6 @@ describe("índice do Obsidian", () => {
     const r = primeiraFrase(longa)!
     expect(r.length).toBeLessThanOrEqual(161)
     expect(r.endsWith("…")).toBe(true)
-  })
-
-  it("índice com corpo lista slug — primeira frase, em ordem de slug", () => {
-    const idx = buildIndiceDoVault([
-      { file_path: "componentes/lacunas/offer-sem-isolamento.md", body_md: "# t\nOferta sem bloco que isole o cupom." },
-      { file_path: "componentes/lacunas/body-sem-prova.md", body_md: "Corpo que prove sem review." },
-      "estruturas/welcome/x.md",
-    ])
-    expect(idx.pastas[0].resumos).toEqual([
-      { slug: "body-sem-prova", resumo: "Corpo que prove sem review." },
-      { slug: "offer-sem-isolamento", resumo: "Oferta sem bloco que isole o cupom." },
-    ])
-    const r = renderIndiceDoVault(idx)
-    expect(r).toContain("- componentes/lacunas/ (2 notas)\n  · body-sem-prova — Corpo que prove sem review.")
-  })
-
-  it("acima do teto, a pasta mais cheia volta a só contagem", () => {
-    const muitas = Array.from({ length: 120 }, (_, i) => ({
-      file_path: `componentes/variantes/body/body-${i}.md`,
-      body_md: `Bloco ${i} ` + "descrição longa o bastante para pesar no índice ".repeat(3),
-    }))
-    const poucas = [{ file_path: "componentes/lacunas/a.md", body_md: "Lacuna curta." }]
-    const r = renderIndiceDoVault(buildIndiceDoVault([...muitas, ...poucas]))
-    expect(r.length).toBeLessThanOrEqual(12_000)
-    expect(r).toContain("- componentes/variantes/body/ (120 notas)")
-    expect(r).not.toContain("body-7 —")
-    // A pasta pequena mantém o resumo.
-    expect(r).toContain("  · a — Lacuna curta.")
   })
 })
 
