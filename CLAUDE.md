@@ -8911,6 +8911,40 @@ que pegou a tela em branco antes de a pipeline resolver, o botão a meia
 tela do nome, o segmento repetido três vezes na linha e a barra do
 gráfico esticando a 400px com poucos dias.
 
+**Revisão antes de abordar (17/09)**: quatro defeitos de FRONTEIRA, entre
+réguas que deveriam ser a mesma. (1) `linkDoWhatsApp` mandava os dígitos
+crus — `wa.me/11999998888` NÃO resolve, e o erro só aparece na tela do
+WhatsApp depois do clique; passou a usar `normalizePhone`, a régua da
+casa (`+` = DDI explícito; 10-11 dígitos sem `+` = BR e ganha o 55), a
+MESMA que `motivoDeBloqueio` agora consulta — contar dígitos de um lado e
+normalizar do outro deixaria o botão habilitado para número que o link
+recusa. Medido: 429 dos 431 já vêm com `+55`; quem digita lead novo à mão
+não. (2) **"Nutrir · loja sem vendas" é `stage_type = archived` e o move
+deixa `status = open`**, então com `tentativas < 3` o lead voltava à fila
+do dia seguinte como abordagem NOVA e levaria o T2 depois de ter dito que
+a loja não vende; motivo `fora_da_cadencia`, que cobre também ganho e
+perdido (o card fechado mostrava "Enviar T2" habilitado). `status` é
+estrutural e sobrevive a renomear coluna; o nome cobre a nutrição, que
+continua `open` por não ser desfecho. (3) **Todo toque agenda a checagem
+para 48h e a fila tratava QUALQUER tarefa aberta como pendente** — os 40
+abordados de hoje entravam, no instante do envio, na lista que existe
+para mostrar quem está devendo, afogando o follow-up vencido de três dias
+atrás; `tarefaVenceHoje` (dia em São Paulo) promove só o que venceu,
+tarefa SEM prazo continua pendente (quem a criou à mão queria que fosse
+feita) e a marcada para depois vira `aguardando_resposta` — nem pendente
+nem abordagem nova, porque o T2 é D+2. (4) **Três cópias de cada nome de
+coluna** (`ETAPA_AGUARDANDO` em três módulos, `TAG_NAO_CONTATAR` e
+`ETAPA_QUALIFICAR` em dois): são DADO (`pipeline_stages.name`), e
+renomear a coluna na tela desligaria a regra em silêncio no módulo que
+ficasse para trás — `prospeccao.ts` virou a fonte única e os outros
+RE-EXPORTAM, o que torna divergir impossível por construção em vez de
+depender de um teste. Conferido com os dados de produção: script certo
+por segmento, "RENATO AMORIM" → "Renato", contato sem nome saindo "Oi,
+tudo bem?" sem vírgula órfã, `{hora}` não fornecida ficando como
+lembrete, e a etapa do parceiro recusada. As regras novas são **no-op na
+base de hoje** (0 em nutrição, 0 com tarefa aberta) — são guardas para o
+que acontece depois que a cadência começar.
+
 ---
 
 *Última atualização: Setembro 2026*
