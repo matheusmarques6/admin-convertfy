@@ -65,6 +65,8 @@ const submitSchema = z.object({
   session_id: z.string().uuid().nullable().optional(),
   session_token: z.string().max(300).nullable().optional(),
   ending_ref: z.string().max(100).nullable().optional(),
+  // Aceito por compatibilidade, mas quem MANDA é o schema publicado
+  // (`lerDoSchema`): o cliente aponta o final, a régua é nossa.
   disqualified: z.boolean().nullable().optional(),
 })
 
@@ -159,7 +161,12 @@ export async function POST(
     //
     // No formulário clássico não existe lógica, então o caminho é a lista
     // inteira e esta validação é byte a byte a de antes.
-    const refsDoCaminho = await refsExigiveis(admin, form, parsed.answers)
+    const { refs: refsDoCaminho, desqualificado } = await lerDoSchema(
+      admin,
+      form,
+      parsed.answers,
+      parsed.ending_ref ?? null,
+    )
     const missingRequired: string[] = []
     for (const f of fields || []) {
       if (!f.required) continue
@@ -441,14 +448,22 @@ export async function POST(
           .insert({
             pipeline_id: form.pipeline_id,
             stage_id: stageId,
-            title: leadData.name || `Lead via ${form.name}`,
+            // Quem o próprio formulário recusou não pode chegar ao funil
+            // com a MESMA cara de quem ele quer: o time liga, e a pessoa
+            // acabou de ler "a conta não fecha para você". Marcar o card
+            // é o remédio conservador — nenhuma etapa nova aparece no
+            // kanban de ninguém, e o marcador segue o card na busca e no
+            // relatório, como o "— abandonou" do cron faz.
+            title: desqualificado
+              ? `${leadData.name || `Lead via ${form.name}`} — fora do corte`
+              : leadData.name || `Lead via ${form.name}`,
             value: 0,
             currency: "BRL",
-            probability: 50,
+            probability: desqualificado ? 5 : 50,
             status: "open",
             source: leadData.source,
             utm: utmData,
-            tags: [],
+            tags: desqualificado ? ["fora-do-corte"] : [],
             lead_id: leadId,
             owner_id: autoOwner ?? effectiveCreatedBy, // rodízio → fallback assignee
             position: nextPos,
@@ -467,7 +482,9 @@ export async function POST(
           await admin.from("crm_deal_activities").insert({
             deal_id: deal.id,
             type: "system",
-            content: `Deal criado automaticamente via formulario "${form.name}"`,
+            content: desqualificado
+              ? `Deal criado via formulario "${form.name}" — a resposta caiu no final que DESQUALIFICA, e a pessoa leu isso na tela. Nao e lead para abordar agora.`
+              : `Deal criado automaticamente via formulario "${form.name}"`,
             created_by: effectiveCreatedBy,
             is_internal: true,
           })
@@ -547,7 +564,10 @@ export async function POST(
           dealId,
           submissionId,
           endingRef: parsed.ending_ref ?? null,
-          disqualified: Boolean(parsed.disqualified),
+          // O mesmo veredicto do schema publicado que marcou o card: o
+          // status da sessão alimenta os contadores do funil, e duas
+          // fontes para a mesma pergunta divergiriam na primeira edição.
+          disqualified: desqualificado || Boolean(parsed.disqualified),
         })
       } else {
         log.warn("[FormSubmit] sessão não fechada: token inválido", { motivo: tk.motivo })
@@ -739,33 +759,44 @@ export async function POST(
  * discordaria da tela, e a pessoa veria "campo obrigatório" de uma
  * pergunta que nunca apareceu para ela.
  */
-async function refsExigiveis(
+async function lerDoSchema(
   admin: ReturnType<typeof createAdminClient>,
   form: { id: string; published_version_id?: string | null },
   answers: Record<string, unknown>,
-): Promise<Set<string> | null> {
+  endingRef: string | null,
+): Promise<{ refs: Set<string> | null; desqualificado: boolean }> {
   const versionId = form.published_version_id
-  if (!versionId) return null
+  if (!versionId) return { refs: null, desqualificado: false }
   try {
     const { data } = await admin
       .from("form_versions")
       .select("schema")
       .eq("id", versionId)
       .maybeSingle()
-    if (!data?.schema) return null
+    if (!data?.schema) return { refs: null, desqualificado: false }
     const schema = normalizarSchema(data.schema)
-    if (schema.blocks.length === 0) return null
+    if (schema.blocks.length === 0) return { refs: null, desqualificado: false }
+
+    // Quem decide se o final desqualifica é o SCHEMA PUBLICADO, não o
+    // corpo do POST: o cliente aponta qual final alcançou, a régua é
+    // nossa. Um `disqualified: true` inventado no corpo só rebaixaria o
+    // próprio cadastro, mas confiar nele seria deixar o CRM depender do
+    // que o browser diz.
+    const desqualificado = endingRef
+      ? Boolean((schema.endings ?? []).find((e) => e.ref === endingRef)?.disqualified)
+      : false
+
     // Sem lógica em bloco nenhum, o caminho é a lista inteira e não há o
     // que calcular — é o caso do formulário clássico.
     const temLogica = schema.blocks.some((b) => (b.logic ?? []).length > 0)
-    if (!temLogica) return null
+    if (!temLogica) return { refs: null, desqualificado }
 
     const ctx = { answers: answers as Record<string, never>, hidden: {} }
     const fim = ultimoAlcancavel(schema, ctx)
-    if (!fim) return null
+    if (!fim) return { refs: null, desqualificado }
     const { caminho } = caminhoAte(schema, fim, ctx)
-    return new Set(caminho)
+    return { refs: new Set(caminho), desqualificado }
   } catch {
-    return null
+    return { refs: null, desqualificado: false }
   }
 }
