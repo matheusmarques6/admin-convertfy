@@ -32,6 +32,7 @@ import { QUALIFIED_OPERATORS, type QualifiedRule } from "@/types/form-tracking"
 import { metaEventName, willRenameEvent } from "@/lib/tracking/meta-event-name"
 import { ConversionDiagnostics } from "@/components/forms/conversion-diagnostics"
 import { FormResults } from "@/components/forms/form-results"
+import { FormPublishPanel } from "@/components/forms/form-publish-panel"
 
 // ────────────────────────────────────────────────────────────────────
 // Types
@@ -488,6 +489,7 @@ export default function FormEditorPage({
   const [pipelineId, setPipelineId] = useState("")
   const [stageId, setStageId] = useState("")
   const [successMessage, setSuccessMessage] = useState("")
+  const [displayMode, setDisplayMode] = useState<"classic" | "conversational">("classic")
   const [redirectUrl, setRedirectUrl] = useState("")
   const [theme, setTheme] = useState<FormTheme>({})
   const [fields, setFields] = useState<FormField[]>([])
@@ -520,6 +522,11 @@ export default function FormEditorPage({
     setPipelineId(data.form.pipeline_id ?? "")
     setStageId(data.form.stage_id ?? "")
     setSuccessMessage(data.form.success_message ?? "")
+    setDisplayMode(
+      (data.form as { display_mode?: string }).display_mode === "conversational"
+        ? "conversational"
+        : "classic",
+    )
     setRedirectUrl(data.form.redirect_url ?? "")
     setTheme(data.form.theme ?? {})
     setFields(data.fields)
@@ -588,6 +595,7 @@ export default function FormEditorPage({
           theme,
           success_message: successMessage || null,
           redirect_url: redirectUrl || null,
+          display_mode: displayMode,
           fields: fields.map((f, i) => ({ ...f, position: i })),
           // Rastreamento (pixels). meta_capi_token so vai quando digitado.
           facebook_pixel_id: tracking.facebook_pixel_id || null,
@@ -626,7 +634,7 @@ export default function FormEditorPage({
     } finally {
       setSaving(false)
     }
-  }, [id, name, slug, description, pipelineId, stageId, theme, successMessage, redirectUrl, fields, tracking, mutate])
+  }, [id, name, slug, description, pipelineId, stageId, theme, successMessage, redirectUrl, displayMode, fields, tracking, mutate])
 
   const togglePublish = async () => {
     if (!data) return
@@ -788,6 +796,9 @@ export default function FormEditorPage({
               setDescription={setDescription}
               theme={theme}
               setTheme={setTheme}
+              formId={id}
+              displayMode={displayMode}
+              setDisplayMode={setDisplayMode}
             />
           )}
           {activeTab === "style" && (
@@ -1049,6 +1060,9 @@ function ContentTab({
   setDescription,
   theme,
   setTheme,
+  formId,
+  displayMode,
+  setDisplayMode,
 }: {
   name: string
   setName: (v: string) => void
@@ -1058,9 +1072,18 @@ function ContentTab({
   setDescription: (v: string) => void
   theme: FormTheme
   setTheme: (fn: FormTheme | ((t: FormTheme) => FormTheme)) => void
+  formId: string
+  displayMode: "classic" | "conversational"
+  setDisplayMode: (m: "classic" | "conversational") => void
 }) {
   return (
     <Stack>
+      <SectionTitle
+        title="Exibição"
+        hint="O modo e a versão que está no ar."
+      />
+      <FormPublishPanel formId={formId} modo={displayMode} onModoChange={setDisplayMode} />
+
       <SectionTitle title="Identificação" hint="Para encontrar o form no admin." />
       <Field label="Nome do formulário">
         <input

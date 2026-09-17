@@ -38,7 +38,7 @@ export async function GET(
          success_message, redirect_url, pipeline_id, stage_id,
          facebook_pixel_id, google_ads_id, google_analytics_id,
          meta_capi_token, meta_test_event_code, google_ads_conversion_label,
-         tracking_config,
+         tracking_config, display_mode, published_version_id, has_unpublished_changes,
          submissions_count, views_count, created_at, updated_at,
          pipeline:pipelines(id, name, scope, color),
          stage:pipeline_stages!crm_forms_stage_id_fkey(id, name, color)`,
@@ -160,6 +160,10 @@ const patchFormSchema = z.object({
   meta_test_event_code: z.string().nullable().optional(),
   google_ads_conversion_label: z.string().nullable().optional(),
   tracking_config: trackingConfigSchema.optional(),
+  // O modo de exibição. Trocar para conversacional NÃO publica sozinho:
+  // o público continua vendo a versão publicada até alguém clicar em
+  // Publicar — senão uma troca de toggle mudaria o formulário no ar.
+  display_mode: z.enum(["classic", "conversational"]).optional(),
   // Quando fields fornecido, faz replace total: deleta os antigos e
   // insere os novos. Editor envia o array completo a cada save.
   fields: z.array(fieldUpsertSchema).optional(),
@@ -199,6 +203,28 @@ export async function PATCH(
         .eq("id", id)
         .eq("org_id", orgId)
       if (error) throw error
+    }
+
+    // Mexer nos campos ou no modo deixa o RASCUNHO à frente do que o
+    // público vê: o conversacional lê `form_versions`, não esta tabela.
+    // Sem esta marca, o operador salva, o formulário no ar continua igual
+    // e nada em tela explica por quê.
+    if (fields !== undefined || parsed.display_mode !== undefined) {
+      const { data: temVersao } = await admin
+        .from("crm_forms")
+        .select("published_version_id")
+        .eq("id", id)
+        .maybeSingle()
+      if (temVersao?.published_version_id) {
+        const { error: marcaErr } = await admin
+          .from("crm_forms")
+          .update({ has_unpublished_changes: true })
+          .eq("id", id)
+        // Coluna ausente (migration atrasada) não pode custar o save.
+        if (marcaErr && marcaErr.code !== "42703" && marcaErr.code !== "PGRST204") {
+          log.warn("form.marca_rascunho_falhou", { id, code: marcaErr.code })
+        }
+      }
     }
 
     // Upsert dos fields PRESERVANDO o id. Regenerar ids (delete+insert)
