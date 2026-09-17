@@ -36,6 +36,8 @@ import {
   EMPTY_FILTERS,
   applyFiltersAndSort,
 } from "./pipeline-filters-bar"
+import { sinaisDoNegocio } from "@/lib/crm/prospeccao"
+import type { RespostaDoToque } from "./botao-toque"
 import { SavedViewsMenu, type SavedView } from "./saved-views-menu"
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu"
 import { csvDate, csvNumber, downloadCsv, toCsv } from "@/lib/services/crm-csv"
@@ -87,6 +89,11 @@ interface PipelineDetailResponse {
     owner?: { id: string; name: string; avatar_url: string | null } | null
     client?: { id: string; name: string; company?: string | null; email?: string | null; phone?: string | null } | null
     store?: { id: string; name: string } | null
+    /** Campos personalizados — a prospecção ativa lê prioridade,
+        segmento, alerta e tentativas daqui pro card e pro filtro. */
+    custom_fields?: Record<string, unknown> | null
+    contact_phone?: string | null
+    contact_email?: string | null
   }>
 }
 
@@ -220,6 +227,17 @@ export function PipelineBoardView({
     return Array.from(seen.values())
   }, [allDeals])
 
+  // A pipeline é de prospecção ativa? Quem responde é o DADO, não o
+  // nome dela: basta um negócio com prioridade ou segmento da lista.
+  const temProspeccao = useMemo(
+    () =>
+      allDeals.some((d) => {
+        const s = sinaisDoNegocio(d.custom_fields)
+        return s.prioridade != null || s.segmento != null
+      }),
+    [allDeals],
+  )
+
   const filteredDeals = useMemo(() => {
     let list = allDeals
     if (ownerFilter) list = list.filter((d) => d.owner?.id === ownerFilter)
@@ -254,6 +272,26 @@ export function PipelineBoardView({
     // Aplica filtros avancados + ordenacao
     return applyFiltersAndSort(list, advancedFilters, sortOrder)
   }, [allDeals, ownerFilter, periodFilter, search, advancedFilters, sortOrder])
+
+  // O toast conta o que REALMENTE aconteceu. A mensagem já foi aberta
+  // no WhatsApp; esconder que o card não moveu faria o operador
+  // procurar o negócio na coluna errada amanhã.
+  const handleToque = useCallback(
+    (r: RespostaDoToque) => {
+      const partes = [`${r.toque} aberto no WhatsApp`]
+      if (r.moveu && r.etapa) partes.push(`card em "${r.etapa}"`)
+      if (r.tarefa_em) partes.push("checagem agendada")
+      // Aviso vira toast de ERRO mesmo com a mensagem tendo saído: o
+      // que falhou foi o registro, e é isso que some sem alguém ver.
+      setToast(
+        r.avisos.length
+          ? { kind: "error", msg: `${partes.join(" · ")}. ${r.avisos.join(" ")}` }
+          : { kind: "success", msg: `${partes.join(" · ")}.` },
+      )
+      void mutate()
+    },
+    [mutate],
+  )
 
   // ── Visões salvas ───────────────────────────────────────────────
   const currentSort = sortOrder
@@ -985,6 +1023,7 @@ export function PipelineBoardView({
                   <PipelineFiltersBar
                     filters={advancedFilters}
                     onFiltersChange={setAdvancedFilters}
+                    mostrarProspeccao={temProspeccao}
                     sort={sortOrder}
                     onSortChange={setSortOrder}
                     availableTags={filterOptions.tags}
@@ -1170,6 +1209,8 @@ export function PipelineBoardView({
                 onDeleteDeal={handleDelete}
                 onEditStage={handleEditStage}
                 onDeleteStage={handleDeleteStage}
+                onToque={handleToque}
+                onToqueErro={(msg) => setToast({ kind: "error", msg })}
                 compact={boardDensity === "compact" && pipeline.scope !== "cs"}
                 renderCard={
                   pipeline.scope === "cs"

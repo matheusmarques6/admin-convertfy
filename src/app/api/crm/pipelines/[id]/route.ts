@@ -101,7 +101,7 @@ export async function GET(
         id, pipeline_id, stage_id, client_id, store_id, lead_id,
         title, value, currency, probability, expected_close_date,
         status, source, tags, owner_id, position, last_stage_changed_at,
-        won_at, lost_at, lost_reason, created_at, updated_at,
+        won_at, lost_at, lost_reason, created_at, updated_at, custom_fields,
         owner:profiles!deals_owner_id_fkey (id, name, avatar_url),
         client:clients (id, name, company, email, phone),
         store:client_stores (id, store_name, health_score, mrr_cents, next_feedback_date, last_feedback_date, additional_notes)

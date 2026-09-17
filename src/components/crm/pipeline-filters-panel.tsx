@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react"
 import * as DialogPrimitive from "@radix-ui/react-dialog"
 import { Check, X } from "lucide-react"
-import type { PipelineFilters } from "./pipeline-filters-bar"
+import { EMPTY_FILTERS, type PipelineFilters } from "./pipeline-filters-bar"
 
 interface PipelineFiltersPanelProps {
   open: boolean
@@ -119,20 +119,9 @@ export function PipelineFiltersPanel({
     return list
   }, [filters, onFiltersChange, availableOwners])
 
-  const clearAll = () =>
-    onFiltersChange({
-      tags: [],
-      owners: [],
-      statuses: [],
-      sources: [],
-      lostReasons: [],
-      valueMin: null,
-      valueMax: null,
-      createdFrom: null,
-      createdTo: null,
-      movedFrom: null,
-      movedTo: null,
-    })
+  // Limpa pelo objeto CANÔNICO. A cópia à mão que morava aqui deixava
+  // qualquer filtro novo aceso depois do "Limpar tudo", sem erro nenhum.
+  const clearAll = () => onFiltersChange({ ...EMPTY_FILTERS })
 
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>

@@ -17,9 +17,17 @@ import {
   Shuffle,
   Trash2,
   Trophy,
+  TriangleAlert,
   X as XIcon,
 } from "lucide-react"
 import { normalizePhone } from "@/lib/whatsapp/phone"
+import { BotaoToque, type RespostaDoToque } from "./botao-toque"
+import {
+  EXPLICACAO_DO_BLOQUEIO,
+  motivoDeBloqueio,
+  sinaisDoNegocio,
+  type Prioridade,
+} from "@/lib/crm/prospeccao"
 
 // ─── Tipos ──────────────────────────────────────────────────────
 
@@ -49,6 +57,14 @@ export interface DealCardData {
   contact_phone?: string | null
   created_at?: string | null
   card_number?: number | null
+  /**
+   * Campos personalizados do negócio. Na prospecção ativa é daqui que
+   * saem prioridade, segmento, alerta de dados e tentativas — sem eles
+   * o card não diz quem abrir primeiro.
+   */
+  custom_fields?: Record<string, unknown> | null
+  /** Nome da etapa atual. Decide se a abordagem está bloqueada. */
+  stage_name?: string | null
   /** Proxima atividade pendente (calculada pela view ou via fetch). */
   next_step?: {
     label: string
@@ -68,6 +84,12 @@ export interface DealCardData {
 interface DealCardProps {
   deal: DealCardData
   slaHours?: number | null
+  /**
+   * Resultado de um toque da cadência. Quem recarrega o board é o pai
+   * — o card não conhece o SWR.
+   */
+  onToque?: (r: RespostaDoToque) => void
+  onToqueErro?: (msg: string) => void
   /** Cor do estagio (vinda do header). Acento sutil no card. */
   stageColor?: string
   onClick?: (id: string) => void
@@ -143,6 +165,8 @@ function getInitials(name: string): string {
 export function DealCard({
   deal,
   slaHours,
+  onToque,
+  onToqueErro,
   stageColor: _stageColor,
   onClick,
   onWin,
@@ -294,6 +318,31 @@ export function DealCard({
     }
     return null
   }, [deal.next_step, deal.activities_pending, deal.status, days, isCritical, isWarn])
+
+  // Sinais de prospecção ativa (lista de parceiro). Vazio na maioria
+  // das pipelines — a linha inteira some quando não há nenhum.
+  const sinais = useMemo(
+    () => sinaisDoNegocio(deal.custom_fields),
+    [deal.custom_fields],
+  )
+  const temSinais =
+    sinais.prioridade != null ||
+    sinais.segmentoCurto != null ||
+    sinais.tentativas > 0 ||
+    sinais.alerta != null ||
+    sinais.followupVencido
+
+  // Bloqueio de abordagem: quem pediu pra parar, quem está em
+  // negociação com o parceiro e quem não tem telefone.
+  const bloqueio = useMemo(
+    () =>
+      motivoDeBloqueio({
+        etapa: deal.stage_name,
+        tags: deal.tags,
+        telefone: deal.contact_phone,
+      }),
+    [deal.stage_name, deal.tags, deal.contact_phone],
+  )
 
   // WhatsApp: abre o WhatsApp Web/app (wa.me) com o número do lead.
   const hasWhatsApp = useMemo(() => {
@@ -448,6 +497,66 @@ export function DealCard({
               }}
             >
               {subtitle}
+            </div>
+          )}
+          {/* Sinais da prospecção ativa. Só aparece na pipeline que tem
+              esses campos — pipeline comum não ganha linha nenhuma. */}
+          {temSinais && (
+            <div
+              className="flex flex-wrap items-center gap-1"
+              style={{ marginTop: 4 }}
+            >
+              {sinais.prioridade && (
+                <PrioridadeBadge prioridade={sinais.prioridade} />
+              )}
+              {sinais.segmentoCurto && (
+                <span
+                  title={sinais.segmento ?? undefined}
+                  style={{
+                    padding: "1px 6px",
+                    borderRadius: 4,
+                    fontSize: 10.5,
+                    fontWeight: 500,
+                    background: "var(--crm-gray-50)",
+                    border: "1px solid var(--crm-gray-200)",
+                    color: "var(--crm-gray-600)",
+                  }}
+                >
+                  {sinais.segmentoCurto}
+                </span>
+              )}
+              {sinais.tentativas > 0 && (
+                <span
+                  className="crm-tnum"
+                  title={`${sinais.tentativas} tentativa${sinais.tentativas > 1 ? "s" : ""} de contato`}
+                  style={{
+                    padding: "1px 6px",
+                    borderRadius: 4,
+                    fontSize: 10.5,
+                    fontWeight: 500,
+                    background: sinais.followupVencido
+                      ? "var(--crm-warn-bg)"
+                      : "var(--crm-gray-50)",
+                    border: `1px solid ${sinais.followupVencido ? "var(--crm-warn-border)" : "var(--crm-gray-200)"}`,
+                    color: sinais.followupVencido
+                      ? "var(--crm-warn)"
+                      : "var(--crm-gray-600)",
+                  }}
+                >
+                  T{sinais.tentativas}
+                  {sinais.followupVencido ? " vencido" : ""}
+                </span>
+              )}
+              {sinais.alerta && (
+                <span
+                  className="inline-flex items-center"
+                  title={`Alerta de dados: ${sinais.alerta}`}
+                  aria-label={`Alerta de dados: ${sinais.alerta}`}
+                  style={{ color: "var(--crm-amber)" }}
+                >
+                  <TriangleAlert className="h-3 w-3" />
+                </span>
+              )}
             </div>
           )}
         </div>
@@ -621,24 +730,43 @@ export function DealCard({
           )}
         </div>
         <div className="flex gap-1 shrink-0">
-          {!compact && hasWhatsApp && (
+          {!compact && hasWhatsApp && temSinais && (
+            <BotaoToque
+              dealId={deal.id}
+              custom_fields={deal.custom_fields}
+              tags={deal.tags}
+              stageName={deal.stage_name}
+              telefone={deal.contact_phone}
+              compacto
+              onFeito={onToque}
+              onErro={onToqueErro}
+            />
+          )}
+          {!compact && hasWhatsApp && !temSinais && (
+            // Bloqueado, o botão FICA na tela desabilitado com o motivo:
+            // sumir faria parecer que o lead não tem telefone, que é
+            // outra coisa e leva a procurar o número que existe.
             <button
               type="button"
+              disabled={bloqueio != null}
               onClick={(e) => {
                 e.stopPropagation()
+                if (bloqueio) return
                 openWhatsApp()
               }}
               onKeyDown={(e) => {
                 // Enter/Space não podem borbulhar pro onKeyDown do card
                 if (e.key === "Enter" || e.key === " ") e.stopPropagation()
               }}
-              title="Abrir no WhatsApp"
-              aria-label="Abrir no WhatsApp"
-              className="flex h-[26px] w-[26px] cursor-pointer items-center justify-center rounded-[6px]"
+              title={bloqueio ? EXPLICACAO_DO_BLOQUEIO[bloqueio] : "Abrir no WhatsApp"}
+              aria-label={
+                bloqueio ? EXPLICACAO_DO_BLOQUEIO[bloqueio] : "Abrir no WhatsApp"
+              }
+              className={`flex h-[26px] w-[26px] items-center justify-center rounded-[6px] ${bloqueio ? "cursor-not-allowed" : "cursor-pointer"}`}
               style={{
                 background: "var(--crm-gray-0)",
                 border: "1px solid var(--crm-gray-200)",
-                color: "#25D366",
+                color: bloqueio ? "var(--crm-gray-300)" : "#25D366",
               }}
             >
               <MessageSquare className="h-3 w-3" />
@@ -689,6 +817,48 @@ function OwnerAvatar({ name, size = 18 }: { name: string; size?: number }) {
       aria-hidden
     >
       {initials}
+    </span>
+  )
+}
+
+// ─── Prioridade (escala ORDINAL, nao semantica) ─────────────────
+//
+// P1..P4 nao sao estados ("bom", "atencao"): sao degraus de uma fila.
+// Por isso nao reusa o Badge semantico — verde/amarelo/laranja/cinza
+// aqui significam "primeiro" a "por ultimo", e o laranja existe como
+// token proprio justamente pra nao virar --crm-warn por conveniencia.
+
+const PRIORIDADE_CORES: Record<
+  Prioridade,
+  { bg: string; fg: string; border: string }
+> = {
+  P1: { bg: "var(--crm-pos-bg)", fg: "var(--crm-pos)", border: "var(--crm-pos-border)" },
+  P2: { bg: "var(--crm-warn-bg)", fg: "var(--crm-warn)", border: "var(--crm-warn-border)" },
+  P3: {
+    bg: "var(--crm-orange-bg)",
+    fg: "var(--crm-orange)",
+    border: "var(--crm-orange-border)",
+  },
+  P4: { bg: "var(--crm-neut-bg)", fg: "var(--crm-neut)", border: "var(--crm-neut-border)" },
+}
+
+function PrioridadeBadge({ prioridade }: { prioridade: Prioridade }) {
+  const c = PRIORIDADE_CORES[prioridade]
+  return (
+    <span
+      title={`Prioridade ${prioridade}`}
+      style={{
+        padding: "1px 6px",
+        borderRadius: 4,
+        fontSize: 10.5,
+        fontWeight: 600,
+        background: c.bg,
+        border: `1px solid ${c.border}`,
+        color: c.fg,
+        fontFamily: "var(--crm-font-sans)",
+      }}
+    >
+      {prioridade}
     </span>
   )
 }
