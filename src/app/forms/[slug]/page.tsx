@@ -103,9 +103,14 @@ export default async function PublicFormPage({
     // Ocultos: tudo que veio na URL e não é UTM conhecido vira valor de
     // campo oculto, para a lógica e o recall poderem usar. É como o
     // Typeform trata `?plano=anual`.
+    // `retomar` e `embed` são da MECÂNICA da página, não resposta de
+    // ninguém: gravá-los como campo oculto sujaria a sessão e faria o
+    // token de retomada acabar no banco em claro, que é o oposto do que
+    // guardar só o hash resolve.
+    const DA_MECANICA = new Set(["retomar", "embed"])
     const hidden: Record<string, string> = {}
     for (const [k, v] of Object.entries(sp)) {
-      if (typeof v === "string") hidden[k] = v
+      if (typeof v === "string" && !DA_MECANICA.has(k)) hidden[k] = v
     }
     return (
       <ConversationalFormView
@@ -125,6 +130,7 @@ export default async function PublicFormPage({
           landing_url: null,
         }}
         hidden={hidden}
+        retomarToken={typeof sp.retomar === "string" ? sp.retomar : null}
       />
     )
   }

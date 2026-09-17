@@ -60,8 +60,18 @@ function mesclar(antigo: Pendente, novo: Pendente | null): Pendente {
   }
 }
 
+/** O que veio de uma sessão retomada, para a tela repor. */
+export interface SessaoRetomada {
+  answers: FormAnswers
+  variables: Record<string, string | number>
+  hidden: Record<string, string>
+  currentRef: string | null
+}
+
 export interface SessaoDoFormulario {
   sessionId: string | null
+  /** Preenchido só quando o link de retomada abriu uma sessão de verdade. */
+  retomada: SessaoRetomada | null
   /** Enfileira o avanço. Nada é enviado de imediato. */
   salvar: (p: Partial<Pendente>) => void
   /** Manda agora o que estiver pendente (usado no submit). */
@@ -76,9 +86,12 @@ export function useFormSession(params: {
   ativo: boolean
   contexto: Record<string, string | null>
   hidden: Record<string, string>
+  /** `?retomar=` do link que o vendedor mandou. */
+  retomarToken?: string | null
 }): SessaoDoFormulario {
-  const { slug, ativo } = params
+  const { slug, ativo, retomarToken } = params
   const [sessionId, setSessionId] = useState<string | null>(null)
+  const [retomada, setRetomada] = useState<SessaoRetomada | null>(null)
   const tokenRef = useRef<string | null>(null)
   const pendenteRef = useRef<Pendente | null>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -94,6 +107,32 @@ export function useFormSession(params: {
     let cancelado = false
     ;(async () => {
       try {
+        // Retomada primeiro: abrir uma sessão NOVA para quem clicou no
+        // link de continuar perderia o que ele já respondeu — que é a
+        // única razão de o link existir.
+        if (retomarToken) {
+          const r = await fetch(
+            `/api/public/forms/${encodeURIComponent(slug)}/session/resume?token=${encodeURIComponent(retomarToken)}`,
+          )
+          if (r.ok) {
+            const j = await r.json()
+            if (!cancelado && j?.retomavel && j?.session_id) {
+              tokenRef.current = j.token ?? null
+              setSessionId(j.session_id)
+              setRetomada({
+                answers: j.answers ?? {},
+                variables: j.variables ?? {},
+                hidden: j.hidden ?? {},
+                currentRef: j.current_field_ref ?? null,
+              })
+              return
+            }
+          }
+          // Link vencido ou inválido: segue para a sessão nova, em
+          // silêncio. Barrar a pessoa por um link velho seria trocar um
+          // formulário do zero por uma tela de erro.
+        }
+
         const res = await fetch(`/api/public/forms/${encodeURIComponent(slug)}/session`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -114,7 +153,7 @@ export function useFormSession(params: {
     return () => {
       cancelado = true
     }
-  }, [slug, ativo])
+  }, [slug, ativo, retomarToken])
 
   const montarCorpo = useCallback((p: Pendente, id: string) => {
     return JSON.stringify({
@@ -222,5 +261,5 @@ export function useFormSession(params: {
     [sessionId],
   )
 
-  return { sessionId, salvar, descarregar, credenciais }
+  return { sessionId, retomada, salvar, descarregar, credenciais }
 }

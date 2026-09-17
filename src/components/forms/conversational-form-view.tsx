@@ -62,6 +62,8 @@ export interface ConversationalFormProps {
   }
   contexto?: Record<string, string | null>
   hidden?: Record<string, string>
+  /** `?retomar=` — abre o formulário onde a pessoa parou. */
+  retomarToken?: string | null
   /** Preview do editor: não abre sessão, não envia, não dispara pixel. */
   preview?: boolean
   /** Callback do preview para navegar sem enviar. */
@@ -88,6 +90,7 @@ export function ConversationalFormView({
   form,
   contexto = {},
   hidden = {},
+  retomarToken = null,
   preview = false,
   onSubmitFake,
 }: ConversationalFormProps) {
@@ -109,7 +112,28 @@ export function ConversationalFormView({
   const [progressoVisto, setProgressoVisto] = useState(0)
 
   const entradaEm = useRef<number>(Date.now())
-  const sessao = useFormSession({ slug, ativo: !preview, contexto, hidden })
+  const sessao = useFormSession({ slug, ativo: !preview, contexto, hidden, retomarToken })
+
+  /**
+   * Repõe a sessão retomada. Uma vez só (`repostoRef`): rodar de novo
+   * jogaria a pessoa de volta para onde ela parou ANTES, apagando o que
+   * ela acabou de responder nesta visita.
+   *
+   * Se o bloco gravado não existe mais (o formulário foi editado desde
+   * o abandono), ela recomeça do primeiro — melhor que uma tela em
+   * branco apontando para uma pergunta que não existe.
+   */
+  const repostoRef = useRef(false)
+  useEffect(() => {
+    const r = sessao.retomada
+    if (!r || repostoRef.current) return
+    repostoRef.current = true
+    setAnswers((a) => ({ ...r.answers, ...a }))
+    setVariables((v) => ({ ...r.variables, ...v }))
+    const existe = r.currentRef && schema.blocks.some((b) => b.ref === r.currentRef && !b.hidden)
+    setTela(existe ? { tipo: "bloco", ref: r.currentRef as string } : telaDoDestino(primeiroBloco(schema)))
+    entradaEm.current = Date.now()
+  }, [sessao.retomada, schema])
 
   const ctx = useMemo(() => ({ answers, hidden, variables }), [answers, hidden, variables])
   const css = useMemo(() => cssDoEscopo(escopo, t.primary), [escopo, t.primary])

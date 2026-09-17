@@ -34,6 +34,8 @@ import {
 import { metaEventName } from "@/lib/tracking/meta-event-name"
 import { buildCrmFormUrl } from "@/lib/utils/form-url"
 import { concluirSessao } from "@/lib/services/form-session.service"
+import { caminhoAte, ultimoAlcancavel } from "@/lib/forms/engine"
+import { normalizarSchema } from "@/lib/forms/schema"
 import { verificarTokenSessao } from "@/lib/forms/session-token"
 
 const log = logger.child("PublicFormsSubmit")
@@ -89,7 +91,7 @@ export async function POST(
       .from("crm_forms")
       .select(
         `id, org_id, pipeline_id, stage_id, success_message, redirect_url,
-         created_by, name, scope,
+         created_by, name, scope, published_version_id,
          facebook_pixel_id, meta_capi_token, meta_test_event_code, tracking_config`,
       )
       .eq("slug", slug)
@@ -114,10 +116,21 @@ export async function POST(
       .returns<FormFieldRow[]>()
     if (fieldsErr) throw fieldsErr
 
-    // 3. Validacao basica de required.
+    // 3. Obrigatório é obrigatório NO CAMINHO QUE A PESSOA PERCORREU.
+    //
+    // Com lógica de salto, um final pode ser alcançado antes de perguntas
+    // obrigatórias que ficam adiante — no /forms/diagnostico, quem marca
+    // a faixa abaixo do corte nunca vê "Qual o endereço da sua loja?",
+    // que é `required`. Cobrar o campo aqui devolveria 400 e PERDERIA o
+    // lead: ele respondeu tudo o que lhe foi perguntado.
+    //
+    // No formulário clássico não existe lógica, então o caminho é a lista
+    // inteira e esta validação é byte a byte a de antes.
+    const refsDoCaminho = await refsExigiveis(admin, form, parsed.answers)
     const missingRequired: string[] = []
     for (const f of fields || []) {
       if (!f.required) continue
+      if (refsDoCaminho && !refsDoCaminho.has(f.id)) continue
       const val = parsed.answers[f.id]
       if (val === undefined || val === null || val === "" ||
         (Array.isArray(val) && val.length === 0)) {
@@ -677,5 +690,49 @@ export async function POST(
       hint: e?.hint,
     })
     return errorResponse(request, error, "public-form-submit")
+  }
+}
+
+/**
+ * Os refs que o caminho da pessoa realmente pediu.
+ *
+ * `null` = não dá para saber (formulário sem versão publicada, schema
+ * ilegível, migration atrasada) — e aí TODO obrigatório é exigido, que é
+ * o comportamento histórico. Degradar para "não exige nada" abriria a
+ * porta para submissão vazia; degradar para "exige tudo" no máximo repete
+ * o que já acontecia.
+ *
+ * Reexecuta a MESMA engine do cliente: uma segunda régua no servidor
+ * discordaria da tela, e a pessoa veria "campo obrigatório" de uma
+ * pergunta que nunca apareceu para ela.
+ */
+async function refsExigiveis(
+  admin: ReturnType<typeof createAdminClient>,
+  form: { id: string; published_version_id?: string | null },
+  answers: Record<string, unknown>,
+): Promise<Set<string> | null> {
+  const versionId = form.published_version_id
+  if (!versionId) return null
+  try {
+    const { data } = await admin
+      .from("form_versions")
+      .select("schema")
+      .eq("id", versionId)
+      .maybeSingle()
+    if (!data?.schema) return null
+    const schema = normalizarSchema(data.schema)
+    if (schema.blocks.length === 0) return null
+    // Sem lógica em bloco nenhum, o caminho é a lista inteira e não há o
+    // que calcular — é o caso do formulário clássico.
+    const temLogica = schema.blocks.some((b) => (b.logic ?? []).length > 0)
+    if (!temLogica) return null
+
+    const ctx = { answers: answers as Record<string, never>, hidden: {} }
+    const fim = ultimoAlcancavel(schema, ctx)
+    if (!fim) return null
+    const { caminho } = caminhoAte(schema, fim, ctx)
+    return new Set(caminho)
+  } catch {
+    return null
   }
 }

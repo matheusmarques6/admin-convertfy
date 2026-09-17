@@ -254,3 +254,55 @@ describe("abandono e respostas órfãs", () => {
     expect(totalRespondido(SCHEMA, ctx)).toBe(2)
   })
 })
+
+describe("obrigatório vale só no caminho percorrido", () => {
+  /**
+   * O bug que este teste trava: quem cai no final "abaixo do corte"
+   * NUNCA vê as perguntas seguintes, e duas delas são obrigatórias. O
+   * submit exigia todas e devolvia 400 — perdendo o lead que respondeu
+   * tudo o que lhe foi perguntado.
+   */
+  const COM_OBRIGATORIO_ADIANTE: FormSchema = {
+    ...SCHEMA,
+    blocks: [
+      SCHEMA.blocks[0],
+      SCHEMA.blocks[1],
+      { ...SCHEMA.blocks[2], required: true },
+      { ...SCHEMA.blocks[3], required: true },
+      SCHEMA.blocks[4],
+    ],
+  }
+
+  it("o caminho curto NÃO inclui as perguntas que a lógica pulou", () => {
+    const ctx = { answers: { nome: "B", fat: "ate-100k" } }
+    const fim = ultimoAlcancavel(COM_OBRIGATORIO_ADIANTE, ctx)
+    const { caminho } = caminhoAte(COM_OBRIGATORIO_ADIANTE, fim!, ctx)
+    expect(caminho).toEqual(["nome", "fat"])
+    expect(caminho).not.toContain("email")
+    expect(caminho).not.toContain("tel")
+  })
+
+  it("o caminho longo inclui tudo — nada foi afrouxado para quem passou por lá", () => {
+    const ctx = { answers: { nome: "B", fat: "200-500k", email: "b@x.com", tel: "119" } }
+    const fim = ultimoAlcancavel(COM_OBRIGATORIO_ADIANTE, ctx)
+    const { caminho } = caminhoAte(COM_OBRIGATORIO_ADIANTE, fim!, ctx)
+    expect(caminho).toEqual(["nome", "fat", "email", "tel"])
+  })
+
+  it("sem lógica nenhuma, o caminho é a lista inteira — o clássico não muda", () => {
+    const classico: FormSchema = {
+      version: 1,
+      display_mode: "classic",
+      locale: "pt-BR",
+      blocks: [
+        { ref: "a", type: "text", label: "A", required: true },
+        { ref: "b", type: "email", label: "B", required: true },
+        { ref: "c", type: "text", label: "C" },
+      ],
+    }
+    const ctx = { answers: {} }
+    const fim = ultimoAlcancavel(classico, ctx)
+    const { caminho } = caminhoAte(classico, fim!, ctx)
+    expect(caminho).toEqual(["a", "b", "c"])
+  })
+})
