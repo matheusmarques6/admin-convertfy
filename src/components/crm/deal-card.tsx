@@ -90,6 +90,13 @@ interface DealCardProps {
    */
   onToque?: (r: RespostaDoToque) => void
   onToqueErro?: (msg: string) => void
+  /**
+   * "Respondeu": move o card pra qualificação em um clique. Existe
+   * porque a resposta do lead NÃO chega ao nosso banco — a abordagem
+   * sai por wa.me de um número que não é canal conectado, então quem
+   * marca que houve resposta é o operador.
+   */
+  onRespondeu?: (id: string) => void
   /** Cor do estagio (vinda do header). Acento sutil no card. */
   stageColor?: string
   onClick?: (id: string) => void
@@ -167,6 +174,7 @@ export function DealCard({
   slaHours,
   onToque,
   onToqueErro,
+  onRespondeu,
   stageColor: _stageColor,
   onClick,
   onWin,
@@ -730,6 +738,31 @@ export function DealCard({
           )}
         </div>
         <div className="flex gap-1 shrink-0">
+          {!compact && temSinais && onRespondeu && !bloqueio && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onRespondeu(deal.id)
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") e.stopPropagation()
+              }}
+              title="O lead respondeu — mover para qualificação"
+              aria-label="O lead respondeu — mover para qualificação"
+              className="flex h-[26px] cursor-pointer items-center gap-1 rounded-[6px] px-1.5"
+              style={{
+                background: "var(--crm-gray-0)",
+                border: "1px solid var(--crm-gray-200)",
+                color: "var(--crm-pos)",
+                fontSize: 10.5,
+                fontWeight: 600,
+              }}
+            >
+              <Check className="h-3 w-3" />
+              Respondeu
+            </button>
+          )}
           {!compact && hasWhatsApp && temSinais && (
             <BotaoToque
               dealId={deal.id}

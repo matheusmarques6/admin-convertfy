@@ -37,6 +37,7 @@ import {
   applyFiltersAndSort,
 } from "./pipeline-filters-bar"
 import { sinaisDoNegocio } from "@/lib/crm/prospeccao"
+import { ETAPA_QUALIFICAR } from "@/lib/crm/regras-de-coluna"
 import type { RespostaDoToque } from "./botao-toque"
 import { ConfirmacaoDeSaidaDialog } from "./confirmacao-de-saida-dialog"
 import { SavedViewsMenu, type SavedView } from "./saved-views-menu"
@@ -295,6 +296,27 @@ export function PipelineBoardView({
     // Aplica filtros avancados + ordenacao
     return applyFiltersAndSort(list, advancedFilters, sortOrder)
   }, [allDeals, ownerFilter, periodFilter, search, advancedFilters, sortOrder])
+
+  // A coluna de qualificação, quando esta pipeline tem uma. Sem ela o
+  // botão "Respondeu" não aparece — melhor não existir que existir e
+  // não ter pra onde mover.
+  const etapaQualificar = useMemo(
+    () => pipeline?.stages.find((s) => s.name === ETAPA_QUALIFICAR) ?? null,
+    [pipeline],
+  )
+
+  const handleRespondeu = useCallback(
+    async (dealId: string) => {
+      if (!etapaQualificar) return
+      try {
+        await handleMove(dealId, etapaQualificar.id, 10)
+      } catch {
+        // handleMove já mostrou o toast e reverteu.
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [etapaQualificar],
+  )
 
   // O toast conta o que REALMENTE aconteceu. A mensagem já foi aberta
   // no WhatsApp; esconder que o card não moveu faria o operador
@@ -1258,6 +1280,7 @@ export function PipelineBoardView({
                 onDeleteStage={handleDeleteStage}
                 onToque={handleToque}
                 onToqueErro={(msg) => setToast({ kind: "error", msg })}
+                onRespondeu={etapaQualificar ? handleRespondeu : undefined}
                 compact={boardDensity === "compact" && pipeline.scope !== "cs"}
                 renderCard={
                   pipeline.scope === "cs"

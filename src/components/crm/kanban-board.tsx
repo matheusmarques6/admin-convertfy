@@ -42,6 +42,8 @@ interface KanbanBoardProps {
   /** Toque da cadência saiu — o pai revalida o board. */
   onToque?: (r: RespostaDoToque) => void
   onToqueErro?: (msg: string) => void
+  /** O lead respondeu — move pra qualificação em um clique. */
+  onRespondeu?: (dealId: string) => void
   /** Modo compacto: cards enxutos (as larguras vêm das CSS vars do wrapper). */
   compact?: boolean
   /**
@@ -120,6 +122,7 @@ export function KanbanBoard({
   onDeleteStage,
   onToque,
   onToqueErro,
+  onRespondeu,
   compact = false,
   renderCard,
 }: KanbanBoardProps) {
@@ -507,6 +510,7 @@ export function KanbanBoard({
                                 slaHours={stage.sla_hours}
                                 onToque={onToque}
                                 onToqueErro={onToqueErro}
+                                onRespondeu={onRespondeu}
                                 stageColor={color}
                                 onClick={onCardClick}
                                 onWin={!isTerminal ? onWinDeal : undefined}
