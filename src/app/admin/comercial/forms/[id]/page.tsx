@@ -18,6 +18,7 @@ import {
   Palette,
   ListChecks,
   Send,
+  BarChart3,
   Code,
   Smartphone,
   Monitor,
@@ -30,6 +31,7 @@ import { PublicFormView } from "@/components/forms/public-form-view"
 import { QUALIFIED_OPERATORS, type QualifiedRule } from "@/types/form-tracking"
 import { metaEventName, willRenameEvent } from "@/lib/tracking/meta-event-name"
 import { ConversionDiagnostics } from "@/components/forms/conversion-diagnostics"
+import { FormResults } from "@/components/forms/form-results"
 
 // ────────────────────────────────────────────────────────────────────
 // Types
@@ -401,13 +403,14 @@ const THEME_PRESETS: Array<{
 ]
 
 // Tabs
-type TabKey = "content" | "style" | "fields" | "after" | "tracking" | "install"
+type TabKey = "content" | "style" | "fields" | "after" | "tracking" | "results" | "install"
 const TABS: Array<{ key: TabKey; label: string; icon: typeof FileText }> = [
   { key: "content", label: "Conteúdo", icon: FileText },
   { key: "style", label: "Estilo", icon: Palette },
   { key: "fields", label: "Campos", icon: ListChecks },
   { key: "after", label: "Após envio", icon: Send },
   { key: "tracking", label: "Rastreamento", icon: Target },
+  { key: "results", label: "Resultados", icon: BarChart3 },
   { key: "install", label: "Instalar", icon: Code },
 ]
 
@@ -826,6 +829,7 @@ export default function FormEditorPage({
               formId={id}
             />
           )}
+          {activeTab === "results" && <FormResults formId={id} />}
           {activeTab === "install" && (
             <InstallTab
               publicUrl={publicUrl}
