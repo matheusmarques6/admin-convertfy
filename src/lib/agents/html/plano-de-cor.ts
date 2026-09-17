@@ -25,6 +25,7 @@ import type { Cta, Faixa } from "./color-faixas"
 import { corDoBotao, type PapeisParaBotao } from "./cor-do-botao"
 import type { InventarioDeCta } from "./cta-inventario"
 import { escalaDoBotao } from "./escala-do-botao"
+import { unificarRaio } from "./raio-do-botao"
 import { canonicalHex, type ColorContext, isColorContext, isColorLiteral } from "./color-inventory"
 
 /**
@@ -503,6 +504,23 @@ export function planoParaOps(plano: PlanoDeCor, ctx: ContextoDoPlano): TraducaoD
     // sairiam empilhadas.
     blocosComCta.add(d.bloco)
   }
+
+  // ── Raio: o canto é um só na peça (R8) ───────────────────────────────
+  //
+  // Por CÓDIGO, como a cor do botão: escolher entre 8px e 10px não tem
+  // julgamento, e o guia já manda ("botões com o mesmo raio na peça
+  // inteira"). Até 17/09 a alçada respondia "não existe op de raio,
+  // divergência é lacuna" — e ninguém consertava; a peça daquele dia saiu
+  // com `cta1` em 10px e `cta2` em 8px.
+  //
+  // Sem teto: isto é conformidade, não ritmo. Duas faixas repintadas mudam
+  // a leitura do e-mail; dois cantos alinhados não mudam nada além de
+  // parecerem da mesma peça.
+  const raio = unificarRaio(ctx.ctas)
+  for (const t of raio.trocas) {
+    ops.push({ action: "set_raio", cta: t.id, de: t.de, para: t.para })
+  }
+  if (raio.lacuna) descartes.push({ o_que: "raio dos botões", motivo: raio.lacuna })
 
   // ── Valores (a conformidade de identidade de sempre) ─────────────────
   for (const d of plano.valores ?? []) {

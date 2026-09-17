@@ -504,3 +504,41 @@ describe("planoParaOps — o escopo do recolor", () => {
     expect(r.ops).toEqual([{ action: "recolor", from: "#000000", to: "#111111" }])
   })
 })
+
+describe("planoParaOps — o raio é unificado por código (R8)", () => {
+  const ctxComRaios = (raios: Array<number | null>): ContextoDoPlano => ({
+    ...CTX,
+    ctas: raios.map((r, i) =>
+      cta({ id: `cta${i + 1}`, radius_px: r, range: { start: 100 + i * 50, end: 140 + i * 50 } }),
+    ),
+  })
+
+  it("o agente não precisa pedir: a divergência vira op sozinha", () => {
+    const r = planoParaOps({}, ctxComRaios([10, 8]))
+    expect(r.ops).toEqual([{ action: "set_raio", cta: "cta1", de: 10, para: 8 }])
+  })
+
+  it("peça coerente não gera op nenhuma", () => {
+    expect(planoParaOps({}, ctxComRaios([8, 8])).ops).toEqual([])
+  })
+
+  it("canto vivo com pílula é lacuna registrada, não sorteio", () => {
+    const r = planoParaOps({}, ctxComRaios([8, 100]))
+    expect(r.ops).toEqual([])
+    expect(r.descartes[0].motivo).toMatch(/FORMA/)
+  })
+
+  it("não consome o teto de faixas — raio é conformidade, não ritmo", () => {
+    const r = planoParaOps(
+      {
+        faixas: [
+          { ordem: 2, decisao: "escurecer", fundo: "#111111" },
+          { ordem: 3, decisao: "escurecer", fundo: "#222222" },
+        ],
+      },
+      ctxComRaios([10, 8]),
+    )
+    expect(r.ops.filter((o) => o.action === "set_fundo")).toHaveLength(TETO_DE_FAIXAS)
+    expect(r.ops.filter((o) => o.action === "set_raio")).toHaveLength(1)
+  })
+})

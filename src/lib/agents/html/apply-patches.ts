@@ -37,6 +37,7 @@ import { applySplices, type Range, type Splice } from "./dom-locator"
 import { auditContrast, backgroundDeclarations } from "./color-contrast"
 import { contrastingText } from "./color-roles"
 import { linhaDeBotao, pontoDeInsercao } from "./cta-template"
+import { aplicarRaio } from "./raio-do-botao"
 import type { Cta, Faixa } from "./color-faixas"
 import { locateBlockRegions } from "./slot-finder"
 
@@ -74,6 +75,15 @@ export type FormatOp =
   | { action: "set_gradiente"; bloco: number; paradas: string[] }
   /** Recolore UM botão (fundo e/ou label), pelo id do mapa de CTAs. */
   | { action: "set_botao"; cta: string; fundo?: string; label?: string }
+  /**
+   * Unifica o canto de um botão que já existe.
+   *
+   * Não sai de `parseOps`: quem a produz é `plano-de-cor`, por CÓDIGO, a
+   * partir da mediana dos raios da peça (`unificarRaio`). O modelo não
+   * escolhe entre 8 e 10 — não há julgamento nesse empate, e uma volta de
+   * LLM para ele é token gasto à toa.
+   */
+  | { action: "set_raio"; cta: string; de: number; para: number }
   /**
    * Insere um botão num bloco que não tem nenhum.
    *
@@ -125,6 +135,8 @@ export function alvoDaOp(op: FormatOp): string {
       return `bloco ${op.bloco} gradiente → ${op.paradas.join(" → ")}`
     case "set_botao":
       return `${op.cta} → ${op.fundo ?? "="}/${op.label ?? "="}`
+    case "set_raio":
+      return `${op.cta} raio ${op.de}px → ${op.para}px`
     case "add_cta":
       return `bloco ${op.bloco} + "${op.label.slice(0, 40)}"`
   }
@@ -216,6 +228,8 @@ export interface ApplyOpsResult {
   botoesRecoloridos: number
   /** Botões inseridos (`add_cta`). */
   botoesInseridos: number
+  /** Botões cujo canto foi alinhado ao raio da peça (`set_raio`). */
+  raiosUnificados: number
 }
 
 /** Extrai o objeto {"ops":[...]} do output do LLM. Lança OpsParseError. */
@@ -357,7 +371,7 @@ export function applyOps(
       regionais.push({ op, pos: op.action === "add_cta" ? regiao.end : regiao.start })
       continue
     }
-    if (op.action === "set_botao") {
+    if (op.action === "set_botao" || op.action === "set_raio") {
       const cta = ctaDe.get(op.cta)
       if (!cta) {
         skipped.push({ op, reason: "endereco_inexistente" })
@@ -427,6 +441,7 @@ export function applyOps(
   let gradientesPintados = 0
   let botoesRecoloridos = 0
   let botoesInseridos = 0
+  let raiosUnificados = 0
   /** Ranges de botão — o conserto de painel abaixo não pode tocá-los. */
   const rangesDeBotao: Range[] = (opts.ctas ?? []).map((c) => c.range)
   /** Cores que as ops de região tiraram do documento nesta rodada. */
@@ -528,6 +543,29 @@ export function applyOps(
       }
       if (op.label && cta.label) substituidos.add(canonicalHex(cta.label))
       botoesRecoloridos++
+      applied++
+      continue
+    }
+
+    if (op.action === "set_raio") {
+      const cta = ctaDe.get(op.cta)
+      if (!cta) {
+        skipped.push({ op, reason: "endereco_inexistente" })
+        continue
+      }
+      // A janela vai ALÉM do elemento, para trás. O raio pode estar
+      // declarado no `<td>` que embrulha o `<a>` — `extrairCtas` já o lê do
+      // ancestral (`color-faixas.ts:523`) — e o `v:roundrect` do Outlook
+      // mora antes do range, fora dele. É a mesma janela de 600 que o
+      // `set_botao` usa para alcançar o par VML da cor.
+      const janela = { start: Math.max(0, cta.range.start - 600), end: cta.range.end }
+      const r = aplicarRaio(out, op.de, op.para, janela, cta.vml)
+      if (r.trocados === 0) {
+        skipped.push({ op, reason: "find_not_found" })
+        continue
+      }
+      out = r.html
+      raiosUnificados++
       applied++
       continue
     }
@@ -723,5 +761,6 @@ export function applyOps(
     gradientesPintados,
     botoesRecoloridos,
     botoesInseridos,
+    raiosUnificados,
   }
 }

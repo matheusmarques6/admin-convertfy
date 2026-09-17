@@ -4122,6 +4122,10 @@ async function runFormattingChain(p: {
               ctas_no_documento: ctas.length,
               botoes_recoloridos: applied.botoesRecoloridos,
               botoes_inseridos: applied.botoesInseridos,
+              // R8: quantos botões tiveram o canto alinhado ao raio da peça.
+              // Decidido por código, então `0` aqui significa "a peça já era
+              // coerente" — nunca "o agente não quis".
+              raios_unificados: applied.raiosUnificados,
               // Bloco sem botão é o que a regra da casa cobra. Medido no
               // documento DEPOIS de aplicar (faixas e botões reextraídos do
               // resultado, não os da entrada): é o número que diz se o

@@ -9553,3 +9553,47 @@ eixo do vault das VARIANTES. Avaliação completa, com as outras lacunas
 (família `scrim` sem op, `divider` estourando o guard de tabelas,
 `DOUTRINA_MAX_NOTAS = 3` cortando a 4ª nota, e o `color_format` sendo pulado
 em loja com blocos tokenizados) em `.claude/plans`.
+
+## R8: o canto do botão passa a ser do código (17/09)
+
+Etapa 1 do plano de Cores & Botões. A R8 do guia manda "botões com o mesmo
+raio na peça inteira" ([VAULT] misturar raio alto com canto vivo "denuncia
+montagem") e a alçada respondia **"não existe op de raio; divergência é
+lacuna"** — o agente reportava e ninguém consertava. A peça de 17/09 saiu com
+`cta1` em 10px e `cta2` em 8px.
+
+**Decisão por CÓDIGO, não pelo modelo** (`html/raio-do-botao.ts`): escolher
+entre 8 e 10 não tem julgamento, e uma volta de LLM para esse empate é token
+gasto à toa — a mesma razão que tirou a cor do botão das mãos do modelo em
+`cor-do-botao.ts`. O alvo é a mediana de `radius_px`, que `escalaDoBotao` já
+calculava: é o raio que o botão NOVO herda desde 11/09, então a peça fica
+coerente entre o que estava lá e o que o agente acrescentou. A `medianaInferior`
+devolve sempre um valor que EXISTE na peça — `[8,10]` dá 8, nunca 9.
+
+**Onde ele se cala.** Peça que mistura pílula com canto vivo não é acabamento
+inconsistente: são duas decisões de forma, e a mediana escolheria uma no
+sorteio — 8px numa pílula devolve outro botão, não o mesmo melhor acabado. A
+régua é a DISTÂNCIA (`LIMITE_DE_ACABAMENTO = 8`, o dobro do raio padrão da
+casa): acima dela, lacuna registrada e nada tocado. Botão sem raio declarado
+fica fora da conta (não declarar ≠ declarar outro valor), e botão só do
+Outlook também, pelo mesmo motivo que ele não conta como CTA presente.
+
+**O `arcsize` do VML acompanha — e a medição mudou o desenho.** O Outlook não
+lê `border-radius`: lê a porcentagem do `v:roundrect` sobre a ALTURA dele.
+Mexer só no CSS deixaria o botão redondo em todo cliente menos um, em
+silêncio (a lição do par `bgcolor`/`background-color`). Mas a janela olha 600
+caracteres para trás — é o que alcança o `<td>` ancestral, de onde
+`extrairCtas` já lê o raio — e **na peça real convivem `arcsize` de 13%, 16% e
+50%**: recalcular um roundrect que não é deste botão viraria a pílula do
+vizinho num canto reto. Daí `tocarVml` vir de `cta.vml`: botão sem espelho VML
+não mexe em `arcsize` nenhum. O defeito não aparecia em teste — apareceu
+contando os `arcsize` do HTML gravado da run.
+
+O atalho de quatro cantos (`border-radius:8px 8px 0 0`) fica intacto: ele
+desenha um canto por vez, e trocar só o primeiro número — o único que o
+extrator lê — devolveria três cantos de um jeito e um de outro.
+
+**Sem teto**, ao contrário das faixas: isto é conformidade, não ritmo. Duas
+faixas repintadas mudam a leitura do e-mail; dois cantos alinhados só fazem os
+botões parecerem da mesma peça. Telemetria em `ritmo.raios_unificados` — `0`
+ali significa "a peça já era coerente", nunca "o agente não quis".

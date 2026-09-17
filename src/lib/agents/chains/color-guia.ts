@@ -247,8 +247,11 @@ VOCÊ NÃO EXECUTA — registre em \`lacunas\` e siga:
   JÁ existe, ele é seu: a faixa traz \`gradiente\` e você repinta as paradas
   (ver <faixas_e_ritmo>).
 - R7 (rodapé fixo por loja): é decisão da loja, não desta peça.
-- R8 (raio e canto): não existe op de raio. Divergência é lacuna. O botão que
-  você mandar criar já nasce com o raio dominante da peça.
+- R8 (raio e canto): o CÓDIGO unifica, e você não precisa pedir nada. Todo
+  botão da peça fica com o raio dominante dela — o mesmo que o botão novo já
+  herda. Peça que mistura canto vivo com pílula é decisão de FORMA, não de
+  acabamento: aí o código se cala e registra lacuna, porque escolher uma das
+  duas seria redesenhar o botão.
 - Passo 6 (ajuste por momento): você NÃO recebe o flow nem o número do
   e-mail. Não deduza o momento pelo assunto.
 - "Bloqueia a peça": você não reprova nada. Falha grave é lacuna, e o QA

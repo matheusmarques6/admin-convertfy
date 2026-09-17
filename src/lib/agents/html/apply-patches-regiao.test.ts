@@ -365,3 +365,58 @@ ${bloco(1, "footer", `<tr><td width="600" style="background-color:#000000;"><p s
     expect(r.skipped[0]?.reason).toBe("sem_fundo_editavel")
   })
 })
+
+describe("set_raio — o canto alinhado no documento de verdade", () => {
+  const BOTAO_RAIO = (raio: number, texto: string) =>
+    `<table role="presentation" width="260"><tr>
+       <td align="center" width="260" bgcolor="#111111" style="background-color:#111111;border-radius:${raio}px;">
+         <a href="https://loja.com/col" style="display:inline-block;padding:14px 36px;color:#FFFFFF;">${texto}</a>
+       </td></tr></table>`
+
+  const DOC_RAIOS = `<!DOCTYPE html><html><body><table width="600" style="width:600px;">
+${bloco(0, "body", `<tr><td width="600" style="background-color:#FFFFFF;">${BOTAO_RAIO(10, "Um")}</td></tr>`)}
+${bloco(1, "products", `<tr><td width="600" style="background-color:#FFFFFF;">${BOTAO_RAIO(8, "Dois")}</td></tr>`)}
+</table></body></html>`
+
+  it("alinha o botão divergente e deixa o outro intacto", () => {
+    const ctx = contexto(DOC_RAIOS)
+    const alvo = ctx.ctas.find((c) => c.radius_px === 10)
+    expect(alvo).toBeDefined()
+
+    const r = aplicar(DOC_RAIOS, [
+      { action: "set_raio", cta: alvo!.id, de: 10, para: 8 },
+    ])
+    expect(r.raiosUnificados).toBe(1)
+    expect(r.skipped).toEqual([])
+    expect(r.html).not.toContain("border-radius:10px")
+    expect(r.html.match(/border-radius:8px/g)).toHaveLength(2)
+
+    // E o documento continua legível pelo extrator: os dois botões, um raio.
+    const depois = contexto(r.html)
+    expect(depois.ctas.map((c) => c.radius_px)).toEqual([8, 8])
+  })
+
+  it("endereço que não existe é descartado com motivo", () => {
+    const r = aplicar(DOC_RAIOS, [{ action: "set_raio", cta: "cta99", de: 10, para: 8 }])
+    expect(r.raiosUnificados).toBe(0)
+    expect(r.skipped[0].reason).toBe("endereco_inexistente")
+  })
+
+  it("raio que não está no documento não é inventado em outro lugar", () => {
+    const ctx = contexto(DOC_RAIOS)
+    const r = aplicar(DOC_RAIOS, [
+      { action: "set_raio", cta: ctx.ctas[0].id, de: 99, para: 8 },
+    ])
+    expect(r.html).toBe(DOC_RAIOS)
+    expect(r.skipped[0].reason).toBe("find_not_found")
+  })
+
+  it("não muda a contagem de tabelas — o guard do runner continua valendo", () => {
+    const ctx = contexto(DOC_RAIOS)
+    const conta = (h: string) => (h.match(/<table[\s>]/gi) ?? []).length
+    const r = aplicar(DOC_RAIOS, [
+      { action: "set_raio", cta: ctx.ctas[0].id, de: 10, para: 8 },
+    ])
+    expect(conta(r.html)).toBe(conta(DOC_RAIOS))
+  })
+})
