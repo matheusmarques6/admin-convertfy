@@ -289,7 +289,7 @@ Estruturador pede um deles, a posição fica sem candidata.
 Eram **seis** no vocabulário anterior. A queda não é cadastro novo: é que os
 nomes passaram a descrever o que a biblioteca de fato faz, em vez de nomear
 formas que ninguém tinha. Dos 33 mecanismos pedíveis, **31 têm variante ativa**
-— e a contrapartida honesta é que catorze deles têm UMA só, então a escolha ali
+— e a contrapartida honesta é que treze deles têm UMA só, então a escolha ali
 não é escolha.
 
 A consulta que refaz esta lista está no fim do guia.

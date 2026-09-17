@@ -1,6 +1,9 @@
--- DADOS — 17/09/2026
+-- DADOS — 17/09/2026  ·  APLICADO em produção em 17/09/2026
 -- O `example` é o ENDEREÇO: markdown nele deixa o campo sem âncora
 -- ============================================================================
+--
+-- Depois de aplicado: o example é `at checkout for xx% OFF!` e a varredura de
+-- markdown em `example` nas variantes ATIVAS devolve ZERO.
 --
 -- SINTOMA (Innova Bay nova · welcome, e-mail 6b3a7f42, batch e6853f56):
 -- o bloco de oferta saiu com `xx% OFF!` no lugar da porcentagem.

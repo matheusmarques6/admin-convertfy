@@ -9412,7 +9412,7 @@ janela do deploy.
 **seis para duas** (`oferta_adiada` em offer, `duvida_antecipada` em body) e
 31 dos 33 mecanismos pedíveis têm variante ativa. Não é cadastro novo — é que
 os nomes passaram a descrever o que a biblioteca faz, em vez de nomear formas
-que ninguém tinha. A contrapartida honesta: **catorze têm UMA variante só**, e
+que ninguém tinha. A contrapartida honesta: **treze têm UMA variante só**, e
 ali não existe escolha a fazer.
 
 A régua por mecanismo (`contratoDoDispositivo`) foi reescrita junto, e duas

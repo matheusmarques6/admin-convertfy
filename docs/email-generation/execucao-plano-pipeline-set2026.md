@@ -1984,7 +1984,7 @@ variante ativa caíram de **seis para duas** (`oferta_adiada` e
 `duvida_antecipada`), e 31 dos 33 mecanismos pedíveis têm variante ativa.
 Não é cadastro novo: é que os nomes passaram a descrever o que a
 biblioteca faz, em vez de nomear formas que ninguém tinha. A
-contrapartida honesta é que **catorze deles têm UMA variante só**, e ali
+contrapartida honesta é que **treze deles têm UMA variante só**, e ali
 não há escolha a fazer — o Curador recebe uma candidata e a devolve.
 
 Docs que acompanharam: seção 6 do `guia-de-cadastro-de-variante.md`

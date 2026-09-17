@@ -1,5 +1,12 @@
 -- Dispositivo = o MECANISMO (17/09) — os 22 nomes viram 34, sem prefixo de seção.
 --
+-- APLICADA em produção em 17/09/2026 (registrada como
+-- `20260917212341_dispositivos_mecanismo`). Conferido depois: 72 variantes,
+-- ZERO sem dispositivo, ZERO com prefixo antigo, 34 valores no CHECK, backup
+-- com as 72 linhas do estado anterior. Nas 65 ATIVAS: 31 dos 33 mecanismos
+-- pedíveis têm variante (faltam `oferta_adiada` e `duvida_antecipada`), 13
+-- têm uma só, e nenhuma ativa ficou `nao_classificado`.
+--
 -- Fonte única: `src/lib/agents/shared/dispositivos.ts`. Um teste lê este
 -- arquivo e compara o CHECK com a lista de lá — valor novo no código sem
 -- migration reprova, que é a lição do `copy_fit` (quatro dias sem gravar
