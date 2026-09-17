@@ -12,6 +12,7 @@ import { NextRequest } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, AppError } from "@/lib/api/errors"
 import { normalizeTrackingConfig } from "@/types/form-tracking"
+import { normalizarDestino } from "@/lib/forms/destino"
 import { normalizarSchema, schemaDeCampos, type CampoLegado } from "@/lib/forms/schema"
 import { logger } from "@/lib/logger"
 
@@ -37,7 +38,7 @@ export async function GET(
          success_message, redirect_url,
          facebook_pixel_id, google_ads_id, google_analytics_id,
          google_ads_conversion_label, tracking_config,
-         display_mode, published_version_id, locale`,
+         display_mode, published_version_id, locale, settings`,
       )
       .eq("slug", slug)
       .eq("status", "published")
@@ -54,6 +55,7 @@ export async function GET(
     const {
       tracking_config,
       google_ads_conversion_label,
+      settings,
       ...formRest
     } = form as Record<string, unknown> & {
       facebook_pixel_id?: string | null
@@ -70,7 +72,13 @@ export async function GET(
         ? (google_ads_conversion_label ?? null)
         : null,
     }
-    const publicForm = { ...formRest, tracking }
+    // De `settings` sai SÓ o destino do qualificado. A mesma coluna
+    // guarda o `abandono_stage_id` — um id de etapa do CRM, que não tem
+    // por que viajar para o navegador de quem preenche.
+    const destinoQualificado = normalizarDestino(
+      (settings as Record<string, unknown> | null)?.destino_qualificado,
+    )
+    const publicForm = { ...formRest, tracking, destino_qualificado: destinoQualificado }
 
     const { data: fields, error: fErr } = await admin
       .from("crm_form_fields")

@@ -58,6 +58,7 @@ import {
   opcoesDaPergunta,
   type ProblemaDoFluxo,
 } from "@/lib/forms/diagnostico-fluxo"
+import { DestinoEditor } from "./destino-editor"
 import {
   alvosDoFluxo,
   rotuloDaTela,
@@ -1091,15 +1092,18 @@ function FinalDoFluxo({
               />
             </Campo>
           </div>
-          <Campo rotulo="Redirecionar" apoio="Em vez de mostrar a tela, leva para este endereço.">
-            <input
-              type="url"
-              value={fim.redirect_url ?? ""}
-              onChange={(e) => onChange({ redirect_url: e.target.value || null })}
-              className="crm-input w-full"
-              placeholder="https://"
-            />
-          </Campo>
+          <DestinoEditor destino={fim.destino ?? null} onChange={(d) => onChange({ destino: d })} />
+          {!fim.destino && (
+            <Campo rotulo="Redirecionar" apoio="Em vez de mostrar a tela, leva para este endereço.">
+              <input
+                type="url"
+                value={fim.redirect_url ?? ""}
+                onChange={(e) => onChange({ redirect_url: e.target.value || null })}
+                className="crm-input w-full"
+                placeholder="https://"
+              />
+            </Campo>
+          )}
           <LinhaDeChave
             rotulo="Marca como fora do perfil"
             apoio="Some o ✓ de sucesso e o negócio entra no CRM marcado — não conta como abandono."

@@ -10,6 +10,8 @@ import {
   type SubmitTracking,
 } from "./form-pixels"
 import { alturaDaLogo, logoDoFormulario } from "@/lib/forms/logo"
+import { ESPERA_DO_DESTINO_MS, montarDestino, type DestinoPronto } from "@/lib/forms/destino"
+import type { DestinoDoFinal, FormAnswers, FormBlock } from "@/types/forms-conversational"
 import { defaults, gradientCss, shadowCss, type FormTheme } from "./form-theme"
 import {
   mascaraDeTelefone,
@@ -43,6 +45,13 @@ interface FormConfig {
   logo_url: string | null
   success_message: string | null
   redirect_url: string | null
+  /**
+   * Para onde vai o lead QUALIFICADO. O formato de página única não tem
+   * finais, então o destino é do formulário e quem decide quem o recebe
+   * é a régua de qualificação — a MESMA do evento `LeadQualificado`,
+   * avaliada no servidor. Quem não qualifica segue no caminho de sempre.
+   */
+  destino_qualificado?: DestinoDoFinal | null
   tracking?: FormTracking
 }
 
@@ -102,8 +111,40 @@ export function PublicFormView({ slug, payload, utm, clickIds, preview = false, 
   const buttonFill = gradientCss(theme.buttonGradient) ?? t.primary
 
   const [answers, setAnswers] = useState<Record<string, unknown>>({})
+
+  /**
+   * Os campos vistos como blocos, só para montar o destino: é o que
+   * permite ao `{{Seu nome}}` da mensagem do WhatsApp e ao
+   * pré-preenchimento do Calendly lerem as respostas pelo MESMO caminho
+   * do formato conversacional. O `ref` é o `crm_form_fields.id`, que é o
+   * endereço da resposta nos dois formatos.
+   */
+  const blocosParaDestino = useMemo<FormBlock[]>(
+    () =>
+      fields.map((f) => ({
+        ref: f.id,
+        type: "text",
+        label: f.label,
+        map_to_lead_field: f.map_to_lead_field,
+      })) as FormBlock[],
+    [fields],
+  )
   const [submitting, setSubmitting] = useState(false)
-  const [done, setDone] = useState<{ message: string | null } | null>(null)
+  const [done, setDone] = useState<{ message: string | null; destino?: DestinoPronto | null } | null>(null)
+
+  // O automático leva sozinho, mas só depois de a tela de sucesso
+  // existir: ver `ESPERA_DO_DESTINO_MS`. Na PRÉVIA não navega — ela roda
+  // dentro do editor, na mesma janela, e levaria junto o rascunho que o
+  // operador ainda não salvou.
+  const destinoAutomatico = !preview && done?.destino?.automatico ? done.destino.url : null
+  useEffect(() => {
+    if (!destinoAutomatico) return
+    const id = window.setTimeout(() => {
+      window.location.href = destinoAutomatico
+    }, ESPERA_DO_DESTINO_MS)
+    return () => window.clearTimeout(id)
+  }, [destinoAutomatico])
+
   const [error, setError] = useState<string | null>(null)
 
   const sortedFields = useMemo(
@@ -147,6 +188,11 @@ export function PublicFormView({ slug, payload, utm, clickIds, preview = false, 
 
     setSubmitting(true)
     // Preview mode: nao chama a API, mostra success state fake apos delay.
+    //
+    // O destino do qualificado NÃO é montado aqui, e isso é declarado: a
+    // régua de qualificação roda no SERVIDOR, e na prévia não há resposta
+    // dele. Fingir que qualificou mostraria um botão que o visitante real
+    // pode não ver — pior que não mostrar nada.
     if (preview) {
       await new Promise((r) => setTimeout(r, 600))
       setSubmitting(false)
@@ -191,11 +237,25 @@ export function PublicFormView({ slug, payload, utm, clickIds, preview = false, 
       // Dispara os pixels de browser (deduplicados com o server via event_id).
       fireConversionPixels(form.tracking, json.tracking as SubmitTracking | undefined)
 
-      if (json.redirect_url) {
+      // Lead qualificado com destino configurado: ele VENCE o
+      // `redirect_url`, que é um endereço fixo para todo mundo. É o
+      // ponto do funil em que a pessoa está mais perto de falar com a
+      // gente — mandá-la para a página genérica aqui é jogar fora a
+      // intenção que ela acabou de demonstrar.
+      const qualificado = Boolean((json.tracking as SubmitTracking | undefined)?.qualified)
+      const destino = qualificado
+        ? montarDestino(form.destino_qualificado, {
+            answers: answers as FormAnswers,
+            blocks: blocosParaDestino,
+            utm: utm as Record<string, string | null>,
+          })
+        : null
+
+      if (!destino && json.redirect_url) {
         window.location.href = json.redirect_url
         return
       }
-      setDone({ message: json.success_message ?? form.success_message ?? null })
+      setDone({ message: json.success_message ?? form.success_message ?? null, destino })
     } catch {
       setError("Falha de rede. Verifique sua conexao.")
     } finally {
@@ -273,6 +333,39 @@ export function PublicFormView({ slug, payload, utm, clickIds, preview = false, 
         <p style={{ color: t.subtitleColor, opacity: 0.8, fontSize: 13, lineHeight: 1.5, margin: 0 }}>
           {done.message ?? "Obrigado! Sua resposta foi registrada e nossa equipe entrara em contato."}
         </p>
+        {done.destino && (
+          <>
+            <a
+              href={done.destino.url}
+              rel="noopener noreferrer"
+              style={{
+                display: "inline-block",
+                marginTop: 20,
+                padding: "11px 22px",
+                borderRadius: t.buttonRadius,
+                // `buttonFill`, não `t.primary`: o gradiente configurado
+                // no tema vale para o botão de enviar e tem de valer para
+                // este, senão a tela de sucesso destoa da que veio antes.
+                background: buttonFill,
+                color: t.buttonTextColor,
+                fontWeight: 600,
+                fontSize: 13.5,
+                textDecoration: "none",
+              }}
+            >
+              {done.destino.rotulo}
+            </a>
+            {done.destino.automatico && (
+              <p style={{ marginTop: 10, fontSize: 11.5, opacity: 0.6, color: t.subtitleColor }}>
+                {preview
+                  ? "No ar, esta tela leva sozinha em ~1s. Na prévia, não."
+                  : done.destino.tipo === "whatsapp"
+                    ? "Abrindo o WhatsApp… se não abrir sozinho, toque no botão."
+                    : "Levando para a agenda… se não abrir sozinho, toque no botão."}
+              </p>
+            )}
+          </>
+        )}
       </div>
     )
     const Wrap = embed ? "div" : "main"

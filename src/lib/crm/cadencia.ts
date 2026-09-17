@@ -12,7 +12,8 @@
  * mandaria mensagem VAZIA.
  */
 
-import { normalizePhone } from "@/lib/whatsapp/phone"
+// Re-export: a régua do `wa.me` é uma só (ver `lib/whatsapp/link`).
+export { linkDoWhatsApp } from "@/lib/whatsapp/link"
 import { segmentoCurto } from "./prospeccao"
 
 export const TOQUES = ["T1", "T2", "T3"] as const
@@ -108,26 +109,6 @@ export function preencherVariaveis(corpo: string, vars: VariaveisDoToque): strin
     .trim()
 }
 
-/**
- * Link do WhatsApp com o texto já escrito. `wa.me` exige só dígitos e
- * o texto em `encodeURIComponent` — um `&` ou `#` cru no script cortaria
- * a mensagem no meio sem erro nenhum.
- *
- * O DDI é obrigatório: `wa.me/11999998888` NÃO resolve, e o erro é
- * mudo — abre a tela do WhatsApp dizendo "número inválido" depois de o
- * operador já ter clicado. `normalizePhone` é a régua da casa (`+` = DDI
- * explícito; 10-11 dígitos sem `+` = BR e ganha o 55), a MESMA que
- * roteia thread no inbox. Medido em 17/09: 429 dos 431 leads do parceiro
- * já vêm com `+55`, mas lead novo digitado à mão vem sem — e aí o
- * primeiro toque sairia num link morto.
- */
-export function linkDoWhatsApp(telefone: string, texto: string): string | null {
-  const numero = normalizePhone(telefone)
-  if (!numero) return null
-  const base = `https://wa.me/${numero}`
-  const t = texto.trim()
-  return t ? `${base}?text=${encodeURIComponent(t)}` : base
-}
 
 /**
  * Qual toque vem agora, a partir de quantos já saíram. Acima de 3 não

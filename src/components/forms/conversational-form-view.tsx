@@ -50,7 +50,6 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import {
   AlertCircle,
-  ArrowRight,
   Check,
   ChevronDown,
   ChevronUp,
@@ -75,6 +74,7 @@ import {
 } from "@/lib/forms/engine"
 import { validarResposta } from "@/lib/forms/validacao"
 import { aplicarRecall } from "@/lib/forms/recall"
+import { ESPERA_DO_DESTINO_MS, montarDestino, type DestinoPronto } from "@/lib/forms/destino"
 import {
   fireConversionPixels,
   matchingDoBrowser,
@@ -368,7 +368,11 @@ export function ConversationalFormView({
         // Disparar depois do `location.href` seria não disparar.
         fireConversionPixels(form.tracking, json?.tracking as SubmitTracking | undefined)
 
-        if (ending?.redirect_url) {
+        // O `destino` vence o `redirect_url`: quem configurou WhatsApp ou
+        // Calendly quer a tela final (com o botão de reserva e o texto
+        // pronto), não um salto cego para um endereço fixo. O tipo diz
+        // isso; sem esta guarda o código diria o contrário.
+        if (ending?.redirect_url && !ending.destino) {
           window.location.href = ending.redirect_url
           return
         }
@@ -600,6 +604,28 @@ export function ConversationalFormView({
     [answers, ocultos, variables, schema.blocks],
   )
 
+  /**
+   * O destino do final que está aberto — montado aqui porque só aqui
+   * existem as respostas desta pessoa: é delas que saem o `{{nome}}` da
+   * mensagem do WhatsApp e o pré-preenchimento do Calendly.
+   *
+   * `null` quando o final não tem destino, ou quando ele está
+   * configurado pela metade. Nesse caso a tela final aparece como sempre
+   * apareceu — configuração incompleta não pode custar o lead.
+   */
+  const destinoDoFim = useMemo<DestinoPronto | null>(() => {
+    if (tela.tipo !== "fim") return null
+    const ending = acharEnding(schema, tela.ending)
+    return montarDestino(ending?.destino, {
+      answers,
+      hidden: ocultos,
+      variables,
+      blocks: schema.blocks,
+      utm: contextoDaVisita,
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tela, schema, answers, ocultos, variables, contextoDaVisita])
+
   // ── render ──
   const mostrarProgresso = schema.settings?.mostrar_progresso !== false && tela.tipo !== "fim"
   const logo = logoDoFormulario({
@@ -611,11 +637,6 @@ export function ConversationalFormView({
     tela.tipo === "bloco" &&
     Boolean(blocoAtual) &&
     (Boolean(passoAnterior(schema, tela.ref, ctx)) || Boolean(schema.settings?.welcome))
-  // O número da tela, não o da pergunta: um grupo de quatro campos é o
-  // passo 1, e numerá-lo 1..4 diria que o formulário é quatro vezes mais
-  // longo do que é.
-  const numeroDaTela = tela.tipo === "bloco" ? calcularProgresso(schema, tela.ref, ctx).indice : 0
-
   return (
     <div
       className={escopo}
@@ -723,7 +744,6 @@ export function ConversationalFormView({
           {tela.tipo === "bloco" && blocoAtual && (
             <TelaDePerguntas
               blocos={daTela}
-              numero={numeroDaTela}
               answers={answers}
               erros={erros}
               recall={recall}
@@ -741,6 +761,8 @@ export function ConversationalFormView({
           {tela.tipo === "fim" && (
             <TelaFinal
               ending={acharEnding(schema, tela.ending)}
+              destino={destinoDoFim}
+              preview={preview}
               fallback={form.success_message}
               recall={recall}
               t={t}
@@ -824,12 +846,16 @@ function TelaDeAbertura({
 
 function TelaFinal({
   ending,
+  destino,
+  preview,
   fallback,
   recall,
   t,
   buttonFill,
 }: {
   ending: ReturnType<typeof acharEnding>
+  destino: DestinoPronto | null
+  preview: boolean
   fallback: string | null
   recall: (s: string | null | undefined) => string
   t: ReturnType<typeof defaults>
@@ -841,6 +867,22 @@ function TelaFinal({
   // você", ele contradiz a própria frase — quem lê vê sucesso e texto de
   // recusa na mesma tela.
   const fora = Boolean(ending?.disqualified)
+
+  // O automático espera um instante (ver `ESPERA_DO_DESTINO_MS`) e o
+  // botão fica na tela nos dois casos — é o que salva quem foi bloqueado.
+  //
+  // Na PRÉVIA ele não navega: o formulário é renderizado dentro do
+  // editor, na mesma janela, então mandar o operador para o WhatsApp
+  // levaria junto o rascunho que ele ainda não salvou. O botão continua
+  // clicável, que é o que se quer conferir ali.
+  useEffect(() => {
+    if (preview || !destino?.automatico) return
+    const id = window.setTimeout(() => {
+      window.location.href = destino.url
+    }, ESPERA_DO_DESTINO_MS)
+    return () => window.clearTimeout(id)
+  }, [destino, preview])
+
   return (
     <div>
       <div
@@ -875,24 +917,49 @@ function TelaFinal({
           {descricao}
         </p>
       )}
-      {ending?.button_label && ending.button_url && (
-        <a
-          href={ending.button_url}
-          style={{
-            display: "inline-block",
-            marginTop: 28,
-            padding: "13px 26px",
-            borderRadius: t.buttonRadius,
-            background: buttonFill,
-            color: t.buttonTextColor,
-            fontWeight: 600,
-            fontSize: t.fontSize + 1,
-            textDecoration: "none",
-          }}
-        >
-          {ending.button_label}
-        </a>
-      )}
+      {(() => {
+        // O destino VENCE o botão legado: ele carrega o dado de quem
+        // respondeu (o texto do WhatsApp, o pré-preenchimento do
+        // Calendly), enquanto o `button_url` é um endereço fixo. Dois
+        // botões na mesma tela dividiriam o clique que a tela existe
+        // para produzir.
+        const href = destino?.url ?? ending?.button_url ?? null
+        const texto = destino?.rotulo ?? ending?.button_label ?? null
+        if (!href || !texto) return null
+        return (
+          <>
+            <a
+              href={href}
+              // O WhatsApp abre no app; sair da aba do formulário no
+              // celular é o comportamento certo — voltar não tem para
+              // onde, a resposta já foi enviada.
+              rel="noopener noreferrer"
+              style={{
+                display: "inline-block",
+                marginTop: 28,
+                padding: "13px 26px",
+                borderRadius: t.buttonRadius,
+                background: buttonFill,
+                color: t.buttonTextColor,
+                fontWeight: 600,
+                fontSize: t.fontSize + 1,
+                textDecoration: "none",
+              }}
+            >
+              {texto}
+            </a>
+            {destino?.automatico && (
+              <p style={{ marginTop: 12, fontSize: t.fontSize - 1, opacity: 0.6, color: t.subtitleColor }}>
+                {preview
+                  ? "No ar, esta tela leva sozinha em ~1s. Na prévia, não."
+                  : destino.tipo === "whatsapp"
+                    ? "Abrindo o WhatsApp… se não abrir sozinho, toque no botão."
+                    : "Levando para a agenda… se não abrir sozinho, toque no botão."}
+              </p>
+            )}
+          </>
+        )
+      })()}
     </div>
   )
 }
@@ -909,7 +976,6 @@ function TelaFinal({
  */
 function TelaDePerguntas({
   blocos,
-  numero,
   answers,
   erros,
   recall,
@@ -923,7 +989,6 @@ function TelaDePerguntas({
   onAvancar,
 }: {
   blocos: FormBlock[]
-  numero: number
   answers: FormAnswers
   erros: Record<string, string>
   recall: (s: string | null | undefined) => string
@@ -942,30 +1007,6 @@ function TelaDePerguntas({
 
   return (
     <div>
-      {/*
-        O número da tela, com a seta. Ele orienta ("estou na 2") e é o
-        que dá à peça a cara de conversa em vez de página de cadastro —
-        mas é discreto de propósito: o protagonista é a pergunta.
-      */}
-      {numero > 0 && (
-        <div
-          aria-hidden
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 5,
-            marginBottom: 14,
-            fontSize: t.fontSize - 1,
-            fontWeight: 600,
-            color: t.primary,
-            opacity: 0.9,
-          }}
-        >
-          {numero}
-          <ArrowRight size={12} strokeWidth={2.5} />
-        </div>
-      )}
-
       {agrupada && titulo && (
         <h2
           style={{
