@@ -33,6 +33,8 @@ import {
 } from "@/lib/services/conversion-dispatch.service"
 import { metaEventName } from "@/lib/tracking/meta-event-name"
 import { buildCrmFormUrl } from "@/lib/utils/form-url"
+import { concluirSessao } from "@/lib/services/form-session.service"
+import { verificarTokenSessao } from "@/lib/forms/session-token"
 
 const log = logger.child("PublicFormsSubmit")
 
@@ -55,6 +57,12 @@ const submitSchema = z.object({
   fbclid: z.string().nullable().optional(),
   gclid: z.string().nullable().optional(),
   event_source_url: z.string().nullable().optional(),
+  // Sessão do conversacional: fecha a fila do abandono. Opcional — o
+  // formulário clássico não a tem, e exigi-la quebraria o que está no ar.
+  session_id: z.string().uuid().nullable().optional(),
+  session_token: z.string().max(300).nullable().optional(),
+  ending_ref: z.string().max(100).nullable().optional(),
+  disqualified: z.boolean().nullable().optional(),
 })
 
 interface FormFieldRow {
@@ -474,6 +482,31 @@ export async function POST(
       log.error("[FormSubmit] Falha ao salvar submission (mas lead/deal foram criados)", { sErr })
     }
     const submissionId = submissionRow?.id ?? null
+
+    // 7b. Fecha a sessão do conversacional.
+    //
+    // AWAIT, nunca `void`: em serverless a promise solta morre quando o
+    // processo congela depois do `return`. Perder isto faria o cron de
+    // abandono mandar ao CRM justamente quem acabou de converter — o
+    // erro mais caro que este módulo pode cometer.
+    //
+    // O token é conferido porque `session_id` viaja pelo browser: sem
+    // ele, qualquer um marcaria a sessão de outra pessoa como concluída
+    // e o abandono dela nunca chegaria ao vendedor.
+    if (parsed.session_id && parsed.session_token) {
+      const tk = verificarTokenSessao(parsed.session_token)
+      if (tk.valido && tk.sessionId === parsed.session_id) {
+        await concluirSessao(admin, parsed.session_id, {
+          leadId,
+          dealId,
+          submissionId,
+          endingRef: parsed.ending_ref ?? null,
+          disqualified: Boolean(parsed.disqualified),
+        })
+      } else {
+        log.warn("[FormSubmit] sessão não fechada: token inválido", { motivo: tk.motivo })
+      }
+    }
 
     // 8. Dispara triggers de automacao (lead_created e deal_created
     //    se aplicavel). Fire-and-forget.
