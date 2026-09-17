@@ -181,6 +181,7 @@ function normalizarBloco(raw: unknown): FormBlock | null {
   return {
     ref,
     type,
+    ...(typeof b.alias === "string" && b.alias.trim() ? { alias: b.alias.trim() } : {}),
     label: typeof b.label === "string" ? b.label : "",
     description: typeof b.description === "string" ? b.description : null,
     placeholder: typeof b.placeholder === "string" ? b.placeholder : null,

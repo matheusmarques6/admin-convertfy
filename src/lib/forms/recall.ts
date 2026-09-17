@@ -80,6 +80,13 @@ function resolver(chave: string, ctx: ContextoRecall): string | undefined {
     return String(variables[chave] ?? "")
   }
   if (blocks) {
+    // Alias primeiro: é o nome que quem escreve a pergunta digita, e ele
+    // é curto o bastante para colidir com um label por acidente — quem
+    // escolheu o apelido tem precedência sobre a coincidência.
+    const porAlias = blocks.find((b) => (b.alias ?? "").toLowerCase() === chave.toLowerCase())
+    if (porAlias && Object.prototype.hasOwnProperty.call(answers, porAlias.ref)) {
+      return respostaComoTexto(answers[porAlias.ref])
+    }
     const porLabel = blocks.find((b) => (b.label ?? "").trim().toLowerCase() === chave.toLowerCase())
     if (porLabel && Object.prototype.hasOwnProperty.call(answers, porLabel.ref)) {
       return respostaComoTexto(answers[porLabel.ref])

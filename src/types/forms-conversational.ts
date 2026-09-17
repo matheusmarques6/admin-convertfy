@@ -70,6 +70,15 @@ export interface FormOption {
 export interface FormBlock {
   /** Endereço estável. Em campos migrados, é o `crm_form_fields.id`. */
   ref: string
+  /**
+   * Nome curto para o recall: `{{nome}}` em vez de `{{<uuid>}}`.
+   *
+   * O `ref` é obrigado a ser o id do campo (a regra do evento
+   * qualificado aponta para ele), e id não se digita num texto de
+   * pergunta. O alias é o apelido de leitura — só isso; ele não endereça
+   * resposta, não entra em lógica e não vai ao banco como chave.
+   */
+  alias?: string
   type: FormBlockType
   label: string
   /** Texto de apoio abaixo da pergunta. Aceita recall. */

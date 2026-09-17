@@ -67,3 +67,25 @@ describe("refsCitados", () => {
     expect(refsCitados("sem nada")).toEqual([])
   })
 })
+
+describe("alias", () => {
+  it("o apelido é o que se digita — UUID no texto da pergunta não é usável", () => {
+    const blocks = [
+      { ref: "8f3c1d2e-0000-4000-8000-000000000001", type: "text" as const, label: "Como você se chama?", alias: "nome" },
+    ]
+    const t = aplicarRecall("Prazer, {{nome}}!", {
+      answers: { "8f3c1d2e-0000-4000-8000-000000000001": "Bruno" },
+      blocks,
+    })
+    expect(t).toBe("Prazer, Bruno!")
+  })
+
+  it("apelido vence label coincidente — quem apelidou escolheu", () => {
+    const blocks = [
+      { ref: "r1", type: "text" as const, label: "cidade", alias: "x" },
+      { ref: "r2", type: "text" as const, label: "outra", alias: "cidade" },
+    ]
+    const t = aplicarRecall("{{cidade}}", { answers: { r1: "pelo label", r2: "pelo alias" }, blocks })
+    expect(t).toBe("pelo alias")
+  })
+})

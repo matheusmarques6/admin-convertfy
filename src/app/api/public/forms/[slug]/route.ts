@@ -12,6 +12,7 @@ import { NextRequest } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, AppError } from "@/lib/api/errors"
 import { normalizeTrackingConfig } from "@/types/form-tracking"
+import { normalizarSchema, schemaDeCampos, type CampoLegado } from "@/lib/forms/schema"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("PublicForms")
@@ -35,7 +36,8 @@ export async function GET(
         `id, org_id, name, slug, description, theme, logo_url,
          success_message, redirect_url,
          facebook_pixel_id, google_ads_id, google_analytics_id,
-         google_ads_conversion_label, tracking_config`,
+         google_ads_conversion_label, tracking_config,
+         display_mode, published_version_id, locale`,
       )
       .eq("slug", slug)
       .eq("status", "published")
@@ -80,6 +82,43 @@ export async function GET(
 
     if (fErr) throw fErr
 
+    // O SCHEMA publicado, que o conversacional precisa: ele carrega o que
+    // `crm_form_fields` não tem — lógica de salto, finais e a tela de
+    // abertura. O clássico continua lendo `fields`, byte a byte como
+    // antes; os dois viajam juntos e o cliente escolhe pelo display_mode.
+    //
+    // Sem versão publicada (formulário anterior à 20261144, ou migration
+    // atrasada), o schema é derivado dos campos de agora: o conversacional
+    // funciona sem lógica em vez de não funcionar.
+    let schema = null
+    let displayMode: "classic" | "conversational" = "classic"
+    try {
+      const modo = (form as { display_mode?: string | null }).display_mode
+      displayMode = modo === "conversational" ? "conversational" : "classic"
+      const versionId = (form as { published_version_id?: string | null }).published_version_id
+      if (versionId) {
+        const { data: v } = await admin
+          .from("form_versions")
+          .select("schema")
+          .eq("id", versionId)
+          .maybeSingle()
+        if (v?.schema) schema = normalizarSchema(v.schema)
+      }
+      if (!schema) {
+        schema = schemaDeCampos((fields ?? []) as CampoLegado[], {
+          display_mode: displayMode,
+          locale: (form as { locale?: string | null }).locale ?? "pt-BR",
+        })
+      }
+      // O modo vive na COLUNA, que é o que o editor troca; o schema pode
+      // ter sido publicado antes da troca e ficaria desatualizado.
+      schema = { ...schema, display_mode: displayMode }
+    } catch (e) {
+      // Coluna ausente (migration atrasada) não pode derrubar o formulário
+      // que está no ar com verba em cima.
+      log.warn("form.schema_indisponivel", { slug, message: (e as Error)?.message })
+    }
+
     // AWAIT, nunca `void`: promise solta em serverless morre quando o
     // processo congela depois do `return` — era por isso que VISITAS
     // ficava em 0 com 56 envios. A mesma armadilha que perdeu os eventos
@@ -92,7 +131,12 @@ export async function GET(
     })
     if (viewErr) log.warn("form.view_nao_contada", { formId: form.id, code: viewErr.code, message: viewErr.message })
 
-    return successResponse(request, { form: publicForm, fields: fields || [] })
+    return successResponse(request, {
+      form: publicForm,
+      fields: fields || [],
+      schema,
+      display_mode: displayMode,
+    })
   } catch (error) {
     log.error("Public form GET error:", error)
     return errorResponse(request, error, "public-form-get")

@@ -2,6 +2,9 @@ import type { ComponentProps } from "react"
 import { notFound } from "next/navigation"
 import { headers } from "next/headers"
 import { PublicFormView } from "@/components/forms/public-form-view"
+import { ConversationalFormView } from "@/components/forms/conversational-form-view"
+import { normalizarSchema } from "@/lib/forms/schema"
+import type { FormTheme } from "@/components/forms/form-theme"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
@@ -39,6 +42,9 @@ interface FormPayload {
     validation: Record<string, unknown>
     map_to_lead_field: string | null
   }>
+  /** O schema publicado (a versão), que o conversacional consome. */
+  schema?: unknown
+  display_mode?: "classic" | "conversational"
 }
 
 async function loadForm(slug: string): Promise<FormPayload | null> {
@@ -52,7 +58,12 @@ async function loadForm(slug: string): Promise<FormPayload | null> {
     if (!res.ok) return null
     const json = await res.json()
     if (!json?.form) return null
-    return { form: json.form, fields: json.fields ?? [] }
+    return {
+      form: json.form,
+      fields: json.fields ?? [],
+      schema: json.schema ?? null,
+      display_mode: json.display_mode === "conversational" ? "conversational" : "classic",
+    }
   } catch {
     return null
   }
@@ -82,6 +93,40 @@ export default async function PublicFormPage({
   const clickIds = {
     fbclid: typeof sp.fbclid === "string" ? sp.fbclid : null,
     gclid: typeof sp.gclid === "string" ? sp.gclid : null,
+  }
+
+  // O conversacional é um renderizador DIFERENTE, não uma variação de
+  // CSS: ele tem máquina de passos, sessão e teclado próprios. O clássico
+  // fica intocado — é o que está no ar com verba em cima.
+  if (data.display_mode === "conversational" && data.schema) {
+    const schema = normalizarSchema(data.schema)
+    // Ocultos: tudo que veio na URL e não é UTM conhecido vira valor de
+    // campo oculto, para a lógica e o recall poderem usar. É como o
+    // Typeform trata `?plano=anual`.
+    const hidden: Record<string, string> = {}
+    for (const [k, v] of Object.entries(sp)) {
+      if (typeof v === "string") hidden[k] = v
+    }
+    return (
+      <ConversationalFormView
+        slug={slug}
+        schema={schema}
+        form={{
+          id: data.form.id,
+          name: data.form.name,
+          logo_url: data.form.logo_url,
+          theme: data.form.theme as FormTheme,
+          success_message: data.form.success_message,
+          redirect_url: data.form.redirect_url,
+        }}
+        contexto={{
+          ...utm,
+          referrer: null,
+          landing_url: null,
+        }}
+        hidden={hidden}
+      />
+    )
   }
 
   return (
