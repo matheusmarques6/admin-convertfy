@@ -11,6 +11,7 @@ import {
   proximoPasso,
   respostasForaDoCaminho,
   totalRespondido,
+  opcoesDoBloco,
   ultimoAlcancavel,
 } from "../engine"
 
@@ -431,5 +432,72 @@ describe("telas que agrupam perguntas", () => {
     const p = calcularProgresso(COM_GRUPO, "nome", { answers: {} })
     expect(p.indice).toBe(1)
     expect(p.total).toBe(3)
+  })
+})
+
+describe("salto pelo piso em real (faixas por moeda)", () => {
+  const schema = {
+    version: 1,
+    display_mode: "conversational" as const,
+    blocks: [
+      { ref: "regiao", type: "select", label: "Para onde vende?", options: [] },
+      {
+        ref: "fat",
+        type: "select",
+        label: "Faturamento",
+        options: [],
+        opcoes_por_moeda: true,
+        moeda_de: "regiao",
+        logic: [
+          {
+            logic: "or" as const,
+            goto: "ending:abaixo-do-corte",
+            conditions: [{ ref: "fat__piso_brl", operator: "lt" as const, value: 200000 }],
+          },
+        ],
+      },
+      { ref: "fim", type: "text", label: "Última", options: [] },
+    ],
+    endings: [{ ref: "ok", title: "Ok" }, { ref: "abaixo-do-corte", title: "Não", disqualified: true }],
+  } as unknown as FormSchema
+
+  const passo = (resp: Record<string, unknown>) =>
+    proximoPasso(schema, "fat", { answers: resp as never }).destino
+
+  it("a MESMA condição recusa em real e em dólar", () => {
+    // Uma condição em vez dos seis rótulos das três escadas: renomear
+    // uma faixa deixaria de desligar o desvio em silêncio.
+    expect(passo({ regiao: "Brasil", fat: "Até R$100k" })).toEqual({
+      tipo: "fim",
+      ending: "abaixo-do-corte",
+    })
+    expect(passo({ regiao: "Estados Unidos", fat: "US$20k – US$50k" })).toEqual({
+      tipo: "fim",
+      ending: "abaixo-do-corte",
+    })
+  })
+
+  it("a loja de US$50k passa — era ela que o corte em real perdia", () => {
+    expect(passo({ regiao: "Estados Unidos", fat: "US$50k – US$100k" })).toEqual({
+      tipo: "bloco",
+      ref: "fim",
+    })
+  })
+
+  it("resposta fora de qualquer escada não recusa por engano", () => {
+    // Sem piso, a comparação numérica não casa e o fluxo segue — quem
+    // decide o que fazer com o desconhecido é a pessoa, na conversa.
+    expect(passo({ regiao: "Brasil", fat: "não sei dizer" })).toEqual({
+      tipo: "bloco",
+      ref: "fim",
+    })
+  })
+
+  it("as opções da pergunta seguem a moeda da região respondida", () => {
+    const bloco = schema.blocks[1]
+    const emReal = opcoesDoBloco(bloco, { answers: { regiao: "Brasil" } })
+    const emDolar = opcoesDoBloco(bloco, { answers: { regiao: "Estados Unidos" } })
+    expect(emReal[0].label).toBe("Até R$100k")
+    expect(emDolar[0].label).toBe("Até US$20k")
   })
 })

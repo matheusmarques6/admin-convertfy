@@ -65,6 +65,16 @@ export interface FormOption {
   value: string
   /** Letra do atalho de teclado (A, B, C…). Derivada quando ausente. */
   atalho?: string
+  /**
+   * Piso da faixa em REAL, quando a opção representa um valor.
+   *
+   * É o que a qualificação compara — o `value` é o rótulo NA MOEDA que a
+   * pessoa viu, e comparar texto é o que faz renomear uma opção desligar
+   * o evento em silêncio. Ausente em opção que não é faixa de valor.
+   */
+  piso?: number
+  /** Moeda em que o rótulo foi escrito. Só em opção de faixa. */
+  moeda?: "BRL" | "USD" | "EUR"
 }
 
 export interface FormBlock {
@@ -126,6 +136,19 @@ export interface FormBlock {
    * é a pergunta.
    */
   titulo_da_tela?: string | null
+  /**
+   * As opções desta pergunta são FAIXAS DE VALOR, escritas na moeda da
+   * região respondida em `moeda_de`.
+   *
+   * O `ref` continua sendo um só — a resposta tem um endereço e um lugar
+   * no funil, em qualquer moeda. O que muda é o rótulo; o que amarra é o
+   * `piso` de cada opção. A alternativa (uma pergunta de faturamento por
+   * moeda, escolhida por salto) espalharia a mesma resposta em quatro
+   * campos, e a régua do evento qualificado teria de cobrir os quatro.
+   */
+  opcoes_por_moeda?: boolean
+  /** `ref` da pergunta de região que decide a moeda das opções. */
+  moeda_de?: string | null
   /** Regras de salto. A primeira que casa vence; nenhuma → próximo na ordem. */
   logic?: LogicRule[]
   /** Oculto: não é exibido; o valor vem da URL ou do embed. */

@@ -37,11 +37,14 @@ import type {
   FormAnswers,
   FormBlock,
   FormEnding,
+  FormOption,
   FormSchema,
   LogicCondition,
   LogicRule,
 } from "@/types/forms-conversational"
 import { TIPOS_SEM_RESPOSTA } from "@/types/forms-conversational"
+import { moedaDaRegiao, opcoesDeFaturamento, pisoDaResposta } from "./moeda"
+import { SUFIXO_PISO } from "./derivados"
 import { normalizeForCompare } from "@/lib/tracking/normalizar-comparacao"
 import { respostaVazia } from "./validacao"
 
@@ -104,7 +107,8 @@ export function avaliarCondicao(cond: LogicCondition, ctx: ContextoLogica): bool
   const bruta =
     ctx.answers[cond.ref] ??
     (ctx.hidden ? ctx.hidden[cond.ref] : undefined) ??
-    (ctx.variables ? ctx.variables[cond.ref] : undefined)
+    (ctx.variables ? ctx.variables[cond.ref] : undefined) ??
+    derivado(cond.ref, ctx.answers)
 
   const vals = valoresDaCondicao(cond.value)
 
@@ -149,6 +153,30 @@ export function avaliarCondicao(cond: LogicCondition, ctx: ContextoLogica): bool
     default:
       return false
   }
+}
+
+/**
+ * O piso em real de uma faixa de faturamento, resolvido AQUI.
+ *
+ * O salto de "abaixo do corte" precisa comparar o mesmo número que a
+ * qualificação compara no servidor. Listar os rótulos das três moedas
+ * numa condição `in` funcionaria hoje e voltaria a ser o defeito que o
+ * piso existe para fechar: renomear uma faixa desligaria o desvio sem
+ * nada em tela, e a loja recusada veria a tela de aprovada.
+ *
+ * Fica dentro de `avaliarCondicao`, e não num contexto que quem chama
+ * monta, porque nenhum chamador pode esquecer — e esquecer significaria
+ * a condição nunca casar, que é o silêncio de sempre.
+ *
+ * A busca é na união das escadas (os rótulos não colidem entre moedas):
+ * aqui não há schema para descobrir qual pergunta decide a moeda, e o
+ * servidor faz o mesmo quando a região não foi respondida.
+ */
+function derivado(ref: string, answers: Record<string, FormAnswer>): number | undefined {
+  if (!ref.endsWith(SUFIXO_PISO)) return undefined
+  const origem = ref.slice(0, -SUFIXO_PISO.length)
+  const piso = pisoDaResposta(answers[origem])
+  return piso ?? undefined
 }
 
 /** Avalia uma regra inteira (`and`/`or`). Regra sem condição nunca casa. */
@@ -582,6 +610,64 @@ export function totalRespondido(schema: FormSchema, ctx: ContextoLogica): number
     if (!b || TIPOS_SEM_RESPOSTA.has(b.type)) return false
     return respondido(ctx, ref)
   }).length
+}
+
+/**
+ * As opções que ESTA pergunta mostra agora.
+ *
+ * Quase sempre é `block.options` e ponto. A exceção é a pergunta de
+ * faturamento: as opções dela são faixas na moeda da região respondida,
+ * e a moeda só se sabe em tempo de resposta.
+ *
+ * Existe UMA função porque três consumidores precisam da mesma lista e
+ * uma divergência entre eles é invisível: o renderizador desenha, a
+ * validação decide se a resposta é uma opção válida, e o submit resolve o
+ * piso. Se o renderizador mostrasse dólar e a validação conferisse contra
+ * real, a pessoa clicaria numa opção que o servidor recusa.
+ *
+ * **Região ainda não respondida devolve as opções declaradas** (as de
+ * real, no cadastro), nunca lista vazia: a tela de uma pergunta sem
+ * opção nenhuma é um beco, e o caminho normal responde a região antes.
+ */
+export function opcoesDoBloco(block: FormBlock, ctx: ContextoLogica): FormOption[] {
+  const declaradas = block.options ?? []
+  if (!block.opcoes_por_moeda || !block.moeda_de) return declaradas
+  const resposta = ctx.answers?.[block.moeda_de]
+  const moeda = moedaDaRegiao(typeof resposta === "string" ? resposta : null)
+  if (!moeda) return declaradas
+  return opcoesDeFaturamento(moeda)
+}
+
+/**
+ * Poda a resposta que deixou de existir na lista.
+ *
+ * Quem responde "Brasil", escolhe "R$200k – R$500k", volta e troca para
+ * "Estados Unidos" fica com uma resposta em real numa tela que só mostra
+ * dólar: nenhuma opção aparece marcada, o rótulo antigo segue gravado, e
+ * o piso que o submit leria seria o da moeda errada. É o `pruneSelection`
+ * do kanban — o que saiu do conjunto visível não pode continuar valendo.
+ *
+ * Só mexe em bloco com opções dinâmicas. Poda geral apagaria a resposta
+ * de quem edita a lista de opções de um select comum, que é histórico
+ * legítimo.
+ */
+export function podarRespostasDependentes(
+  schema: FormSchema,
+  answers: FormAnswers,
+): { answers: FormAnswers; podados: string[] } {
+  const podados: string[] = []
+  let out = answers
+  for (const b of schema.blocks) {
+    if (!b.opcoes_por_moeda || !b.moeda_de) continue
+    const atual = out[b.ref]
+    if (typeof atual !== "string" || !atual) continue
+    const validas = opcoesDoBloco(b, { answers: out })
+    if (validas.some((o) => o.value === atual)) continue
+    if (out === answers) out = { ...answers }
+    delete out[b.ref]
+    podados.push(b.ref)
+  }
+  return { answers: out, podados }
 }
 
 /** Atalho A, B, C… declarado ou derivado da posição. */

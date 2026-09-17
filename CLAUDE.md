@@ -9044,3 +9044,167 @@ segue para X" embaixo diz a mesma coisa sem exigir posicionar caixas), e
 produz formulário que funciona; travar a publicação seria atrito novo num
 sistema com anúncio rodando — o erro aparece em vermelho na aba e no selo
 da tira, e quem decide é quem opera).
+
+## Faturamento na moeda de quem responde, e o funil do Scout adaptado (17/09)
+
+Pedido: uma pergunta de região que troque a MOEDA das faixas de
+faturamento ("a qualificação desses leads é diferente, os valores"), mais
+personalização do construtor, arrastar pergunta entre telas, e copiar as
+perguntas do funil de referência (Social Scout).
+
+**O buraco, medido**: uma loja de US$ 50 mil/mês (≈ R$ 250 mil) marcava
+"Até R$100 mil", caía no final de recusa e nunca mais era falada. Perder
+lead bom por causa da UNIDADE é o pior desfecho possível num funil de
+qualificação, e ele é invisível dos dois lados — o lead acha que foi
+recusado com razão, e a gente nem sabe que ele existiu.
+
+**A régua parou de comparar TEXTO.** `lib/forms/moeda.ts` (puro, 19
+testes) tem três peças, e a terceira é a que impede o defeito de voltar:
+a região decide a moeda (`moedaDaRegiao`; região desconhecida devolve
+`null`, NUNCA o real — cair no BRL por padrão reintroduz o defeito), as
+opções são escritas em números redondos do mercado de lá (a escada de
+dólar é a do Scout, a de real é a que o funil já usava; **contagem de
+degraus diferente de propósito** — 6 e 7 — porque forçar a mesma criaria
+faixa que ninguém usa), e **toda faixa carrega um PISO canônico em BRL**.
+A taxa é FIXA e declarada (`TAXA_PARA_BRL`, USD 5 / EUR 6), nunca cotação:
+faixa de qualificação é decisão comercial, e com cotação ao vivo o mesmo
+lead mudaria de lado conforme o câmbio da manhã e o relatório do mês
+passado mudaria sozinho.
+
+**O piso é do SERVIDOR** (`lib/forms/derivados.ts`): o submit grava
+`<ref>__piso_brl` ao lado da resposta e é ele que `evaluateQualified`
+compara (`gte 200000`). O browser manda a escolha; a conversão é nossa —
+aceitar o piso do corpo do POST seria deixar o lead dizer se é
+qualificado. Dois sublinhados porque o `ref` real é um uuid e nunca os
+contém: colisão impossível por construção, não por convenção.
+**Resposta fora de qualquer escada não vira piso — nem zero**: zero
+desqualificaria por causa de um rótulo renomeado, que é a falha oposta e
+mais cara; sem a chave a comparação numérica dá NaN e não dispara.
+
+**O salto do formulário enxerga o mesmo número.** A lógica de desvio roda
+no browser e não tem o derivado do servidor; listar os seis rótulos
+abaixo do corte (três moedas) funcionaria hoje e seria o mesmo defeito de
+novo. `avaliarCondicao` resolve o sufixo sozinha, DENTRO dela e não num
+contexto que quem chama monta — nenhum chamador pode esquecer, e esquecer
+significaria a condição nunca casar, que é o silêncio de sempre.
+Resultado: **uma condição** (`piso < 200000`) recusa em real, dólar e
+euro.
+
+**Trocar a região depois de responder o faturamento** deixaria um rótulo
+em real selecionado numa lista em dólar — nenhuma opção aparece marcada e
+o submit leria o piso da moeda errada. `podarRespostasDependentes`
+(engine) é o análogo do `pruneSelection` do kanban.
+
+**A auditoria acompanhou**, senão o mecanismo que funciona apareceria
+como defeito: `camposParaAuditoria` serve a UNIÃO das escadas (auditar só
+as declaradas diria "ninguém pode responder US$50k – US$100k" sobre a
+faixa que o lead americano vê) e o derivado entra como campo próprio, com
+rótulo legível e **sem opções** — ele não é simulado sozinho, porque
+mostrar "250000 dispara o evento" ensina a operar pelo número em vez de
+pela faixa. `avaliarLocal` ganhou os operadores numéricos com a MESMA
+aritmética do executor (valor ilegível vira NaN e nada passa).
+
+**`opcoes_por_moeda`/`moeda_de` são transportados na publicação**
+(`montarVersao`), como `mesma_tela` e `alias`: sem isso, um clique em
+Publicar devolveria as faixas em real para quem vende em dólar — o
+defeito inteiro de volta, sem nada em tela. Tem teste.
+
+### O funil publicado (versão 3 de `/forms/diagnostico`)
+
+Medido antes: 2 envios e 7 sessões (o time testando) — mexer não alcança
+tráfego. Quem está com verba é o `pagina-de-vendas` (57 envios, o último
+no mesmo dia), **não tocado**. SQL em
+`supabase/migrations/DADOS_20260917_funil_diagnostico_multimoeda.sql`.
+
+Seis telas: **contato agrupado** (nome, sobrenome, WhatsApp, e-mail — é o
+que o Scout faz e a engine passou a suportar; quatro telas para quatro
+campos de contato é o trecho mais caro do formulário), **loja** (URL +
+Instagram), **região**, **faturamento na moeda dela**, **gargalo** e
+**orçamento**. Quatro finais: ok, abaixo-do-corte, sem-fit e
+sem-orcamento.
+
+**Nome e sobrenome separados** entraram com mapeamento novo (`first_name`
+/ `last_name` no submit e no editor): o split por espaço erra em nome
+composto ("João Pedro Silva" → ln "Pedro Silva") e é o `fn`/`ln` hasheado
+que casa a pessoa na CAPI. O `leadData.name` é composto das duas metades,
+então o card do CRM continua com o nome inteiro.
+
+**A pergunta de orçamento mudou de FORMA, não só de número.** O piso do
+Scout é um projeto de US$ 3.500 uma vez; o nosso é MENSALIDADE — medido
+no banco: assinatura ativa mínima **R$ 2.497**, média R$ 4.425. A opção
+de saída ("Não, agora não faz sentido") leva a um final próprio.
+
+**A pergunta de fit tem a saída escrita na própria opção** ("Ainda estou
+montando a loja / não vendo ainda"), como no Scout: sem ela, quem não
+vende precisa MENTIR para passar, e a lista sem saída produz exatamente
+isso.
+
+**O final de recusa cita as duas moedas** ("acima de R$200 mil por mês,
+cerca de US$40 mil") pela MESMA taxa declarada do piso: falar só em real
+deixa quem respondeu em dólar sem entender por que foi recusado.
+
+### Construtor: personalização, arrasto e o que era inerte
+
+**Templates saíram** (pedido): eram cinco presets que sobrescreviam o
+tema inteiro. **Gradiente** agora existe em três lugares — fundo, card e
+botão — por um componente único (`GradienteRows`, com prévia da
+transição): escritos três vezes, o ângulo aparecia num e faltava nos
+outros, que era o caso (o `buttonGradient` já tinha `angle` no tipo e
+nenhum controle na tela). **Altura e alinhamento da logo**
+(`alturaDaLogo`, `lib/forms/logo`): o default depende do FORMATO (26px no
+conversacional, 40 no clássico — lá ela é marca no alto de uma página,
+aqui é cabeçalho de um card) e o valor é CLAMPEADO porque os dois
+extremos falham em silêncio (4px é indistinguível de nenhuma logo; 400px
+empurra a pergunta para fora da tela sem nada dizer que a causa foi um
+número digitado no editor).
+
+**Três controles eram INERTES no conversacional** e o operador ajustava
+sem ver nada mudar — o mesmo campo-fantasma que o Estúdio já pagou: cor
+do placeholder (o CSS tinha `opacity: 0.35` fixo), cor do subtítulo (as
+descrições usavam só opacidade) e espaço entre campos (`gap: 22` cravado
+na tela agrupada, que é justamente onde ele importa). Os três passaram a
+valer. Os que **não têm como valer** — borda, sombra e padding do card,
+"esconder labels" — somem no conversacional em vez de ficar na tela sem
+efeito, e a seção passou a se chamar "Conteúdo" ali.
+
+**Arrastar pergunta entre telas** (`lib/forms/telas.ts`, puro, 13 testes)
+mexe em DUAS fontes: a ORDEM está em `fields` (vira `position`) e a FLAG
+`mesma_tela` está no rascunho do schema, porque `crm_form_fields` não tem
+coluna para ela. Aplicar num só deixaria a pergunta num lugar e o
+agrupamento em outro. Soltar sobre uma pergunta entra na tela dela;
+soltar na faixa entre telas vira tela própria. Três invariantes que erram
+em silêncio: **a primeira pergunta nunca fica marcada como junta** (a
+flag gravada reapareceria quando alguém pusesse outra na frente, meses
+depois); **o título é da TELA**, então sair de cabeça passa o nome para a
+próxima do grupo, e entrar num grupo DESCARTA o título que a pergunta
+carregava (reaproveitá-lo nomearia a tela errada); e soltar em cima de si
+mesma devolve a MESMA referência de array, que é como a tela sabe não
+gravar rascunho por um arrasto que não moveu nada. Pergunta ainda não
+salva é endereçada por posição (`novo-2`), então o reorder passa pelo
+`remapearRefs` — sem o de/para, a flag e os saltos ficariam apontando
+para onde ela estava. `draggable` só liga enquanto a ALÇA está
+pressionada: sempre ligado, arrastar a partir do campo de texto do rótulo
+moveria a pergunta em vez de selecionar o texto.
+
+**A máscara do telefone passou a seguir o PAÍS.** Achado renderizando: o
+seletor sugeria "+1" e o placeholder dizia "(11) 99999-9999" — a máscara
+mandava digitar no formato de outro país, e quem a segue escreve um
+número que não existe. O do cadastro virou reserva para país fora da
+tabela; vale nos dois formatos.
+
+**Perguntar nome em duas metades tocou QUATRO lugares**, e três deles
+teriam falhado em silêncio — é a assinatura de um mapeamento novo: o
+Zod das rotas RECUSAVA `first_name`/`last_name` (salvar no editor daria
+erro), `contatoDaSessao` só reconhecia `name`/`email`/`phone` e o lead de
+ABANDONO nasceria "Sem nome" com o nome a um campo de distância, e o
+`autoComplete` devolvia `"name"` para os dois campos, então o browser
+preencheria o nome inteiro nas duas caixas — ou nenhuma — numa tela com
+quatro campos de contato, que é onde a pessoa desiste. Os tokens certos
+são `given-name` e `family-name`.
+
+*Verificado percorrendo o funil no Chromium* (contato agrupado →
+loja → região "Estados Unidos" → **escada em dólar** → gargalo →
+orçamento → final de aprovação, com `{{nome}}` e `{{loja}}` resolvidos),
+e o editor renderizado para conferir o arrasto nos dois sentidos (a
+região entrou na tela da loja: 6 telas → 5; o WhatsApp saiu da tela 1
+pela faixa: 6 → 7) e a aba Estilo sem Templates.

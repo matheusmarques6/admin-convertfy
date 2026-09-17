@@ -35,6 +35,25 @@ export interface CampoComOpcoes {
   label?: string | null
   /** Só campos de escolha têm opções; os demais vêm com lista vazia. */
   options: string[]
+  /**
+   * Valores que o SERVIDOR calcula a partir da resposta deste campo —
+   * hoje, o piso em real da faixa de faturamento (ver
+   * `lib/forms/derivados`). `porOpcao` é indexado pelo `value` da opção.
+   *
+   * A auditoria precisa deles porque a régua de negócio parou de
+   * comparar TEXTO: a condição é `piso >= 200000`, e sem a derivação a
+   * simulação diria que nenhuma resposta dispara o evento — exatamente
+   * o alarme falso que faz alguém desligar a tela que o protege.
+   */
+  derivados?: Array<{ ref: string; label: string; porOpcao: Record<string, number> }>
+  /**
+   * Este campo é ele próprio um derivado. Ele entra na lista para a
+   * regra que o cita ter rótulo legível em vez de sair como campo
+   * ausente — e NÃO é simulado sozinho: não existe opção para alguém
+   * escolher, e mostrar "250000 dispara o evento" ensinaria a operar
+   * pelo número em vez de pela faixa.
+   */
+  derivado?: boolean
 }
 
 /**
@@ -46,6 +65,9 @@ const OPERADORES_DE_OPCAO = new Set(["in", "not_in", "equals", "not_equals"])
 
 /** Operadores em que estar na lista é o que QUALIFICA. */
 const OPERADORES_POSITIVOS = new Set(["in", "equals"])
+
+/** Comparações numéricas — as que a régua por piso usa. */
+const OPERADORES_NUMERICOS = new Set(["gt", "gte", "lt", "lte"])
 
 export interface AuditoriaDaRegra {
   field_id: string
@@ -180,9 +202,22 @@ function simular(
 
   const citados = new Set((config.rules ?? []).map((r) => r.field_id))
   for (const campo of campos) {
-    if (!citados.has(campo.id) || campo.options.length === 0) continue
+    if (campo.derivado || campo.options.length === 0) continue
+    // Um campo cujo DERIVADO é citado está sendo auditado também: a
+    // regra fala do piso, mas quem escolhe é quem responde a faixa.
+    const relevante =
+      citados.has(campo.id) || (campo.derivados ?? []).some((d) => citados.has(d.ref))
+    if (!relevante) continue
     for (const opcao of campo.options) {
-      const passa = avaliarLocal(config, { [campo.id]: opcao }, campos)
+      const answers: Record<string, string> = { [campo.id]: opcao }
+      for (const d of campo.derivados ?? []) {
+        const v = d.porOpcao[opcao]
+        // Opção sem derivado não vira zero: sem a chave, a comparação
+        // numérica dá NaN e não dispara — que é o mesmo desfecho do
+        // submit e o que a tela precisa mostrar como lacuna.
+        if (typeof v === "number") answers[d.ref] = String(v)
+      }
+      const passa = avaliarLocal(config, answers, campos)
       const linha = { campo: campo.label ?? campo.id, opcao }
       ;(passa ? disparam : naoDisparam).push(linha)
     }
@@ -208,9 +243,22 @@ function avaliarLocal(
     const campo =
       campos.find((c) => c.id === r.field_id) ??
       (r.field_label ? campos.find((c) => (c.label ?? "") === r.field_label) : undefined)
-    const resposta = campo ? answers[campo.id] : undefined
+    const resposta = campo ? answers[campo.id] : answers[r.field_id]
     if (resposta === undefined) return false
     const vals = valoresDaRegra(r.value)
+    if (OPERADORES_NUMERICOS.has(r.operator)) {
+      // Mesma aritmética do executor (`evaluateRule`): valor ilegível
+      // vira NaN e NENHUMA comparação passa. Tratar como zero
+      // desqualificaria por causa de um rótulo que mudou, que é a falha
+      // oposta e mais cara.
+      const a = Number(resposta)
+      const b = Number(vals[0])
+      if (!Number.isFinite(a) || !Number.isFinite(b)) return false
+      if (r.operator === "gt") return a > b
+      if (r.operator === "gte") return a >= b
+      if (r.operator === "lt") return a < b
+      return a <= b
+    }
     switch (r.operator) {
       case "in":
         return vals.some((v) => iguais(resposta, v))

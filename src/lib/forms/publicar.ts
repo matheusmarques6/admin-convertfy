@@ -86,6 +86,12 @@ export function montarVersao(
       // em Publicar foi o que fez isso.
       ...(antigo.mesma_tela ? { mesma_tela: true } : {}),
       ...(antigo.titulo_da_tela ? { titulo_da_tela: antigo.titulo_da_tela } : {}),
+      // As faixas por moeda também só existem no schema. Publicar sem
+      // transportá-las devolveria as faixas em REAL para quem vende em
+      // dólar — o defeito inteiro que o mecanismo existe para fechar,
+      // reintroduzido por um clique em Publicar e sem nada em tela.
+      ...(antigo.opcoes_por_moeda ? { opcoes_por_moeda: true } : {}),
+      ...(antigo.moeda_de ? { moeda_de: antigo.moeda_de } : {}),
       ...(vivas.length > 0 ? { logic: vivas } : {}),
     }
   })

@@ -9,7 +9,7 @@ import {
   type FormTracking,
   type SubmitTracking,
 } from "./form-pixels"
-import { logoDoFormulario } from "@/lib/forms/logo"
+import { alturaDaLogo, logoDoFormulario } from "@/lib/forms/logo"
 import { defaults, gradientCss, shadowCss, type FormTheme } from "./form-theme"
 import {
   mascaraDeTelefone,
@@ -203,13 +203,19 @@ export function PublicFormView({ slug, payload, utm, clickIds, preview = false, 
     }
   }
 
+  // O gradiente VENCE a cor sólida do card, como `bgGradient` vence
+  // `backgroundColor` na página. O `backdrop-filter` sai junto: ele é
+  // para o card translúcido do modo escuro, e sobre um gradiente opaco
+  // só custa composição.
+  const cardGradiente = gradientCss(theme.cardGradient)
   const cardStyle: React.CSSProperties = {
     borderRadius: t.radius,
-    background: t.cardBg,
+    background: cardGradiente ?? t.cardBg,
     border: `1px solid ${t.cardBorder}`,
     boxShadow: shadowCss(t.cardShadow),
     color: t.text,
-    backdropFilter: dark && t.cardBg.includes("rgba") ? "blur(20px)" : undefined,
+    backdropFilter:
+      !cardGradiente && dark && t.cardBg.includes("rgba") ? "blur(20px)" : undefined,
   }
 
   // Reset CSS isolado: garante que tudo dentro do form tem aparencia
@@ -352,7 +358,15 @@ export function PublicFormView({ slug, payload, utm, clickIds, preview = false, 
               <img
                 src={logo.url}
                 alt={logo.daCasa ? "Convertfy" : form.name}
-                style={{ height: 40, width: "auto", marginBottom: 12, objectFit: "contain" }}
+                style={{
+                  height: alturaDaLogo(theme.logoHeight, "classic"),
+                  width: "auto",
+                  marginBottom: 12,
+                  objectFit: "contain",
+                  ...(theme.logoAlign === "center"
+                    ? { marginLeft: "auto", marginRight: "auto" }
+                    : null),
+                }}
               />
             )}
 
@@ -801,7 +815,10 @@ function PhoneIntlField({
   }, [value])
 
   const current = paisDeTelefone(country)
-  const placeholder = field.placeholder || PLACEHOLDERS_DE_TELEFONE[country] || "Telefone"
+  // A máscara do PAÍS vence a do cadastro, pelo mesmo motivo do
+  // conversacional: com o seletor de DDI ao lado, "+1" com
+  // "(11) 99999-9999" manda digitar no formato de outro país.
+  const placeholder = PLACEHOLDERS_DE_TELEFONE[country] || field.placeholder || "Telefone"
 
   return (
     <div>

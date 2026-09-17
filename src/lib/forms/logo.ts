@@ -51,3 +51,35 @@ export function logoDoFormulario(opts: {
     daCasa: true,
   }
 }
+
+/**
+ * Altura padrão da logo, por formato.
+ *
+ * Os dois números são os que já estavam no código, e a diferença é
+ * intencional: no conversacional a logo é uma marca pequena no alto de
+ * uma página que é toda da pergunta; no clássico ela é o cabeçalho de
+ * um card. Um número só deixaria a logo do conversacional grande a
+ * ponto de empurrar a pergunta para fora da primeira dobra no celular.
+ */
+export const ALTURA_PADRAO_DA_LOGO = { conversational: 26, classic: 40 } as const
+
+/** Piso e teto. */
+export const ALTURA_MINIMA_DA_LOGO = 12
+export const ALTURA_MAXIMA_DA_LOGO = 120
+
+/**
+ * Resolve a altura da logo.
+ *
+ * O valor é CLAMPEADO porque os dois extremos falham em silêncio: uma
+ * logo de 4px é indistinguível de nenhuma logo, e uma de 400px empurra
+ * a pergunta para fora da tela sem nada dizer que a causa foi um número
+ * digitado no editor. Valor ilegível volta ao padrão do formato.
+ */
+export function alturaDaLogo(
+  altura: number | null | undefined,
+  formato: "classic" | "conversational",
+): number {
+  const padrao = ALTURA_PADRAO_DA_LOGO[formato]
+  if (typeof altura !== "number" || !Number.isFinite(altura)) return padrao
+  return Math.min(ALTURA_MAXIMA_DA_LOGO, Math.max(ALTURA_MINIMA_DA_LOGO, Math.round(altura)))
+}
