@@ -42,10 +42,16 @@ interface Estado {
 export function FormPublishPanel({
   formId,
   modo,
+  modoSalvo,
+  noAr,
   onModoChange,
 }: {
   formId: string
   modo: "classic" | "conversational"
+  /** O modo GRAVADO. Trocar aqui só vale quando a página é salva. */
+  modoSalvo: "classic" | "conversational"
+  /** O formulário está publicado — o endereço público responde. */
+  noAr: boolean
   onModoChange: (m: "classic" | "conversational") => void
 }) {
   const { data, error, mutate, isLoading } = useSWR<Estado>(
@@ -104,11 +110,26 @@ export function FormPublishPanel({
             descricao="Uma pergunta por tela."
           />
         </div>
-        {modo === "conversational" && (
-          <p className="mt-1.5 text-[10.5px] leading-relaxed text-slate-500 dark:text-white/45">
-            No conversacional o público vê a <strong>versão publicada</strong>, não o rascunho:
-            trocar uma pergunta aqui só chega a quem responde depois de publicar.
+        {modo !== modoSalvo ? (
+          <p
+            className={
+              "mt-1.5 text-[10.5px] leading-relaxed " +
+              (noAr
+                ? "text-amber-700 dark:text-amber-300"
+                : "text-slate-500 dark:text-white/45")
+            }
+          >
+            {noAr
+              ? "Ao salvar, quem abrir o endereço público já vê neste modo — a troca não espera a publicação da versão."
+              : "A troca vale quando você salvar a página."}
           </p>
+        ) : (
+          modo === "conversational" && (
+            <p className="mt-1.5 text-[10.5px] leading-relaxed text-slate-500 dark:text-white/45">
+              As <strong>perguntas e a lógica</strong> só chegam a quem responde depois de
+              publicar a versão. O modo de exibição, esse, muda ao salvar a página.
+            </p>
+          )
         )}
       </div>
 
@@ -141,7 +162,7 @@ export function FormPublishPanel({
                 ) : (
                   <UploadCloud className="h-3.5 w-3.5" />
                 )}
-                Publicar v{data.proxima_versao}
+                Publicar versão v{data.proxima_versao}
               </button>
             </div>
 

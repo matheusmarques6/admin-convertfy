@@ -140,6 +140,8 @@ interface FormDetail {
     slug: string
     description: string | null
     status: "draft" | "published" | "archived"
+    /** Qual renderizador o público recebe. Muda no SALVAR, não no publicar versão. */
+    display_mode?: "classic" | "conversational" | null
     theme: FormTheme
     pipeline_id: string | null
     stage_id: string | null
@@ -523,7 +525,7 @@ export default function FormEditorPage({
     setStageId(data.form.stage_id ?? "")
     setSuccessMessage(data.form.success_message ?? "")
     setDisplayMode(
-      (data.form as { display_mode?: string }).display_mode === "conversational"
+      data.form.display_mode === "conversational"
         ? "conversational"
         : "classic",
     )
@@ -636,9 +638,24 @@ export default function FormEditorPage({
     }
   }, [id, name, slug, description, pipelineId, stageId, theme, successMessage, redirectUrl, displayMode, fields, tracking, mutate])
 
+  /**
+   * Põe o formulário no ar ou tira.
+   *
+   * Tirar do ar é instantâneo e o endereço público passa a devolver 404
+   * — com anúncio ligado, é verba caindo em página que não existe. Daí a
+   * confirmação, que nomeia o endereço.
+   */
   const togglePublish = async () => {
     if (!data) return
     const next = data.form.status === "published" ? "draft" : "published"
+    if (
+      next === "draft" &&
+      !window.confirm(
+        `Tirar "${data.form.name}" do ar? O endereço /forms/${data.form.slug} passa a devolver "não encontrado" na hora — se houver anúncio apontando para ele, a verba cai numa página inexistente.`,
+      )
+    ) {
+      return
+    }
     await fetch(`/api/crm/forms/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -799,6 +816,8 @@ export default function FormEditorPage({
               formId={id}
               displayMode={displayMode}
               setDisplayMode={setDisplayMode}
+              modoSalvo={data.form.display_mode === "conversational" ? "conversational" : "classic"}
+              noAr={status === "published"}
             />
           )}
           {activeTab === "style" && (
@@ -872,7 +891,7 @@ export default function FormEditorPage({
               onClick={togglePublish}
               className="h-8 px-3 rounded-[6px] text-[11px] font-medium text-slate-700 dark:text-white/80 border border-black/[0.08] dark:border-white/[0.10] hover:bg-white dark:hover:bg-white/[0.06] transition-colors"
             >
-              {status === "published" ? "Despublicar" : "Publicar"}
+              {status === "published" ? "Tirar do ar" : "Colocar no ar"}
             </button>
             <button
               type="button"
@@ -1063,6 +1082,8 @@ function ContentTab({
   formId,
   displayMode,
   setDisplayMode,
+  modoSalvo,
+  noAr,
 }: {
   name: string
   setName: (v: string) => void
@@ -1075,6 +1096,9 @@ function ContentTab({
   formId: string
   displayMode: "classic" | "conversational"
   setDisplayMode: (m: "classic" | "conversational") => void
+  /** O que está gravado — o modo muda o formulário no ar ao SALVAR. */
+  modoSalvo: "classic" | "conversational"
+  noAr: boolean
 }) {
   return (
     <Stack>
@@ -1082,7 +1106,13 @@ function ContentTab({
         title="Exibição"
         hint="O modo e a versão que está no ar."
       />
-      <FormPublishPanel formId={formId} modo={displayMode} onModoChange={setDisplayMode} />
+      <FormPublishPanel
+        formId={formId}
+        modo={displayMode}
+        modoSalvo={modoSalvo}
+        noAr={noAr}
+        onModoChange={setDisplayMode}
+      />
 
       <SectionTitle title="Identificação" hint="Para encontrar o form no admin." />
       <Field label="Nome do formulário">

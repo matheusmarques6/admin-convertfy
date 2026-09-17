@@ -1,8 +1,10 @@
-import type { ComponentProps } from "react"
+import { cache, type ComponentProps } from "react"
+import type { Metadata } from "next"
 import { notFound } from "next/navigation"
 import { headers } from "next/headers"
 import { PublicFormView } from "@/components/forms/public-form-view"
 import { ConversationalFormView } from "@/components/forms/conversational-form-view"
+import { metadataDoFormulario } from "@/lib/forms/metadata"
 import { normalizarSchema } from "@/lib/forms/schema"
 import type { FormTheme } from "@/components/forms/form-theme"
 
@@ -47,7 +49,13 @@ interface FormPayload {
   display_mode?: "classic" | "conversational"
 }
 
-async function loadForm(slug: string): Promise<FormPayload | null> {
+/**
+ * `cache` porque o `generateMetadata` e o componente pedem a MESMA
+ * página: sem ele o destino do anúncio faria duas requisições internas
+ * por visita. `no-store` não é memoizado pelo fetch do Next, então a
+ * memoização tem de ser nossa.
+ */
+const loadForm = cache(async function loadForm(slug: string): Promise<FormPayload | null> {
   // Em SSR precisamos do origin completo pra fetch interno.
   const h = await headers()
   const host = h.get("host") ?? "localhost:3000"
@@ -66,6 +74,32 @@ async function loadForm(slug: string): Promise<FormPayload | null> {
     }
   } catch {
     return null
+  }
+})
+
+/**
+ * O título da aba e a prévia do link.
+ *
+ * Sem isto a página herdava o título do app — "Convertfy Admin - Sistema
+ * de Gestão para Agências" — na aba e na prévia que o WhatsApp monta.
+ * Num destino de anúncio, é a primeira coisa que a pessoa lê.
+ */
+export async function generateMetadata({ params }: PublicFormPageProps): Promise<Metadata> {
+  const { slug } = await params
+  const data = await loadForm(slug)
+  if (!data) return { title: "Formulário não encontrado" }
+
+  const { title, description } = metadataDoFormulario({
+    form: data.form,
+    schema: data.schema ? normalizarSchema(data.schema) : null,
+    displayMode: data.display_mode,
+  })
+  return {
+    title,
+    description: description ?? undefined,
+    // A prévia do link no WhatsApp e no Gerenciador da Meta sai daqui.
+    openGraph: { title, description: description ?? undefined, type: "website" },
+    twitter: { card: "summary", title, description: description ?? undefined },
   }
 }
 
