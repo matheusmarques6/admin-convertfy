@@ -37,6 +37,7 @@ import { buildCrmFormUrl } from "@/lib/utils/form-url"
 import { concluirSessao } from "@/lib/services/form-session.service"
 import { caminhoAte, refsDoCaminho, ultimoAlcancavel } from "@/lib/forms/engine"
 import { normalizarSchema } from "@/lib/forms/schema"
+import { camposDerivados } from "@/lib/forms/derivados"
 import { verificarTokenSessao } from "@/lib/forms/session-token"
 
 const log = logger.child("PublicFormsSubmit")
@@ -161,12 +162,19 @@ export async function POST(
     //
     // No formulário clássico não existe lógica, então o caminho é a lista
     // inteira e esta validação é byte a byte a de antes.
-    const { refs: refsDoCaminho, desqualificado } = await lerDoSchema(
+    const { refs: refsDoCaminho, desqualificado, schema: schemaPublicado } = await lerDoSchema(
       admin,
       form,
       parsed.answers,
       parsed.ending_ref ?? null,
     )
+
+    // O piso em real da faixa de faturamento, calculado AQUI e não aceito
+    // do corpo: o browser manda a escolha, a conversão é nossa. É ele que
+    // a regra do evento qualificado compara, para que renomear uma opção
+    // pare de desligar a conversão em silêncio.
+    const derivados = camposDerivados(schemaPublicado, parsed.answers)
+    const respostasComDerivados = { ...parsed.answers, ...derivados.answers }
     const missingRequired: string[] = []
     for (const f of fields || []) {
       if (!f.required) continue
@@ -188,6 +196,11 @@ export async function POST(
     // 4. Mapeia map_to_lead_field -> dados de lead/deal.
     // Suporta:
     //   - colunas padrao do lead (name, email, phone, company, source)
+    //   - "first_name" / "last_name": as duas metades do nome. Existem
+    //     porque o split por espaço erra em nome composto ("João Pedro
+    //     Silva" vira fn="João", ln="Pedro Silva") e é o `fn`/`ln`
+    //     hasheado que a Meta usa para casar a pessoa. Perguntadas na
+    //     mesma tela, custam um campo e melhoram o matching.
     //   - "custom:<key>"      -> crm_leads.custom_fields[key]
     //   - "custom_lead:<key>" -> crm_leads.custom_fields[key] (alias)
     //   - "custom_deal:<key>" -> deals.custom_fields[key]
@@ -198,6 +211,8 @@ export async function POST(
       company?: string
       source?: string
     } = {}
+    /** As metades vindas de campos próprios, quando o form as pergunta. */
+    const nomePartido: { first?: string; last?: string } = {}
     const customFieldsData: Record<string, unknown> = {}
     const dealCustomFieldsData: Record<string, unknown> = {}
 
@@ -229,11 +244,21 @@ export async function POST(
       const v = String(val).trim()
       switch (f.map_to_lead_field) {
         case "name": leadData.name = v; break
+        case "first_name": nomePartido.first = v; break
+        case "last_name": nomePartido.last = v; break
         case "email": leadData.email = v.toLowerCase(); break
         case "phone": leadData.phone = v; break
         case "company": leadData.company = v; break
         case "source": leadData.source = v; break
       }
+    }
+
+    Object.assign(dealCustomFieldsData, derivados.custom_deal)
+
+    // Nome e sobrenome perguntados separados compõem o nome do CRM: o
+    // vendedor abre o card e lê o nome inteiro, como sempre leu.
+    if (!leadData.name && (nomePartido.first || nomePartido.last)) {
+      leadData.name = [nomePartido.first, nomePartido.last].filter(Boolean).join(" ")
     }
 
     // Fallback: se nao tem name mapeado, usa o primeiro field text/textarea
@@ -623,15 +648,19 @@ export async function POST(
       eventId = randomUUID()
       qualified = evaluateQualified(
         trackingCfg.qualified_lead,
-        parsed.answers,
-        fields ?? undefined,
+        respostasComDerivados,
+        [...(fields ?? []), ...derivados.fields],
       )
 
-      // Nome completo -> first/last pro user_data do Meta.
+      // Nome completo -> first/last pro user_data do Meta. Quando o
+      // formulário PERGUNTOU as duas metades, elas vencem o split por
+      // espaço, que erra justamente em nome composto.
       const fullName = (leadData.name ?? "").trim()
       const spaceIdx = fullName.indexOf(" ")
-      const firstName = spaceIdx > 0 ? fullName.slice(0, spaceIdx) : fullName || null
-      const lastName = spaceIdx > 0 ? fullName.slice(spaceIdx + 1).trim() : null
+      const firstName =
+        nomePartido.first ?? (spaceIdx > 0 ? fullName.slice(0, spaceIdx) : fullName || null)
+      const lastName =
+        nomePartido.last ?? (spaceIdx > 0 ? fullName.slice(spaceIdx + 1).trim() : null)
 
       // custom_data: maximo de parametros do lead p/ otimizacao.
       const customData: Record<string, unknown> = { ...customFieldsData }
@@ -764,18 +793,22 @@ async function lerDoSchema(
   form: { id: string; published_version_id?: string | null },
   answers: Record<string, unknown>,
   endingRef: string | null,
-): Promise<{ refs: Set<string> | null; desqualificado: boolean }> {
+): Promise<{
+  refs: Set<string> | null
+  desqualificado: boolean
+  schema: ReturnType<typeof normalizarSchema> | null
+}> {
   const versionId = form.published_version_id
-  if (!versionId) return { refs: null, desqualificado: false }
+  if (!versionId) return { refs: null, desqualificado: false, schema: null }
   try {
     const { data } = await admin
       .from("form_versions")
       .select("schema")
       .eq("id", versionId)
       .maybeSingle()
-    if (!data?.schema) return { refs: null, desqualificado: false }
+    if (!data?.schema) return { refs: null, desqualificado: false, schema: null }
     const schema = normalizarSchema(data.schema)
-    if (schema.blocks.length === 0) return { refs: null, desqualificado: false }
+    if (schema.blocks.length === 0) return { refs: null, desqualificado: false, schema: null }
 
     // Quem decide se o final desqualifica é o SCHEMA PUBLICADO, não o
     // corpo do POST: o cliente aponta qual final alcançou, a régua é
@@ -789,17 +822,17 @@ async function lerDoSchema(
     // Sem lógica em bloco nenhum, o caminho é a lista inteira e não há o
     // que calcular — é o caso do formulário clássico.
     const temLogica = schema.blocks.some((b) => (b.logic ?? []).length > 0)
-    if (!temLogica) return { refs: null, desqualificado }
+    if (!temLogica) return { refs: null, desqualificado, schema }
 
     const ctx = { answers: answers as Record<string, never>, hidden: {} }
     const fim = ultimoAlcancavel(schema, ctx)
-    if (!fim) return { refs: null, desqualificado }
+    if (!fim) return { refs: null, desqualificado, schema }
     const { caminho } = caminhoAte(schema, fim, ctx)
     // O caminho vem em TELAS. Sem expandir, a 2ª pergunta em diante de um
     // grupo ficaria fora do conjunto e o `required` dela deixaria de ser
     // cobrado — dá para enviar sem o email que a tela exigia.
-    return { refs: new Set(refsDoCaminho(schema, caminho)), desqualificado }
+    return { refs: new Set(refsDoCaminho(schema, caminho)), desqualificado, schema }
   } catch {
-    return { refs: null, desqualificado: false }
+    return { refs: null, desqualificado: false, schema: null }
   }
 }

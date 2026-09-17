@@ -334,13 +334,24 @@ export interface ContatoDaSessao {
  */
 export function contatoDaSessao(schema: FormSchema, answers: FormAnswers): ContatoDaSessao {
   const out: ContatoDaSessao = { name: null, email: null, phone: null }
+  // As duas metades do nome, quando o formulário as pergunta separadas
+  // (a tela de contato agrupada). Sem isto o lead de abandono nasceria
+  // "Sem nome" com o nome a um campo de distância — perda silenciosa, e
+  // é justamente o card que o vendedor abre para ligar.
+  const metades: { first?: string; last?: string } = {}
   for (const b of schema.blocks) {
     const alvo = b.map_to_lead_field
-    if (!alvo || !(alvo in out)) continue
+    if (!alvo) continue
     const v = answers[b.ref]
     if (v === null || v === undefined) continue
-    const txt = Array.isArray(v) ? v.join(", ") : String(v)
-    if (txt.trim()) out[alvo as keyof ContatoDaSessao] = txt.trim()
+    const txt = (Array.isArray(v) ? v.join(", ") : String(v)).trim()
+    if (!txt) continue
+    if (alvo === "first_name") metades.first = txt
+    else if (alvo === "last_name") metades.last = txt
+    else if (alvo in out) out[alvo as keyof ContatoDaSessao] = txt
+  }
+  if (!out.name && (metades.first || metades.last)) {
+    out.name = [metades.first, metades.last].filter(Boolean).join(" ")
   }
   // Campo de email sem mapeamento ainda é email — o formulário antigo
   // pode não ter o `map_to_lead_field` preenchido, e perder o contato

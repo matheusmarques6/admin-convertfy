@@ -30,6 +30,12 @@ export interface FormTheme {
 
   // ── Card / container ──
   cardBgColor?: string
+  /**
+   * Gradiente do card (vence `cardBgColor`). Separado do fundo da
+   * PÁGINA porque são duas superfícies: no formato embutido a página é
+   * do site host e só o card é nosso.
+   */
+  cardGradient?: { from: string; to: string; angle?: number } | null
   cardBorderColor?: string
   cardShadow?: "none" | "sm" | "md" | "lg"
   containerWidth?: number // max-width em px
@@ -63,6 +69,18 @@ export interface FormTheme {
   hideTitle?: boolean
   /** Sem logo nenhuma. Sem isto, a ausência de `logo_url` vira a da casa. */
   hideLogo?: boolean
+  /**
+   * Altura da logo em px. A largura acompanha — logo é marca, e esticar
+   * uma das dimensões a descaracteriza.
+   *
+   * O default DEPENDE do formato e por isso não mora em `defaults()`:
+   * no conversacional a logo é uma marca pequena no alto de uma página
+   * inteira; no clássico ela é o cabeçalho de um card. Ver
+   * `alturaDaLogo` em `lib/forms/logo`.
+   */
+  logoHeight?: number
+  /** Alinhamento da logo. Default: à esquerda, como estava. */
+  logoAlign?: "left" | "center"
   hideLabels?: boolean
   hidePoweredBy?: boolean
 

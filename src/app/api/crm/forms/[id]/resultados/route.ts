@@ -18,6 +18,7 @@ import { AppError, errorResponse, successResponse } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 import { normalizarSchema, schemaDeCampos, type CampoLegado } from "@/lib/forms/schema"
 import { auditarQualificacao, type CampoComOpcoes } from "@/lib/tracking/auditoria-qualificacao"
+import { camposParaAuditoria } from "@/lib/forms/derivados"
 import { normalizeTrackingConfig } from "@/types/form-tracking"
 
 const log = logger.child("FormResultados")
@@ -94,11 +95,11 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
 
     // A auditoria: quais respostas do formulário disparam o evento.
     const cfg = normalizeTrackingConfig(form.tracking_config)
-    const paraAuditoria: CampoComOpcoes[] = schema.blocks.map((b) => ({
-      id: b.ref,
-      label: b.label,
-      options: (b.options ?? []).map((o) => o.value),
-    }))
+    // A lista vem de `camposParaAuditoria`, não do schema cru: a pergunta
+    // de faturamento por moeda guarda só a escada declarada, e auditar por
+    // ela diria que ninguém pode responder as faixas em dólar que o lead
+    // de fora vê na tela.
+    const paraAuditoria: CampoComOpcoes[] = camposParaAuditoria(schema)
     const auditoria = auditarQualificacao(cfg.qualified_lead, paraAuditoria)
 
     return successResponse(request, {

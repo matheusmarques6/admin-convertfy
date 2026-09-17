@@ -96,10 +96,15 @@ export function normalizarOpcoes(raw: unknown): FormOption[] {
       const label = typeof o.label === "string" ? o.label : typeof o.value === "string" ? o.value : ""
       const value = typeof o.value === "string" ? o.value : label
       if (label || value) {
+        const piso = typeof o.piso === "number" && Number.isFinite(o.piso) ? o.piso : undefined
+        const moeda =
+          o.moeda === "BRL" || o.moeda === "USD" || o.moeda === "EUR" ? o.moeda : undefined
         out.push({
           label: label || value,
           value: value || label,
           ...(typeof o.atalho === "string" && o.atalho ? { atalho: o.atalho } : {}),
+          ...(piso !== undefined ? { piso } : {}),
+          ...(moeda ? { moeda } : {}),
         })
       }
     }
@@ -192,6 +197,8 @@ function normalizarBloco(raw: unknown): FormBlock | null {
       typeof b.map_to_lead_field === "string" && b.map_to_lead_field ? b.map_to_lead_field : null,
     ...(logic && logic.length > 0 ? { logic } : {}),
     ...(b.mesma_tela === true ? { mesma_tela: true } : {}),
+    ...(b.opcoes_por_moeda === true ? { opcoes_por_moeda: true } : {}),
+    ...(typeof b.moeda_de === "string" && b.moeda_de ? { moeda_de: b.moeda_de } : {}),
     ...(typeof b.titulo_da_tela === "string" && b.titulo_da_tela.trim()
       ? { titulo_da_tela: b.titulo_da_tela.trim() }
       : {}),

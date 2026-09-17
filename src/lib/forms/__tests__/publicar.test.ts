@@ -183,3 +183,56 @@ describe("o agrupamento atravessa a publicação", () => {
     expect(schema.blocks[1].mesma_tela).toBe(true)
   })
 })
+
+describe("o que só existe no schema atravessa a publicação", () => {
+  const campo = (id: string, label: string) => ({
+    id,
+    field_type: "select",
+    label,
+    required: true,
+    position: id === "regiao" ? 0 : 1,
+    options: ["Brasil", "Estados Unidos"],
+    validation: {},
+    map_to_lead_field: null,
+  })
+
+  it("o agrupamento, o título da tela e as faixas por MOEDA sobrevivem", () => {
+    // Nenhum dos quatro tem coluna em `crm_form_fields`. Publicar sem
+    // transportá-los devolveria as faixas em real para quem vende em
+    // dólar — o defeito que o mecanismo existe para fechar, de volta
+    // por um clique em Publicar e sem nada em tela.
+    const anterior = {
+      version: 1,
+      display_mode: "conversational" as const,
+      blocks: [
+        {
+          ref: "regiao",
+          type: "select",
+          label: "Para onde você vende?",
+          options: [],
+          titulo_da_tela: "Sua operação",
+        },
+        {
+          ref: "fat",
+          type: "select",
+          label: "Faturamento",
+          options: [],
+          mesma_tela: true,
+          opcoes_por_moeda: true,
+          moeda_de: "regiao",
+        },
+      ],
+      endings: [],
+    }
+    const { schema } = montarVersao(
+      [campo("regiao", "Para onde você vende?"), campo("fat", "Faturamento")],
+      anterior as never,
+      { display_mode: "conversational", version: 2 },
+    )
+    const fat = schema.blocks.find((b) => b.ref === "fat")!
+    expect(fat.opcoes_por_moeda).toBe(true)
+    expect(fat.moeda_de).toBe("regiao")
+    expect(fat.mesma_tela).toBe(true)
+    expect(schema.blocks[0].titulo_da_tela).toBe("Sua operação")
+  })
+})

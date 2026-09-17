@@ -135,3 +135,101 @@ describe("auditarQualificacao", () => {
     expect(auditarQualificacao(undefined, [FATURAMENTO]).auditavel).toBe(false)
   })
 })
+
+describe("régua por piso derivado", () => {
+  // O que o funil multimoeda faz: a condição deixa de comparar texto e
+  // passa a comparar o piso em real que o servidor calcula.
+  const FAIXAS: CampoComOpcoes = {
+    id: "f1",
+    label: "Faturamento mensal",
+    options: [
+      "Até R$100k",
+      "R$100k – R$200k",
+      "R$200k – R$500k",
+      "Até US$20k",
+      "US$20k – US$50k",
+      "US$50k – US$100k",
+    ],
+    derivados: [
+      {
+        ref: "f1__piso_brl",
+        label: "Faturamento mensal — equivalente em R$",
+        porOpcao: {
+          "Até R$100k": 0,
+          "R$100k – R$200k": 100_000,
+          "R$200k – R$500k": 200_000,
+          "Até US$20k": 0,
+          "US$20k – US$50k": 100_000,
+          "US$50k – US$100k": 250_000,
+        },
+      },
+    ],
+  }
+  const PISO: CampoComOpcoes = {
+    id: "f1__piso_brl",
+    label: "Faturamento mensal — equivalente em R$",
+    options: [],
+    derivado: true,
+  }
+  const CFG = {
+    enabled: true,
+    event_name: "LeadQualificado",
+    logic: "and" as const,
+    rules: [{ field_id: "f1__piso_brl", operator: "gte" as const, value: "200000" }],
+  }
+
+  it("a regra do piso NÃO é campo ausente", () => {
+    // Antes, a condição apontava para um endereço fora da lista e a tela
+    // acusava "campo que não existe mais" sobre o mecanismo funcionando.
+    const a = auditarQualificacao(CFG, [FAIXAS, PISO])
+    expect(a.regras[0].campo_ausente).toBe(false)
+    expect(a.avisos).toEqual([])
+  })
+
+  it("a simulação fala em FAIXAS, não em números", () => {
+    const a = auditarQualificacao(CFG, [FAIXAS, PISO])
+    const disparam = a.respostas_que_disparam.map((r) => r.opcao)
+    expect(disparam).toContain("R$200k – R$500k")
+    expect(disparam).toContain("US$50k – US$100k")
+    expect(a.respostas_que_disparam.every((r) => r.campo === "Faturamento mensal")).toBe(true)
+  })
+
+  it("a loja de US$50k qualifica — era ela que o corte em real perdia", () => {
+    const a = auditarQualificacao(CFG, [FAIXAS, PISO])
+    expect(a.respostas_que_disparam.some((r) => r.opcao === "US$50k – US$100k")).toBe(true)
+    expect(a.respostas_que_nao_disparam.some((r) => r.opcao === "US$20k – US$50k")).toBe(true)
+  })
+
+  it("o campo derivado não é simulado sozinho", () => {
+    // Ele não tem opção que alguém possa escolher; listá-lo mostraria
+    // "250000 dispara", que ensina a operar pelo número.
+    const a = auditarQualificacao(CFG, [FAIXAS, PISO])
+    const campos = new Set(
+      [...a.respostas_que_disparam, ...a.respostas_que_nao_disparam].map((r) => r.campo),
+    )
+    expect(campos.has("Faturamento mensal — equivalente em R$")).toBe(false)
+  })
+
+  it("opção sem piso não vira zero — ela simplesmente não dispara", () => {
+    const semPiso: CampoComOpcoes = {
+      ...FAIXAS,
+      options: [...FAIXAS.options, "Prefiro não dizer"],
+    }
+    const a = auditarQualificacao(CFG, [semPiso, PISO])
+    expect(a.respostas_que_nao_disparam.some((r) => r.opcao === "Prefiro não dizer")).toBe(true)
+    expect(a.respostas_que_disparam.some((r) => r.opcao === "Prefiro não dizer")).toBe(false)
+  })
+
+  it("mover o corte move a linha, e a tela mostra para onde", () => {
+    const maior = { ...CFG, rules: [{ ...CFG.rules[0], value: "250000" }] }
+    const a = auditarQualificacao(maior, [FAIXAS, PISO])
+    const disparam = a.respostas_que_disparam.map((r) => r.opcao)
+    expect(disparam).toEqual(["US$50k – US$100k"])
+  })
+
+  it("valor de comparação ilegível reprova tudo em vez de aprovar tudo", () => {
+    const torto = { ...CFG, rules: [{ ...CFG.rules[0], value: "duzentos mil" }] }
+    const a = auditarQualificacao(torto, [FAIXAS, PISO])
+    expect(a.respostas_que_disparam).toEqual([])
+  })
+})

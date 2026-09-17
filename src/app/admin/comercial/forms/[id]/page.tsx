@@ -45,9 +45,16 @@ import { montarVersao } from "@/lib/forms/publicar"
 import { remapearRefs } from "@/lib/forms/remapear-refs"
 import { normalizarSchema } from "@/lib/forms/schema"
 import { contarProblemas, diagnosticarFluxo } from "@/lib/forms/diagnostico-fluxo"
-import { logoDoFormulario } from "@/lib/forms/logo"
-import type { FormTheme as TemaDoFormulario } from "@/components/forms/form-theme"
-import type { FormSchema } from "@/types/forms-conversational"
+import { moverPergunta, telasDaSequencia, type Alvo } from "@/lib/forms/telas"
+import {
+  ALTURA_MAXIMA_DA_LOGO,
+  ALTURA_MINIMA_DA_LOGO,
+  ALTURA_PADRAO_DA_LOGO,
+  alturaDaLogo,
+  logoDoFormulario,
+} from "@/lib/forms/logo"
+import { gradientCss, type FormTheme as TemaDoFormulario } from "@/components/forms/form-theme"
+import type { FormBlock, FormSchema } from "@/types/forms-conversational"
 
 // ────────────────────────────────────────────────────────────────────
 // Types
@@ -189,216 +196,14 @@ const FIELD_TYPES: Array<{ value: string; label: string }> = [
 const LEAD_FIELD_MAP: Array<{ value: string | ""; label: string }> = [
   { value: "", label: "Não mapear" },
   { value: "name", label: "Nome do lead" },
+  { value: "first_name", label: "Nome (só o primeiro)" },
+  { value: "last_name", label: "Sobrenome" },
   { value: "email", label: "Email" },
   { value: "phone", label: "Telefone" },
   { value: "company", label: "Empresa" },
   { value: "source", label: "Origem (source)" },
 ]
 
-const THEME_PRESETS: Array<{
-  key: string
-  label: string
-  description: string
-  preview: { bg: string; primary: string; text: string }
-  theme: FormTheme
-}> = [
-  {
-    key: "aplicar-diagnostico",
-    label: "Aplicar diagnóstico",
-    description: "Idêntico ao form da landing Convertfy",
-    preview: { bg: "#0B0F19", primary: "#2563EB", text: "#fff" },
-    theme: {
-      mode: "dark",
-      primaryColor: "#2563EB",
-      backgroundColor: "#0B0F19",
-      textColor: "#FFFFFF",
-      cardBgColor: "rgba(255,255,255,0.02)",
-      cardBorderColor: "rgba(255,255,255,0.08)",
-      cardShadow: "lg",
-      containerWidth: 460,
-      inputBgColor: "rgba(255,255,255,0.03)",
-      inputBorderColor: "rgba(255,255,255,0.08)",
-      inputTextColor: "#FFFFFF",
-      borderRadius: 8,
-      fontFamily: "Inter, system-ui, sans-serif",
-      fontSize: 14,
-      headingSize: 24,
-      subheadingSize: 13,
-      buttonText: "Solicitar diagnóstico gratuito",
-      buttonTextColor: "#FFFFFF",
-      headline: "Aplicar para diagnóstico",
-      subheadline:
-        "Analisamos seu e-commerce — no Brasil ou no exterior — e mostramos quanta receita você está deixando na mesa. Sem compromisso.",
-      hidePoweredBy: false,
-    },
-  },
-  {
-    key: "card-claro-page-transparente",
-    label: "Card claro · página transparente",
-    description: "Card branco visível, página transparente — pra embedar em P.V.",
-    preview: {
-      bg: "repeating-conic-gradient(#E5E7EB 0% 25%, transparent 0% 50%) 0 0/14px 14px",
-      primary: "#2563EB",
-      text: "#0F172A",
-    },
-    theme: {
-      mode: "light",
-      primaryColor: "#2563EB",
-      backgroundColor: "transparent",
-      textColor: "#0F172A",
-      cardBgColor: "#FFFFFF",
-      cardBorderColor: "rgba(15,23,42,0.08)",
-      cardShadow: "md",
-      containerWidth: 480,
-      inputBgColor: "#F8FAFC",
-      inputBorderColor: "rgba(15,23,42,0.10)",
-      inputTextColor: "#0F172A",
-      borderRadius: 10,
-      fontSize: 14,
-      headingSize: 24,
-      subheadingSize: 14,
-      hidePoweredBy: true,
-    },
-  },
-  {
-    key: "card-escuro-page-transparente",
-    label: "Card escuro · página transparente",
-    description: "Card escuro visível, página transparente — pra embedar em P.V.",
-    preview: {
-      bg: "repeating-conic-gradient(#1F2937 0% 25%, transparent 0% 50%) 0 0/14px 14px",
-      primary: "#60A5FA",
-      text: "#FFFFFF",
-    },
-    theme: {
-      mode: "dark",
-      primaryColor: "#60A5FA",
-      backgroundColor: "transparent",
-      textColor: "#FFFFFF",
-      cardBgColor: "#0F172A",
-      cardBorderColor: "rgba(255,255,255,0.08)",
-      cardShadow: "lg",
-      containerWidth: 480,
-      inputBgColor: "rgba(255,255,255,0.06)",
-      inputBorderColor: "rgba(255,255,255,0.12)",
-      inputTextColor: "#FFFFFF",
-      borderRadius: 10,
-      fontSize: 14,
-      headingSize: 24,
-      subheadingSize: 14,
-      hidePoweredBy: true,
-    },
-  },
-  {
-    key: "tudo-transparente",
-    label: "Tudo transparente (avançado)",
-    description: "Card e página transparentes — só inputs e botão visíveis.",
-    preview: {
-      bg: "repeating-conic-gradient(#9CA3AF 0% 25%, transparent 0% 50%) 0 0/14px 14px",
-      primary: "#2563EB",
-      text: "#0F172A",
-    },
-    theme: {
-      mode: "light",
-      primaryColor: "#2563EB",
-      backgroundColor: "transparent",
-      textColor: "#0F172A",
-      cardBgColor: "transparent",
-      cardBorderColor: "transparent",
-      cardShadow: "none",
-      containerWidth: 480,
-      inputBgColor: "rgba(0,0,0,0.04)",
-      inputBorderColor: "rgba(0,0,0,0.12)",
-      inputTextColor: "#0F172A",
-      borderRadius: 8,
-      fontSize: 14,
-      headingSize: 24,
-      subheadingSize: 14,
-      hidePoweredBy: true,
-    },
-  },
-  {
-    key: "aceleradora-gradient",
-    label: "Aceleradora gradient",
-    description: "Variação com gradiente roxo + badge",
-    preview: { bg: "linear-gradient(135deg, #0B0B14, #1E1B4B)", primary: "#A78BFA", text: "#fff" },
-    theme: {
-      mode: "dark",
-      primaryColor: "#7C3AED",
-      textColor: "#F1F5F9",
-      bgGradient: { from: "#0B0B14", to: "#1E1B4B", angle: 135 },
-      buttonGradient: { from: "#6366F1", to: "#A78BFA", angle: 90 },
-      cardBgColor: "rgba(20,22,40,0.55)",
-      cardBorderColor: "rgba(255,255,255,0.08)",
-      cardShadow: "lg",
-      containerWidth: 460,
-      inputBgColor: "rgba(255,255,255,0.04)",
-      inputBorderColor: "rgba(255,255,255,0.10)",
-      inputTextColor: "#F1F5F9",
-      borderRadius: 10,
-      fontFamily: "Inter, system-ui, sans-serif",
-      fontSize: 14,
-      headingSize: 30,
-      subheadingSize: 14,
-      buttonText: "Solicitar diagnóstico gratuito",
-      buttonTextColor: "#FFFFFF",
-      hidePoweredBy: false,
-      badge: "Aceleradora #1 de E-mail Marketing",
-      badgeColor: "#A78BFA",
-    },
-  },
-  {
-    key: "minimal-light",
-    label: "Minimal claro",
-    description: "Limpo, fundo branco, ideal pra embed",
-    preview: { bg: "#F8FAFC", primary: "#2563EB", text: "#0F172A" },
-    theme: {
-      mode: "light",
-      primaryColor: "#2563EB",
-      backgroundColor: "#F8FAFC",
-      textColor: "#0F172A",
-      cardBgColor: "#FFFFFF",
-      cardShadow: "sm",
-      borderRadius: 8,
-      fontSize: 14,
-      headingSize: 24,
-      subheadingSize: 14,
-    },
-  },
-  {
-    key: "soft-pastel",
-    label: "Soft pastel",
-    description: "Gradiente rosa-violeta suave",
-    preview: { bg: "linear-gradient(135deg, #FCE7F3, #E0E7FF)", primary: "#DB2777", text: "#0F172A" },
-    theme: {
-      mode: "light",
-      primaryColor: "#DB2777",
-      bgGradient: { from: "#FCE7F3", to: "#E0E7FF", angle: 135 },
-      cardBgColor: "#FFFFFF",
-      cardShadow: "sm",
-      borderRadius: 14,
-      headingSize: 26,
-      buttonGradient: { from: "#EC4899", to: "#8B5CF6", angle: 90 },
-    },
-  },
-  {
-    key: "premium-dark",
-    label: "Premium dark",
-    description: "Dark sólido com botão amarelo",
-    preview: { bg: "#0A0A0A", primary: "#FBBF24", text: "#fff" },
-    theme: {
-      mode: "dark",
-      primaryColor: "#FBBF24",
-      backgroundColor: "#0A0A0A",
-      textColor: "#F4F4F5",
-      cardBgColor: "#18181B",
-      cardBorderColor: "rgba(255,255,255,0.06)",
-      cardShadow: "lg",
-      borderRadius: 6,
-      headingSize: 26,
-      buttonTextColor: "#000000",
-    },
-  },
-]
 
 // Tabs
 type TabKey = "fields" | "flow" | "content" | "style" | "after" | "tracking" | "results" | "install"
@@ -665,32 +470,114 @@ export default function FormEditorPage({
    * `crm_form_fields` — a tabela não tem coluna para ele. Por isso a
    * lista de Perguntas lê daqui e escreve no rascunho, como a aba Fluxo.
    */
-  const telaPorRef = useMemo(() => {
-    const visiveis = fluxo.blocks.filter((b) => !b.hidden)
-    const parcial: Array<{ ref: string; numero: number; cabeca: string }> = []
-    let numero = 0
-    let cabeca = ""
-    for (const b of visiveis) {
-      if (!b.mesma_tela || !cabeca) {
-        numero += 1
-        cabeca = b.ref
-      }
-      parcial.push({ ref: b.ref, numero, cabeca })
-    }
-    const tamanho: Record<number, number> = {}
-    for (const p of parcial) tamanho[p.numero] = (tamanho[p.numero] ?? 0) + 1
-    const titulos = new Map(visiveis.map((b) => [b.ref, b.titulo_da_tela ?? ""]))
-    const out: Record<string, { numero: number; tamanho: number; cabeca: boolean; titulo: string }> = {}
-    for (const p of parcial) {
-      out[p.ref] = {
-        numero: p.numero,
-        tamanho: tamanho[p.numero],
-        cabeca: p.ref === p.cabeca,
-        titulo: titulos.get(p.cabeca) ?? "",
-      }
-    }
-    return out
-  }, [fluxo])
+  const telaPorRef = useMemo(
+    () =>
+      telasDaSequencia(
+        fluxo.blocks
+          .filter((b) => !b.hidden)
+          .map((b) => ({
+            ref: b.ref,
+            mesma_tela: b.mesma_tela,
+            titulo_da_tela: b.titulo_da_tela,
+          })),
+      ),
+    [fluxo],
+  )
+
+  /**
+   * O arrasto: solta a pergunta sobre outra (entra na tela dela) ou na
+   * faixa entre telas (vira cabeça de tela nova).
+   *
+   * Escreve nos DOIS lados porque o estado é partido: a ORDEM está em
+   * `fields` (vira `position` no banco) e a FLAG está no rascunho do
+   * schema. Aplicar num só deixaria a pergunta num lugar e o
+   * agrupamento em outro — exatamente a divergência que o módulo puro
+   * existe para impedir.
+   */
+  const arrastarPergunta = useCallback(
+    (refArrastada: string, alvo: Alvo) => {
+      if (fluxoIndisponivel) return
+      const visiveis = fluxo.blocks.filter((b) => !b.hidden)
+      const atual = visiveis.map((b) => ({
+        ref: b.ref,
+        mesma_tela: b.mesma_tela,
+        titulo_da_tela: b.titulo_da_tela,
+      }))
+      const nova = moverPergunta(atual, refArrastada, alvo)
+      // Mesma referência = o arrasto não moveu nada (soltou em si
+      // mesma). Não grava rascunho nem marca o formulário como alterado.
+      if (nova === atual) return
+
+      const ordem = new Map(nova.map((p, i) => [p.ref, i]))
+      setFields((arr) =>
+        // O `ref` sai do ÍNDICE ORIGINAL (`novo-<i>` é posicional), então
+        // é calculado antes de ordenar — reler depois daria o endereço
+        // da posição nova e a pergunta ainda não salva se perderia.
+        arr
+          .map((f, i) => ({ f, pos: ordem.get(f.id ?? `novo-${i}`) ?? Number.MAX_SAFE_INTEGER }))
+          .sort((a, b) => a.pos - b.pos)
+          .map(({ f }, i) => ({ ...f, position: i })),
+      )
+      // Pergunta ainda não salva é endereçada por POSIÇÃO (`novo-2`), e
+      // reordenar troca esse endereço. Sem o de/para, a flag e os saltos
+      // ficariam apontando para o lugar onde ela ESTAVA — e a
+      // publicação os descartaria em silêncio.
+      const mapa: Record<string, string> = {}
+      nova.forEach((p, i) => {
+        if (p.ref.startsWith("novo-")) {
+          const destino = `novo-${i}`
+          if (destino !== p.ref) mapa[p.ref] = destino
+        }
+      })
+      const refFinal = (ref: string) => mapa[ref] ?? ref
+
+      setRascunho((atualRascunho) => {
+        const rbase = remapearRefs(atualRascunho ?? fluxo, mapa)
+        const porRef = new Map(nova.map((p) => [refFinal(p.ref), p]))
+        return {
+          ...rbase,
+          blocks: rbase.blocks.map((b) => {
+            const p = porRef.get(b.ref)
+            if (!p) return b
+            return {
+              ...b,
+              mesma_tela: p.mesma_tela ? true : undefined,
+              titulo_da_tela: p.titulo_da_tela || undefined,
+            }
+          }),
+        }
+      })
+    },
+    [fluxo, fluxoIndisponivel],
+  )
+
+  /**
+   * Liga ou desliga as faixas por moeda numa pergunta.
+   *
+   * Mora no rascunho pelo mesmo motivo do `mesma_tela`: é decisão de
+   * SCHEMA e a tabela de campos não tem coluna para ela.
+   */
+  const faixasPorMoeda = useCallback(
+    (ref: string, v: { ligado: boolean; moeda_de: string | null }) => {
+      if (fluxoIndisponivel) return
+      setRascunho((atual) => {
+        const base = atual ?? fluxo
+        return {
+          ...base,
+          blocks: base.blocks.map((b) =>
+            b.ref === ref
+              ? {
+                  ...b,
+                  opcoes_por_moeda: v.ligado ? true : undefined,
+                  moeda_de: v.ligado ? (v.moeda_de ?? undefined) : undefined,
+                }
+              : b,
+          ),
+        }
+      })
+    },
+    [fluxo, fluxoIndisponivel],
+  )
 
   /**
    * Agrupa (ou desagrupa) uma pergunta, e nomeia a tela.
@@ -1049,7 +936,13 @@ export default function FormEditorPage({
             />
           )}
           {abaVisivel === "style" && (
-            <StyleTab theme={theme} setTheme={setTheme} logoUrl={logoUrl} setLogoUrl={setLogoUrl} />
+            <StyleTab
+              theme={theme}
+              setTheme={setTheme}
+              logoUrl={logoUrl}
+              setLogoUrl={setLogoUrl}
+              modo={displayMode}
+            />
           )}
           {abaVisivel === "fields" && (
             <FieldsTab
@@ -1064,6 +957,9 @@ export default function FormEditorPage({
               regrasPorRef={regrasPorRef}
               telaPorRef={telaPorRef}
               agruparPergunta={agruparPergunta}
+              arrastarPergunta={arrastarPergunta}
+              faixasPorMoeda={faixasPorMoeda}
+              blocosDoFluxo={fluxo.blocks}
               irParaFluxo={() => setActiveTab("flow")}
             />
           )}
@@ -1554,12 +1450,20 @@ function StyleTab({
   setTheme,
   logoUrl,
   setLogoUrl,
+  modo,
 }: {
   theme: FormTheme
   setTheme: (fn: FormTheme | ((t: FormTheme) => FormTheme)) => void
   logoUrl: string
   setLogoUrl: (v: string) => void
+  /**
+   * O formato muda o que cada controle SIGNIFICA: no conversacional a
+   * tela é a página (não existe card), e chamar o fundo de "página
+   * standalone (avançado)" esconde o único fundo que ele tem.
+   */
+  modo: "classic" | "conversational"
 }) {
+  const conversa = modo === "conversational"
   const dark = theme.mode === "dark"
   const defaultText = dark ? "#F1F5F9" : "#0F172A"
   const escolha = logoDoFormulario({ logoUrl, ocultar: theme.hideLogo, modo: theme.mode })
@@ -1601,6 +1505,34 @@ function StyleTab({
             disabled={Boolean(theme.hideLogo)}
           />
         </Field>
+        {!theme.hideLogo && (
+          <>
+            <Field
+              label="Altura da logo"
+              hint={`Padrão deste formato: ${ALTURA_PADRAO_DA_LOGO[modo]}px. A largura acompanha.`}
+            >
+              <NumberRow
+                value={alturaDaLogo(theme.logoHeight, modo)}
+                onChange={(v) => setTheme((t) => ({ ...t, logoHeight: v }))}
+                min={ALTURA_MINIMA_DA_LOGO}
+                max={ALTURA_MAXIMA_DA_LOGO}
+                suffix="px"
+              />
+            </Field>
+            <Field label="Alinhamento">
+              <ToggleGroup
+                value={theme.logoAlign ?? "left"}
+                onChange={(v) =>
+                  setTheme((t) => ({ ...t, logoAlign: v === "center" ? "center" : undefined }))
+                }
+                options={[
+                  { value: "left", label: "À esquerda" },
+                  { value: "center", label: "Centralizada" },
+                ]}
+              />
+            </Field>
+          </>
+        )}
         <label className="flex items-center gap-2 text-[11px] text-slate-700 dark:text-white/75">
           <input
             type="checkbox"
@@ -1610,50 +1542,6 @@ function StyleTab({
           />
           Sem logo nenhuma
         </label>
-      </div>
-
-      {/* ── Templates ── */}
-      <SectionTitle
-        title="Templates"
-        hint="Aplica um conjunto pronto. Você pode editar tudo depois."
-      />
-      <div className="grid grid-cols-2 gap-2">
-        {THEME_PRESETS.map((p) => (
-          <button
-            key={p.key}
-            type="button"
-            onClick={() => setTheme(p.theme)}
-            className="group text-left rounded-[8px] overflow-hidden border border-black/[0.08] dark:border-white/[0.10] hover:border-blue-500 dark:hover:border-blue-400 hover:shadow-[0_4px_16px_rgba(37,99,235,0.18)] transition-all"
-          >
-            <div
-              className="aspect-[16/9] flex items-center justify-center px-3"
-              style={{ background: p.preview.bg }}
-            >
-              <div className="space-y-1.5">
-                <div
-                  className="h-1.5 w-12 rounded-full"
-                  style={{ background: p.preview.text, opacity: 0.4 }}
-                />
-                <div
-                  className="h-2 w-20 rounded-full"
-                  style={{ background: p.preview.text, opacity: 0.7 }}
-                />
-                <div
-                  className="h-3 w-20 rounded-[4px] mt-1"
-                  style={{ background: p.preview.primary }}
-                />
-              </div>
-            </div>
-            <div className="px-2.5 py-2 bg-white dark:bg-[#0F1117]">
-              <div className="text-[12px] font-semibold text-slate-900 dark:text-white">
-                {p.label}
-              </div>
-              <div className="text-[10px] text-slate-500 dark:text-white/45 leading-tight mt-0.5">
-                {p.description}
-              </div>
-            </div>
-          </button>
-        ))}
       </div>
 
       <Divider />
@@ -1684,43 +1572,81 @@ function StyleTab({
 
       {/* ── Card do formulario ── */}
       <SectionTitle
-        title="Card do formulário"
-        hint="A caixa do form é o que aparece embedado. Tudo é configurável."
+        title={conversa ? "Conteúdo" : "Card do formulário"}
+        hint={
+          conversa
+            ? "No conversacional não existe card: a tela inteira é a pergunta. Aqui ficam a largura e o respiro do conteúdo."
+            : "A caixa do form é o que aparece embedado. Tudo é configurável."
+        }
       />
-      <Field label="Fundo do card">
-        <ToggleGroup
-          value={
-            theme.cardBgColor === "transparent" ? "transparent" : "solid"
-          }
-          onChange={(v) =>
-            setTheme((t) => ({
-              ...t,
-              cardBgColor:
-                v === "transparent"
+      {!conversa && (
+        <Field label="Fundo do card">
+          <ToggleGroup
+            value={
+              theme.cardGradient
+                ? "gradient"
+                : theme.cardBgColor === "transparent"
                   ? "transparent"
-                  : t.cardBgColor && t.cardBgColor !== "transparent"
-                    ? t.cardBgColor
-                    : t.mode === "dark"
-                      ? "#0F172A"
-                      : "#FFFFFF",
-            }))
-          }
-          options={[
-            { value: "solid", label: "Sólido (visível)" },
-            { value: "transparent", label: "Sem fundo" },
-          ]}
-        />
-        {theme.cardBgColor !== "transparent" && (
-          <div className="mt-2">
-            <ColorRow
-              value={
-                theme.cardBgColor ?? (theme.mode === "dark" ? "#0F172A" : "#FFFFFF")
-              }
-              onChange={(v) => setTheme((t) => ({ ...t, cardBgColor: v }))}
-            />
-          </div>
-        )}
-      </Field>
+                  : "solid"
+            }
+            onChange={(v) =>
+              setTheme((t) => {
+                if (v === "gradient") {
+                  return {
+                    ...t,
+                    cardGradient: t.cardGradient ?? {
+                      from:
+                        t.cardBgColor && t.cardBgColor !== "transparent"
+                          ? t.cardBgColor
+                          : t.mode === "dark"
+                            ? "#0F172A"
+                            : "#FFFFFF",
+                      to: t.primaryColor ?? "#2563EB",
+                      angle: 135,
+                    },
+                  }
+                }
+                return {
+                  ...t,
+                  cardGradient: null,
+                  cardBgColor:
+                    v === "transparent"
+                      ? "transparent"
+                      : t.cardBgColor && t.cardBgColor !== "transparent"
+                        ? t.cardBgColor
+                        : t.mode === "dark"
+                          ? "#0F172A"
+                          : "#FFFFFF",
+                }
+              })
+            }
+            options={[
+              { value: "solid", label: "Sólido" },
+              { value: "gradient", label: "Gradiente" },
+              { value: "transparent", label: "Sem fundo" },
+            ]}
+          />
+          {theme.cardGradient ? (
+            <div className="mt-2 space-y-1.5">
+              <GradienteRows
+                valor={theme.cardGradient}
+                onChange={(g) => setTheme((t) => ({ ...t, cardGradient: g }))}
+              />
+            </div>
+          ) : (
+            theme.cardBgColor !== "transparent" && (
+              <div className="mt-2">
+                <ColorRow
+                  value={theme.cardBgColor ?? (theme.mode === "dark" ? "#0F172A" : "#FFFFFF")}
+                  onChange={(v) => setTheme((t) => ({ ...t, cardBgColor: v }))}
+                />
+              </div>
+            )
+          )}
+        </Field>
+      )}
+      {!conversa && (
+        <>
       <Field label="Borda do card">
         <ToggleGroup
           value={
@@ -1770,16 +1696,20 @@ function StyleTab({
           ]}
         />
       </Field>
-      <Field label="Padding interno (px)">
-        <NumberRow
-          value={theme.cardPadding ?? 28}
-          onChange={(v) => setTheme((t) => ({ ...t, cardPadding: v }))}
-          min={0}
-          max={64}
-          suffix="px"
-        />
-      </Field>
-      <Field label="Largura máxima do card (px)">
+        </>
+      )}
+      {!conversa && (
+        <Field label="Padding interno (px)">
+          <NumberRow
+            value={theme.cardPadding ?? 28}
+            onChange={(v) => setTheme((t) => ({ ...t, cardPadding: v }))}
+            min={0}
+            max={64}
+            suffix="px"
+          />
+        </Field>
+      )}
+      <Field label={conversa ? "Largura do conteúdo (px)" : "Largura máxima do card (px)"}>
         <NumberRow
           value={theme.containerWidth ?? 480}
           onChange={(v) => setTheme((t) => ({ ...t, containerWidth: v }))}
@@ -1797,7 +1727,10 @@ function StyleTab({
           suffix="px"
         />
       </Field>
-      <Field label="Espaço entre campos (px)">
+      <Field
+        label="Espaço entre campos (px)"
+        hint={conversa ? "Vale nas telas com várias perguntas juntas." : undefined}
+      >
         <NumberRow
           value={theme.fieldGap ?? 14}
           onChange={(v) => setTheme((t) => ({ ...t, fieldGap: v }))}
@@ -1952,31 +1885,9 @@ function StyleTab({
         />
         {theme.buttonGradient && (
           <div className="mt-2 space-y-1.5">
-            <ColorRow
-              label="De"
-              value={theme.buttonGradient.from}
-              onChange={(v) =>
-                setTheme((t) => ({
-                  ...t,
-                  buttonGradient: {
-                    ...(t.buttonGradient ?? { from: v, to: v }),
-                    from: v,
-                  },
-                }))
-              }
-            />
-            <ColorRow
-              label="Para"
-              value={theme.buttonGradient.to}
-              onChange={(v) =>
-                setTheme((t) => ({
-                  ...t,
-                  buttonGradient: {
-                    ...(t.buttonGradient ?? { from: v, to: v }),
-                    to: v,
-                  },
-                }))
-              }
+            <GradienteRows
+              valor={theme.buttonGradient}
+              onChange={(g) => setTheme((t) => ({ ...t, buttonGradient: g }))}
             />
           </div>
         )}
@@ -2006,11 +1917,13 @@ function StyleTab({
         checked={!!theme.hideTitle}
         onChange={(v) => setTheme((t) => ({ ...t, hideTitle: v }))}
       />
-      <CheckRow
-        label="Esconder labels dos campos (apenas placeholders)"
-        checked={!!theme.hideLabels}
-        onChange={(v) => setTheme((t) => ({ ...t, hideLabels: v }))}
-      />
+      {!conversa && (
+        <CheckRow
+          label="Esconder labels dos campos (apenas placeholders)"
+          checked={!!theme.hideLabels}
+          onChange={(v) => setTheme((t) => ({ ...t, hideLabels: v }))}
+        />
+      )}
       <CheckRow
         label='Esconder "Powered by Convertfy"'
         checked={!!theme.hidePoweredBy}
@@ -2019,12 +1932,16 @@ function StyleTab({
 
       <Divider />
 
-      {/* ── Página standalone (avancado) ── */}
+      {/* ── Fundo ── */}
       <SectionTitle
-        title="Página standalone (avançado)"
-        hint="Só afeta a URL pública direta /forms/[slug]. Quando o form é embedado em outra página, o fundo é da página host."
+        title={conversa ? "Fundo da tela" : "Página standalone (avançado)"}
+        hint={
+          conversa
+            ? "No conversacional a tela é a página: este é o fundo que o visitante vê o tempo todo."
+            : "Só afeta a URL pública direta /forms/[slug]. Quando o form é embedado em outra página, o fundo é da página host."
+        }
       />
-      <Field label="Fundo da página standalone">
+      <Field label={conversa ? "Fundo" : "Fundo da página standalone"}>
         <ToggleGroup
           value={theme.bgGradient ? "gradient" : "solid"}
           onChange={(v) =>
@@ -2048,50 +1965,10 @@ function StyleTab({
         />
         <div className="mt-2 space-y-1.5">
           {theme.bgGradient ? (
-            <>
-              <ColorRow
-                label="De"
-                value={theme.bgGradient.from}
-                onChange={(v) =>
-                  setTheme((t) => ({
-                    ...t,
-                    bgGradient: {
-                      ...(t.bgGradient ?? { from: v, to: v }),
-                      from: v,
-                    },
-                  }))
-                }
-              />
-              <ColorRow
-                label="Para"
-                value={theme.bgGradient.to}
-                onChange={(v) =>
-                  setTheme((t) => ({
-                    ...t,
-                    bgGradient: {
-                      ...(t.bgGradient ?? { from: v, to: v }),
-                      to: v,
-                    },
-                  }))
-                }
-              />
-              <NumberRow
-                label="Ângulo"
-                value={theme.bgGradient.angle ?? 135}
-                onChange={(v) =>
-                  setTheme((t) => ({
-                    ...t,
-                    bgGradient: {
-                      ...(t.bgGradient ?? { from: "#000", to: "#000" }),
-                      angle: v,
-                    },
-                  }))
-                }
-                min={0}
-                max={360}
-                suffix="°"
-              />
-            </>
+            <GradienteRows
+              valor={theme.bgGradient}
+              onChange={(g) => setTheme((t) => ({ ...t, bgGradient: g }))}
+            />
           ) : (
             <ColorRow
               value={theme.backgroundColor ?? (dark ? "#0B0F19" : "#FFFFFF")}
@@ -2126,6 +2003,9 @@ function FieldsTab({
   regrasPorRef,
   telaPorRef,
   agruparPergunta,
+  arrastarPergunta,
+  faixasPorMoeda,
+  blocosDoFluxo,
   irParaFluxo,
 }: {
   fields: FormField[]
@@ -2141,8 +2021,44 @@ function FieldsTab({
   /** Em que tela cada pergunta cai. Só o conversacional tem telas. */
   telaPorRef: Record<string, { numero: number; tamanho: number; cabeca: boolean; titulo: string }>
   agruparPergunta: (ref: string, patch: { mesma_tela?: boolean; titulo_da_tela?: string | null }) => void
+  arrastarPergunta: (ref: string, alvo: Alvo) => void
+  faixasPorMoeda: (ref: string, v: { ligado: boolean; moeda_de: string | null }) => void
+  /** Os blocos do fluxo de hoje — onde `opcoes_por_moeda` mora. */
+  blocosDoFluxo: FormBlock[]
   irParaFluxo: () => void
 }) {
+  /**
+   * O arrasto vive AQUI e não no pai: é estado de gesto, morre quando o
+   * dedo solta, e subi-lo re-renderizaria o editor inteiro a cada
+   * `dragover` — que dispara dezenas de vezes por segundo.
+   */
+  const [arrastado, setArrastado] = useState<string | null>(null)
+  const [alvoPergunta, setAlvoPergunta] = useState<string | null>(null)
+  const [alvoFaixa, setAlvoFaixa] = useState<string | null>(null)
+  const limparArrasto = () => {
+    setArrastado(null)
+    setAlvoPergunta(null)
+    setAlvoFaixa(null)
+  }
+
+  const blocoPorRef = useMemo(
+    () => new Map(blocosDoFluxo.map((b) => [b.ref, b])),
+    [blocosDoFluxo],
+  )
+  /**
+   * Quem pode decidir a moeda: qualquer pergunta de ESCOLHA. A régua de
+   * "é mesmo uma pergunta de região" é o conteúdo das opções, e ela
+   * mora em `lib/forms/moeda` — a lista aqui é só o que dá para
+   * oferecer sem adivinhar a intenção de quem monta.
+   */
+  const candidatasDeRegiao = useMemo(
+    () =>
+      fields
+        .map((f, i) => ({ ref: f.id ?? `novo-${i}`, label: f.label, tipo: f.field_type }))
+        .filter((f) => f.tipo === "select" || f.tipo === "radio"),
+    [fields],
+  )
+
   return (
     <Stack>
       <div className="flex items-center justify-between">
@@ -2184,6 +2100,7 @@ function FieldsTab({
           const tela = telaPorRef[ref]
           const conversa = modo === "conversational"
           const abreTela = !conversa || !tela || tela.cabeca
+          const arrastando = Boolean(arrastado) && arrastado !== ref
           return (
             <div key={field.id ?? `new-${idx}`}>
               {/*
@@ -2193,19 +2110,67 @@ function FieldsTab({
                 teria como conferir o que montou sem ir ao preview.
               */}
               {conversa && tela && tela.cabeca && (
-                <div className="flex items-center gap-2 px-0.5 pb-1 pt-2 first:pt-0">
-                  <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-white/40">
-                    Tela {tela.numero}
-                  </span>
-                  {tela.tamanho > 1 && (
-                    <span className="text-[10px] text-slate-400 dark:text-white/35">
-                      {tela.tamanho} perguntas juntas
-                    </span>
+                <>
+                  {/*
+                    A faixa ENTRE telas é o alvo de "tirar da tela": sem
+                    ela, soltar sempre juntaria, e desagrupar arrastando
+                    seria impossível — o operador só teria o botão.
+                  */}
+                  {arrastando && (
+                    <FaixaDeSoltar
+                      ativa={alvoFaixa === ref}
+                      onEntrar={() => setAlvoFaixa(ref)}
+                      onSair={() => setAlvoFaixa((a) => (a === ref ? null : a))}
+                      onSoltar={() => {
+                        if (arrastado) arrastarPergunta(arrastado, { tipo: "nova_tela", antesDe: ref })
+                        limparArrasto()
+                      }}
+                    />
                   )}
-                  <div className="h-px flex-1 bg-slate-200 dark:bg-white/[0.08]" />
-                </div>
+                  <div className="flex items-center gap-2 px-0.5 pb-1 pt-2 first:pt-0">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-white/40">
+                      Tela {tela.numero}
+                    </span>
+                    {tela.tamanho > 1 && (
+                      <span className="text-[10px] text-slate-400 dark:text-white/35">
+                        {tela.tamanho} perguntas juntas
+                      </span>
+                    )}
+                    <div className="h-px flex-1 bg-slate-200 dark:bg-white/[0.08]" />
+                  </div>
+                </>
               )}
-              <div className={abreTela ? "" : "ml-3 border-l-2 border-slate-200 pl-2 dark:border-white/[0.10]"}>
+              <div
+                className={`${abreTela ? "" : "ml-3 border-l-2 border-slate-200 pl-2 dark:border-white/[0.10]"} ${
+                  arrastado === ref ? "opacity-40" : ""
+                } ${
+                  alvoPergunta === ref
+                    ? "rounded-[6px] outline outline-2 outline-offset-2 outline-blue-500"
+                    : ""
+                }`}
+                onDragOver={
+                  conversa && arrastando
+                    ? (e) => {
+                        e.preventDefault()
+                        e.dataTransfer.dropEffect = "move"
+                        setAlvoPergunta(ref)
+                        setAlvoFaixa(null)
+                      }
+                    : undefined
+                }
+                onDragLeave={
+                  conversa ? () => setAlvoPergunta((a) => (a === ref ? null : a)) : undefined
+                }
+                onDrop={
+                  conversa && arrastando
+                    ? (e) => {
+                        e.preventDefault()
+                        if (arrastado) arrastarPergunta(arrastado, { tipo: "pergunta", ref })
+                        limparArrasto()
+                      }
+                    : undefined
+                }
+              >
                 <FieldEditor
                   field={field}
                   desvios={field.id ? (regrasPorRef[field.id] ?? 0) : 0}
@@ -2213,6 +2178,23 @@ function FieldsTab({
                   tela={conversa ? tela : undefined}
                   podeJuntar={conversa && idx > 0}
                   onAgrupar={(patch) => agruparPergunta(ref, patch)}
+                  faixasPorMoeda={
+                    conversa
+                      ? {
+                          ligado: Boolean(blocoPorRef.get(ref)?.opcoes_por_moeda),
+                          moeda_de: blocoPorRef.get(ref)?.moeda_de ?? null,
+                        }
+                      : undefined
+                  }
+                  onFaixasPorMoeda={conversa ? (v) => faixasPorMoeda(ref, v) : undefined}
+                  candidatasDeRegiao={candidatasDeRegiao.filter((c) => c.ref !== ref)}
+                  arrastavel={conversa && fields.length > 1}
+                  onArrastarInicio={() => {
+                    setArrastado(ref)
+                    setAlvoPergunta(null)
+                    setAlvoFaixa(null)
+                  }}
+                  onArrastarFim={limparArrasto}
                   leadCustomFields={leadCustomFields}
                   dealCustomFields={dealCustomFields}
                   onChange={(patch) => updateField(idx, patch)}
@@ -2224,6 +2206,18 @@ function FieldsTab({
             </div>
           )
         })}
+        {/* A última faixa: solta no fim, como tela própria. */}
+        {modo === "conversational" && arrastado && (
+          <FaixaDeSoltar
+            ativa={alvoFaixa === "__fim__"}
+            onEntrar={() => setAlvoFaixa("__fim__")}
+            onSair={() => setAlvoFaixa((a) => (a === "__fim__" ? null : a))}
+            onSoltar={() => {
+              if (arrastado) arrastarPergunta(arrastado, { tipo: "nova_tela", antesDe: null })
+              limparArrasto()
+            }}
+          />
+        )}
       </div>
     </Stack>
   )
@@ -3006,6 +3000,44 @@ function ToggleGroup<T extends string>({
   )
 }
 
+/**
+ * As três cores de um gradiente, com PRÉVIA.
+ *
+ * Um só componente para o fundo da página, o card e o botão: escritos
+ * três vezes, o ângulo aparece num e falta nos outros — que era o caso
+ * antes disto (o `buttonGradient` já tinha `angle` no tipo e nenhum
+ * controle na tela, então o ângulo do botão era sempre o default).
+ *
+ * A faixa de prévia existe porque gradiente é a única decisão de cor
+ * que dois quadradinhos não descrevem: o que se julga é a transição.
+ */
+function GradienteRows({
+  valor,
+  onChange,
+}: {
+  valor: { from: string; to: string; angle?: number }
+  onChange: (g: { from: string; to: string; angle?: number }) => void
+}) {
+  return (
+    <>
+      <div
+        className="h-8 rounded-[5px] border border-black/[0.08] dark:border-white/[0.10]"
+        style={{ background: gradientCss(valor) ?? undefined }}
+      />
+      <ColorRow label="De" value={valor.from} onChange={(v) => onChange({ ...valor, from: v })} />
+      <ColorRow label="Para" value={valor.to} onChange={(v) => onChange({ ...valor, to: v })} />
+      <NumberRow
+        label="Ângulo"
+        value={valor.angle ?? 135}
+        onChange={(v) => onChange({ ...valor, angle: v })}
+        min={0}
+        max={360}
+        suffix="°"
+      />
+    </>
+  )
+}
+
 function ColorRow({
   label,
   value,
@@ -3207,6 +3239,47 @@ function PlatformGuide({
   )
 }
 
+/**
+ * A faixa entre duas telas — o alvo de "tirar desta tela".
+ *
+ * Só existe durante o arrasto: fora dele seria uma linha vazia entre
+ * cada tela, e o operador leria como separador quebrado. A altura é
+ * generosa de propósito; alvo de 2px é alvo que ninguém acerta.
+ */
+function FaixaDeSoltar({
+  ativa,
+  onEntrar,
+  onSair,
+  onSoltar,
+}: {
+  ativa: boolean
+  onEntrar: () => void
+  onSair: () => void
+  onSoltar: () => void
+}) {
+  return (
+    <div
+      onDragOver={(e) => {
+        e.preventDefault()
+        e.dataTransfer.dropEffect = "move"
+        onEntrar()
+      }}
+      onDragLeave={onSair}
+      onDrop={(e) => {
+        e.preventDefault()
+        onSoltar()
+      }}
+      className={`my-1 flex h-7 items-center justify-center rounded-[5px] border border-dashed text-[10px] transition-colors ${
+        ativa
+          ? "border-blue-500 bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-300"
+          : "border-slate-200 text-slate-400 dark:border-white/[0.12] dark:text-white/35"
+      }`}
+    >
+      Soltar aqui = tela própria
+    </div>
+  )
+}
+
 // ────────────────────────────────────────────────────────────────────
 // Field editor
 // ────────────────────────────────────────────────────────────────────
@@ -3218,6 +3291,12 @@ function FieldEditor({
   tela,
   podeJuntar,
   onAgrupar,
+  arrastavel,
+  onArrastarInicio,
+  onArrastarFim,
+  faixasPorMoeda,
+  onFaixasPorMoeda,
+  candidatasDeRegiao = [],
   leadCustomFields,
   dealCustomFields,
   onChange,
@@ -3232,6 +3311,14 @@ function FieldEditor({
   tela?: { numero: number; tamanho: number; cabeca: boolean; titulo: string }
   podeJuntar?: boolean
   onAgrupar?: (patch: { mesma_tela?: boolean; titulo_da_tela?: string | null }) => void
+  arrastavel?: boolean
+  onArrastarInicio?: () => void
+  onArrastarFim?: () => void
+  /** `opcoes_por_moeda`/`moeda_de` — vivem no schema, não no campo. */
+  faixasPorMoeda?: { ligado: boolean; moeda_de: string | null }
+  onFaixasPorMoeda?: (v: { ligado: boolean; moeda_de: string | null }) => void
+  /** Perguntas que podem decidir a moeda (as de escolha, antes desta). */
+  candidatasDeRegiao?: Array<{ ref: string; label: string }>
   leadCustomFields: Array<{ id: string; key: string; label: string; field_type: string }>
   dealCustomFields: Array<{ id: string; key: string; label: string; field_type: string }>
   onChange: (patch: Partial<FormField>) => void
@@ -3241,6 +3328,15 @@ function FieldEditor({
 }) {
   const totalCustomFields = leadCustomFields.length + dealCustomFields.length
   const [open, setOpen] = useState(false)
+  /**
+   * `draggable` só liga enquanto a ALÇA está pressionada.
+   *
+   * Sempre ligado, arrastar a partir do campo de texto do rótulo moveria
+   * a pergunta em vez de selecionar o texto — o navegador dá o arrasto
+   * do elemento a quem começa nele, e o usuário perderia a seleção sem
+   * entender por quê.
+   */
+  const [pelaAlca, setPelaAlca] = useState(false)
 
   const showOptions =
     field.field_type === "select" ||
@@ -3252,9 +3348,38 @@ function FieldEditor({
     .join("\n")
 
   return (
-    <div className="rounded-[6px] border border-slate-200 dark:border-white/[0.10] bg-white dark:bg-white/[0.02] overflow-hidden">
+    <div
+      className="rounded-[6px] border border-slate-200 dark:border-white/[0.10] bg-white dark:bg-white/[0.02] overflow-hidden"
+      draggable={Boolean(arrastavel) && pelaAlca}
+      onDragStart={(e) => {
+        // `setData` é obrigatório no Firefox: sem ele o arrasto nem
+        // começa, e o defeito só aparece num navegador.
+        e.dataTransfer.effectAllowed = "move"
+        e.dataTransfer.setData("text/plain", field.id ?? field.label)
+        onArrastarInicio?.()
+      }}
+      onDragEnd={() => {
+        setPelaAlca(false)
+        onArrastarFim?.()
+      }}
+    >
       <div className="flex items-center gap-2 px-2.5 py-2">
-        <GripVertical className="h-3.5 w-3.5 text-slate-300 dark:text-white/25 cursor-grab shrink-0" />
+        <span
+          onMouseDown={() => {
+            if (arrastavel) setPelaAlca(true)
+          }}
+          onMouseUp={() => setPelaAlca(false)}
+          title={arrastavel ? "Arraste para juntar com outra pergunta ou separar em tela própria" : undefined}
+          className={`shrink-0 ${arrastavel ? "cursor-grab" : "cursor-default"}`}
+        >
+          <GripVertical
+            className={`h-3.5 w-3.5 ${
+              arrastavel
+                ? "text-slate-400 hover:text-slate-600 dark:text-white/35 dark:hover:text-white/60"
+                : "text-slate-300 dark:text-white/25"
+            }`}
+          />
+        </span>
         <input
           type="text"
           placeholder="Label do campo"
@@ -3451,6 +3576,57 @@ function FieldEditor({
               placeholder="Uma opção por linha..."
               className="crm-input w-full text-[11px]"
             />
+          )}
+
+          {/*
+            Faixas por moeda: a lista acima deixa de valer e as opções
+            passam a ser a escada da moeda da região respondida. Fica
+            aqui, ao lado das opções, porque é o que as SUBSTITUI — num
+            painel separado o operador editaria a lista de cima sem
+            entender por que ela não aparece no formulário.
+          */}
+          {showOptions && onFaixasPorMoeda && (
+            <div className="rounded-[5px] border border-slate-200 p-2 dark:border-white/[0.10]">
+              <label className="flex items-start gap-1.5 text-[11px] text-slate-700 dark:text-white/75">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={Boolean(faixasPorMoeda?.ligado)}
+                  onChange={(e) =>
+                    onFaixasPorMoeda(
+                      e.target.checked
+                        ? { ligado: true, moeda_de: faixasPorMoeda?.moeda_de ?? candidatasDeRegiao[0]?.ref ?? null }
+                        : { ligado: false, moeda_de: null },
+                    )
+                  }
+                  disabled={candidatasDeRegiao.length === 0 && !faixasPorMoeda?.ligado}
+                />
+                <span>
+                  Faixas na moeda de quem responde
+                  <span className="block text-[10px] text-slate-500 dark:text-white/45">
+                    {candidatasDeRegiao.length === 0 && !faixasPorMoeda?.ligado
+                      ? "Crie antes uma pergunta de região (Brasil, Estados Unidos, Europa…) — é ela que decide a moeda."
+                      : "A lista acima é ignorada: as faixas passam a ser a escada em real, dólar ou euro, conforme a região respondida."}
+                  </span>
+                </span>
+              </label>
+              {faixasPorMoeda?.ligado && (
+                <select
+                  value={faixasPorMoeda.moeda_de ?? ""}
+                  onChange={(e) =>
+                    onFaixasPorMoeda({ ligado: true, moeda_de: e.target.value || null })
+                  }
+                  className="crm-input mt-2 w-full text-[11px]"
+                >
+                  <option value="">Pergunta que decide a moeda…</option>
+                  {candidatasDeRegiao.map((c) => (
+                    <option key={c.ref} value={c.ref}>
+                      {c.label || c.ref}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
           )}
 
           <div className="flex flex-wrap items-center gap-3">

@@ -159,8 +159,8 @@ const fieldUpsertSchema = z.object({
   map_to_lead_field: z
     .string()
     .regex(
-      /^(name|email|phone|company|source|custom:[a-z][a-z0-9_]*|custom_lead:[a-z][a-z0-9_]*|custom_deal:[a-z][a-z0-9_]*)$/,
-      'map_to_lead_field deve ser um campo padrao (name|email|phone|company|source) ou ter prefixo "custom:", "custom_lead:" ou "custom_deal:" seguido de uma key snake_case',
+      /^(name|first_name|last_name|email|phone|company|source|custom:[a-z][a-z0-9_]*|custom_lead:[a-z][a-z0-9_]*|custom_deal:[a-z][a-z0-9_]*)$/,
+      'map_to_lead_field deve ser um campo padrao (name|first_name|last_name|email|phone|company|source) ou ter prefixo "custom:", "custom_lead:" ou "custom_deal:" seguido de uma key snake_case',
     )
     .nullable()
     .optional(),

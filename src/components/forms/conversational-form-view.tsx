@@ -58,7 +58,7 @@ import {
   Info,
   Loader2,
 } from "lucide-react"
-import type { FormAnswers, FormBlock, FormSchema } from "@/types/forms-conversational"
+import type { FormAnswers, FormBlock, FormOption, FormSchema } from "@/types/forms-conversational"
 import { TIPOS_DE_ESCOLHA, TIPOS_SEM_RESPOSTA } from "@/types/forms-conversational"
 import {
   acharEnding,
@@ -66,6 +66,8 @@ import {
   blocosDaTela,
   calcularProgresso,
   inicioDaTela,
+  opcoesDoBloco,
+  podarRespostasDependentes,
   passoAnterior,
   primeiroBloco,
   progressoMonotonico,
@@ -88,7 +90,7 @@ import {
   PAISES_DE_TELEFONE,
   PLACEHOLDERS_DE_TELEFONE,
 } from "@/lib/forms/telefone"
-import { logoDoFormulario } from "@/lib/forms/logo"
+import { alturaDaLogo, logoDoFormulario } from "@/lib/forms/logo"
 import { defaults, gradientCss, type FormTheme } from "./form-theme"
 import { useFormSession } from "./use-form-session"
 
@@ -248,7 +250,13 @@ export function ConversationalFormView({
     [sessao.retomada, hidden],
   )
   const ctx = useMemo(() => ({ answers, hidden: ocultos, variables }), [answers, ocultos, variables])
-  const css = useMemo(() => cssDoEscopo(escopo, t.primary), [escopo, t.primary])
+  // A cor do placeholder é a do TEMA quando alguém a escolheu. Sem
+  // isto, o controle existia na aba Estilo e não mexia em nada aqui —
+  // o operador ajusta e nada muda, sem erro nenhum.
+  const css = useMemo(
+    () => cssDoEscopo(escopo, t.primary, form.theme?.inputPlaceholderColor),
+    [escopo, t.primary, form.theme?.inputPlaceholderColor],
+  )
 
   const blocoAtual: FormBlock | null = useMemo(() => {
     if (tela.tipo !== "bloco") return null
@@ -468,7 +476,13 @@ export function ConversationalFormView({
 
   const responder = useCallback(
     (ref: string, valor: FormAnswers[string], avancarJa = false) => {
-      setAnswers((a) => ({ ...a, [ref]: valor }))
+      setAnswers((a) => {
+        // Trocar a região invalida o faturamento escolhido na moeda
+        // anterior: sem podar, sobra uma resposta que a tela não mostra
+        // como marcada e que o submit leria com o piso da moeda errada.
+        const { answers: podado } = podarRespostasDependentes(schema, { ...a, [ref]: valor })
+        return podado
+      })
       // Some o erro DAQUELE campo. Limpar o mapa inteiro apagaria o aviso
       // dos outros três da tela, que continuam errados.
       setErros((e) => {
@@ -486,7 +500,7 @@ export function ConversationalFormView({
         window.setTimeout(() => avancar({ ref, valor }), 300)
       }
     },
-    [avancar, agrupada],
+    [avancar, agrupada, schema],
   )
 
   // ── teclado global ──
@@ -536,7 +550,7 @@ export function ConversationalFormView({
         TIPOS_DE_ESCOLHA.has(blocoAtual.type) &&
         /^[a-z]$/i.test(e.key)
       ) {
-        const opcoes = blocoAtual.options ?? []
+        const opcoes = opcoesDoBloco(blocoAtual, { answers })
         const i = opcoes.findIndex((o, idx) => atalhoDaOpcao(idx, o.atalho) === e.key.toUpperCase())
         if (i >= 0) {
           e.preventDefault()
@@ -655,12 +669,24 @@ export function ConversationalFormView({
         avanço — e o olho lê isso como a página recarregando.
       */}
       {logo.url && (
-        <header style={{ padding: "18px 20px 0", flex: "0 0 auto" }}>
+        <header
+          style={{
+            padding: "18px 20px 0",
+            flex: "0 0 auto",
+            display: "flex",
+            justifyContent: form.theme?.logoAlign === "center" ? "center" : "flex-start",
+          }}
+        >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={logo.url}
             alt={logo.daCasa ? "Convertfy" : form.name}
-            style={{ height: 26, width: "auto", objectFit: "contain", display: "block" }}
+            style={{
+              height: alturaDaLogo(form.theme?.logoHeight, "conversational"),
+              width: "auto",
+              objectFit: "contain",
+              display: "block",
+            }}
           />
         </header>
       )}
@@ -774,7 +800,17 @@ function TelaDeAbertura({
     <div>
       <h1 style={{ fontSize: Math.max(t.headingSize, 30), lineHeight: 1.2, fontWeight: 600, margin: 0 }}>{titulo}</h1>
       {descricao && (
-        <p style={{ marginTop: 14, fontSize: t.fontSize + 3, opacity: 0.72, lineHeight: 1.6 }}>{descricao}</p>
+        <p
+          style={{
+            marginTop: 14,
+            fontSize: t.fontSize + 3,
+            opacity: 0.72,
+            lineHeight: 1.6,
+            color: t.subtitleColor,
+          }}
+        >
+          {descricao}
+        </p>
       )}
       <div style={{ marginTop: 32, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
         <BotaoPrincipal onClick={onComecar} t={t} fill={buttonFill}>
@@ -827,7 +863,17 @@ function TelaFinal({
       </div>
       <h1 style={{ fontSize: Math.max(t.headingSize, 28), lineHeight: 1.25, fontWeight: 600, margin: 0 }}>{titulo}</h1>
       {descricao && (
-        <p style={{ marginTop: 14, fontSize: t.fontSize + 3, opacity: 0.72, lineHeight: 1.6 }}>{descricao}</p>
+        <p
+          style={{
+            marginTop: 14,
+            fontSize: t.fontSize + 3,
+            opacity: 0.72,
+            lineHeight: 1.6,
+            color: t.subtitleColor,
+          }}
+        >
+          {descricao}
+        </p>
       )}
       {ending?.button_label && ending.button_url && (
         <a
@@ -933,11 +979,19 @@ function TelaDePerguntas({
         </h2>
       )}
 
-      <div style={{ display: "grid", gap: agrupada ? 22 : 0 }}>
+      {/*
+        O respiro entre os campos da tela agrupada é o `fieldGap` do
+        tema. Fixo em 22, o controle "Espaço entre campos" existia na aba
+        Estilo e não mexia em nada aqui — o operador ajusta e nada muda,
+        sem erro nenhum. O piso de 16 existe porque, colados, quatro
+        campos com label viram um bloco só.
+      */}
+      <div style={{ display: "grid", gap: agrupada ? Math.max(16, t.fieldGap + 8) : 0 }}>
         {blocos.map((b) => (
           <UmaPergunta
             key={b.ref}
             bloco={b}
+            opcoes={opcoesDoBloco(b, { answers })}
             agrupada={agrupada}
             valor={answers[b.ref]}
             erro={erros[b.ref] ?? null}
@@ -962,6 +1016,7 @@ function TelaDePerguntas({
 
 function UmaPergunta({
   bloco,
+  opcoes,
   agrupada,
   valor,
   erro,
@@ -972,6 +1027,9 @@ function UmaPergunta({
   onResponder,
 }: {
   bloco: FormBlock
+  /** Já resolvidas: a pergunta de faturamento muda de moeda em tempo de
+   * resposta, e derivar aqui faria o teclado e a tela discordarem. */
+  opcoes: FormOption[]
   agrupada: boolean
   valor: FormAnswers[string]
   erro: string | null
@@ -1012,7 +1070,15 @@ function UmaPergunta({
       </label>
 
       {bloco.description && (
-        <p style={{ marginTop: 8, fontSize: t.fontSize + (agrupada ? -1 : 1), opacity: 0.6, lineHeight: 1.55 }}>
+        <p
+          style={{
+            marginTop: 8,
+            fontSize: t.fontSize + (agrupada ? -1 : 1),
+            opacity: 0.6,
+            lineHeight: 1.55,
+            color: t.subtitleColor,
+          }}
+        >
           {recall(bloco.description)}
         </p>
       )}
@@ -1021,6 +1087,7 @@ function UmaPergunta({
         {escolha ? (
           <Opcoes
             bloco={bloco}
+            opcoes={opcoes}
             valor={valor}
             t={t}
             onEscolher={onResponder}
@@ -1138,12 +1205,14 @@ function NavegacaoDeCanto({
 
 function Opcoes({
   bloco,
+  opcoes,
   valor,
   t,
   onEscolher,
   descrito,
 }: {
   bloco: FormBlock
+  opcoes: FormOption[]
   valor: FormAnswers[string]
   t: ReturnType<typeof defaults>
   onEscolher: (v: FormAnswers[string], avancarJa?: boolean) => void
@@ -1165,7 +1234,7 @@ function Opcoes({
       aria-describedby={descrito}
       style={{ display: "grid", gap: 9 }}
     >
-      {(bloco.options ?? []).map((o, i) => {
+      {opcoes.map((o, i) => {
         const ativo = selecionados.includes(o.value)
         const letra = atalhoDaOpcao(i, o.atalho)
         return (
@@ -1412,7 +1481,12 @@ function TelefoneComDDI({
         inputMode="tel"
         autoComplete="tel-national"
         value={numero}
-        placeholder={bloco.placeholder || PLACEHOLDERS_DE_TELEFONE[pais] || "Telefone"}
+        // A máscara do PAÍS vence a do cadastro. Com o seletor de DDI
+        // ao lado, um placeholder fixo contradiz o que está selecionado:
+        // "+1" com "(11) 99999-9999" manda digitar no formato de outro
+        // país, e quem segue a máscara escreve um número que não existe.
+        // O do cadastro fica como reserva para país fora da tabela.
+        placeholder={PLACEHOLDERS_DE_TELEFONE[pais] || bloco.placeholder || "Telefone"}
         onChange={(e) => aplicar(pais, mascaraDeTelefone(pais, e.target.value))}
         aria-describedby={descrito}
         className="cfy-campo"
@@ -1513,6 +1587,12 @@ function autoCompletePara(b: FormBlock): string | undefined {
   if (b.map_to_lead_field === "email" || b.type === "email") return "email"
   if (b.map_to_lead_field === "phone" || b.type === "phone") return "tel"
   if (b.map_to_lead_field === "name") return "name"
+  // Nome e sobrenome separados têm token PRÓPRIO no autofill. Com
+  // "name" nos dois, o browser preenche o nome inteiro nas duas caixas —
+  // ou não preenche nenhuma; e numa tela com quatro campos de contato é
+  // aí que a pessoa desiste.
+  if (b.map_to_lead_field === "first_name") return "given-name"
+  if (b.map_to_lead_field === "last_name") return "family-name"
   if (b.type === "url") return "url"
   if (b.type === "cep") return "postal-code"
   return undefined
@@ -1526,7 +1606,7 @@ function tintar(cor: string): string {
   return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, 0.10)`
 }
 
-function cssDoEscopo(escopo: string, primaria: string): string {
+function cssDoEscopo(escopo: string, primaria: string, placeholder?: string): string {
   return `
 .${escopo} * { box-sizing: border-box; }
 .${escopo} .cfy-tela { animation: cfy-entra 340ms cubic-bezier(0.22, 1, 0.36, 1); }
@@ -1534,7 +1614,9 @@ function cssDoEscopo(escopo: string, primaria: string): string {
 @keyframes cfy-entra { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
 @keyframes cfy-entra-tras { from { opacity: 0; transform: translateY(-18px); } to { opacity: 1; transform: none; } }
 .${escopo} .cfy-campo:focus { border-bottom-color: ${primaria}; }
-.${escopo} .cfy-campo::placeholder { opacity: 0.35; }
+.${escopo} .cfy-campo::placeholder { ${
+    placeholder ? `color: ${placeholder}; opacity: 1;` : "opacity: 0.35;"
+  } }
 .${escopo} .cfy-opcao:hover { border-color: ${primaria}; }
 .${escopo} .cfy-opcao:focus-visible, .${escopo} button:focus-visible { outline: 2px solid ${primaria}; outline-offset: 2px; }
 .${escopo} .cfy-girando { animation: cfy-gira 900ms linear infinite; }
