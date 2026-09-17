@@ -32,6 +32,7 @@ import { EMAIL_WIDTH } from "@/lib/email-workspace/email-width"
 import { findWhitelistFont } from "../refiner/font-whitelist"
 import { orphanTextFragments, pareceExemplo } from "./anchor-match"
 import { PLACEHOLDER_RE, TOKEN_OK_RE, enderecoUtil } from "./content-checks"
+import { acharJargao } from "../objecoes/linguagem-do-comprador"
 import { extrairCtas, extrairFaixas } from "./color-faixas"
 import { AA_NORMAL } from "./color-contrast"
 
@@ -51,6 +52,13 @@ export type LintId =
   | "largura_container"
   | "tabela_desbalanceada"
   | "fonte_fora_da_whitelist"
+  // Nome de plataforma, gateway, PCI, SSL e sigla de infraestrutura no
+  // texto que o cliente lê (17/09). AVISO, nunca bloqueio: a palavra não
+  // quebra renderização, e reprovar por ela derrubaria a peça de uma loja
+  // cujo produto É a plataforma. A tradução de verdade acontece na fonte
+  // (`objecoes/linguagem-do-comprador`, sobre os insumos do Seletor);
+  // aqui é a rede que pega o que o redator escreveu por conta própria.
+  | "jargao_de_plataforma"
 
 export type LintSeveridade = "bloqueia" | "aviso"
 
@@ -96,6 +104,7 @@ export const REGRAS: Record<LintId, { severidade: LintSeveridade; auto_fix: bool
   largura_container: { severidade: "bloqueia", auto_fix: false },
   tabela_desbalanceada: { severidade: "aviso", auto_fix: false },
   fonte_fora_da_whitelist: { severidade: "aviso", auto_fix: false },
+  jargao_de_plataforma: { severidade: "aviso", auto_fix: false },
 }
 
 // ── Utilidades compartilhadas com o pós-processador ────────────────────
@@ -249,6 +258,14 @@ export function lintEnvio(html: string, ctx: LintContexto = {}): LintResultado {
     for (const m of t.matchAll(PLACEHOLDER_RE)) if (!TOKEN_OK_RE.test(m[0])) placeholders.push(m[0])
   }
   push("placeholder_colchete", placeholders.length, `placeholder visível: ${Array.from(new Set(placeholders)).slice(0, 5).join(", ")}`)
+
+  // jargao_de_plataforma — o fornecedor no texto que o cliente lê.
+  const jargoes = Array.from(new Set(textos.flatMap((t) => acharJargao(t).map((j) => j.trecho))))
+  push(
+    "jargao_de_plataforma",
+    jargoes.length,
+    `jargão de plataforma no texto visível: ${jargoes.slice(0, 5).map((j) => `"${j}"`).join(", ")} — quem lê não sabe o que é, e não foi isso que ele perguntou`,
+  )
 
   // contraste_botao_container — label × fundo do botão preenchido.
   const faixas = safe(() => extrairFaixas(html), [])

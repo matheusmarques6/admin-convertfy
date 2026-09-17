@@ -15,6 +15,7 @@
  */
 
 import { aliviadorAdmissivel, type IntentContract } from "./intent-contract"
+import { traduzirInsumo } from "./linguagem-do-comprador"
 import { objecoesElegiveisNoFlow } from "./catalogo-regras"
 import { chaveDeTexto, dedupePorChave } from "./texto"
 import {
@@ -120,11 +121,31 @@ export function normalizarAlvo(
   ])
   // Insumos PERMITIDOS: só com origem declarada entre parênteses — fato
   // sem origem é o que o modelo inventa. Teto 12.
-  const insumos = dedupePorChave(
+  //
+  // A tradução para a língua de quem compra roda AQUI porque este é o ponto
+  // único: `montarDecisao` copia `insumos_permitidos` do alvo sem tocar, e
+  // dali o mesmo texto segue para o Curador, o Blueprint, o agente de imagem,
+  // o QA e o payload do redator. Consertar na fonte conserta em todos —
+  // consertar num consumidor deixaria os outros com o jargão.
+  const insumos: string[] = []
+  for (const bruto of dedupePorChave(
     arr(o.insumos_permitidos)
       .map(str)
       .filter((t) => t.length > 0 && /\(.+\)/.test(t)),
-  ).slice(0, 12)
+  )) {
+    const t = traduzirInsumo(bruto)
+    if (!t.trocou) {
+      insumos.push(bruto)
+      continue
+    }
+    if (!t.texto) {
+      avisos.push(`insumo descartado — só nomeava infraestrutura (${t.familias.join(", ")}): ${bruto}`)
+      continue
+    }
+    insumos.push(t.texto)
+    avisos.push(`insumo reescrito na língua de quem compra (${t.familias.join(", ")}): ${bruto} → ${t.texto}`)
+  }
+  insumos.splice(12)
   const trabalhos = new Set(contrato.trabalhos_fixos)
   for (const t of arr(o.trabalhos_fixos)) if (isTrabalhoFixo(t)) trabalhos.add(t)
 

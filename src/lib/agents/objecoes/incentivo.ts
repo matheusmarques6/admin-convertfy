@@ -31,11 +31,46 @@ export type OrigemDoIncentivo =
   /** O toque não tem cupom no catálogo de outlines. */
   | "sem_incentivo"
 
+/**
+ * Como o cupom FUNCIONA, para quem vai escrever a peça.
+ *
+ * Por que existe (17/09): entregar o código não é a mesma coisa que explicar
+ * o código. O `exige` do hero garante que `WELCOME10` e `10%` apareçam em
+ * texto real, e nada garantia que o e-mail dissesse ONDE aplicar — então a
+ * dúvida que o leitor tem com o código na tela ficava sem resposta, e o bloco
+ * de remoção de risco ia falar de SSL.
+ *
+ * Três decisões:
+ *
+ * 1. **Não é texto final, é instrução.** Quem redige é o n8n, no idioma da
+ *    loja. Gravar a frase pronta em português num e-mail em inglês seria o
+ *    defeito que `coupon_codes` existe para evitar.
+ * 2. **`onde_aplicar` não depende de dado da loja.** "No campo de cupom do
+ *    checkout" é mecânica de e-commerce, verdadeira por construção em
+ *    qualquer plataforma — e ocupa a posição que o jargão ocupava, com a
+ *    mesma função (tirar atrito), dita do lado do leitor.
+ * 3. **`nao_afirmar` é explícito.** Prazo, mínimo, exclusão e uso único são
+ *    afirmações sobre a LOJA. Hoje eles não saem por omissão, e omissão
+ *    silenciosa é o que faz o modelo preencher o vazio.
+ */
+export interface MecanicaDoIncentivo {
+  onde_aplicar: "checkout"
+  /**
+   * O que a loja CONFIRMOU sobre o cupom. Vazio enquanto a
+   * `ficha_operacional.incentivo` não for preenchida — é ali, e só ali, que
+   * prazo e valor mínimo passam a poder ser afirmados.
+   */
+  condicoes_confirmadas: string[]
+  nao_afirmar: Array<"prazo" | "valor_minimo" | "exclusoes" | "uso_unico">
+}
+
 export interface DecisaoDeIncentivo {
   existe: boolean
   codigo: string | null
   /** Valor do desconto como texto ("10%", "R$ 20"); null quando não cadastrado. */
   valor: string | null
+  /** Como usar o código. `null` quando não há incentivo neste toque. */
+  mecanica: MecanicaDoIncentivo | null
   origem: OrigemDoIncentivo
   /**
    * O toque tem cupom, a loja fala outro idioma e não há tradução: o código
@@ -54,9 +89,28 @@ export const SEM_INCENTIVO: Readonly<DecisaoDeIncentivo> = Object.freeze({
   existe: false,
   codigo: null,
   valor: null,
+  mecanica: null,
   origem: "sem_incentivo" as const,
   traducao_faltante: false,
 })
+
+/**
+ * A mecânica é DERIVADA, nunca escrita por modelo — é a mesma disciplina do
+ * `existe`. Exportada porque o `renderAlvo` a reconstrói para os agentes
+ * internos a partir do `existe` do alvo, e os dois têm de concordar por
+ * construção.
+ */
+export function mecanicaDoIncentivo(
+  existe: boolean,
+  condicoesConfirmadas: readonly string[] = [],
+): MecanicaDoIncentivo | null {
+  if (!existe) return null
+  return {
+    onde_aplicar: "checkout",
+    condicoes_confirmadas: [...condicoesConfirmadas],
+    nao_afirmar: ["prazo", "valor_minimo", "exclusoes", "uso_unico"],
+  }
+}
 
 const PT_BR = "pt-br"
 
@@ -105,19 +159,26 @@ export function incentivoDoOutline(
 
   // A loja escreveu o código no bloco: ela sabe o que está em vigor.
   if (override) {
-    return { existe: true, codigo: override, valor, origem: "override_loja", traducao_faltante: false }
+    return {
+      existe: true, codigo: override, valor, mecanica: mecanicaDoIncentivo(true),
+      origem: "override_loja", traducao_faltante: false,
+    }
   }
   // O toque não entrega cupom — decisão do flow.
   if (!codigoPt) return { ...SEM_INCENTIVO }
 
   if (traduzido) {
-    return { existe: true, codigo: traduzido, valor, origem: "outline_traduzido", traducao_faltante: false }
+    return {
+      existe: true, codigo: traduzido, valor, mecanica: mecanicaDoIncentivo(true),
+      origem: "outline_traduzido", traducao_faltante: false,
+    }
   }
   const precisaTraducao = Boolean(idiomaNorm) && idiomaNorm !== PT_BR
   return {
     existe: true,
     codigo: codigoPt,
     valor,
+    mecanica: mecanicaDoIncentivo(true),
     origem: "outline_pt",
     traducao_faltante: precisaTraducao,
   }

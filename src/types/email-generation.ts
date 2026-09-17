@@ -273,6 +273,17 @@ export type QaIssueType =
   | "paragrafo_repetido"
   | "codigo_inventado"
   | "label_generico"
+  // ── Régua RETÓRICA (17/09, `html/editorial-checks.ts`) ──────────────
+  // Os checks acima olham fato e higiene; nenhum olhava se a frase está
+  // bem escrita. `padrao_editorial` é guarda-chuva de propósito: a regra
+  // que disparou vai NOMEADA no início da mensagem (`[binario] …`), e é
+  // por esse prefixo que se conta cada uma sem inchar o enum.
+  | "padrao_editorial"
+  | "assunto_comeca_pelo_codigo"
+  | "preheader_repete_o_assunto"
+  // A peça entrega código de cupom e o texto não diz onde aplicá-lo. Só
+  // dispara quando `mecanica_do_incentivo` está entre os trabalhos fixos.
+  | "mecanica_do_incentivo_ausente"
   // 11/09: os TRÊS CTAs do hero apontavam para `URL_CTA_PRIMARIO` e afins
   // — href de exemplo da variante, que não é merge tag e por isso nenhum
   // strip alcança e nenhum ESP preenche.

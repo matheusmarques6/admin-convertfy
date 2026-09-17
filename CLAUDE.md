@@ -8542,6 +8542,113 @@ sempre uma FRONTEIRA — entre dois renderizadores, entre o código e o
 índice, entre a função e a GUC, entre o formulário e o CRM. Nenhuma
 delas aparece como erro; todas aparecem como um número que não sobe.
 
+
+## O jargão sai, o cupom se explica, e o método chega a quem escreve (set/2026)
+
+Relato com print, sobre a Hero Boxers · Welcome 1 (batch `6c746be0`, 17/09):
+*"a copy está muito ruim… o cliente não sabe o que é shopify, nesse caso ele
+está com dúvida de como o cupom funciona, não de ssl"*. O bloco entregue dizia
+*"Your checkout runs on Shopify: PCI-compliant, SSL built in"* para um homem de
+50+ comprando cueca.
+
+**Nota de método**: o diagnóstico começou 120 commits atrás do que roda. A
+branch de trabalho da sessão não era a de produção
+(`claude/resume-previous-session-UvATK`), e por isso a primeira leitura
+"descobriu" um `incentivo.ts` que lê o catálogo do Catalogador e nenhum
+`outline_traduzido` — código que produção já não tinha. **Antes de diagnosticar,
+conferir em qual revisão o dado foi gerado.**
+
+**O cupom NÃO era inventado.** `WELCOME10` é a tradução `en` de `BEMVINDO10`,
+preenchida à mão em `email_outline_templates.coupon_codes` (14 idiomas,
+`coupon_value: 10%`). O incentivo é decisão do FLOW — o módulo de 14/09 já
+tinha consertado isso.
+
+**1. O jargão era ENSINADO.** A regra 13 do `seletor-prompt` usava, como
+exemplo canônico de insumo permitido, a frase `"checkout Shopify (pesquisa:
+plataforma)"`. O Seletor a copiou quase literal, o `alerta_de_lastro` mandou a
+remoção de risco **apoiar-se nela**, e o redator escreveu o que recebeu. Não
+existia régua de jargão em lugar nenhum — o cabeçalho de `content-checks.ts`
+chega a citar *"o mesmo parágrafo do Shopify duas vezes"* no incidente de 08/09,
+e o que nasceu dali foi `paragrafo_repetido`.
+
+`linguagem-do-comprador.ts` (puro, 11 testes) **traduz, nunca só apaga** — tirar
+o único fato de segurança deixaria `remocao_de_risco` sem insumo, e bloco que
+some em silêncio faz o modelo caçar o que não recebeu (lição do `momento` e do
+`exige`). Age por ORAÇÃO: a de segurança vira o fato ("pagamento protegido no
+checkout"), a que é só plataforma/infra cai, a que tem substância própria perde
+só a menção — senão `"Free shipping over $100 on the Shopify store"` perderia o
+frete. A ORIGEM entre parênteses nunca é tocada: `seletor-regras` descarta
+insumo sem ela, e comer o parêntese derrubaria o insumo em vez de consertá-lo.
+**`https` ficou de fora da régua de segurança** porque casaria toda URL servida
+como insumo — o link do produto é um deles. Roda na FONTE
+(`seletor-regras.ts`), porque `montarDecisao` copia `insumos_permitidos` sem
+tocar e dali o mesmo texto vai para Curador, Blueprint, imagem, QA e payload.
+Medido nos 11 insumos reais de 17/09: os 11 continuam 11, nenhum com Shopify,
+PCI ou SSL. No HTML final é só AVISO (`jargao_de_plataforma` no lint) — a
+palavra não quebra render, e bloquear reprovaria a peça de uma loja cujo
+produto É a plataforma. O lint achou **4 ocorrências** na peça já entregue.
+
+**2. Entregar o código não é explicar o código.** O `exige` do hero garantia
+`WELCOME10` e `10%` em texto real; nada garantia que o e-mail dissesse ONDE
+aplicar. `DecisaoDeIncentivo.mecanica` é DERIVADA por código (`onde_aplicar:
+checkout`, `condicoes_confirmadas`, `nao_afirmar`), viaja no `decisao.incentivo`
+e é impressa no `renderAlvo` para o Estruturador e os Curadores. **Não é texto
+final, é instrução** — quem redige é o n8n, no idioma da loja. `nao_afirmar`
+(prazo, mínimo, exclusões, uso único) é explícito porque hoje eles não saem por
+OMISSÃO, e omissão silenciosa é o que faz o modelo preencher o vazio.
+`mecanica_do_incentivo` entrou em `TRABALHOS_FIXOS` e no frontmatter do
+welcome-1 — **é dado e ESCORREGA**: o sync do vault reescreve o frontmatter
+inteiro a partir dos `.md`, então a linha tem de entrar na nota do Obsidian.
+O check `mecanica_do_incentivo_ausente` **só roda com o trabalho fixo pedido**.
+
+**3. Quem escreve não recebia MÉTODO.** O redator mora fora do repo (n8n) e
+recebia contrato — chaves, `max_caracteres`, `exemplo`, proibições — sem uma
+linha sobre *como* escrever. Tudo que o pipeline sabia era negativo e factual.
+E o método existia, desligado:
+
+- **`emails[].doutrina` estava publicado dos dois lados e o dispatch nunca
+  montava a chave.** `buildDoutrinaBlock`/`buildJulgamentoBlock` existiam,
+  testados, e o único chamador era um arquivo de teste; o prompt do n8n já lia
+  `{{ $json.doutrina_txt }}`. Ligado por `doutrina-para-copy.ts` (puro, 6
+  testes), roteado pelas seções que o e-mail TEM mais `assunto`. Específica
+  antes de geral, e o teto de 8 notas corta a GERAL primeiro — o que se perde é
+  o conselho que vale para toda peça. Telemetria `doutrina_notas`,
+  `doutrina_chars` e `secoes_sem_doutrina` (esta é a lista das notas que faltam
+  escrever no vault). Fail-open.
+- **`papelDoCampo` classificava a chave e era usado só para OMITIR campos.**
+  `orientacao-por-papel.ts` (puro, 8 testes) é a metade que faltava: headline,
+  subhead, corpo, CTA, item, depoimento, microcopy, assunto, preheader.
+  Injetada em `block-copy-schema` **só quando `guidance` é vazia** — a
+  cadastrada na variante sempre vence — e lida também pelo `copy_fit`, que lê
+  os blocos GRAVADOS e por isso não herdaria a do payload. **Papel não
+  reconhecido devolve `null`**: conselho genérico servido como regra é pior que
+  silêncio, porque o modelo obedece igual. `exemplo` JAMAIS vira veículo de
+  orientação — ele é o ENDEREÇO do merge.
+- **O motor editorial do Estúdio tinha zero imports em `src/lib/agents`.**
+  `editorial-checks.ts` (puro, 10 testes) traz o que é universal — binário,
+  cacoete, abertura cerimonial, dado sem origem — **bilíngue por construção**:
+  cada regra é ancorada em palavras do idioma, então peça em polonês não casa
+  nada, em vez de ser reprovada por regex de português. CTA cordial ficou de
+  fora: `label_generico` já o reprova, e duas contagens para o mesmo defeito é
+  como a medição deixa de servir. `padrao_editorial` é guarda-chuva e a regra
+  vai NOMEADA na mensagem (`[binario] …`) — é por esse prefixo que se conta
+  cada uma sem inchar o enum.
+
+**4. Assunto e preheader eram buraco completo**: `z.string().min(1)`, gravados
+direto, sem limite, sem orientação, sem encurtador e sem um único check. O
+assunto entregue foi `WELCOME10: Cut for Your Body` — começa pelo código, que é
+o que a pessoa encontra DENTRO, não o motivo de abrir. Agora recebem a régua no
+payload (`emails[].orientacao`), entram como alvos do `copy_fit` (55 e 90
+chars, `block_id: null` — quem grava é o callback, em `email_flow_emails`) e
+têm dois checks próprios. O detector de idioma já tinha piso (15 chars, 4
+palavras), então assunto curto não vira falso positivo.
+
+**Nada disso edita o flow do n8n** — tudo entra por chaves que o prompt v3.2 já
+lê. E **a `ficha_operacional` continua com 2 de 7 campos**: enquanto `troca`,
+`pagamento`, `suporte` e `prova` forem nulos, `condicoes_confirmadas` sai vazio,
+nenhuma objeção ganha `lastro_operacional.verificado` e a profundidade segue
+travada em `afirmacao`.
+
 ---
 
 *Última atualização: Setembro 2026*

@@ -101,6 +101,14 @@ export const MODOS_SEM_OBJECAO: readonly ModoDoToque[] = [
 
 export const TRABALHOS_FIXOS = [
   "entrega_de_incentivo",
+  /**
+   * Dizer COMO usar o código (17/09). Entregar o cupom e explicar o cupom
+   * eram tratados como a mesma coisa: o `exige` do hero garantia que o
+   * código aparecesse em texto real, e nada garantia que o e-mail dissesse
+   * onde aplicá-lo — a dúvida que o leitor tem naquele segundo ficava sem
+   * resposta, e a remoção de risco ia falar de outra coisa.
+   */
+  "mecanica_do_incentivo",
   "lembrete_de_incentivo_vivo",
   "prazo_com_hora",
   "custo_de_adiar_sem_hora",

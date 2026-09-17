@@ -163,3 +163,33 @@ describe("buildBlockCopySchema — Passo 13: o exemplo que promete o que a decis
     expect(s.exemplos_removidos).toBeUndefined()
   })
 })
+
+// 17/09 — o redator recebia contrato (chave, limite, exemplo) e nenhuma
+// linha sobre COMO escrever cada parte. A régua do papel é o piso; a
+// orientação cadastrada na variante continua sendo o teto.
+describe("orientação por papel de campo", () => {
+  const campos = [
+    { key: "hero_headline", label: "Headline", type: "text_short", max_len: 48, guidance: "Promessa central em 2ª pessoa" },
+    { key: "hero_subhead", label: "Subhead", type: "text_short", max_len: 90, guidance: null },
+    { key: "hero_cta_label", label: "Botão", type: "text_short", max_len: 20, guidance: "" },
+    { key: "coupon_code", label: "Código", type: "text_short", max_len: 12, guidance: null },
+    { key: "zzz_desconhecido", label: "?", type: "text_short", max_len: 30, guidance: null },
+  ]
+
+  it("a orientação cadastrada vence e não é concatenada", () => {
+    const s = buildBlockCopySchema(campos, {})
+    expect(s.campos.hero_headline.orientacao).toBe("Promessa central em 2ª pessoa")
+  })
+
+  it("campo sem orientação recebe a régua do papel", () => {
+    const s = buildBlockCopySchema(campos, {})
+    expect(s.campos.hero_subhead.orientacao).toMatch(/Completa a headline/)
+    expect(s.campos.hero_cta_label.orientacao).toMatch(/2 a 4 palavras/)
+  })
+
+  it("campo que é dado, e chave que ninguém classifica, seguem sem orientação", () => {
+    const s = buildBlockCopySchema(campos, {})
+    expect(s.campos.coupon_code.orientacao).toBeNull()
+    expect(s.campos.zzz_desconhecido.orientacao).toBeNull()
+  })
+})

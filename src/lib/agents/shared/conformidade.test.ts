@@ -17,7 +17,7 @@ const CONTRATOS = new Map<string, ContratoResumo>([
 ])
 const IDS = Array.from(CONTRATOS.keys())
 
-const SEM = { existe: false, codigo: null, valor: null, origem: "sem_incentivo" as const, traducao_faltante: false }
+const SEM = { existe: false, codigo: null, valor: null, mecanica: null, origem: "sem_incentivo" as const, traducao_faltante: false }
 
 /** As seis posições como o banco as guarda para o batch: ids iguais nas quatro colunas, sem `_contrato`. */
 const posicoesDoBatch = (): PosicaoCrua[] =>

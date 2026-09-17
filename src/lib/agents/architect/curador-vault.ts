@@ -415,25 +415,31 @@ export function secoesDaDoutrina(doc: VaultDocRow): string[] {
  * `secao: "geral"` devolve só as gerais. Teto de 3 notas e 6k cada: é
  * apoio à decisão, não um segundo catálogo. Ausência declarada.
  */
-export function buildDoutrinaBlock(k: CuradorVaultKnowledge, secao: string | "geral"): string {
+export function doutrinasDaSecao(k: CuradorVaultKnowledge, secao: string | "geral"): VaultDocRow[] {
   const alvo = secao.trim().toLowerCase() || "geral"
   const escolhidas = k.doutrinas.filter((d) => {
     const s = secoesDaDoutrina(d)
     return s.includes(alvo) || (alvo !== "geral" && s.includes("geral"))
   })
-  if (escolhidas.length === 0) {
+  // Específica da seção antes da geral: a que fala desta peça pesa mais.
+  return [...escolhidas]
+    .sort((a, b) => {
+      const ea = secoesDaDoutrina(a).includes(alvo) ? 0 : 1
+      const eb = secoesDaDoutrina(b).includes(alvo) ? 0 : 1
+      return ea - eb || a.slug.localeCompare(b.slug)
+    })
+    .slice(0, DOUTRINA_MAX_NOTAS)
+}
+
+export function buildDoutrinaBlock(k: CuradorVaultKnowledge, secao: string | "geral"): string {
+  const alvo = secao.trim().toLowerCase() || "geral"
+  const ordenadas = doutrinasDaSecao(k, alvo)
+  if (ordenadas.length === 0) {
     return alvo === "geral"
       ? "(sem doutrina geral no vault)"
       : `(sem doutrina para a seção ${alvo} no vault)`
   }
-  // Específica da seção antes da geral: a que fala desta peça pesa mais.
-  const ordenadas = [...escolhidas].sort((a, b) => {
-    const ea = secoesDaDoutrina(a).includes(alvo) ? 0 : 1
-    const eb = secoesDaDoutrina(b).includes(alvo) ? 0 : 1
-    return ea - eb || a.slug.localeCompare(b.slug)
-  })
   return ordenadas
-    .slice(0, DOUTRINA_MAX_NOTAS)
     .map((d) => {
       const fonte = typeof d.frontmatter.fonte === "string" ? d.frontmatter.fonte.trim() : ""
       const titulo = fonte ? `## Doutrina · ${d.slug} (fonte: ${fonte})` : `## Doutrina · ${d.slug}`

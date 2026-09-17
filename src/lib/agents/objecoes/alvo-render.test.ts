@@ -69,6 +69,19 @@ describe("incentivo, insumos e contradições no render (09/09)", () => {
     expect(alvoParaMedicao(a)?.incentivo_existe).toBe(false)
     expect(renderAlvo({ ...alvo, incentivo: { existe: true, codigo: "HERO10", valor: "10%" } }, "x")).toContain("INCENTIVO: ativo · 10% · código HERO10")
   })
+
+  // 17/09 — o toque entregava o código e não dizia onde aplicá-lo. Sem esta
+  // linha o Estruturador não tinha como saber que o trabalho existe.
+  it("com incentivo ativo, o alvo diz COMO usar o cupom e o que não afirmar", () => {
+    const t = renderAlvo({ ...alvo, incentivo: { existe: true, codigo: "HERO10", valor: "10%" } }, "x")
+    expect(t).toContain("mecânica: diga onde aplicar (campo de cupom no checkout)")
+    expect(t).toContain("NÃO afirme prazo, valor_minimo, exclusoes, uso_unico")
+  })
+
+  it("sem incentivo não existe mecânica — nada a explicar", () => {
+    const t = renderAlvo({ ...alvo, incentivo: { existe: false, codigo: null, valor: null } }, "x")
+    expect(t).not.toContain("mecânica")
+  })
   it("alvo gravado antes de 09/09 (sem os campos) renderiza como antes", () => {
     const t = renderAlvo(alvo, "x")
     expect(t).not.toContain("INCENTIVO")

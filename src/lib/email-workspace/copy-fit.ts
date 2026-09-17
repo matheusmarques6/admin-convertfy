@@ -22,6 +22,7 @@
  */
 
 import type { BlueprintBlockField } from "@/types/email-generation"
+import { orientacaoDeRedacao } from "@/lib/agents/shared/orientacao-por-papel"
 import { deriveFieldNature } from "@/lib/agents/shared/component-dimensions"
 import { findFieldDeviations } from "./copy-spec"
 import {
@@ -354,6 +355,68 @@ export function alvosDeEncurtamento(
       })
     }
   })
+  return out
+}
+
+/**
+ * Limites do assunto e do preheader.
+ *
+ * 55 é a régua da doutrina `subject` e do prompt do agente de assunto — é
+ * onde a caixa de entrada corta na maioria dos clientes. 90 é o espaço que
+ * sobra para o preheader ao lado dele.
+ */
+export const LIMITE_ASSUNTO = 55
+export const LIMITE_PREHEADER = 90
+
+/**
+ * Assunto e preheader como alvos do encurtador (17/09).
+ *
+ * Eram um buraco completo: o callback aceitava `subject: z.string().min(1)`,
+ * gravava direto, e não havia `max_len`, nem orientação, nem encurtador, nem
+ * um único check sobre eles. Saíam com travessão, no idioma errado e do
+ * tamanho que viessem.
+ *
+ * `block_id: null` de propósito — eles não são bloco. Quem grava a reescrita
+ * é o callback, em `email_flow_emails`, e o laço que regrava blocos já
+ * ignora alvo sem `block_id`.
+ */
+export function alvosDoAssunto(
+  assunto: string | null | undefined,
+  preheader: string | null | undefined,
+  opts?: { idiomaDaLoja?: string | null },
+): AlvoDeEncurtamento[] {
+  const idiomaDaLoja = opts?.idiomaDaLoja ?? null
+  const out: AlvoDeEncurtamento[] = []
+  const partes = [
+    { key: "subject", label: "Assunto", texto: (assunto ?? "").trim(), max: LIMITE_ASSUNTO },
+    { key: "preheader", label: "Preheader", texto: (preheader ?? "").trim(), max: LIMITE_PREHEADER },
+  ]
+  for (const p of partes) {
+    if (!p.texto) continue
+    const tracos = contarTracos(p.texto)
+    const idioma = idiomaDivergente(p.texto, idiomaDaLoja)
+    const motivos: MotivoDeAlvo[] = []
+    if (p.texto.length > p.max) motivos.push("max_len")
+    if (tracos > 0) motivos.push("travessao")
+    if (idioma.divergente) motivos.push("idioma")
+    if (motivos.length === 0) continue
+    out.push({
+      id: `email.${p.key}`,
+      position: 0,
+      block_id: null,
+      type: "email",
+      key: p.key,
+      label: p.label,
+      orientacao: orientacaoDeRedacao(p.key === "subject" ? "assunto" : "preheader") ?? "",
+      texto: p.texto,
+      max: p.max,
+      min: null,
+      motivos,
+      tracos,
+      ...(idioma.divergente && idioma.detectado ? { idioma_detectado: idioma.detectado } : {}),
+      ...((idiomaDaLoja ?? "").trim() ? { idioma_esperado: (idiomaDaLoja ?? "").trim() } : {}),
+    })
+  }
   return out
 }
 

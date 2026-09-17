@@ -45,6 +45,11 @@ export const RESPONSAVEL_POR_TIPO: Readonly<Record<QaIssueType, NoResponsavelQa>
   paragrafo_repetido: "copy",
   codigo_inventado: "copy",
   label_generico: "biblioteca",
+  // Régua retórica e mecânica do cupom: quem escreve é quem conserta.
+  padrao_editorial: "copy",
+  assunto_comeca_pelo_codigo: "copy",
+  preheader_repete_o_assunto: "copy",
+  mecanica_do_incentivo_ausente: "copy",
   link_sem_endereco: "biblioteca",
   // Validador textual do contrato
   contrato_oferta_sem_incentivo: "copy",

@@ -997,12 +997,15 @@ describe("POST /api/webhooks/n8n/email-copy — idioma", () => {
         alvos: Array<{ key: string; motivos: string[]; idioma_esperado?: string }>
       }
     ).alvos
-    expect(alvos).toHaveLength(1)
-    expect(alvos[0].motivos).toEqual(["idioma"])
+    // 17/09 — o preheader do envio ("Sua jornada comeca aqui") também está
+    // em português nesta loja `en`, e passou a ser visto: antes assunto e
+    // preheader eram gravados direto, sem passar por régua nenhuma.
+    expect(alvos.map((a) => a.key)).toEqual(["offer_body", "preheader"])
+    expect(alvos.every((a) => a.motivos.includes("idioma"))).toBe(true)
     expect(alvos[0].idioma_esperado).toBe("en")
 
     // O run `copy` guarda a evidência: a ordem foi mandada e não foi usada.
-    expect(runCopy().idioma).toMatchObject({ da_loja: "en", campos_errados: 1 })
+    expect(runCopy().idioma).toMatchObject({ da_loja: "en", campos_errados: 2 })
   })
 
   it("loja pt-BR com a mesma copy: nenhum alvo, nenhum bloco de idioma", async () => {
@@ -1020,7 +1023,8 @@ describe("POST /api/webhooks/n8n/email-copy — idioma", () => {
     loadCopyFitModeMock.mockResolvedValue("off")
     await POST(envio())
     expect(runCopyFitMock).not.toHaveBeenCalled()
-    expect(runCopy().idioma).toMatchObject({ campos_errados: 1 })
+    // Dois: o corpo do bloco e o preheader (ver o teste acima).
+    expect(runCopy().idioma).toMatchObject({ campos_errados: 2 })
   })
 })
 

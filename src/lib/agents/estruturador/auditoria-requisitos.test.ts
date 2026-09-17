@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest"
+import { mecanicaDoIncentivo } from "../objecoes/incentivo"
 import { auditarRequisitos, renderAuditoria, resumoDasDuras } from "./auditoria-requisitos"
 import { normalizarOutputDetalhado } from "./estruturador-prompt"
 import type { CapacidadeDaSecao } from "../shared/field-roles"
@@ -16,10 +17,10 @@ const CAP: Record<string, CapacidadeDaSecao> = {
 const SECOES = Object.keys(CAP)
 
 const COM_CUPOM: DecisaoDeIncentivo = {
-  existe: true, codigo: "WELCOME10", valor: "10%", origem: "outline_traduzido", traducao_faltante: false,
+  existe: true, codigo: "WELCOME10", valor: "10%", mecanica: mecanicaDoIncentivo(true), origem: "outline_traduzido", traducao_faltante: false,
 }
 const SEM_CUPOM: DecisaoDeIncentivo = {
-  existe: false, codigo: null, valor: null, origem: "sem_incentivo", traducao_faltante: false,
+  existe: false, codigo: null, valor: null, mecanica: null, origem: "sem_incentivo", traducao_faltante: false,
 }
 
 const base = (over: Partial<Parameters<typeof auditarRequisitos>[0]> = {}) =>

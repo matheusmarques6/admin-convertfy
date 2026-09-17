@@ -10,6 +10,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js"
+import { orientacaoDeRedacao, orientacaoParaCampo } from "@/lib/agents/shared/orientacao-por-papel"
 
 import { createAdminClient } from "@/lib/supabase/server"
 import { loadFlowRuler, type FlowTypeKey } from "@/lib/services/flow-seed.service"
@@ -40,6 +41,8 @@ import type {
 import type { BlueprintFieldV2 } from "@/lib/agents/architect/deterministic-blueprint.builder"
 import { buildBlockCopySchema } from "@/lib/email-workspace/block-copy-schema"
 import { dedupeProibicoes } from "@/lib/agents/shared/decisao-do-email"
+import { doutrinaParaCopy } from "@/lib/agents/architect/doutrina-para-copy"
+import { loadCuradorVaultKnowledge, type CuradorVaultKnowledge } from "@/lib/agents/architect/curador-vault"
 import { SEM_INCENTIVO, incentivoDoOutline, type DecisaoDeIncentivo } from "@/lib/agents/objecoes/incentivo"
 import { condicionarOutline } from "@/lib/email-workspace/outline-condicional"
 import { logGenerationRun } from "@/lib/agents/callbacks/telemetry.callback"
@@ -903,6 +906,24 @@ export async function dispatchEmailCopyWebhook(
     log.warn("email_copy.alvo_load_failed", { storeId, error: err instanceof Error ? err.message : String(err) })
   }
 
+  // Vault de doutrina (17/09), carregado UMA vez para todos os emails: é o
+  // mesmo corpus da casa, e reler por email seria a mesma consulta N vezes.
+  // Fail-open — a doutrina é método, não dado: sem ela o redator escreve como
+  // escrevia ontem, e derrubar o dispatch por causa dela seria pior.
+  let vaultParaDoutrina: CuradorVaultKnowledge | null = null
+  const doutrinaMedida: Array<{
+    flow_type: string
+    email_number: number
+    notas: number
+    chars: number
+    secoes_sem_doutrina: string[]
+  }> = []
+  try {
+    vaultParaDoutrina = await loadCuradorVaultKnowledge()
+  } catch (err) {
+    log.warn("email_copy.doutrina_load_failed", { storeId, error: err instanceof Error ? err.message : String(err) })
+  }
+
   const outlineByKey = new Map<string, OutlineRow>()
   for (const o of (outlinesRes.data ?? []) as OutlineRow[]) {
     outlineByKey.set(`${o.flow_type}:${o.email_number}`, o)
@@ -1082,6 +1103,18 @@ export async function dispatchEmailCopyWebhook(
     variant_name: string | null
     sem_example: number
     total: number
+  }> = []
+
+  // Campos sem orientação de redação nenhuma (17/09). Não é erro: é a lista
+  // das chaves que a régua por papel ainda não cobre — o número que diz onde
+  // `orientacao-por-papel` precisa crescer, e quanto da biblioteca segue sem
+  // orientação humana no `output_schema`.
+  const camposSemOrientacao: Array<{
+    flow_type: string
+    email_number: number
+    position: number
+    variant_name: string | null
+    keys: string[]
   }> = []
 
   // Blocos que chegaram na hora do envio SEM contrato de copy. Erro de
@@ -1356,6 +1389,36 @@ export async function dispatchEmailCopyWebhook(
           // proibições. null com o Seletor desligado/shadow. O n8n ignora
           // até consumir (docs/email-copy-payload-v2.md, seção "alvo").
           alvo: alvoByKey.get(key) ?? null,
+          // Régua de redação do ASSUNTO e do PREHEADER (17/09). As duas
+          // partes que nenhum contrato cobria: o callback aceitava qualquer
+          // string e gravava direto. Os blocos recebem a régua por campo
+          // dentro de `schema.campos[*].orientacao`; estas duas não têm
+          // schema, então viajam aqui.
+          orientacao: {
+            assunto: orientacaoDeRedacao("assunto"),
+            preheader: orientacaoDeRedacao("preheader"),
+          },
+          // A doutrina de copy do vault, roteada pelas seções que ESTE email
+          // tem (17/09). O contrato estava publicado dos dois lados e o
+          // dispatch nunca montava a chave: chegava `null` em toda geração,
+          // e o redator escrevia sem nunca ter visto a régua da casa.
+          doutrina: (() => {
+            if (!vaultParaDoutrina) return null
+            const secoes = (blocksByEmail.get(e.id) ?? []).map((b) => b.block_type)
+            // `assunto` não é um bloco — é a parte do email que ninguém
+            // tinha como cobrir, e é onde a doutrina do Max mais tem a dizer.
+            const notas = doutrinaParaCopy(vaultParaDoutrina, [...secoes, "assunto"])
+            doutrinaMedida.push({
+              flow_type: f.flow_type,
+              email_number: e.number,
+              notas: notas.length,
+              chars: notas.reduce((n2, d) => n2 + d.corpo.length, 0),
+              secoes_sem_doutrina: [...new Set(secoes)].filter(
+                (sec) => !notas.some((d) => d.secao === sec),
+              ),
+            })
+            return notas
+          })(),
           blocks: (options.regenerateAll
             ? (blocksByEmail.get(e.id) ?? [])
             : selectBlocksForCopy(blocksByEmail.get(e.id) ?? [])
@@ -1403,6 +1466,14 @@ export async function dispatchEmailCopyWebhook(
               const semExample = fields.filter(
                 (fld) => !(fld.example ?? "").trim(),
               ).length
+              // 17/09 — campo que chega SEM orientação nenhuma: nem a
+              // cadastrada na variante, nem a régua do papel. Não é um erro
+              // (preço e código são dado, não redação); é a lista das chaves
+              // que `orientacao-por-papel` ainda não conhece, e é por ela que
+              // se sabe onde a régua precisa crescer.
+              const semOrientacao = fields
+                .filter((fld) => !(fld.guidance ?? "").trim() && !orientacaoParaCampo(fld.key, fld.type))
+                .map((fld) => fld.key)
               // Bloco SEM schema é erro de curadoria, não modo de operação:
               // sem variante casada não há contrato, e o n8n volta a
               // inventar o vocabulário. Vai inteiro para a telemetria.
@@ -1413,6 +1484,15 @@ export async function dispatchEmailCopyWebhook(
                   position: b.position,
                   type: b.block_type,
                   variant_id: resolved?.variantId ?? null,
+                })
+              }
+              if (semOrientacao.length > 0) {
+                camposSemOrientacao.push({
+                  flow_type: f.flow_type,
+                  email_number: e.number,
+                  position: b.position,
+                  variant_name: resolved?.variantName ?? null,
+                  keys: semOrientacao,
                 })
               }
               if (fields.length > 0 && semExample / fields.length > 0.5) {
@@ -1825,6 +1905,21 @@ export async function dispatchEmailCopyWebhook(
       only_drafts: options.onlyDrafts ?? false,
       // Blocos com spec desancorado (fields de copy sem example) —
       // incoerência schema↔HTML na variante, visível no drawer de logs.
+      ...(doutrinaMedida.length > 0
+        ? {
+            doutrina_notas: doutrinaMedida.reduce((n2, d) => n2 + d.notas, 0),
+            doutrina_chars: doutrinaMedida.reduce((n2, d) => n2 + d.chars, 0),
+            // A lista das seções que o vault ainda não cobre — é por ela que
+            // se sabe qual nota de doutrina falta escrever.
+            secoes_sem_doutrina: [...new Set(doutrinaMedida.flatMap((d) => d.secoes_sem_doutrina))],
+          }
+        : {}),
+      ...(camposSemOrientacao.length > 0
+        ? {
+            campos_sem_orientacao: camposSemOrientacao.slice(0, 30),
+            campos_sem_orientacao_total: camposSemOrientacao.reduce((n2, c) => n2 + c.keys.length, 0),
+          }
+        : {}),
       ...(fieldsSemExample.length > 0
         ? { fields_sem_example: fieldsSemExample.slice(0, 30) }
         : {}),

@@ -12,6 +12,9 @@ import {
   ehColunaComparativa,
   removerTravessao,
   temParComparativo,
+  alvosDoAssunto,
+  LIMITE_ASSUNTO,
+  LIMITE_PREHEADER,
 } from "./copy-fit"
 import type { BlueprintBlockField } from "@/types/email-generation"
 import { socorroPorCodigo } from "./copy-fit"
@@ -674,5 +677,37 @@ describe("socorroPorCodigo", () => {
 
   it("campo vazio nunca é inventado", () => {
     expect(socorroPorCodigo(alvo({ texto: "", motivos: ["max_len"], max: 40 }))).toBeNull()
+  })
+})
+
+// 17/09 — assunto e preheader eram gravados direto pelo callback, sem
+// limite, sem orientação, sem encurtador e sem um único check.
+describe("alvosDoAssunto", () => {
+  it("assunto dentro do limite e sem traço não vira alvo", () => {
+    expect(alvosDoAssunto("Bem-vindo à Hero Boxers", "Bambu que não crava")).toEqual([])
+  })
+
+  it("assunto acima de 55 vira alvo com a régua do papel", () => {
+    const longo = "Bem-vindo à Hero Boxers, a cueca cortada para o corpo que você tem hoje"
+    const [a] = alvosDoAssunto(longo, null)
+    expect(a.key).toBe("subject")
+    expect(a.max).toBe(LIMITE_ASSUNTO)
+    expect(a.motivos).toContain("max_len")
+    expect(a.orientacao).toMatch(/55 caracteres/)
+    // Não é bloco: quem grava é o callback, em email_flow_emails.
+    expect(a.block_id).toBeNull()
+  })
+
+  it("travessão no preheader vira alvo, com a régua do preheader", () => {
+    const [a] = alvosDoAssunto(null, "Bambu macio — e um cós que não crava")
+    expect(a.key).toBe("preheader")
+    expect(a.motivos).toContain("travessao")
+    expect(a.max).toBe(LIMITE_PREHEADER)
+    expect(a.orientacao).toMatch(/nunca o repete/)
+  })
+
+  it("vazio não vira alvo", () => {
+    expect(alvosDoAssunto(null, null)).toEqual([])
+    expect(alvosDoAssunto("", "   ")).toEqual([])
   })
 })

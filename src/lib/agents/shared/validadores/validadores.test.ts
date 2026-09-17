@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest"
+import { mecanicaDoIncentivo } from "../../objecoes/incentivo"
 import { resumirContrato, type ContratoResumo } from "../field-roles"
 import { montarDecisao, type DecisaoDoEmail } from "../decisao-do-email"
 import { ALVO_HERO_BOXERS_W1, ESTRUTURADOR_HERO_BOXERS_W1 } from "../fixtures/hero-boxers-welcome-1"
@@ -22,8 +23,8 @@ const CONTRATOS: Record<string, ContratoResumo> = {
 }
 const POR_ID = new Map(Object.entries(CONTRATOS))
 
-const SEM: DecisaoDeIncentivo = { existe: false, codigo: null, valor: null, origem: "sem_incentivo", traducao_faltante: false }
-const COM: DecisaoDeIncentivo = { existe: true, codigo: "WELCOME10", valor: "10%", origem: "outline_traduzido", traducao_faltante: false }
+const SEM: DecisaoDeIncentivo = { existe: false, codigo: null, valor: null, mecanica: null, origem: "sem_incentivo", traducao_faltante: false }
+const COM: DecisaoDeIncentivo = { existe: true, codigo: "WELCOME10", valor: "10%", mecanica: mecanicaDoIncentivo(true), origem: "outline_traduzido", traducao_faltante: false }
 
 const decisao = (incentivo: DecisaoDeIncentivo, patch?: (d: DecisaoDoEmail) => void): DecisaoDoEmail => {
   const d = montarDecisao({ alvo: ALVO_HERO_BOXERS_W1, estruturador: ESTRUTURADOR_HERO_BOXERS_W1, incentivo })

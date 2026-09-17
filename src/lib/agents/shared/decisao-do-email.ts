@@ -14,7 +14,7 @@
  */
 
 import type { AlvoDoEmail } from "../objecoes/vocabulario"
-import type { DecisaoDeIncentivo } from "../objecoes/incentivo"
+import type { DecisaoDeIncentivo, MecanicaDoIncentivo } from "../objecoes/incentivo"
 import type { EstruturadorOutput, RequisitosDaPosicao } from "../estruturador/estruturador-prompt"
 
 export const DECISAO_VERSAO = 1 as const
@@ -33,6 +33,13 @@ export interface DecisaoIncentivo {
   existe: boolean
   codigo: string | null
   valor: string | null
+  /**
+   * Como usar o código (17/09). OPCIONAL de propósito: este tipo descreve o
+   * JSONB gravado, e a decisão escrita antes desta data não tem a chave.
+   * `lerDecisao` não muda de versão por causa dela — quem consome trata a
+   * ausência como "não sei", que é a verdade.
+   */
+  mecanica?: MecanicaDoIncentivo | null
   origem: string
   traducao_faltante: boolean
 }
@@ -169,6 +176,7 @@ export function montarDecisao(p: {
       existe: p.incentivo.existe,
       codigo: p.incentivo.codigo,
       valor: p.incentivo.valor,
+      mecanica: p.incentivo.mecanica ?? null,
       origem: p.incentivo.origem,
       traducao_faltante: p.incentivo.traducao_faltante,
     },

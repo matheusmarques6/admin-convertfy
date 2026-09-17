@@ -42,6 +42,10 @@ describe("posProcessar — batch 6249aef2", () => {
     const r = lintEnvio(p.html, { ano: 2026, fontesDaLoja: ["Poppins"] })
     expect(r.itens.map((i) => [i.id, i.n])).toEqual([
       ["texto_de_example", 10],
+      // 17/09: o jargão de plataforma é AVISO e não tem auto-fix — traduzir
+      // o texto do cliente não é trabalho do pós-processador. A correção de
+      // verdade acontece na fonte, sobre os insumos do Seletor.
+      ["jargao_de_plataforma", 4],
       ["largura_container", 1],
     ])
     expect(r.itens.every((i) => !i.auto_fix)).toBe(true)

@@ -68,7 +68,9 @@ Modos: ${MODOS.join(" | ")}. Além do modo, a intenção pode declarar \`trabalh
 
 12. PROIBIÇÕES. \`proibido_neste_toque\` reúne as proibições do contrato (repita-as) mais as que a sua escolha cria (ex.: escolheu garantia → "não prometer prazo de devolução que a política não cita"). UMA proibição por regra, no idioma da loja — não repita a mesma regra em dois idiomas nem em duas redações.
 
-13. INSUMOS PERMITIDOS. \`insumos_permitidos\` lista os FATOS que a copy PODE usar neste toque, cada um com a origem entre parênteses: "checkout Shopify (pesquisa: plataforma)", "fibra de bambu (produto: descrição)", "corte acima do abdômen (pesquisa: diferencial)". Só fato que está no contexto — sem origem, não entra. É o "sim" que acompanha o "não": quem escreve precisa saber o que PODE dizer, não só o que não pode. O incentivo NÃO é decidido por você — o sistema copia do catálogo.
+13. INSUMOS PERMITIDOS. \`insumos_permitidos\` lista os FATOS que a copy PODE usar neste toque, cada um com a origem entre parênteses: "pagamento protegido no checkout (pesquisa: plataforma)", "fibra de bambu (produto: descrição)", "corte acima do abdômen (pesquisa: diferencial)". Só fato que está no contexto — sem origem, não entra. É o "sim" que acompanha o "não": quem escreve precisa saber o que PODE dizer, não só o que não pode. O incentivo NÃO é decidido por você — o sistema copia do catálogo.
+
+Escreva cada insumo na LÍNGUA DE QUEM COMPRA. Nome de plataforma (Shopify, VTEX, WooCommerce), gateway, PCI, SSL, TLS, API, CDN e qualquer sigla de infraestrutura NÃO entram: quem vai ler não sabe o que são e não foi isso que ele perguntou. O FATO entra, o FORNECEDOR não — "pagamento protegido no checkout", nunca "o checkout roda no Shopify".
 
 Responda APENAS o JSON, sem markdown e sem texto ao redor, no formato:
 

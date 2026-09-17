@@ -361,7 +361,9 @@ async function resolveTextOnlyForEmail(
 ): Promise<boolean> {
   const { data: email } = await admin
     .from("email_flow_emails")
-    .select("number, flow_id")
+    // `subject`/`preheader` entram aqui (17/09) para a régua retórica poder
+    // olhar as duas partes que nenhum check cobria — sem uma query a mais.
+    .select("number, flow_id, subject, preheader")
     .eq("id", emailId)
     .maybeSingle()
   if (!email) return false
@@ -536,7 +538,9 @@ async function loadMinimalContext(storeId: string, emailId: string) {
   // (store_email_references, email_blueprints, etc) usam `email_number` mesmo.
   const { data: emailRow } = await admin
     .from("email_flow_emails")
-    .select("number, flow_id")
+    // `subject`/`preheader` entram aqui (17/09) para a régua retórica poder
+    // olhar as duas partes que nenhum check cobria — sem uma query a mais.
+    .select("number, flow_id, subject, preheader")
     .eq("id", emailId)
     .maybeSingle()
   const flowIdForBlueprint = (emailRow?.flow_id as string | undefined) ?? null
@@ -758,6 +762,8 @@ async function loadMinimalContext(storeId: string, emailId: string) {
     heroVisionModel,
     flowType: flowTypeForBlueprint,
     emailNumber: emailNumberForBlueprint,
+    assunto: (emailRow?.subject as string | null | undefined) ?? null,
+    preheader: (emailRow?.preheader as string | null | undefined) ?? null,
     // Decisão de incentivo do TOQUE (14/09): vem do catálogo de outlines
     // (`coupon_code` + tradução por idioma + override do bloco `coupon`),
     // nunca do Catalogador. `existe` é booleano; `false` liga o check
@@ -4647,6 +4653,11 @@ export async function runPhase2HtmlQa(
     incentivoCodigo: ctx.incentivoCodigo ?? null,
     posicoesSemVariante,
     traducaoFaltante: decisaoDoEmail?.incentivo.traducao_faltante ?? null,
+    // O trabalho fixo é que liga o check: cobrar a mecânica num toque que
+    // não foi encarregado de explicá-la seria alarme falso.
+    mecanicaPedida: decisaoDoEmail?.alvo?.trabalhos_fixos?.includes("mecanica_do_incentivo") ?? false,
+    assunto: ctx.assunto,
+    preheader: ctx.preheader,
   })
   // Passo 16: o cupom da peça existe na PLATAFORMA da loja? Com token
   // Shopify, `discountNodes` responde; sem token, vira NOTA da run `qa`

@@ -17,7 +17,7 @@ describe("lintEnvio — batch 6249aef2", () => {
   const r = lintEnvio(FIXTURE, CTX)
   const porId = Object.fromEntries(r.itens.map((i) => [i.id, i]))
 
-  it("encontra os 11 defeitos da peça entregue, com as contagens medidas", () => {
+  it("encontra os 12 defeitos da peça entregue, com as contagens medidas", () => {
     expect(r.itens.map((i) => [i.id, i.n])).toEqual([
       ["css_var_em_uso", 3],
       ["style_blocks_multiplos", 6],
@@ -28,6 +28,10 @@ describe("lintEnvio — batch 6249aef2", () => {
       // 12 até 14/09: "Verified Buyer" ×2 era copy do n8n no campo
       // `review_N_credential`, não o example "Verified Buyer 1".
       ["texto_de_example", 10],
+      // 17/09: a mesma peça carrega QUATRO menções a plataforma/infra no
+      // texto que o cliente lê. É o defeito que o usuário reclamou depois —
+      // e que passou por todo o pipeline sem nada acender.
+      ["jargao_de_plataforma", 4],
       ["line_height_menor_que_fonte", 3],
       ["alt_ausente_ou_generico", 9],
       ["ano_copyright_desatualizado", 1],

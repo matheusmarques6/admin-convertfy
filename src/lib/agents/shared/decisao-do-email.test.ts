@@ -1,9 +1,16 @@
 import { describe, expect, it } from "vitest"
+import { mecanicaDoIncentivo } from "../objecoes/incentivo"
 
 import { dedupeProibicoes, lerDecisao, montarDecisao } from "./decisao-do-email"
 import { ALVO_HERO_BOXERS_W1, ESTRUTURADOR_HERO_BOXERS_W1 } from "./fixtures/hero-boxers-welcome-1"
 
-const INCENTIVO = { existe: true, codigo: "WELCOME10", valor: "10%", origem: "outline_traduzido" as const, traducao_faltante: false }
+const INCENTIVO = {
+  existe: true, codigo: "WELCOME10", valor: "10%",
+  // A mecânica atravessa a fronteira junto com o código: é ela que diz ao
+  // redator que este toque precisa explicar ONDE o cupom se aplica.
+  mecanica: mecanicaDoIncentivo(true),
+  origem: "outline_traduzido" as const, traducao_faltante: false,
+}
 
 describe("montarDecisao — batch 6249aef2 (14/09)", () => {
   it("uma decisão, seis posições, requisitos e descartes preservados", () => {

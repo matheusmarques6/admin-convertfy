@@ -28,6 +28,7 @@
  */
 
 import { createAdminClient } from "@/lib/supabase/server"
+import { orientacaoParaCampo } from "../shared/orientacao-por-papel"
 import { logger } from "@/lib/logger"
 import { classificarFalha, planejarRetentativa } from "../retry-teto"
 import {
@@ -258,7 +259,13 @@ function contratoDe(alvos: ReadonlyArray<AlvoDeEncurtamento>): string {
       // lado — a instrução é manter o lado, e o guard cobra o tamanho.
       coluna_comparativa: a.so_codigo || undefined,
       par: a.so_codigo ? a.par || undefined : undefined,
-      orientacao: a.orientacao || undefined,
+      // A régua do PAPEL entra quando a variante não cadastrou orientação
+      // (17/09). Sem ela o encurtador tratava um rótulo de botão com a mesma
+      // medida de um parágrafo de corpo: cortava pelo tamanho e devolvia
+      // "Saiba mais sobre" — curto, e sem dizer o que acontece ao clicar.
+      // O `copy_fit` lê os blocos GRAVADOS, não o payload, então herdar a
+      // orientação do dispatch não bastaria.
+      orientacao: a.orientacao || orientacaoParaCampo(a.key) || undefined,
     })),
     null,
     2,

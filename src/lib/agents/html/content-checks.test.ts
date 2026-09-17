@@ -125,3 +125,40 @@ describe("computeContentChecks — a decisão entra no QA (Passo 15)", () => {
     expect(computeContentChecks(LIMPO, { incentivoExiste: true, posicoesSemVariante: [], traducaoFaltante: false })).toEqual([])
   })
 })
+
+// 17/09 — a peça entregava o código e não dizia o que fazer com ele. Era a
+// dúvida do leitor naquele segundo, e ela saía sem resposta.
+describe("mecanica_do_incentivo_ausente", () => {
+  const comCodigo = "<td>Your code: WELCOME10 — 10% off your first order</td>"
+  const comOnde = "<td>Your code: WELCOME10 — apply it at checkout for 10% off</td>"
+
+  it("cobra quando o trabalho foi pedido e o texto não diz onde aplicar", () => {
+    const issues = computeContentChecks(comCodigo, {
+      incentivoExiste: true, incentivoCodigo: "WELCOME10", mecanicaPedida: true,
+    })
+    expect(issues.map((i) => i.type)).toContain("mecanica_do_incentivo_ausente")
+  })
+
+  it("não cobra quando o texto diz onde aplicar", () => {
+    const issues = computeContentChecks(comOnde, {
+      incentivoExiste: true, incentivoCodigo: "WELCOME10", mecanicaPedida: true,
+    })
+    expect(issues.map((i) => i.type)).not.toContain("mecanica_do_incentivo_ausente")
+  })
+
+  // Check que dispara sem a regra pedida é alarme falso, e alarme falso é
+  // como se aprende a ignorar o verdadeiro.
+  it("sem o trabalho fixo pedido, não cobra nada", () => {
+    const issues = computeContentChecks(comCodigo, {
+      incentivoExiste: true, incentivoCodigo: "WELCOME10", mecanicaPedida: false,
+    })
+    expect(issues.map((i) => i.type)).not.toContain("mecanica_do_incentivo_ausente")
+  })
+
+  it("a régua retórica também roda aqui, sobre o texto visível", () => {
+    const issues = computeContentChecks("<td>Não é uma cueca, é conforto o dia todo.</td>", {
+      incentivoExiste: true,
+    })
+    expect(issues.map((i) => i.type)).toContain("padrao_editorial")
+  })
+})

@@ -398,11 +398,31 @@ que as honra deixa de escrever oferta que a loja não tem.
   força `""` e o merge remove a linha (`omitidos` no run `copy_merge`;
   `omitidos_forcados`/`omitidos_preenchidos` no run `copy`).
 
+## `emails[].orientacao` — régua de redação do assunto e do preheader (17/09)
+
+Chave **aditiva**, sempre presente:
+
+```jsonc
+"orientacao": {
+  "assunto": "Abre uma tensão ou entrega um benefício, em até 55 caracteres. Não começa pelo código do cupom…",
+  "preheader": "Completa o assunto: nunca o repete nem o resume…"
+}
+```
+
+Os BLOCOS recebem a régua por campo em `schema.campos[*].orientacao`, derivada
+do papel da chave (`agents/shared/orientacao-por-papel.ts`) quando a variante
+não cadastrou `guidance` — a cadastrada sempre vence. Assunto e preheader não
+têm schema, então a régua deles viaja aqui. Um flow que ignora a chave continua
+funcionando.
+
 ## `emails[].doutrina` — doutrina de e-mail por seção (contrato, set/2026)
 
-Chave **aditiva** por email, `null` enquanto o item 2.5 do plano do vault
-(`docs/email-generation/diagnostico-vault-vs-advisor-max.md`) não estiver
-no dispatch. Vem de `buildDoutrinaBlock(k, secao)` (`curador-vault.ts`),
+Chave **aditiva** por email, **ligada em 17/09**. Até então ela chegava
+`null` em toda geração: o contrato estava escrito aqui, o prompt do redator
+já lia `{{ $json.doutrina_txt }}`, e o dispatch simplesmente não montava a
+chave — o único chamador de `buildDoutrinaBlock` era um arquivo de teste.
+Quem monta é `doutrinaParaCopy` (`agents/architect/doutrina-para-copy.ts`),
+que reusa a seleção de `doutrinasDaSecao` (`curador-vault.ts`),
 que lê as notas `componentes/doutrina/<slug>.md` do vault (kind
 `doutrina`, `fonte:` obrigatória, `secao:` no frontmatter) — a doutrina
 de CURSO da casa, roteada pelas seções que compõem o email:
@@ -430,6 +450,14 @@ Regras que o n8n deve honrar:
   ausência declarada, e o flow escreve como hoje.
 - A chave não muda o shape de `blocks[]` nem de `fields[]`; um flow que a
   ignora continua funcionando.
+- As seções pedidas são os `block_type` dos blocos DESTE email mais
+  `assunto`, que não é bloco e é onde a doutrina mais tem a dizer. Teto de 8
+  notas por email; quando ele aperta, quem sai é a doutrina `geral` — o que
+  se perde é o conselho que vale para toda peça, não o que fala desta seção.
+- Fail-open: vault fora do ar devolve `null` e o dispatch segue. A run
+  `copy_dispatch` grava `doutrina_notas`, `doutrina_chars` e
+  `secoes_sem_doutrina` — esta última é a lista das notas que ainda faltam
+  escrever no vault.
 
 ## v3.2 (14/09) — `payload_version`, `directive`, `campos_omitidos`, `decisao.proibido`, `copy_prompt_version`
 

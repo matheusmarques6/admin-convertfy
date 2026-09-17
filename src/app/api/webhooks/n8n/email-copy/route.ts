@@ -33,6 +33,7 @@ import { logger } from "@/lib/logger"
 import { findFieldDeviations } from "@/lib/email-workspace/copy-spec"
 import {
   alvosDeEncurtamento,
+  alvosDoAssunto,
   aplicarReescritas,
   type BlocoComContrato,
 } from "@/lib/email-workspace/copy-fit"
@@ -757,10 +758,12 @@ export async function POST(request: NextRequest) {
     // encurtador se comporta exatamente como antes.
     const idiomaDaLoja =
       resolveStoreLanguage(null, (store?.language as string | null) ?? null).code
-    const alvos = alvosDeEncurtamento(
-      (blocosAposCopy ?? []) as BlocoComContrato[],
-      { idiomaDaLoja },
-    )
+    const alvos = [
+      ...alvosDeEncurtamento((blocosAposCopy ?? []) as BlocoComContrato[], { idiomaDaLoja }),
+      // 17/09 — assunto e preheader eram um buraco completo: gravados
+      // direto, sem limite, sem orientação, sem encurtador e sem check.
+      ...alvosDoAssunto(body.subject, body.preheader, { idiomaDaLoja }),
+    ]
     // O "antes" do travessão, medido aqui e não no chain: quando o
     // encurtador está desligado pelo kill-switch o run `copy_fit` não
     // existe, e sem isto o número sumiria justamente no cenário em que se
@@ -828,6 +831,29 @@ export async function POST(request: NextRequest) {
           const lista = porBloco.get(a.block_id) ?? []
           lista.push({ key: a.key, texto: a.texto })
           porBloco.set(a.block_id, lista)
+        }
+        // Assunto e preheader não são bloco: o laço abaixo ignora alvo sem
+        // `block_id`, e quem os grava é este trecho, em `email_flow_emails`.
+        const doEmail = fit.aceitas.filter((a) => !a.block_id && (a.key === "subject" || a.key === "preheader"))
+        if (doEmail.length > 0) {
+          const patch: Record<string, string> = {}
+          for (const a of doEmail) patch[a.key] = a.texto
+          const { error: emailErr } = await admin
+            .from("email_flow_emails")
+            .update(patch)
+            .eq("id", body.email_id)
+          if (emailErr) {
+            log.warn("email_copy.copy_fit.email_update_failed", {
+              email_id: body.email_id,
+              campos: Object.keys(patch),
+              error: emailErr.message,
+            })
+          } else {
+            log.info("email_copy.copy_fit.email_reescrito", {
+              email_id: body.email_id,
+              campos: Object.keys(patch),
+            })
+          }
         }
         let blocosRegravados = 0
         for (const [blockId, reescritas] of porBloco) {

@@ -70,7 +70,7 @@ describe("validarCopy / validarHtmlFinal com a decisão real", () => {
   const decisao = montarDecisao({
     alvo: ALVO_HERO_BOXERS_W1,
     estruturador: ESTRUTURADOR_HERO_BOXERS_W1,
-    incentivo: { ...SEM, origem: "sem_incentivo", traducao_faltante: false },
+    incentivo: { ...SEM, mecanica: null, origem: "sem_incentivo", traducao_faltante: false },
   })
 
   it("campo omitido preenchido, oferta em campo de copy e max_len viram violações com o campo", () => {

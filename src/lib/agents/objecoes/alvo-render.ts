@@ -7,6 +7,7 @@
  * alvo declarado explicitamente, desligar o Seletor regrediria os dois.
  */
 
+import { mecanicaDoIncentivo } from "./incentivo"
 import { eixoObjecaoEquivalente } from "./aliviador-bridge"
 import type { AlvoParaMedicao } from "../architect/curador-shadow"
 import type { AlvoDoEmail } from "./vocabulario"
@@ -37,6 +38,18 @@ export function renderAlvo(alvo: AlvoDoEmail | null | undefined, ausente: string
           ? `INCENTIVO: ativo${inc.valor ? ` · ${inc.valor}` : ""}${inc.codigo ? ` · código ${inc.codigo}` : ""}`
           : "INCENTIVO: desconhecido — não afirme oferta nem código",
     )
+    // MECÂNICA (17/09): entregar o código não é explicar o código. Sem esta
+    // linha o Estruturador e os Curadores não tinham como saber que falta
+    // uma frase dizendo onde o cupom se aplica — e o trabalho sumia da peça.
+    const mec = mecanicaDoIncentivo(inc.existe === true)
+    if (mec) {
+      linhas.push(
+        `  mecânica: diga onde aplicar (campo de cupom no ${mec.onde_aplicar}) — o leitor está com o código na mão e não sabe o que fazer com ele`,
+        mec.condicoes_confirmadas.length
+          ? `  condições confirmadas pela loja: ${mec.condicoes_confirmadas.join(" · ")}`
+          : `  NÃO afirme ${mec.nao_afirmar.join(", ")} — a loja não confirmou nenhuma condição`,
+      )
+    }
   }
   for (const a of alvo.alvos) {
     const eixos = eixoObjecaoEquivalente(a.tipo_de_risco, a.aliviador_pedido)

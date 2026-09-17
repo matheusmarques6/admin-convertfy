@@ -30,6 +30,7 @@
  */
 
 import { avaliarClaims, type IncentivoParaClaims } from "@/lib/agents/shared/validadores/claims"
+import { orientacaoParaCampo } from "@/lib/agents/shared/orientacao-por-papel"
 
 export interface BlockCopySchemaField {
   label: string
@@ -149,7 +150,12 @@ export function buildBlockCopySchema(
       max_caracteres: numeroPositivo(f?.max_len),
       min_caracteres: numeroPositivo(f?.min_len),
       exemplo,
-      orientacao: texto(f?.guidance),
+      // A orientação cadastrada à mão na variante SEMPRE vence: esta camada é
+      // o piso da biblioteca, não o teto. Quem escreveu `guidance` no
+      // `output_schema` sabia de algo que a chave não conta. Sem ela, a régua
+      // do PAPEL entra — e papel que ninguém classifica não recebe nada, em
+      // vez de receber conselho genérico (que o modelo obedeceria igual).
+      orientacao: texto(f?.guidance) ?? orientacaoParaCampo(key, texto(f?.type)),
       ...(directive ? { directive } : {}),
     }
     if (obrigatorio) obrigatorios.push(key)

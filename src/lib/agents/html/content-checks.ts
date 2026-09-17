@@ -29,6 +29,7 @@
 
 import type { QaIssue } from "@/types/email-generation"
 import { normalizeForMatch, orphanTextFragments } from "./anchor-match"
+import { computeEditorialChecks } from "./editorial-checks"
 
 export interface ContentCheckOptions {
   /**
@@ -51,6 +52,16 @@ export interface ContentCheckOptions {
   }> | null
   /** `decisao.incentivo.traducao_faltante` — cupom sem tradução no idioma da loja. */
   traducaoFaltante?: boolean | null
+  /**
+   * `mecanica_do_incentivo` está entre os trabalhos fixos deste toque. Só
+   * então se cobra que o texto diga ONDE o cupom se aplica — check que
+   * dispara sem a regra pedida é alarme falso, e alarme falso é como se
+   * aprende a ignorar o verdadeiro.
+   */
+  mecanicaPedida?: boolean | null
+  /** Assunto e preheader entregues — a régua retórica também olha para eles. */
+  assunto?: string | null
+  preheader?: string | null
 }
 
 const OFERTA_RE =
@@ -61,6 +72,13 @@ export const TOKEN_OK_RE = /^\[(?:unsubscribe(?:_link)?|preferences|view_in_brow
 const REPETICAO_MIN_CHARS = 60
 const CODIGO_RE = /\b(?:use (?:the )?code|c[oó]digo|cupom|coupon(?: code)?)\s*[:\-]?\s*([A-Z0-9][A-Z0-9_-]{2,})\b/gi
 const LABEL_GENERICO_RE = /^(?:link here|click here|button|cta|learn more|saiba mais)$/i
+/**
+ * O texto diz ONDE o cupom se aplica. PT e EN na mesma regex, como a régua
+ * de claims: idioma que não está aqui não produz achado, em vez de acusar
+ * falta de uma frase que pode estar lá em polonês.
+ */
+const ONDE_APLICAR_RE =
+  /\b(?:no\s+checkout|at\s+checkout|na\s+finaliza[cç][aã]o|no\s+carrinho|in\s+(?:your|the)\s+cart|campo\s+de\s+(?:cupom|desconto)|(?:coupon|discount|promo)\s+(?:code\s+)?(?:field|box)|apply\s+(?:it|the\s+code)|aplique\s+o\s+c[oó]digo|use\s+(?:it|o\s+c[oó]digo)\s+(?:no|at|na))\b/i
 
 /** Todo `href` do documento, com aspas simples ou duplas. */
 const HREF_RE = /href\s*=\s*["']([^"']*)["']/gi
@@ -255,6 +273,30 @@ export function computeContentChecks(html: string, opts: ContentCheckOptions = {
       no_responsavel: "loja",
     })
   }
+
+  // 7. O toque entrega cupom e não diz o que fazer com ele (17/09).
+  if (opts.mecanicaPedida === true && opts.incentivoCodigo) {
+    const visivel = textoVisivel(html).join(" ")
+    if (visivel.includes(opts.incentivoCodigo) && !ONDE_APLICAR_RE.test(visivel)) {
+      issues.push({
+        type: "mecanica_do_incentivo_ausente",
+        severity: "medium",
+        disposition: "warning",
+        message: `O e-mail entrega o código ${opts.incentivoCodigo} e não diz onde aplicá-lo. Quem está com o código na mão precisa saber o que fazer com ele — é a dúvida daquele segundo, e ela fica sem resposta.`,
+        location: "html",
+        no_responsavel: "copy",
+      })
+    }
+  }
+
+  // 8. Régua retórica: como a frase está escrita, não o que ela afirma.
+  issues.push(
+    ...computeEditorialChecks(textoVisivel(html), {
+      assunto: opts.assunto,
+      preheader: opts.preheader,
+      incentivoCodigo: opts.incentivoCodigo,
+    }),
+  )
 
   return issues
 }

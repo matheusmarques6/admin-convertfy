@@ -210,7 +210,7 @@ describe("incentivo, insumos permitidos, dedupe e contradições (09/09)", () =>
       {
         alvos: [{ id: "obj_1", profundidade_de_prova: "afirmacao" }],
         proibido_neste_toque: ["Urgência artificial!", "não prometer prazo", "Não prometer prazo."],
-        insumos_permitidos: ["checkout Shopify (pesquisa: plataforma)", "fato sem origem", "fibra de bambu (produto)", "Checkout Shopify (pesquisa: plataforma)"],
+        insumos_permitidos: ["checkout Shopify com SSL (pesquisa: plataforma)", "fato sem origem", "fibra de bambu (produto)", "Checkout Shopify com SSL (pesquisa: plataforma)"],
         incentivo: { existe: true, codigo: "INVENTADO" },
       },
       w1, cat, [], { existe: false, codigo: null, valor: null },
@@ -222,7 +222,44 @@ describe("incentivo, insumos permitidos, dedupe e contradições (09/09)", () =>
     expect(normalizarAlvo({ alvos: [{ id: "obj_1" }] }, w1, cat, [], { existe: true, codigo: "WELCOME10", valor: "10%" }).alvo.incentivo)
       .toEqual({ existe: true, codigo: "WELCOME10", valor: "10%" })
     expect(alvo.proibido_neste_toque).toEqual(["urgência artificial", "não prometer prazo"])
-    expect(alvo.insumos_permitidos).toEqual(["checkout Shopify (pesquisa: plataforma)", "fibra de bambu (produto)"])
+    // O jargão de plataforma é traduzido na FONTE (17/09): a lista que segue
+    // para o Curador, o Blueprint e o redator já sai na língua de quem compra.
+    expect(alvo.insumos_permitidos).toEqual([
+      "Pagamento protegido no checkout (pesquisa: plataforma)",
+      "fibra de bambu (produto)",
+    ])
+  })
+
+  // Os 11 insumos que o Seletor devolveu de verdade em 17/09 06:50 (run da
+  // Hero Boxers). O oitavo é o que virou "Your checkout runs on Shopify:
+  // PCI-compliant, SSL built in" no e-mail entregue.
+  it("os insumos REAIS de 17/09 saem sem jargão e sem perder fato", () => {
+    const reais = [
+      "Bamboo fibre boxer shorts, $59.90 (produto: nome e preço)",
+      "Premium Bamboo Fibre Socks, $31.98 (produto: nome e preço)",
+      "Product URL https://heroboxers.com/products/box-hero-bamboo-fibre-boxer-shorts (produto: link)",
+      "Brand built for men over 50 whose bodies no longer match the generic mold underwear is cut for (pesquisa: origem_da_marca — não verificado)",
+      "Sizing up at a department store adds fabric in the legs but keeps the same tight waistband (pesquisa: origem_da_marca — não verificado)",
+      "Bamboo fibre is softer than cotton and moisture-wicking (pesquisa: mecanismo_unico — não verificado)",
+      "Waistband sits above the abdomen rather than digging into it; leg opening proportioned to avoid riding up during a full day sitting (pesquisa: mecanismo_unico — não verificado)",
+      "Store runs on Shopify, PCI-compliant checkout with SSL by default (pesquisa: medos_de_categoria — plataforma)",
+      "Real buyer reviews are published on the site (catálogo: lastro obj_1 — não verificado)",
+      "Customer testimonials describe concrete day-to-day fit differences: waistband that doesn't dig, fabric that doesn't ride up (catálogo: lastro obj_4 — não verificado, usar sem números)",
+      "Brand sells only its own proprietary bamboo boxer design, no third-party resellers (pesquisa: medos_de_categoria)",
+    ]
+    const { alvo, avisos } = normalizarAlvo(
+      { alvos: [{ id: "obj_1" }], insumos_permitidos: reais },
+      w1, normalizarCatalogo(catalogo), [],
+    )
+    const saida = alvo.insumos_permitidos ?? []
+    // Nenhum insumo perdido: os 11 continuam 11.
+    expect(saida).toHaveLength(11)
+    expect(saida.join(" | ")).not.toMatch(/shopify|pci|\bssl\b/i)
+    expect(saida[7]).toBe("Secure, protected checkout (pesquisa: medos_de_categoria — plataforma)")
+    // O link do produto não pode ser confundido com argumento de segurança.
+    expect(saida[2]).toBe(reais[2])
+    // A reescrita é registrada — a run diz o que foi trocado e por quê.
+    expect(avisos.some((a) => /língua de quem compra/.test(a))).toBe(true)
   })
 
   it("o caso da Hero Boxers: tratamento pede política de troca e a proibição a nega → contradição, alvo mantido", () => {
