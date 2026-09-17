@@ -288,17 +288,26 @@ async function gravarEventos(
     event_key: e.event_key ?? null,
   }))
 
-  // `ignoreDuplicates` no índice parcial `(session_id, event_key)`: o
-  // reenvio do lote quando a rede volta não pode virar linha nova. O
-  // `onConflict` nomeia as colunas do índice — e ele NÃO é parcial no
-  // sentido que quebra a inferência, porque o predicado é sobre a
-  // própria coluna do índice (a lição do 42P10 da fila de conversão).
+  // `ignoreDuplicates` em `(session_id, event_key)`: o reenvio do lote
+  // quando a rede volta não pode virar linha nova.
+  //
+  // O índice NÃO pode ser parcial, e o comentário que estava aqui dizia o
+  // contrário — que um predicado sobre a própria coluna do índice não
+  // atrapalharia a inferência. Atrapalha: o Postgres exige que a
+  // statement REPITA o predicado, e o `on_conflict=` do PostgREST manda
+  // só as colunas. O resultado, medido em 17/09, foi 42P10 em TODA
+  // gravação e a tabela vazia com sessões reais no banco (migration
+  // 20261164 tirou o `where`).
   const { error } = await admin
     .from("form_session_events")
     .upsert(linhas, { onConflict: "session_id,event_key", ignoreDuplicates: true })
 
   if (error) {
-    log.warn("sessao.eventos_nao_gravados", {
+    // `error`, não `warn`: sem evento o funil por pergunta da aba
+    // Resultados fica VAZIO, e foi um aviso discreto que escondeu o 42P10
+    // por três semanas. A gravação continua sem derrubar a resposta — a
+    // sessão é telemetria, o formulário é o produto.
+    log.error("sessao.eventos_nao_gravados", {
       sessionId: sessao.id,
       code: error.code,
       message: error.message,
