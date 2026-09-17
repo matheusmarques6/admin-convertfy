@@ -53,6 +53,14 @@ import {
   type FormTracking,
   type SubmitTracking,
 } from "./form-pixels"
+import {
+  mascaraDeTelefone,
+  paisSugeridoPeloNavegador,
+  partesDoTelefone,
+  telefoneCanonico,
+  PAISES_DE_TELEFONE,
+  PLACEHOLDERS_DE_TELEFONE,
+} from "@/lib/forms/telefone"
 import { defaults, gradientCss, type FormTheme } from "./form-theme"
 import { useFormSession } from "./use-form-session"
 
@@ -77,6 +85,16 @@ export interface ConversationalFormProps {
   retomarToken?: string | null
   /** Preview do editor: não abre sessão, não envia, não dispara pixel. */
   preview?: boolean
+  /**
+   * O palco não é a janela.
+   *
+   * No formulário público a tela É a viewport, e `100dvh` é o que faz a
+   * pergunta ficar centrada. Dentro da moldura do editor a mesma medida
+   * se refere à janela do admin, não ao retângulo do preview: a pergunta
+   * sairia empurrada para fora do quadro e o preview mostraria outra
+   * coisa que não o formulário.
+   */
+  moldura?: boolean
   /** Callback do preview para navegar sem enviar. */
   onSubmitFake?: () => void
 }
@@ -104,6 +122,7 @@ export function ConversationalFormView({
   hidden = {},
   retomarToken = null,
   preview = false,
+  moldura = false,
   onSubmitFake,
 }: ConversationalFormProps) {
   const t = defaults(form.theme ?? {})
@@ -184,6 +203,20 @@ export function ConversationalFormView({
     if (tela.tipo !== "bloco") return null
     return schema.blocks.find((b) => b.ref === tela.ref) ?? null
   }, [tela, schema.blocks])
+
+  /**
+   * A pergunta que está na tela sumiu do schema.
+   *
+   * No ar isso não acontece — a versão publicada é imutável e quem está
+   * respondendo continua na que abriu. No preview do editor acontece o
+   * tempo todo: basta apagar a pergunta que se está visualizando. Sem
+   * este desvio a tela fica EM BRANCO, sem nada dizendo por quê.
+   */
+  useEffect(() => {
+    if (tela.tipo !== "bloco" || blocoAtual) return
+    setTela(telaDoDestino(primeiroBloco(schema)))
+    setErro(null)
+  }, [tela.tipo, blocoAtual, schema])
 
   // ── progresso ──
   const progresso = useMemo(() => {
@@ -451,7 +484,8 @@ export function ConversationalFormView({
     <div
       className={escopo}
       style={{
-        minHeight: "100dvh",
+        minHeight: moldura ? "100%" : "100dvh",
+        height: moldura ? "100%" : undefined,
         background: bgFill,
         color: t.text,
         fontFamily: t.fontFamily,
@@ -470,12 +504,20 @@ export function ConversationalFormView({
           aria-valuenow={Math.round(progressoVisto * 100)}
           aria-label="Progresso do formulário"
         >
+          {/*
+            Cresce por `scaleX`, não por `width`: animar largura força o
+            navegador a refazer o layout a cada quadro, e a barra fica no
+            topo de uma tela que acabou de trocar de conteúdo — é o pior
+            momento possível para disputar o mesmo quadro.
+          */}
           <div
             style={{
               height: "100%",
-              width: `${Math.round(progressoVisto * 100)}%`,
+              width: "100%",
+              transformOrigin: "left",
+              transform: `scaleX(${progressoVisto})`,
               background: buttonFill,
-              transition: "width 320ms cubic-bezier(0.22, 1, 0.36, 1)",
+              transition: "transform 320ms cubic-bezier(0.22, 1, 0.36, 1)",
             }}
           />
         </div>
@@ -937,6 +979,20 @@ function CampoLivre({
     )
   }
 
+  if (bloco.type === "phone") {
+    return (
+      <TelefoneComDDI
+        bloco={bloco}
+        valor={valor}
+        t={t}
+        estilo={estilo}
+        campoRef={campoRef}
+        onChange={onChange}
+        descrito={descrito}
+      />
+    )
+  }
+
   const tipoHtml =
     bloco.type === "email"
       ? "email"
@@ -946,7 +1002,7 @@ function CampoLivre({
           ? "date"
           : bloco.type === "url"
             ? "url"
-            : bloco.type === "phone" || bloco.type === "cpf" || bloco.type === "cnpj" || bloco.type === "cep"
+            : bloco.type === "cpf" || bloco.type === "cnpj" || bloco.type === "cep"
               ? "tel"
               : "text"
 
@@ -970,6 +1026,87 @@ function CampoLivre({
 }
 
 // ───────────────────────────── pedaços ──────────────────────────────────
+
+/**
+ * Telefone com DDI — a MESMA forma canônica do formato de página única.
+ *
+ * Sem o seletor, este campo mandava ao CRM o que a pessoa digitasse:
+ * "11 99999-8888", sem país. O `ph` da CAPI é hasheado sobre o texto, e
+ * telefone sem DDI não casa com ninguém — o mesmo formulário, no outro
+ * formato, entregava um lead pior. A régua (máscara, DDI, canônico) vive
+ * em `lib/forms/telefone`, e os dois renderizadores só desenham.
+ */
+function TelefoneComDDI({
+  bloco,
+  valor,
+  t,
+  estilo,
+  campoRef,
+  onChange,
+  descrito,
+}: {
+  bloco: FormBlock
+  valor: FormAnswers[string]
+  t: ReturnType<typeof defaults>
+  estilo: React.CSSProperties
+  campoRef: React.MutableRefObject<HTMLInputElement | HTMLTextAreaElement | null>
+  onChange: (v: FormAnswers[string]) => void
+  descrito?: string
+}) {
+  // A resposta já gravada manda no estado inicial: é o que faz o link de
+  // retomada reabrir o campo com o número separado do DDI, em vez de
+  // "+5511…" dentro da caixa e o prefixo duplicado no segundo envio.
+  const gravado = typeof valor === "string" ? valor : ""
+  const inicial = useRef(
+    gravado ? partesDoTelefone(gravado) : { country: paisSugeridoPeloNavegador(), numero: "" },
+  )
+  const [pais, setPais] = useState(inicial.current.country)
+  const [numero, setNumero] = useState(inicial.current.numero)
+
+  // O pai reseta o valor ao trocar de pergunta e ao voltar.
+  useEffect(() => {
+    if (gravado === "") setNumero("")
+  }, [gravado])
+
+  const aplicar = (p: string, n: string) => {
+    setPais(p)
+    setNumero(n)
+    onChange(telefoneCanonico(p, n))
+  }
+
+  return (
+    <div style={{ display: "flex", gap: 10, alignItems: "flex-end" }}>
+      <select
+        aria-label="País"
+        value={pais}
+        onChange={(e) => aplicar(e.target.value, mascaraDeTelefone(e.target.value, numero))}
+        className="cfy-campo"
+        style={{ ...estilo, width: "auto", flex: "0 0 auto", cursor: "pointer" }}
+      >
+        {PAISES_DE_TELEFONE.map((c) => (
+          <option key={c.code} value={c.code} style={{ background: t.bg, color: t.inputText }}>
+            {c.flag} {c.dial}
+          </option>
+        ))}
+      </select>
+      <input
+        id={`campo-${bloco.ref}`}
+        ref={(el) => {
+          campoRef.current = el
+        }}
+        type="tel"
+        inputMode="tel"
+        autoComplete="tel-national"
+        value={numero}
+        placeholder={bloco.placeholder || PLACEHOLDERS_DE_TELEFONE[pais] || "Telefone"}
+        onChange={(e) => aplicar(pais, mascaraDeTelefone(pais, e.target.value))}
+        aria-describedby={descrito}
+        className="cfy-campo"
+        style={{ ...estilo, flex: 1, minWidth: 0 }}
+      />
+    </div>
+  )
+}
 
 function BotaoPrincipal({
   children,

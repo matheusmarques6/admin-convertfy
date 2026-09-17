@@ -10,6 +10,14 @@ import {
   type SubmitTracking,
 } from "./form-pixels"
 import { defaults, gradientCss, shadowCss, type FormTheme } from "./form-theme"
+import {
+  mascaraDeTelefone,
+  paisDeTelefone,
+  paisSugeridoPeloNavegador,
+  PAISES_DE_TELEFONE,
+  PLACEHOLDERS_DE_TELEFONE,
+  telefoneCanonico,
+} from "@/lib/forms/telefone"
 
 interface FormField {
   id: string
@@ -66,23 +74,6 @@ interface Props {
    */
   embed?: boolean
 }
-
-// ── Países suportados no seletor de DDI ──
-const COUNTRIES = [
-  { code: "BR", flag: "🇧🇷", dial: "+55" },
-  { code: "US", flag: "🇺🇸", dial: "+1" },
-  { code: "PT", flag: "🇵🇹", dial: "+351" },
-  { code: "ES", flag: "🇪🇸", dial: "+34" },
-  { code: "MX", flag: "🇲🇽", dial: "+52" },
-  { code: "AR", flag: "🇦🇷", dial: "+54" },
-  { code: "CL", flag: "🇨🇱", dial: "+56" },
-  { code: "CO", flag: "🇨🇴", dial: "+57" },
-  { code: "GB", flag: "🇬🇧", dial: "+44" },
-  { code: "DE", flag: "🇩🇪", dial: "+49" },
-  { code: "FR", flag: "🇫🇷", dial: "+33" },
-  { code: "IT", flag: "🇮🇹", dial: "+39" },
-] as const
-
 
 export function PublicFormView({ slug, payload, utm, clickIds, preview = false, embed = false }: Props) {
   const { form, fields } = payload
@@ -763,49 +754,6 @@ function FieldRenderer({
 
 // ── Phone com seletor de pais ──
 
-// Detecta o pais default a partir do navigator.language. Ex: "pt-BR" → BR,
-// "en-US" → US. Se nao reconhecer, fallback BR.
-function guessCountryFromBrowser(): string {
-  if (typeof navigator === "undefined") return "BR"
-  const lang = navigator.language || ""
-  const region = lang.includes("-") ? lang.split("-")[1] : lang
-  const code = region.toUpperCase()
-  return COUNTRIES.find((c) => c.code === code) ? code : "BR"
-}
-
-// Aplica mascara de digitos por pais. So formata BR e US (resto so deixa
-// digitos puros — funciona pra qualquer pais).
-function applyPhoneMask(country: string, raw: string): string {
-  const d = raw.replace(/\D/g, "")
-  if (country === "BR") {
-    const t = d.slice(0, 11)
-    if (t.length <= 2) return t.length ? `(${t}` : ""
-    if (t.length <= 6) return `(${t.slice(0, 2)}) ${t.slice(2)}`
-    if (t.length <= 10)
-      return `(${t.slice(0, 2)}) ${t.slice(2, 6)}-${t.slice(6)}`
-    return `(${t.slice(0, 2)}) ${t.slice(2, 7)}-${t.slice(7)}`
-  }
-  if (country === "US") {
-    const t = d.slice(0, 10)
-    if (t.length <= 3) return t.length ? `(${t}` : ""
-    if (t.length <= 6) return `(${t.slice(0, 3)}) ${t.slice(3)}`
-    return `(${t.slice(0, 3)}) ${t.slice(3, 6)}-${t.slice(6)}`
-  }
-  // Resto: apenas mantem digitos com agrupamento basico.
-  if (d.length <= 4) return d
-  if (d.length <= 8) return `${d.slice(0, 4)} ${d.slice(4)}`
-  return `${d.slice(0, 4)} ${d.slice(4, 8)} ${d.slice(8, 12)}`
-}
-
-const DEFAULT_PLACEHOLDERS: Record<string, string> = {
-  BR: "(11) 99999-9999",
-  US: "(555) 123-4567",
-  PT: "912 345 678",
-  ES: "612 34 56 78",
-  MX: "55 1234 5678",
-  AR: "11 1234 5678",
-}
-
 function PhoneIntlField({
   field,
   value,
@@ -826,15 +774,13 @@ function PhoneIntlField({
   t: ReturnType<typeof defaults>
 }) {
   // Auto-detecta pais via navigator.language no primeiro render.
-  const [country, setCountry] = useState<string>(() => guessCountryFromBrowser())
+  const [country, setCountry] = useState<string>(() => paisSugeridoPeloNavegador())
   const [phone, setPhone] = useState<string>("")
 
   // Mantem o valor sincronizado pra o submit (envia formato canonico:
   // "+DD numero_apenas_digitos").
   useEffect(() => {
-    const c = COUNTRIES.find((x) => x.code === country)
-    const digits = phone.replace(/\D/g, "")
-    onChange(digits ? `${c?.dial ?? ""}${digits}` : "")
+    onChange(telefoneCanonico(country, phone))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [country, phone])
 
@@ -843,8 +789,8 @@ function PhoneIntlField({
     if (typeof value === "string" && value === "") setPhone("")
   }, [value])
 
-  const current = COUNTRIES.find((c) => c.code === country) ?? COUNTRIES[0]
-  const placeholder = field.placeholder || DEFAULT_PLACEHOLDERS[country] || "Telefone"
+  const current = paisDeTelefone(country)
+  const placeholder = field.placeholder || PLACEHOLDERS_DE_TELEFONE[country] || "Telefone"
 
   return (
     <div>
@@ -857,7 +803,7 @@ function PhoneIntlField({
             onChange={(e) => {
               setCountry(e.target.value)
               // Re-formata o telefone com a mascara do pais novo.
-              setPhone((p) => applyPhoneMask(e.target.value, p))
+              setPhone((p) => mascaraDeTelefone(e.target.value, p))
             }}
             style={{
               ...inputStyle,
@@ -870,7 +816,7 @@ function PhoneIntlField({
             onFocus={(e) => (e.currentTarget.style.boxShadow = focusRing)}
             onBlur={(e) => (e.currentTarget.style.boxShadow = "none")}
           >
-            {COUNTRIES.map((c) => (
+            {PAISES_DE_TELEFONE.map((c) => (
               <option key={c.code} value={c.code} style={{ background: t.bg, color: t.inputText }}>
                 {c.flag} {c.dial}
               </option>
@@ -887,7 +833,7 @@ function PhoneIntlField({
           type="tel"
           placeholder={placeholder}
           value={phone}
-          onChange={(e) => setPhone(applyPhoneMask(country, e.target.value))}
+          onChange={(e) => setPhone(mascaraDeTelefone(country, e.target.value))}
           required={field.required}
           inputMode="tel"
           autoComplete="tel-national"

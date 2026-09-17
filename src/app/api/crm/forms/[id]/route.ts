@@ -12,6 +12,8 @@ import { errorResponse, requireAuth, successResponse, AppError } from "@/lib/api
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { encrypt } from "@/lib/crypto"
 import { normalizeTrackingConfig } from "@/types/form-tracking"
+import { normalizarSchema } from "@/lib/forms/schema"
+import { mapaPorPosicao, remapearRefs } from "@/lib/forms/remapear-refs"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("CrmFormDetail")
@@ -38,7 +40,7 @@ export async function GET(
          success_message, redirect_url, pipeline_id, stage_id,
          facebook_pixel_id, google_ads_id, google_analytics_id,
          meta_capi_token, meta_test_event_code, google_ads_conversion_label,
-         tracking_config, display_mode, published_version_id, has_unpublished_changes,
+         tracking_config, display_mode, draft_schema, published_version_id, has_unpublished_changes,
          submissions_count, views_count, created_at, updated_at,
          pipeline:pipelines(id, name, scope, color),
          stage:pipeline_stages!crm_forms_stage_id_fkey(id, name, color)`,
@@ -55,6 +57,7 @@ export async function GET(
     const {
       meta_capi_token,
       tracking_config,
+      draft_schema,
       ...formRest
     } = form as Record<string, unknown> & { meta_capi_token?: string | null }
     const sanitizedForm = {
@@ -69,6 +72,45 @@ export async function GET(
       .eq("form_id", id)
       .order("position", { ascending: true })
 
+    /**
+     * O fluxo — a camada que a tabela de campos não tem lugar para
+     * guardar: saltos, finais e tela de abertura.
+     *
+     * O rascunho VENCE a versão publicada porque é ele que o editor
+     * escreve; sem rascunho, a publicada é o ponto de partida, senão
+     * abrir o editor de um formulário que já tem lógica no ar mostraria
+     * um fluxo vazio e o primeiro save a apagaria.
+     */
+    let fluxoBruto: unknown = draft_schema ?? null
+    let fluxoOrigem: "rascunho" | "publicado" | "novo" | "indisponivel" = draft_schema
+      ? "rascunho"
+      : "novo"
+    let versaoPublicada = 0
+    if (form.published_version_id) {
+      const { data: v, error: vErr } = await admin
+        .from("form_versions")
+        .select("schema, version")
+        .eq("id", form.published_version_id as string)
+        .maybeSingle()
+      versaoPublicada = (v?.version as number | undefined) ?? 0
+      if (!fluxoBruto) {
+        if (vErr || !v) {
+          /**
+           * Não dá para dizer que o fluxo está vazio: existe uma versão
+           * publicada e não conseguimos lê-la. Devolver schema vazio faria
+           * o editor abrir sem os saltos e o primeiro save os apagaria —
+           * uma falha passageira de leitura custaria a lógica inteira do
+           * formulário. `indisponivel` manda a tela NÃO gravar rascunho.
+           */
+          fluxoOrigem = "indisponivel"
+          log.warn("form.fluxo_indisponivel", { id, code: vErr?.code })
+        } else if (v.schema) {
+          fluxoBruto = v.schema
+          fluxoOrigem = "publicado"
+        }
+      }
+    }
+
     const { data: submissions } = await admin
       .from("crm_form_submissions")
       .select(
@@ -82,6 +124,9 @@ export async function GET(
       form: sanitizedForm,
       fields: fields || [],
       submissions: submissions || [],
+      fluxo: normalizarSchema(fluxoBruto),
+      fluxo_origem: fluxoOrigem,
+      versao_publicada: versaoPublicada,
     })
   } catch (error) {
     log.error("Form GET error:", error)
@@ -93,6 +138,12 @@ export async function GET(
 
 const fieldUpsertSchema = z.object({
   id: uuid().optional(),
+  /**
+   * Endereço provisório de uma pergunta recém-criada, para que a regra de
+   * salto escrita antes do primeiro save sobreviva. Não é gravado: serve
+   * só para trocar o `ref` no rascunho depois que o banco dá o id real.
+   */
+  temp_ref: z.string().max(64).optional(),
   field_type: z.enum([
     "text", "email", "phone", "number", "textarea",
     "select", "multi_select", "radio", "checkbox",
@@ -164,6 +215,13 @@ const patchFormSchema = z.object({
   // o público continua vendo a versão publicada até alguém clicar em
   // Publicar — senão uma troca de toggle mudaria o formulário no ar.
   display_mode: z.enum(["classic", "conversational"]).optional(),
+  /**
+   * O rascunho do fluxo (saltos, finais, tela de abertura). É um
+   * `FormSchema` — a MESMA forma da versão publicada, de propósito: uma
+   * segunda forma divergiria na primeira mudança e ninguém saberia qual
+   * está olhando. Normalizado aqui, então JSON torto nunca chega ao banco.
+   */
+  draft_schema: z.record(z.string(), z.unknown()).nullable().optional(),
   // Quando fields fornecido, faz replace total: deleta os antigos e
   // insere os novos. Editor envia o array completo a cada save.
   fields: z.array(fieldUpsertSchema).optional(),
@@ -182,7 +240,7 @@ export async function PATCH(
 
     const body = await request.json()
     const parsed = patchFormSchema.parse(body)
-    const { fields, redirect_url, logo_url, meta_capi_token, ...formData } = parsed
+    const { fields, redirect_url, logo_url, meta_capi_token, draft_schema, ...formData } = parsed
 
     // Coerce empty string -> null pra colunas URL.
     const update: Record<string, unknown> = { ...formData }
@@ -209,7 +267,7 @@ export async function PATCH(
     // público vê: o conversacional lê `form_versions`, não esta tabela.
     // Sem esta marca, o operador salva, o formulário no ar continua igual
     // e nada em tela explica por quê.
-    if (fields !== undefined || parsed.display_mode !== undefined) {
+    if (fields !== undefined || parsed.display_mode !== undefined || draft_schema !== undefined) {
       const { data: temVersao } = await admin
         .from("crm_forms")
         .select("published_version_id")
@@ -226,6 +284,9 @@ export async function PATCH(
         }
       }
     }
+
+    let idsPorPosicao: string[] = []
+    let refsRemapeados: Record<string, string> = {}
 
     // Upsert dos fields PRESERVANDO o id. Regenerar ids (delete+insert)
     // quebra tudo que referencia crm_form_fields.id — regras de tracking e
@@ -287,9 +348,58 @@ export async function PATCH(
           .insert(novos.map((f, i) => toRow(f, i, false)))
         if (insErr) throw insErr
       }
+
+      /**
+       * Devolver os ids é o que impede a pergunta nova de trocar de
+       * identidade a cada save.
+       *
+       * O editor mantém a pergunta recém-criada sem `id` no estado local.
+       * Sem receber o id de volta, o save seguinte a trataria como nova de
+       * novo: ela cairia no `delete ... not in (keepIds)` e voltaria com
+       * OUTRO id — levando junto a regra de tracking que aponta para o id
+       * antigo e desligando as respostas já gravadas daquela pergunta.
+       */
+      const { data: persistidos } = await admin
+        .from("crm_form_fields")
+        .select("id, position")
+        .eq("form_id", id)
+        .order("position", { ascending: true })
+      idsPorPosicao = (persistidos ?? []).map((r) => r.id as string)
+
+      refsRemapeados = mapaPorPosicao(
+        fields
+          .map((f, i) => ({ posicao: (f.position ?? i) as number, ref: f.temp_ref ?? "" }))
+          .filter((x) => x.ref !== ""),
+        idsPorPosicao,
+      )
     }
 
-    return successResponse(request, { ok: true })
+    /**
+     * O rascunho do fluxo é gravado DEPOIS dos campos, e com os endereços
+     * já trocados: a regra escrita para uma pergunta criada neste mesmo
+     * save aponta para o id que o banco acabou de dar, não para o
+     * provisório da tela — que nunca mais existiria.
+     */
+    if (draft_schema !== undefined) {
+      const rascunho =
+        draft_schema === null
+          ? null
+          : remapearRefs(normalizarSchema(draft_schema), refsRemapeados)
+      const { error: draftErr } = await admin
+        .from("crm_forms")
+        .update({ draft_schema: rascunho })
+        .eq("id", id)
+        .eq("org_id", orgId)
+      if (draftErr) throw draftErr
+    }
+
+    return successResponse(request, {
+      ok: true,
+      /** Ids na ordem das posições — o editor os adota nos campos novos. */
+      field_ids: idsPorPosicao,
+      /** De/para dos endereços provisórios, para a tela alinhar o rascunho. */
+      refs_remapeados: refsRemapeados,
+    })
   } catch (error) {
     log.error("Form PATCH error:", error)
     return errorResponse(request, error, "crm-form-patch")

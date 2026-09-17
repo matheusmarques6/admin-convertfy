@@ -103,3 +103,62 @@ describe("montarVersao", () => {
     expect(r.schema.display_mode).toBe("classic")
   })
 })
+
+describe("o rascunho é a saída da própria montagem", () => {
+  // O editor grava como rascunho exatamente o que `montarVersao` devolve
+  // — "o rascunho é o que seria publicado". Isso só é seguro se montar de
+  // novo sobre a própria saída não mudar nada: se mudasse, cada save
+  // deslocaria o fluxo um pouco, e depois de alguns o que está na tela
+  // deixaria de ser o que vai ao ar.
+  const campos = [
+    { id: "a", field_type: "radio", label: "Faixa", position: 0, options: ["baixa", "alta"] },
+    { id: "b", field_type: "url", label: "Loja", position: 1 },
+  ]
+  const publicado = {
+    version: 1,
+    display_mode: "conversational",
+    blocks: [
+      {
+        ref: "a",
+        type: "radio",
+        label: "Faixa",
+        alias: "faixa",
+        options: ["baixa", "alta"],
+        logic: [
+          { conditions: [{ ref: "a", operator: "equals", value: "baixa" }], logic: "and", goto: "ending:fora" },
+        ],
+      },
+      { ref: "b", type: "url", label: "Loja" },
+    ],
+    endings: [
+      { ref: "ok", title: "Obrigado" },
+      { ref: "fora", title: "Fora", disqualified: true },
+    ],
+    settings: { welcome: { title: "Vamos?" }, mostrar_progresso: false },
+  }
+
+  const opts = { display_mode: "conversational" as const, version: 2 }
+
+  it("montar sobre a própria saída não muda o fluxo", () => {
+    const um = montarVersao(campos, publicado, opts)
+    const dois = montarVersao(campos, um.schema, opts)
+    expect(dois.schema).toEqual(um.schema)
+    expect(dois.regras_descartadas).toEqual([])
+  })
+
+  it("preserva salto, alias, finais e tela de abertura", () => {
+    const r = montarVersao(campos, publicado, opts)
+    expect(r.schema.blocks[0].logic?.[0].goto).toBe("ending:fora")
+    expect(r.schema.blocks[0].alias).toBe("faixa")
+    expect(r.schema.endings?.map((e) => e.ref)).toEqual(["ok", "fora"])
+    expect(r.schema.settings?.welcome?.title).toBe("Vamos?")
+    expect(r.schema.settings?.mostrar_progresso).toBe(false)
+  })
+
+  it("rótulo editado no editor vence o do rascunho — a pergunta é da tabela", () => {
+    const renomeado = [{ ...campos[0], label: "Quanto fatura?" }, campos[1]]
+    const r = montarVersao(renomeado, publicado, opts)
+    expect(r.schema.blocks[0].label).toBe("Quanto fatura?")
+    expect(r.schema.blocks[0].logic?.[0].goto).toBe("ending:fora")
+  })
+})

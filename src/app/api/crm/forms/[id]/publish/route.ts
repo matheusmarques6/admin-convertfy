@@ -47,7 +47,7 @@ async function publicar(
 
     const { data: form, error } = await admin
       .from("crm_forms")
-      .select("id, org_id, display_mode, locale, published_version_id, has_unpublished_changes")
+      .select("id, org_id, display_mode, locale, draft_schema, published_version_id, has_unpublished_changes")
       .eq("id", id)
       .maybeSingle()
     if (error) throw error
@@ -68,7 +68,16 @@ async function publicar(
       .eq("form_id", id)
       .order("position", { ascending: true })
 
-    let anterior: unknown = null
+    /**
+     * De onde vem a lógica que a nova versão carrega.
+     *
+     * O rascunho VENCE a versão publicada: é ele que o construtor de
+     * fluxo escreve, e publicar a partir da publicada desfaria em
+     * silêncio tudo que o operador acabou de montar. Sem rascunho —
+     * formulário cuja lógica só existe no ar —, a publicada é o ponto de
+     * partida, que é o que preserva o `/forms/diagnostico`.
+     */
+    let anterior: unknown = form.draft_schema ?? null
     let versaoAtual = 0
     if (form.published_version_id) {
       const { data: v } = await admin
@@ -76,7 +85,7 @@ async function publicar(
         .select("schema, version")
         .eq("id", form.published_version_id)
         .maybeSingle()
-      anterior = v?.schema ?? null
+      if (!anterior) anterior = v?.schema ?? null
       versaoAtual = (v?.version as number | undefined) ?? 0
     }
     if (versaoAtual === 0) {

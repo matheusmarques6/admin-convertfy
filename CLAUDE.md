@@ -8653,3 +8653,98 @@ travada em `afirmacao`.
 
 *Última atualização: Setembro 2026*
 *Versões: Shopify 2024-10, Klaviyo revision 2025-10-15*
+
+## O editor de formulários passa a ter os dois formatos de verdade (17/09)
+
+Relatado com print: o preview do editor mostrava **o formulário clássico**
+— seis campos e "Enviar" — com "Conversacional" selecionado ao lado.
+Não era um bug do preview: o palco só sabia renderizar `PublicFormView`.
+E o construtor de fluxo não existia em lugar nenhum: os saltos do
+`/forms/diagnostico` foram escritos por SQL, e mexer neles era editar
+JSONB à mão.
+
+**O palco chama a MESMA `montarVersao` da publicação.** O preview do
+conversacional não monta um schema próprio a partir dos campos: ele
+recebe `montarVersao(campos, rascunho).schema`, byte a byte o que o botão
+Publicar produziria. Uma segunda junção só para a tela divergiria da
+primeira, e a divergência apareceria como "no preview a regra funciona e
+no ar não" — o pior lugar possível para descobrir. Verificado navegando
+no Chromium: responder a faixa mais baixa pula a pergunta 5 e cai no
+final de recusa; responder acima do corte segue para a 5.
+
+`ConversationalFormView` ganhou `moldura`: no ar a tela É a viewport e
+`100dvh` é o que centraliza a pergunta; dentro do quadro do editor a
+mesma medida se refere à janela do admin e empurraria a pergunta para
+fora. E o palco ganhou **Recomeçar**, porque a tela final não tem
+"voltar" — sem ele, testar o segundo caminho do desvio exigiria
+recarregar o editor e perder o que não foi salvo.
+
+**O rascunho do fluxo mora em `crm_forms.draft_schema`** (a coluna existia
+desde a 20261144 e nunca tinha sido usada) e é um `FormSchema` — a MESMA
+forma da versão publicada. Uma segunda forma só para o rascunho
+divergiria na primeira mudança. A publicação prefere o rascunho e cai na
+versão publicada quando não há — é o que preserva a lógica de quem já
+está no ar sem ter passado pelo editor novo.
+
+**Três defeitos que a construção expôs, e que existiam antes:**
+
+1. **A pergunta nova trocava de identidade a cada save.** O editor
+   mantinha a linha recém-criada sem `id` no estado local, então o save
+   seguinte a tratava como nova outra vez: ela caía no `delete … not in
+   (keepIds)` e voltava com OUTRO id — levando junto a regra de
+   rastreamento que aponta para o id antigo e desligando as respostas já
+   gravadas daquela pergunta, em silêncio. O PATCH agora devolve
+   `field_ids` na ordem das posições e a tela os adota.
+2. **A regra escrita antes do primeiro save apontaria para o vazio.**
+   Pergunta sem `id` é endereçada por `novo-<i>`; `temp_ref` viaja no
+   PATCH e o servidor — que acabou de inserir as linhas — troca o
+   endereço no rascunho (`remapearRefs`, puro, 8 testes). `ending:` NÃO é
+   remapeado: o `ref` de um final é escolhido por quem edita.
+3. **O conversacional perdia o DDI do telefone.** O formato de página
+   única sempre teve seletor de país e mandava `+5511999998888`; o
+   conversacional mandava o que a pessoa digitasse. O `ph` da CAPI é
+   hasheado sobre o TEXTO e telefone sem DDI não casa com ninguém — o
+   mesmo campo, do mesmo formulário, entregava um lead pior conforme o
+   formato. A régua virou `lib/forms/telefone.ts` (puro, 22 testes) e os
+   dois renderizadores só desenham. De quebra, `paisSugeridoPeloNavegador`
+   parou de ler idioma como país: `pt` sozinho virava Portugal e `es`
+   virava Espanha por coincidência dos códigos ISO, e o brasileiro com o
+   navegador em "pt" recebia +351 com a máscara errada.
+
+**O diagnóstico do fluxo responde antes do tráfego**
+(`diagnostico-fluxo.ts`, puro, 21 testes). O caro é `valor_fora_das_opcoes`
+— a regra compara com um texto que nenhuma opção oferece, ninguém casa e
+nada acusa; é a mesma família do defeito que deixou o `LeadQualificado`
+um mês sem sair. A comparação é a MESMA do envio (`normalizeForCompare`):
+byte a byte acusaria divergência onde a engine casa e mandaria consertar
+o que funciona. Também mede regra sem condição, condição com valor em
+branco, destino apagado, laço entre telas que avançam sozinhas, final
+órfão e salto para trás. **Alcance NÃO é medido**: a engine cai em
+`proximoNaOrdem` quando nenhuma regra casa, então o bloco `i` sempre tem
+o `i-1` como antecessor e a conta devolveria "tudo alcançável" — número
+que não separa nada é pior que número nenhum.
+
+**Na tela** (Operate): o FORMATO subiu para o cabeçalho, porque ele decide
+o que todo o resto significa — quais abas existem, o que o palco desenha,
+se a lógica tem para onde desviar; guardado numa aba de configuração ele
+vira escolha que só quem já sabe encontra. As abas seguem o formato
+(**Fluxo só existe no conversacional**: no formato de página única todas
+as perguntas aparecem de uma vez e "o que acontece depois desta resposta"
+não tem para onde ir — aba visível e inerte ensinaria a montar regra que
+nunca executa). A faixa de publicação saiu de dentro de "Conteúdo" e
+encostou no palco, que é onde a pergunta dela ("o que estou vendo é o que
+o visitante recebe?") é feita.
+
+**Rascunho que não se conhece não é gravado**: quando existe versão
+publicada e a leitura dela falha, o GET responde `fluxo_origem:
+"indisponivel"`, a tela não hidrata rascunho nenhum e o PATCH omite
+`draft_schema`. Gravar um vazio ali faria uma falha passageira de leitura
+apagar a lógica que está no ar.
+
+Fica de fora, com o motivo: **mapa visual arrastável** (o caminho é linear
+e o desvio é a exceção — uma lista numerada com "em qualquer outro caso,
+segue para X" embaixo diz a mesma coisa sem exigir posicionar caixas), e
+**publicação bloqueada por erro de fluxo** (regra que nunca casa ainda
+produz formulário que funciona; travar a publicação seria atrito novo num
+sistema com anúncio rodando — o erro aparece em vermelho na aba e no selo
+da tira, e quem decide é quem opera).

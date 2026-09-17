@@ -25,6 +25,11 @@ import {
   Eye,
   ChevronDown,
   Target,
+  Workflow,
+  RotateCcw,
+  MessagesSquare,
+  Rows3,
+  AlertTriangle,
 } from "lucide-react"
 import { ROUTES } from "@/lib/routes"
 import { PublicFormView } from "@/components/forms/public-form-view"
@@ -33,6 +38,13 @@ import { metaEventName, willRenameEvent } from "@/lib/tracking/meta-event-name"
 import { ConversionDiagnostics } from "@/components/forms/conversion-diagnostics"
 import { FormResults } from "@/components/forms/form-results"
 import { FormPublishPanel } from "@/components/forms/form-publish-panel"
+import { ConversationalFormView } from "@/components/forms/conversational-form-view"
+import { FlowEditor } from "@/components/forms/flow-editor"
+import { montarVersao } from "@/lib/forms/publicar"
+import { remapearRefs } from "@/lib/forms/remapear-refs"
+import { normalizarSchema } from "@/lib/forms/schema"
+import { contarProblemas, diagnosticarFluxo } from "@/lib/forms/diagnostico-fluxo"
+import type { FormSchema } from "@/types/forms-conversational"
 
 // ────────────────────────────────────────────────────────────────────
 // Types
@@ -166,6 +178,15 @@ interface FormDetail {
     }
   }
   fields: FormField[]
+  /**
+   * A camada que a tabela de campos não guarda: saltos, telas finais e
+   * abertura. Vem do rascunho quando há um; da versão publicada quando
+   * não há — senão abrir o editor de um formulário com lógica no ar
+   * mostraria fluxo vazio, e o primeiro save a apagaria.
+   */
+  fluxo?: unknown
+  fluxo_origem?: "rascunho" | "publicado" | "novo" | "indisponivel"
+  versao_publicada?: number
   submissions: Array<{
     id: string
     status: string
@@ -406,13 +427,24 @@ const THEME_PRESETS: Array<{
 ]
 
 // Tabs
-type TabKey = "content" | "style" | "fields" | "after" | "tracking" | "results" | "install"
-const TABS: Array<{ key: TabKey; label: string; icon: typeof FileText }> = [
-  { key: "content", label: "Conteúdo", icon: FileText },
+type TabKey = "fields" | "flow" | "content" | "style" | "after" | "tracking" | "results" | "install"
+
+/**
+ * As abas seguem o FORMATO, e não uma lista fixa.
+ *
+ * "Fluxo" só existe no conversacional porque só ali ele significa alguma
+ * coisa: no formato de página única todas as perguntas aparecem de uma
+ * vez, e "o que acontece depois desta resposta" não tem para onde
+ * desviar. Deixar a aba visível e inerte ensinaria a montar uma regra que
+ * o formulário nunca vai executar.
+ */
+const TABS: Array<{ key: TabKey; label: string; icon: typeof FileText; so?: "conversational" }> = [
+  { key: "fields", label: "Perguntas", icon: ListChecks },
+  { key: "flow", label: "Fluxo", icon: Workflow, so: "conversational" },
+  { key: "content", label: "Textos", icon: FileText },
   { key: "style", label: "Estilo", icon: Palette },
-  { key: "fields", label: "Campos", icon: ListChecks },
-  { key: "after", label: "Após envio", icon: Send },
-  { key: "tracking", label: "Rastreamento", icon: Target },
+  { key: "after", label: "Destino", icon: Send },
+  { key: "tracking", label: "Anúncios", icon: Target },
   { key: "results", label: "Resultados", icon: BarChart3 },
   { key: "install", label: "Instalar", icon: Code },
 ]
@@ -497,7 +529,15 @@ export default function FormEditorPage({
   const [fields, setFields] = useState<FormField[]>([])
   const [tracking, setTracking] = useState<TrackingState>(EMPTY_TRACKING)
 
-  const [activeTab, setActiveTab] = useState<TabKey>("style")
+  /**
+   * O rascunho do fluxo. Guarda só o que a tabela de campos não guarda
+   * (saltos, finais, abertura); as perguntas continuam vindo de `fields`,
+   * e é `montarVersao` que junta os dois — a MESMA função da publicação,
+   * para que o preview não possa discordar do que vai ao ar.
+   */
+  const [rascunho, setRascunho] = useState<FormSchema | null>(null)
+
+  const [activeTab, setActiveTab] = useState<TabKey>("fields")
   const [previewMode, setPreviewMode] = useState<"desktop" | "mobile">("desktop")
   // No mobile os 2 painéis (config + preview) não cabem lado a lado —
   // alterna entre eles com um segmented control. Ignorado no desktop (md+).
@@ -505,6 +545,14 @@ export default function FormEditorPage({
   // Fundo simulado do preview (pra testar como o form ficara em diferentes
   // P.V.s antes de embedar). 'auto' adapta ao mode do tema.
   const [previewBg, setPreviewBg] = useState<"auto" | "white" | "gray" | "dark" | "checker">("auto")
+  /**
+   * Remonta o preview conversacional do começo.
+   *
+   * Uma vez na tela final não existe "voltar" — é assim no ar, e tem de
+   * ser assim aqui. Sem este botão, testar o segundo caminho do desvio
+   * exigiria recarregar a página do editor e perder o que não foi salvo.
+   */
+  const [previewReset, setPreviewReset] = useState(0)
 
   const [saving, setSaving] = useState(false)
   const [savedAt, setSavedAt] = useState<Date | null>(null)
@@ -532,6 +580,12 @@ export default function FormEditorPage({
     setRedirectUrl(data.form.redirect_url ?? "")
     setTheme(data.form.theme ?? {})
     setFields(data.fields)
+    // `indisponivel` = existe versão publicada e a leitura dela falhou.
+    // Hidratar com schema vazio ali faria o save seguinte apagar os
+    // saltos que estão no ar.
+    setRascunho(
+      data.fluxo_origem === "indisponivel" ? null : normalizarSchema(data.fluxo ?? null),
+    )
     const tc = data.form.tracking_config
     setTracking({
       meta_enabled: tc?.meta?.enabled ?? false,
@@ -581,6 +635,48 @@ export default function FormEditorPage({
       return next.map((f, i) => ({ ...f, position: i }))
     })
 
+  /**
+   * O fluxo de hoje: as perguntas do editor mais a lógica do rascunho,
+   * juntadas por `montarVersao` — a MESMA função que a publicação chama.
+   *
+   * Não é economia de código: é o que impede o preview de mostrar um
+   * formulário e a publicação produzir outro. Uma segunda junção só para
+   * a tela divergiria da primeira e a divergência apareceria como "no
+   * preview a regra funciona e no ar não".
+   *
+   * Pergunta ainda sem `id` (criada e não salva) ganha um endereço
+   * provisório `novo-<i>`; é o `temp_ref` que o PATCH troca pelo id real
+   * depois de inserir a linha.
+   */
+  const montagem = useMemo(() => {
+    const campos = fields.map((f, i) => ({
+      id: f.id ?? `novo-${i}`,
+      field_type: f.field_type,
+      label: f.label,
+      placeholder: f.placeholder ?? null,
+      description: f.description ?? null,
+      required: f.required,
+      position: i,
+      options: f.options ?? [],
+      validation: f.validation ?? {},
+      map_to_lead_field: f.map_to_lead_field ?? null,
+    }))
+    return montarVersao(campos, rascunho, {
+      display_mode: displayMode,
+      version: 0,
+    })
+  }, [fields, rascunho, displayMode])
+
+  const fluxo = montagem.schema
+  /** Quantos desvios cada pergunta tem — o selo na lista de Perguntas. */
+  const regrasPorRef = useMemo(() => {
+    const out: Record<string, number> = {}
+    for (const b of fluxo.blocks) out[b.ref] = (b.logic ?? []).length
+    return out
+  }, [fluxo])
+  const problemasDoFluxo = useMemo(() => diagnosticarFluxo(fluxo), [fluxo])
+  const contagemDoFluxo = contarProblemas(problemasDoFluxo)
+
   const save = useCallback(async () => {
     setSaving(true)
     setError(null)
@@ -598,7 +694,16 @@ export default function FormEditorPage({
           success_message: successMessage || null,
           redirect_url: redirectUrl || null,
           display_mode: displayMode,
-          fields: fields.map((f, i) => ({ ...f, position: i })),
+          fields: fields.map((f, i) => ({
+            ...f,
+            position: i,
+            // Só a pergunta nova precisa do endereço provisório — a que
+            // já tem id já é endereçável.
+            ...(f.id ? {} : { temp_ref: `novo-${i}` }),
+          })),
+          // Rascunho desconhecido (leitura da versão publicada falhou)
+          // não vai ao banco: gravar um vazio apagaria o fluxo do ar.
+          ...(rascunho === null ? {} : { draft_schema: fluxo }),
           // Rastreamento (pixels). meta_capi_token so vai quando digitado.
           facebook_pixel_id: tracking.facebook_pixel_id || null,
           meta_test_event_code: tracking.meta_test_event_code || null,
@@ -628,6 +733,23 @@ export default function FormEditorPage({
         return
       }
       setSavedAt(new Date())
+      /**
+       * Adotar os ids devolvidos é o que impede a pergunta nova de trocar
+       * de identidade a cada save: sem `id` no estado local, o save
+       * seguinte a trataria como nova outra vez, ela seria apagada e
+       * reinserida com OUTRO id, e a regra de rastreamento que aponta
+       * para o id antigo pararia de casar sem nada acusar.
+       */
+      const ids: unknown = json.field_ids
+      if (Array.isArray(ids) && ids.length === fields.length) {
+        setFields((arr) =>
+          arr.map((f, i) => (f.id ? f : { ...f, id: ids[i] as string })),
+        )
+      }
+      if (rascunho !== null) {
+        const mapa = (json.refs_remapeados ?? {}) as Record<string, string>
+        setRascunho(Object.keys(mapa).length > 0 ? remapearRefs(fluxo, mapa) : fluxo)
+      }
       // Reflete o token salvo sem revela-lo: limpa o input e marca "configurado".
       if (tracking.meta_capi_token.trim()) {
         setTracking((t) => ({ ...t, meta_capi_token: "", has_meta_capi_token: true }))
@@ -636,7 +758,7 @@ export default function FormEditorPage({
     } finally {
       setSaving(false)
     }
-  }, [id, name, slug, description, pipelineId, stageId, theme, successMessage, redirectUrl, displayMode, fields, tracking, mutate])
+  }, [id, name, slug, description, pipelineId, stageId, theme, successMessage, redirectUrl, displayMode, fields, fluxo, rascunho, tracking, mutate])
 
   /**
    * Põe o formulário no ar ou tira.
@@ -720,6 +842,12 @@ export default function FormEditorPage({
   }
 
   const status = data.form.status
+  const modoSalvo: "classic" | "conversational" =
+    data.form.display_mode === "conversational" ? "conversational" : "classic"
+  const abas = TABS.filter((t) => !t.so || t.so === displayMode)
+  // A aba pode ter deixado de existir entre renders (troca de formato).
+  // Sem este desvio o painel ficaria em branco, sem nada explicando.
+  const abaVisivel: TabKey = abas.some((t) => t.key === activeTab) ? activeTab : "fields"
   const publicUrl =
     typeof window !== "undefined"
       ? `${window.location.origin}/forms/${slug}`
@@ -750,7 +878,7 @@ export default function FormEditorPage({
       </div>
 
       {/* ─── PAINEL ESQUERDO: configuração ─── */}
-      <div className={`${mobilePane === "editor" ? "flex" : "hidden md:flex"} w-full shrink-0 flex-col border-r border-black/[0.06] md:w-[460px] dark:border-white/[0.08]`}>
+      <div className={`${mobilePane === "editor" ? "flex" : "hidden md:flex"} w-full shrink-0 flex-col border-r border-black/[0.06] md:w-[480px] xl:w-[520px] dark:border-white/[0.08]`}>
         {/* Top bar */}
         <div className="shrink-0 px-5 pt-5 pb-3 border-b border-black/[0.06] dark:border-white/[0.08]">
           <div className="flex items-center justify-between gap-2 mb-3">
@@ -773,27 +901,48 @@ export default function FormEditorPage({
           <p className="mt-1 text-[11px] text-slate-500 dark:text-white/45 font-mono truncate">
             /forms/{slug || "..."}
           </p>
+          <FormatoDoFormulario
+            modo={displayMode}
+            modoSalvo={modoSalvo}
+            noAr={status === "published"}
+            onChange={(m) => {
+              setDisplayMode(m)
+              // Trocar para página única com a aba Fluxo aberta deixaria
+              // o painel vazio sem dizer por quê.
+              if (m === "classic" && activeTab === "flow") setActiveTab("fields")
+            }}
+          />
         </div>
 
         {/* Tab nav */}
         <div className="shrink-0 border-b border-black/[0.06] dark:border-white/[0.08]">
           <div className="flex">
-            {TABS.map((t) => {
-              const active = activeTab === t.key
+            {abas.map((t) => {
+              const active = abaVisivel === t.key
               const Icon = t.icon
+              const alerta = t.key === "flow" && contagemDoFluxo.erros > 0
               return (
                 <button
                   key={t.key}
                   type="button"
                   onClick={() => setActiveTab(t.key)}
+                  aria-current={active ? "page" : undefined}
                   className={
-                    "flex-1 flex flex-col items-center gap-1 py-2.5 text-[10px] font-medium transition-colors border-b-2 " +
+                    "relative flex-1 flex flex-col items-center gap-1 py-2.5 text-[10px] font-medium leading-none transition-colors border-b-2 " +
                     (active
                       ? "border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400"
                       : "border-transparent text-slate-500 dark:text-white/55 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-white/[0.03]")
                   }
                 >
-                  <Icon className="h-4 w-4" />
+                  <span className="relative">
+                    <Icon className="h-4 w-4" />
+                    {alerta && (
+                      <span
+                        className="absolute -right-1 -top-0.5 h-1.5 w-1.5 rounded-full bg-red-500 ring-2 ring-white dark:ring-[#0F1117]"
+                        aria-hidden
+                      />
+                    )}
+                  </span>
                   {t.label}
                 </button>
               )
@@ -803,7 +952,30 @@ export default function FormEditorPage({
 
         {/* Tab content (scroll) */}
         <div className="flex-1 overflow-y-auto">
-          {activeTab === "content" && (
+          {abaVisivel === "flow" && (
+            <>
+              {rascunho === null && (
+                <div className="mx-4 mt-4 rounded-[6px] border border-red-300/70 bg-red-50 px-3 py-2 text-[11.5px] leading-relaxed text-red-900 dark:border-red-400/25 dark:bg-red-400/[0.07] dark:text-red-200">
+                  Não foi possível ler a versão publicada, então o fluxo abaixo pode não ser o que
+                  está no ar. Nada daqui será gravado até recarregar a página com a leitura
+                  funcionando.
+                </div>
+              )}
+              {montagem.regras_descartadas.length > 0 && (
+                <div className="mx-4 mt-4 rounded-[6px] border border-amber-300/70 bg-amber-50 px-3 py-2 text-[11.5px] leading-relaxed text-amber-900 dark:border-amber-400/25 dark:bg-amber-400/[0.07] dark:text-amber-200">
+                  {montagem.regras_descartadas.length === 1
+                    ? "1 regra apontava para uma pergunta ou final que não existe mais e saiu do fluxo."
+                    : `${montagem.regras_descartadas.length} regras apontavam para perguntas ou finais que não existem mais e saíram do fluxo.`}
+                </div>
+              )}
+              <FlowEditor
+                fluxo={fluxo}
+                onChange={setRascunho}
+                temAbertura={displayMode === "conversational"}
+              />
+            </>
+          )}
+          {abaVisivel === "content" && (
             <ContentTab
               name={name}
               setName={setName}
@@ -813,17 +985,13 @@ export default function FormEditorPage({
               setDescription={setDescription}
               theme={theme}
               setTheme={setTheme}
-              formId={id}
               displayMode={displayMode}
-              setDisplayMode={setDisplayMode}
-              modoSalvo={data.form.display_mode === "conversational" ? "conversational" : "classic"}
-              noAr={status === "published"}
             />
           )}
-          {activeTab === "style" && (
+          {abaVisivel === "style" && (
             <StyleTab theme={theme} setTheme={setTheme} />
           )}
-          {activeTab === "fields" && (
+          {abaVisivel === "fields" && (
             <FieldsTab
               fields={fields}
               leadCustomFields={leadCustomFields}
@@ -832,9 +1000,12 @@ export default function FormEditorPage({
               updateField={updateField}
               removeField={removeField}
               moveField={moveField}
+              modo={displayMode}
+              regrasPorRef={regrasPorRef}
+              irParaFluxo={() => setActiveTab("flow")}
             />
           )}
-          {activeTab === "after" && (
+          {abaVisivel === "after" && (
             <AfterTab
               pipelines={pipelines}
               stagesForPipeline={stagesForPipeline}
@@ -851,7 +1022,7 @@ export default function FormEditorPage({
               setRedirectUrl={setRedirectUrl}
             />
           )}
-          {activeTab === "tracking" && (
+          {abaVisivel === "tracking" && (
             <TrackingTab
               tracking={tracking}
               setTracking={setTracking}
@@ -859,8 +1030,8 @@ export default function FormEditorPage({
               formId={id}
             />
           )}
-          {activeTab === "results" && <FormResults formId={id} />}
-          {activeTab === "install" && (
+          {abaVisivel === "results" && <FormResults formId={id} />}
+          {abaVisivel === "install" && (
             <InstallTab
               publicUrl={publicUrl}
               status={status}
@@ -972,6 +1143,16 @@ export default function FormEditorPage({
               </div>
             </div>
 
+            {displayMode === "conversational" && (
+              <button
+                type="button"
+                onClick={() => setPreviewReset((n) => n + 1)}
+                className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-600 hover:text-slate-900 dark:text-white/60 dark:hover:text-white"
+              >
+                <RotateCcw className="h-3 w-3" />
+                Recomeçar
+              </button>
+            )}
             {status === "published" && (
               <a
                 href={publicUrl}
@@ -1012,6 +1193,12 @@ export default function FormEditorPage({
           </div>
         </div>
 
+        {/* A publicação encostada no palco: a pergunta que ela responde é
+            sobre o que este preview mostra. */}
+        <div className="shrink-0 border-b border-black/[0.06] bg-white dark:border-white/[0.08] dark:bg-[#0F1117]">
+          <FormPublishPanel formId={id} modo={displayMode} />
+        </div>
+
         {/* Preview frame com fundo simulado pra simular onde o form ficara */}
         <div
           className="flex-1 overflow-auto transition-colors"
@@ -1030,36 +1217,74 @@ export default function FormEditorPage({
             })(),
           }}
         >
-          <div className="min-h-full flex items-start justify-center p-4 md:p-10">
-            <div
-              className={
-                "transition-all duration-200 " +
-                (previewMode === "mobile"
-                  ? "w-[380px] max-w-full rounded-[24px] overflow-hidden border border-slate-300/40 dark:border-white/10 shadow-[0_24px_48px_rgba(0,0,0,0.18)]"
-                  : "w-full max-w-[680px] rounded-[8px] overflow-hidden shadow-[0_24px_48px_rgba(0,0,0,0.10)]")
-              }
-            >
-              {/* Renderiza o form publico em modo EMBED (mesma forma que
-                  ficara em qualquer landing). Mostrar embed por default
-                  garante que o que o usuario ve aqui e o que o visitante
-                  vera quando o form for embedado na pagina de vendas. */}
-              <PublicFormView
-                slug={slug || "preview"}
-                payload={previewPayload}
-                utm={{
-                  utm_source: null,
-                  utm_medium: null,
-                  utm_campaign: null,
-                  utm_term: null,
-                  utm_content: null,
-                  gclid: null,
-                  fbclid: null,
-                }}
-                preview
-                embed
-              />
+          {displayMode === "conversational" ? (
+            /**
+             * O palco do conversacional é uma TELA, não um card: ele
+             * ocupa a janela inteira no ar, e mostrá-lo encaixotado num
+             * cartão de 680px faria o preview parecer outro produto.
+             *
+             * O schema é o `fluxo` — a saída da MESMA `montarVersao` que
+             * a publicação chama —, então o que se navega aqui é o que
+             * vai ao ar, incluindo os saltos.
+             */
+            <div className="flex min-h-full items-start justify-center p-4 md:p-8">
+              <div
+                className={
+                  "overflow-hidden transition-all duration-200 " +
+                  (previewMode === "mobile"
+                    ? "h-[720px] max-h-[calc(100dvh-13rem)] w-[380px] max-w-full rounded-[24px] border border-slate-300/40 shadow-[0_24px_48px_rgba(0,0,0,0.18)] dark:border-white/10"
+                    : "h-[calc(100dvh-13rem)] min-h-[520px] w-full max-w-[900px] rounded-[10px] shadow-[0_24px_48px_rgba(0,0,0,0.10)]")
+                }
+              >
+                <ConversationalFormView
+                  key={`${previewMode}-${previewReset}`}
+                  slug={slug || "preview"}
+                  schema={fluxo}
+                  form={{
+                    id,
+                    name,
+                    logo_url: data.form.logo_url ?? null,
+                    theme,
+                    success_message: successMessage || null,
+                    redirect_url: redirectUrl || null,
+                  }}
+                  preview
+                  moldura
+                />
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="min-h-full flex items-start justify-center p-4 md:p-10">
+              <div
+                className={
+                  "transition-all duration-200 " +
+                  (previewMode === "mobile"
+                    ? "w-[380px] max-w-full rounded-[24px] overflow-hidden border border-slate-300/40 dark:border-white/10 shadow-[0_24px_48px_rgba(0,0,0,0.18)]"
+                    : "w-full max-w-[680px] rounded-[8px] overflow-hidden shadow-[0_24px_48px_rgba(0,0,0,0.10)]")
+                }
+              >
+                {/* Renderiza o form publico em modo EMBED (mesma forma que
+                    ficara em qualquer landing). Mostrar embed por default
+                    garante que o que o usuario ve aqui e o que o visitante
+                    vera quando o form for embedado na pagina de vendas. */}
+                <PublicFormView
+                  slug={slug || "preview"}
+                  payload={previewPayload}
+                  utm={{
+                    utm_source: null,
+                    utm_medium: null,
+                    utm_campaign: null,
+                    utm_term: null,
+                    utm_content: null,
+                    gclid: null,
+                    fbclid: null,
+                  }}
+                  preview
+                  embed
+                />
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -1070,6 +1295,78 @@ export default function FormEditorPage({
 // Tabs
 // ────────────────────────────────────────────────────────────────────
 
+/**
+ * O formato fica no cabeçalho, não numa aba.
+ *
+ * Ele decide o que todo o resto significa — quais abas existem, o que o
+ * palco desenha, se a lógica de salto tem para onde desviar. Guardado
+ * dentro de uma aba de configuração, ele vira uma escolha que só quem já
+ * sabe da existência encontra, e o editor passa a parecer um formulário
+ * de página única com peças estranhas sobrando.
+ */
+function FormatoDoFormulario({
+  modo,
+  modoSalvo,
+  noAr,
+  onChange,
+}: {
+  modo: "classic" | "conversational"
+  /** O que está GRAVADO. A troca só vale quando a página é salva. */
+  modoSalvo: "classic" | "conversational"
+  noAr: boolean
+  onChange: (m: "classic" | "conversational") => void
+}) {
+  const opcoes = [
+    { key: "classic" as const, label: "Página única", icon: Rows3 },
+    { key: "conversational" as const, label: "Conversacional", icon: MessagesSquare },
+  ]
+  return (
+    <div className="mt-3">
+      <div
+        role="radiogroup"
+        aria-label="Formato do formulário"
+        className="inline-flex rounded-[7px] bg-slate-100 p-0.5 dark:bg-white/[0.05]"
+      >
+        {opcoes.map((o) => {
+          const ativo = modo === o.key
+          const Icon = o.icon
+          return (
+            <button
+              key={o.key}
+              type="button"
+              role="radio"
+              aria-checked={ativo}
+              onClick={() => onChange(o.key)}
+              className={
+                "inline-flex items-center gap-1.5 rounded-[5px] px-2.5 py-1.5 text-[11.5px] font-medium transition-colors " +
+                (ativo
+                  ? "bg-white text-slate-900 shadow-[0_1px_2px_rgba(0,0,0,0.07)] dark:bg-[#1A1D27] dark:text-white"
+                  : "text-slate-500 hover:text-slate-900 dark:text-white/55 dark:hover:text-white")
+              }
+            >
+              <Icon className="h-3.5 w-3.5" />
+              {o.label}
+            </button>
+          )
+        })}
+      </div>
+      {modo !== modoSalvo && (
+        <p
+          className={
+            "mt-1.5 flex items-start gap-1 text-[10.5px] leading-relaxed " +
+            (noAr ? "text-amber-700 dark:text-amber-300" : "text-slate-500 dark:text-white/45")
+          }
+        >
+          {noAr && <AlertTriangle className="mt-[1px] h-3 w-3 shrink-0" />}
+          {noAr
+            ? "Ao salvar, quem abrir o endereço público já vê neste formato — a troca não espera a publicação da versão."
+            : "A troca vale quando você salvar a página."}
+        </p>
+      )}
+    </div>
+  )
+}
+
 function ContentTab({
   name,
   setName,
@@ -1079,11 +1376,7 @@ function ContentTab({
   setDescription,
   theme,
   setTheme,
-  formId,
   displayMode,
-  setDisplayMode,
-  modoSalvo,
-  noAr,
 }: {
   name: string
   setName: (v: string) => void
@@ -1093,27 +1386,10 @@ function ContentTab({
   setDescription: (v: string) => void
   theme: FormTheme
   setTheme: (fn: FormTheme | ((t: FormTheme) => FormTheme)) => void
-  formId: string
   displayMode: "classic" | "conversational"
-  setDisplayMode: (m: "classic" | "conversational") => void
-  /** O que está gravado — o modo muda o formulário no ar ao SALVAR. */
-  modoSalvo: "classic" | "conversational"
-  noAr: boolean
 }) {
   return (
     <Stack>
-      <SectionTitle
-        title="Exibição"
-        hint="O modo e a versão que está no ar."
-      />
-      <FormPublishPanel
-        formId={formId}
-        modo={displayMode}
-        modoSalvo={modoSalvo}
-        noAr={noAr}
-        onModoChange={setDisplayMode}
-      />
-
       <SectionTitle title="Identificação" hint="Para encontrar o form no admin." />
       <Field label="Nome do formulário">
         <input
@@ -1163,7 +1439,11 @@ function ContentTab({
 
       <SectionTitle
         title="Conteúdo do form público"
-        hint="O que o visitante vê na página."
+        hint={
+          displayMode === "conversational"
+            ? "O logo e as cores valem; o título e o subtítulo aqui não são desenhados no conversacional — quem abre a peça é a tela de abertura, na aba Fluxo."
+            : "O que o visitante vê na página."
+        }
       />
       <Field
         label="Badge (chip pequeno acima do título)"
@@ -1728,6 +2008,9 @@ function FieldsTab({
   updateField,
   removeField,
   moveField,
+  modo,
+  regrasPorRef,
+  irParaFluxo,
 }: {
   fields: FormField[]
   leadCustomFields: Array<{ id: string; key: string; label: string; field_type: string }>
@@ -1736,13 +2019,21 @@ function FieldsTab({
   updateField: (idx: number, patch: Partial<FormField>) => void
   removeField: (idx: number) => void
   moveField: (idx: number, dir: "up" | "down") => void
+  modo: "classic" | "conversational"
+  /** Quantos desvios cada pergunta tem — o vínculo com a aba Fluxo. */
+  regrasPorRef: Record<string, number>
+  irParaFluxo: () => void
 }) {
   return (
     <Stack>
       <div className="flex items-center justify-between">
         <SectionTitle
-          title={`Campos (${fields.length})`}
-          hint="Arraste pra reordenar — em breve."
+          title={`Perguntas (${fields.length})`}
+          hint={
+            modo === "conversational"
+              ? "Uma por tela, na ordem daqui."
+              : "Todas de uma vez, na ordem daqui."
+          }
         />
         <button
           type="button"
@@ -1770,6 +2061,8 @@ function FieldsTab({
           <FieldEditor
             key={field.id ?? `new-${idx}`}
             field={field}
+            desvios={field.id ? (regrasPorRef[field.id] ?? 0) : 0}
+            irParaFluxo={modo === "conversational" ? irParaFluxo : undefined}
             leadCustomFields={leadCustomFields}
             dealCustomFields={dealCustomFields}
             onChange={(patch) => updateField(idx, patch)}
@@ -2767,6 +3060,8 @@ function PlatformGuide({
 
 function FieldEditor({
   field,
+  desvios,
+  irParaFluxo,
   leadCustomFields,
   dealCustomFields,
   onChange,
@@ -2775,6 +3070,8 @@ function FieldEditor({
   onMoveDown,
 }: {
   field: FormField
+  desvios: number
+  irParaFluxo?: () => void
   leadCustomFields: Array<{ id: string; key: string; label: string; field_type: string }>
   dealCustomFields: Array<{ id: string; key: string; label: string; field_type: string }>
   onChange: (patch: Partial<FormField>) => void
@@ -2805,6 +3102,16 @@ function FieldEditor({
           onChange={(e) => onChange({ label: e.target.value })}
           className="flex-1 min-w-0 bg-transparent text-[13px] font-medium text-slate-900 dark:text-white outline-none"
         />
+        {desvios > 0 && irParaFluxo && (
+          <button
+            type="button"
+            onClick={irParaFluxo}
+            title="Ver no fluxo"
+            className="shrink-0 rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 hover:bg-blue-100 dark:bg-blue-400/10 dark:text-blue-300 dark:hover:bg-blue-400/20"
+          >
+            {desvios} {desvios === 1 ? "desvio" : "desvios"}
+          </button>
+        )}
         <span className="shrink-0 text-[10px] uppercase tracking-wide text-slate-400 dark:text-white/40 font-mono">
           {field.field_type}
         </span>

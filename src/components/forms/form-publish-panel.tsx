@@ -1,7 +1,7 @@
 "use client"
 
 /**
- * Modo de exibição + publicação da versão.
+ * A faixa de publicação — o que está no ar, ao lado do que você vê.
  *
  * Este painel existe por causa de um descompasso que, sem ele, não tem
  * como o operador enxergar: o editor grava em `crm_form_fields`, e o
@@ -12,11 +12,16 @@
  * rascunho está à frente — e não um efeito colateral do salvar: publicar
  * no meio de uma campanha muda o formulário para quem está respondendo
  * agora, e isso é decisão de quem opera, não do botão de salvar.
+ *
+ * Ela mora encostada no PALCO, e não numa aba de configuração, porque a
+ * pergunta que ela responde é sobre o que o preview mostra: "isto que
+ * estou vendo é o que o visitante recebe?". Numa aba, ela só seria lida
+ * por quem já foi procurá-la.
  */
 
 import { useCallback, useState } from "react"
 import useSWR from "swr"
-import { AlertTriangle, CheckCircle2, Loader2, MessagesSquare, Rows3, UploadCloud } from "lucide-react"
+import { AlertTriangle, CheckCircle2, Loader2, UploadCloud } from "lucide-react"
 
 const fetcher = async (url: string) => {
   const res = await fetch(url)
@@ -41,18 +46,11 @@ interface Estado {
 
 export function FormPublishPanel({
   formId,
+  /** Conversacional: só ali a versão publicada decide o que o público vê. */
   modo,
-  modoSalvo,
-  noAr,
-  onModoChange,
 }: {
   formId: string
   modo: "classic" | "conversational"
-  /** O modo GRAVADO. Trocar aqui só vale quando a página é salva. */
-  modoSalvo: "classic" | "conversational"
-  /** O formulário está publicado — o endereço público responde. */
-  noAr: boolean
-  onModoChange: (m: "classic" | "conversational") => void
 }) {
   const { data, error, mutate, isLoading } = useSWR<Estado>(
     `/api/crm/forms/${formId}/publish`,
@@ -89,68 +87,29 @@ export function FormPublishPanel({
   }, [formId, mutate])
 
   return (
-    <div className="space-y-3">
-      <div>
-        <label className="block text-[11px] font-medium text-slate-600 dark:text-white/60 mb-1.5">
-          Como o formulário aparece
-        </label>
-        <div className="grid grid-cols-2 gap-2">
-          <OpcaoDeModo
-            ativo={modo === "classic"}
-            onClick={() => onModoChange("classic")}
-            icone={Rows3}
-            titulo="Página única"
-            descricao="Todos os campos de uma vez."
-          />
-          <OpcaoDeModo
-            ativo={modo === "conversational"}
-            onClick={() => onModoChange("conversational")}
-            icone={MessagesSquare}
-            titulo="Conversacional"
-            descricao="Uma pergunta por tela."
-          />
-        </div>
-        {modo !== modoSalvo ? (
-          <p
-            className={
-              "mt-1.5 text-[10.5px] leading-relaxed " +
-              (noAr
-                ? "text-amber-700 dark:text-amber-300"
-                : "text-slate-500 dark:text-white/45")
-            }
-          >
-            {noAr
-              ? "Ao salvar, quem abrir o endereço público já vê neste modo — a troca não espera a publicação da versão."
-              : "A troca vale quando você salvar a página."}
-          </p>
-        ) : (
-          modo === "conversational" && (
-            <p className="mt-1.5 text-[10.5px] leading-relaxed text-slate-500 dark:text-white/45">
-              As <strong>perguntas e a lógica</strong> só chegam a quem responde depois de
-              publicar a versão. O modo de exibição, esse, muda ao salvar a página.
-            </p>
-          )
-        )}
-      </div>
-
-      <div className="rounded-md border border-black/[0.06] dark:border-white/[0.08] px-2.5 py-2.5">
-        {isLoading ? (
+    <div className="px-4 py-2">
+      {isLoading ? (
           <p className="text-[11.5px] text-slate-500 dark:text-white/45">Verificando…</p>
         ) : error ? (
           <p className="text-[11.5px] text-red-600 dark:text-red-400">{(error as Error).message}</p>
         ) : data ? (
           <>
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-[11.5px] font-medium text-slate-900 dark:text-white/90">
+            <div className="flex items-center justify-between gap-3">
+              <p className="min-w-0 truncate text-[11.5px] text-slate-600 dark:text-white/60">
+                <span className="font-medium text-slate-900 dark:text-white/90">
                   {data.versao_atual > 0
                     ? `No ar: versão ${data.versao_atual}`
-                    : "Nenhuma versão publicada ainda"}
-                </p>
-                <p className="mt-0.5 text-[10.5px] text-slate-500 dark:text-white/45">
-                  {data.perguntas} {data.perguntas === 1 ? "pergunta" : "perguntas"} no rascunho
-                </p>
-              </div>
+                    : "Nenhuma versão publicada"}
+                </span>
+                <span className="mx-1.5 text-slate-300 dark:text-white/20">·</span>
+                {data.perguntas} {data.perguntas === 1 ? "pergunta" : "perguntas"} no rascunho
+                {modo === "classic" && (
+                  <>
+                    <span className="mx-1.5 text-slate-300 dark:text-white/20">·</span>
+                    página única não espera a versão
+                  </>
+                )}
+              </p>
               <button
                 type="button"
                 onClick={publicar}
@@ -201,48 +160,8 @@ export function FormPublishPanel({
             {resultado && <Faixa tom="ok">{resultado}</Faixa>}
             {falha && <Faixa tom="erro">{falha}</Faixa>}
           </>
-        ) : null}
-      </div>
+      ) : null}
     </div>
-  )
-}
-
-function OpcaoDeModo({
-  ativo,
-  onClick,
-  icone: Icone,
-  titulo,
-  descricao,
-}: {
-  ativo: boolean
-  onClick: () => void
-  icone: typeof Rows3
-  titulo: string
-  descricao: string
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={ativo}
-      className={
-        "text-left rounded-md border px-2.5 py-2 transition-colors " +
-        (ativo
-          ? "border-blue-600 bg-blue-50 dark:border-blue-400 dark:bg-blue-400/10"
-          : "border-black/[0.08] dark:border-white/[0.10] hover:border-black/20 dark:hover:border-white/25")
-      }
-    >
-      <div className="flex items-center gap-1.5">
-        <Icone
-          className={
-            "h-3.5 w-3.5 " +
-            (ativo ? "text-blue-600 dark:text-blue-400" : "text-slate-400 dark:text-white/40")
-          }
-        />
-        <span className="text-[11.5px] font-medium text-slate-900 dark:text-white/90">{titulo}</span>
-      </div>
-      <p className="mt-0.5 text-[10.5px] text-slate-500 dark:text-white/45">{descricao}</p>
-    </button>
   )
 }
 
@@ -255,7 +174,7 @@ function Faixa({ tom, children }: { tom: "ok" | "alerta" | "erro"; children: Rea
         : "border-amber-300/60 bg-amber-50 text-amber-900 dark:border-amber-400/25 dark:bg-amber-400/[0.07] dark:text-amber-200"
   const Icone = tom === "ok" ? CheckCircle2 : AlertTriangle
   return (
-    <div className={`mt-2 flex items-start gap-1.5 rounded-md border px-2 py-1.5 ${cls}`}>
+    <div className={`mt-1.5 flex items-start gap-1.5 rounded-md border px-2 py-1 ${cls}`}>
       <Icone className="h-3 w-3 mt-0.5 shrink-0" />
       <p className="text-[11px] leading-relaxed">{children}</p>
     </div>
