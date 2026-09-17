@@ -38,6 +38,7 @@ import {
 } from "./pipeline-filters-bar"
 import { sinaisDoNegocio } from "@/lib/crm/prospeccao"
 import type { RespostaDoToque } from "./botao-toque"
+import { ConfirmacaoDeSaidaDialog } from "./confirmacao-de-saida-dialog"
 import { SavedViewsMenu, type SavedView } from "./saved-views-menu"
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu"
 import { csvDate, csvNumber, downloadCsv, toCsv } from "@/lib/services/crm-csv"
@@ -48,12 +49,26 @@ const fetcher = (url: string) => fetch(url).then((r) => r.json())
 
 /** Extrai a mensagem do shape de erro da API ({ error: string | { message } }). */
 async function readApiError(res: Response): Promise<string> {
-  const body = (await res.json().catch(() => null)) as { error?: unknown } | null
+  return (await readApiFailure(res)).mensagem
+}
+
+/**
+ * Mensagem E código do erro. O código é o que distingue "não pode
+ * mover" de "falta responder uma pergunta antes de mover" — sem ele os
+ * dois viram o mesmo toast vermelho e o card nunca sai da coluna.
+ */
+async function readApiFailure(
+  res: Response,
+): Promise<{ mensagem: string; codigo: string | null }> {
+  const body = (await res.json().catch(() => null)) as
+    | { error?: unknown; code?: unknown }
+    | null
   const raw = body?.error
-  return (
+  const mensagem =
     (typeof raw === "string" ? raw : (raw as { message?: string } | null)?.message) ??
     res.statusText
-  )
+  const codigo = typeof body?.code === "string" ? body.code : null
+  return { mensagem, codigo }
 }
 
 interface PipelineDetailResponse {
@@ -152,6 +167,14 @@ export function PipelineBoardView({
     dealId: string
     stageId: string
     position: number
+  } | null>(null)
+  /** Pergunta de saída pendente (ex: "O Luan liberou este lead?"). */
+  const [pendingConfirmacao, setPendingConfirmacao] = useState<{
+    dealId: string
+    stageId: string
+    position: number
+    codigo: string
+    pergunta: string
   } | null>(null)
 
   // ── Visões salvas ───────────────────────────────────────────────
@@ -473,6 +496,7 @@ export function PipelineBoardView({
     dealId: string,
     toStageId: string,
     toPosition: number,
+    extras?: Record<string, unknown>,
   ) => {
     const targetStage = pipeline?.stages.find((s) => s.id === toStageId)
     if (targetStage?.stage_type === "lost") {
@@ -483,14 +507,37 @@ export function PipelineBoardView({
     const res = await fetch(`/api/crm/deals/${dealId}/move`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ stage_id: toStageId, position: toPosition }),
+      body: JSON.stringify({ stage_id: toStageId, position: toPosition, ...extras }),
     })
     if (!res.ok) {
+      const { mensagem, codigo } = await readApiFailure(res)
+      // Regra de SAÍDA pede uma resposta antes de liberar o card. Abre a
+      // pergunta em vez de virar toast vermelho: o vendedor não fez nada
+      // errado, só falta ele responder.
+      if (codigo?.startsWith("confirmacao:")) {
+        setPendingConfirmacao({
+          dealId,
+          stageId: toStageId,
+          position: toPosition,
+          codigo: codigo.slice("confirmacao:".length),
+          pergunta: mensagem,
+        })
+        throw new Error("Aguardando confirmação de saída")
+      }
       // O board reverte o card no throw — sem o toast a reversão é
       // silenciosa e parece bug de drag em vez de erro do servidor.
-      const msg = await readApiError(res)
-      setToast({ kind: "error", msg: `Falha ao mover: ${msg}` })
-      throw new Error(`Falha ao mover deal: ${msg}`)
+      setToast({ kind: "error", msg: `Falha ao mover: ${mensagem}` })
+      throw new Error(`Falha ao mover deal: ${mensagem}`)
+    }
+    // Sugestão é conselho sobre um move que JÁ aconteceu — toast neutro,
+    // nunca erro, senão o vendedor acha que precisa desfazer.
+    const corpo = (await res.json().catch(() => null)) as {
+      data?: { sugestoes?: Array<{ mensagem: string }> }
+      sugestoes?: Array<{ mensagem: string }>
+    } | null
+    const sugestoes = corpo?.data?.sugestoes ?? corpo?.sugestoes ?? []
+    if (sugestoes.length > 0) {
+      setToast({ kind: "success", msg: sugestoes.map((x) => x.mensagem).join(" ") })
     }
     await mutate()
     // Ganhou → abre o fechamento (cliente + assinatura/cobrança).
@@ -1361,6 +1408,28 @@ export function PipelineBoardView({
         onClose={() => setWonDealId(null)}
         onDone={(msg) => {
           setToast({ kind: "success", msg })
+          mutate()
+        }}
+      />
+
+      <ConfirmacaoDeSaidaDialog
+        pendente={pendingConfirmacao}
+        onConfirm={async (resposta) => {
+          if (!pendingConfirmacao) return
+          const { dealId, stageId, position, codigo } = pendingConfirmacao
+          setPendingConfirmacao(null)
+          try {
+            await handleMove(dealId, stageId, position, {
+              confirmacoes: { [codigo]: resposta },
+            })
+          } catch {
+            // handleMove já mostrou o toast; o card volta sozinho.
+          }
+        }}
+        onCancel={() => {
+          setPendingConfirmacao(null)
+          // O card foi revertido no throw; revalida pra tela bater com
+          // o banco em vez de mostrar a posição otimista.
           mutate()
         }}
       />

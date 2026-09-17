@@ -28,8 +28,20 @@ const patchStageSchema = z.object({
   order: z.number().int().nonnegative().optional(),
   // Campos exigidos ao mover um negócio PARA esta etapa (migration 20261068)
   required_fields: z
-    .array(z.enum(["value", "expected_close_date", "client", "phone", "products"]))
-    .max(5)
+    .array(
+      z.union([
+        z.enum(["value", "expected_close_date", "client", "phone", "products"]),
+        // Campo personalizado do negócio (`crm_custom_fields`). A
+        // existência NÃO é validada aqui: o editor só oferece campos
+        // que existem, e recusar uma chave gravada impediria de editar
+        // a etapa depois que o campo fosse apagado.
+        z.string().regex(/^custom:[a-z0-9_]{1,64}$/i),
+      ]),
+    )
+    // Teto folgado no lugar de 5: com campo personalizado o limite de
+    // antes era a contagem das chaves fixas, e travaria a segunda
+    // exigência de qualquer etapa.
+    .max(20)
     .optional(),
 })
 

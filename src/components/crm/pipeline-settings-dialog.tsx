@@ -62,6 +62,40 @@ const REQUIRED_FIELD_OPTIONS: Array<{ key: string; label: string }> = [
   { key: "products", label: "Ao menos um produto" },
 ]
 
+interface CampoPersonalizado {
+  key: string
+  label: string
+}
+
+/**
+ * Opções do seletor: as fixas mais os campos personalizados do negócio.
+ *
+ * Uma chave `custom:` já gravada mas SEM campo correspondente continua
+ * na lista, marcada como ausente — some da tela ela viraria uma regra
+ * invisível que o vendedor só descobre ao ser bloqueado.
+ */
+function opcoesDeCampo(
+  personalizados: CampoPersonalizado[],
+  jaMarcados: string[],
+): Array<{ key: string; label: string; ausente?: boolean }> {
+  const doDeal = personalizados.map((c) => ({
+    key: `custom:${c.key}`,
+    label: c.label,
+  }))
+  const conhecidas = new Set([
+    ...REQUIRED_FIELD_OPTIONS.map((o) => o.key),
+    ...doDeal.map((o) => o.key),
+  ])
+  const orfas = jaMarcados
+    .filter((k) => !conhecidas.has(k))
+    .map((k) => ({
+      key: k,
+      label: k.startsWith("custom:") ? k.slice("custom:".length) : k,
+      ausente: true,
+    }))
+  return [...REQUIRED_FIELD_OPTIONS, ...doDeal, ...orfas]
+}
+
 interface PipelineSummary {
   id: string
   name: string
@@ -657,6 +691,10 @@ export function PipelineSettingsDialog({
                                   })
                                 }
                                 canDelete={stages.length > 1}
+                                // Os campos do deal já vêm por SWR neste
+                                // mesmo diálogo — sem isto a chave
+                                // `custom:` grava e some da tela.
+                                camposPersonalizados={customFields}
                               />
                             </div>
                           )}
@@ -937,13 +975,16 @@ function RequiredFieldsButton({
   value,
   onChange,
   stageName,
+  personalizados = [],
 }: {
   value: string[]
   onChange: (keys: string[]) => void
   stageName: string
+  personalizados?: CampoPersonalizado[]
 }) {
   const [open, setOpen] = useState(false)
   const count = value.length
+  const opcoes = opcoesDeCampo(personalizados, value)
 
   return (
     <div className="relative shrink-0">
@@ -954,7 +995,7 @@ function RequiredFieldsButton({
         title={
           count > 0
             ? `Exige: ${value
-                .map((k) => REQUIRED_FIELD_OPTIONS.find((o) => o.key === k)?.label ?? k)
+                .map((k) => opcoes.find((o) => o.key === k)?.label ?? k)
                 .join(", ")}`
             : "Campos obrigatórios pra entrar nesta etapa"
         }
@@ -979,7 +1020,7 @@ function RequiredFieldsButton({
             <p className="mb-1.5 px-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-white/50">
               Exigir para entrar aqui
             </p>
-            {REQUIRED_FIELD_OPTIONS.map((opt) => {
+            {opcoes.map((opt) => {
               const checked = value.includes(opt.key)
               return (
                 <label
@@ -998,7 +1039,10 @@ function RequiredFieldsButton({
                     }
                     className="h-3.5 w-3.5 accent-[#4E62D8]"
                   />
-                  {opt.label}
+                  <span className={opt.ausente ? "text-slate-400 dark:text-white/40" : ""}>
+                    {opt.label}
+                    {opt.ausente && " (campo não existe mais)"}
+                  </span>
                 </label>
               )
             })}
@@ -1018,6 +1062,8 @@ interface StageRowProps {
   onChange: (patch: Partial<Stage>) => void
   onDelete: () => void
   canDelete: boolean
+  /** Campos personalizados do negócio, pra cobrar `custom:<key>`. */
+  camposPersonalizados?: CampoPersonalizado[]
 }
 
 function StageRow({
@@ -1026,6 +1072,7 @@ function StageRow({
   onChange,
   onDelete,
   canDelete,
+  camposPersonalizados = [],
 }: StageRowProps) {
   // Edita localmente nome/sla pra evitar PATCH a cada keystroke. Salva
   // no blur ou Enter.
@@ -1139,6 +1186,7 @@ function StageRow({
         value={stage.required_fields ?? []}
         onChange={(keys) => onChange({ required_fields: keys })}
         stageName={stage.name}
+        personalizados={camposPersonalizados}
       />
 
       {/* Delete */}

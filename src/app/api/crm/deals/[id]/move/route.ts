@@ -34,6 +34,16 @@ import {
   requiredFieldsMessage,
 } from "@/lib/services/crm-required-fields"
 import { ensureClientForDeal } from "@/lib/services/crm-client-link.service"
+import {
+  registrarGanhoDeParceiro,
+  type ResultadoDoGanho,
+} from "@/lib/services/crm-ganho-parceiro.service"
+import {
+  impedimentosDaMudanca,
+  perguntasDeSaida,
+  sugestoes,
+  tagsAoMudar,
+} from "@/lib/crm/regras-de-coluna"
 
 const log = logger.child("CrmDealMove")
 
@@ -44,6 +54,11 @@ const moveSchema = z.object({
   position: z.number().int().optional(),
   lost_reason: z.string().nullable().optional(),
   won_reason: z.string().nullable().optional(),
+  /**
+   * Respostas às perguntas de saída da etapa atual (ex: "O Luan
+   * liberou este lead?"). Chave = código da pergunta.
+   */
+  confirmacoes: z.record(z.string(), z.string()).optional(),
 })
 
 export async function POST(
@@ -116,17 +131,34 @@ export async function POST(
       if (snap) {
         const client = Array.isArray(snap.client) ? snap.client[0] : snap.client
         const lead = Array.isArray(snap.lead) ? snap.lead[0] : snap.lead
-        const custom = (snap.custom_fields ?? {}) as { contact_phone?: string }
+        const custom = (snap.custom_fields ?? {}) as Record<string, unknown> & {
+          contact_phone?: string
+        }
         const missing = missingRequiredFields(required, {
           value: snap.value == null ? null : Number(snap.value),
           expected_close_date: snap.expected_close_date,
           client_id: snap.client_id,
           phone: client?.phone ?? lead?.phone ?? custom.contact_phone ?? null,
           products_count: productsCount,
+          custom_fields: custom,
         })
         if (missing.length > 0) {
+          // Rótulo do campo personalizado vem de `crm_custom_fields`:
+          // sem ele o vendedor leria "preencha: maturidade_loja".
+          const labels: Record<string, string> = {}
+          const chavesCustom = missing
+            .filter((k) => k.startsWith("custom:"))
+            .map((k) => k.slice("custom:".length))
+          if (chavesCustom.length > 0) {
+            const { data: cfs } = await admin
+              .from("crm_custom_fields")
+              .select("key, label")
+              .eq("entity_type", "deal")
+              .in("key", chavesCustom)
+            for (const cf of cfs ?? []) labels[cf.key] = cf.label
+          }
           throw new AppError(
-            requiredFieldsMessage(targetStage.name, missing),
+            requiredFieldsMessage(targetStage.name, missing, labels),
             422,
             "required-fields",
           )
@@ -138,12 +170,56 @@ export async function POST(
     // isto e uma transferencia entre pipelines.
     const { data: currentDeal } = await admin
       .from("deals")
-      .select("id, pipeline_id")
+      .select("id, pipeline_id, stage_id, org_id, tags, custom_fields")
       .eq("id", id)
       .maybeSingle()
 
     if (!currentDeal) {
       throw new AppError("Deal nao encontrado", 404, "not-found")
+    }
+
+    // ── Regras de coluna (saida + terminal) ──────────────────────────
+    // Rodam ANTES do update: o que a coluna exige pra SAIR nao cabe em
+    // `required_fields`, que e sobre entrar. Bloqueio aqui devolve 422 e
+    // nao toca no banco — mover primeiro e cobrar depois deixaria o card
+    // na coluna nova com o campo em branco.
+    const { data: etapaAtual } = currentDeal.stage_id
+      ? await admin
+          .from("pipeline_stages")
+          .select("id, name, stage_type")
+          .eq("id", currentDeal.stage_id)
+          .maybeSingle()
+      : { data: null }
+
+    // Motivos da org so sao lidos quando a etapa destino e de perda —
+    // uma consulta a mais em todo drag do kanban nao se paga.
+    let motivosValidos: string[] = []
+    if (targetStage.stage_type === "lost" && currentDeal.org_id) {
+      const { data: motivos } = await admin
+        .from("crm_lost_reasons")
+        .select("label")
+        .eq("org_id", currentDeal.org_id)
+      motivosValidos = (motivos ?? []).map((m) => m.label)
+    }
+
+    const contextoDaRegra = {
+      etapaAtual: etapaAtual
+        ? { name: etapaAtual.name, stage_type: etapaAtual.stage_type }
+        : null,
+      etapaDestino: { name: targetStage.name, stage_type: targetStage.stage_type },
+      custom_fields: (currentDeal.custom_fields ?? {}) as Record<string, unknown>,
+      lostReason: parsed.lost_reason,
+      motivosValidos,
+      confirmacoes: parsed.confirmacoes,
+    }
+
+    const impedimentos = impedimentosDaMudanca(contextoDaRegra)
+    if (impedimentos.length > 0) {
+      throw new AppError(
+        impedimentos.map((i) => i.mensagem).join(" "),
+        422,
+        impedimentos[0].codigo,
+      )
     }
 
     const isTransfer = currentDeal.pipeline_id !== targetStage.pipeline_id
@@ -198,12 +274,25 @@ export async function POST(
       status: DealStatusUpdate
       lost_reason?: string | null
       won_reason?: string | null
+      tags?: string[]
     } = {
       stage_id: parsed.stage_id,
       // Sempre derivado da etapa — ver docstring.
       pipeline_id: targetStage.pipeline_id,
       position,
       status: "open",
+    }
+
+    // A tag de "nao contatar" entra no MESMO update: num segundo
+    // update ela poderia falhar sozinha e o lead seguiria abordavel
+    // depois de ter pedido pra parar.
+    const tagsNovas = tagsAoMudar(contextoDaRegra)
+    if (tagsNovas.length > 0) {
+      const atuais = (currentDeal.tags ?? []) as string[]
+      const faltando = tagsNovas.filter(
+        (t) => !atuais.some((a) => a.trim().toLowerCase() === t),
+      )
+      if (faltando.length > 0) updates.tags = [...atuais, ...faltando]
     }
 
     if (targetStage.stage_type === "won") {
@@ -235,9 +324,28 @@ export async function POST(
         : undefined,
     })
 
+    // A resposta da pergunta de saída vira NOTA: "o Luan liberou" é
+    // informação de negociação, e guardá-la só no corpo do POST a
+    // perderia — ninguém saberia por que o card saiu de lá.
+    for (const p of perguntasDeSaida(contextoDaRegra)) {
+      if (!p.viraNota) continue
+      const resposta = parsed.confirmacoes?.[p.codigo]
+      if (!resposta?.trim()) continue
+      const { error: nErr } = await admin.from("crm_deal_activities").insert({
+        deal_id: id,
+        type: "note",
+        content: `${p.pergunta} ${resposta.trim()}`,
+        created_by: user.id,
+        completed_at: new Date().toISOString(),
+        metadata: { origem: "regra_de_saida", codigo: p.codigo },
+      })
+      if (nErr) log.error("[Deals] nota da confirmação não gravou", { id, nErr })
+    }
+
     // Venda ganha fecha o ciclo sozinha: lead vira cliente vinculado
     // (base do cash collect e do onboarding). Fail-open — vincular
     // cliente nunca impede o ganho.
+    let posVenda: ResultadoDoGanho | null = null
     if (deal?.status === "won") {
       try {
         const { data: opMember } = await admin
@@ -250,6 +358,15 @@ export async function POST(
         await ensureClientForDeal(admin, id, { fallbackOrgId: opMember?.org_id ?? null })
       } catch (err) {
         log.error("[Deals] auto link-client falhou (move segue)", { id, err })
+      }
+
+      // Indicação de parceiro: abre o pós-venda e recalcula o extrato
+      // dele. Fail-open, e roda DEPOIS do link-client porque o negócio
+      // novo herda o `client_id` que aquele acabou de vincular.
+      try {
+        posVenda = await registrarGanhoDeParceiro(admin, id)
+      } catch (err) {
+        log.error("[Deals] ganho de parceiro falhou (move segue)", { id, err })
       }
     }
 
@@ -316,6 +433,9 @@ export async function POST(
       // Deixa o board saber que precisa remover o card (o deal saiu
       // desta pipeline), em vez de so reposicionar.
       transferred: isTransfer,
+      // Conselho, nunca bloqueio: o move ja aconteceu.
+      sugestoes: sugestoes(contextoDaRegra),
+      pos_venda: posVenda,
     })
   } catch (error) {
     log.error("Deal move error:", error)
