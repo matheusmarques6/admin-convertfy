@@ -46,6 +46,13 @@ import {
 } from "@/lib/forms/engine"
 import { validarResposta } from "@/lib/forms/validacao"
 import { aplicarRecall } from "@/lib/forms/recall"
+import {
+  fireConversionPixels,
+  matchingDoBrowser,
+  useFormPixels,
+  type FormTracking,
+  type SubmitTracking,
+} from "./form-pixels"
 import { defaults, gradientCss, type FormTheme } from "./form-theme"
 import { useFormSession } from "./use-form-session"
 
@@ -59,8 +66,12 @@ export interface ConversationalFormProps {
     theme: FormTheme
     success_message: string | null
     redirect_url: string | null
+    /** Descritor de pixels do GET público (sem token, sem regras). */
+    tracking?: FormTracking
   }
   contexto?: Record<string, string | null>
+  /** Click ids da URL do anúncio — viram `_fbc`/`_fbp` no submit. */
+  clickIds?: { fbclid: string | null; gclid: string | null }
   hidden?: Record<string, string>
   /** `?retomar=` — abre o formulário onde a pessoa parou. */
   retomarToken?: string | null
@@ -89,6 +100,7 @@ export function ConversationalFormView({
   schema,
   form,
   contexto = {},
+  clickIds,
   hidden = {},
   retomarToken = null,
   preview = false,
@@ -112,7 +124,26 @@ export function ConversationalFormView({
   const [progressoVisto, setProgressoVisto] = useState(0)
 
   const entradaEm = useRef<number>(Date.now())
-  const sessao = useFormSession({ slug, ativo: !preview, contexto, hidden, retomarToken })
+
+  /**
+   * `document.referrer` e a URL de verdade só existem no browser: o
+   * servidor renderiza esta página e manda `null`. Sem isto a CAPI cai no
+   * fallback de `event_source_url` e a origem do cadastro se perde.
+   */
+  const contextoDaVisita = useMemo(() => {
+    if (typeof window === "undefined") return contexto
+    return {
+      ...contexto,
+      referrer: document.referrer || contexto.referrer || null,
+      landing_url: window.location.href,
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Pixels de browser no mount — mesmo hook do clássico.
+  useFormPixels(form.tracking, preview)
+
+  const sessao = useFormSession({ slug, ativo: !preview, contexto: contextoDaVisita, hidden, retomarToken })
 
   /**
    * Repõe a sessão retomada. Uma vez só (`repostoRef`): rodar de novo
@@ -194,13 +225,21 @@ export function ConversationalFormView({
         await sessao.descarregar()
 
         const cred = sessao.credenciais()
+        // `_fbc` deriva do `fbclid` do anúncio e `_fbp` é gerado quando o
+        // ad-blocker impediu o fbevents — é o que dá à CAPI a chave de
+        // correspondência do clique pago.
+        const { fbc, fbp } = matchingDoBrowser(clickIds?.fbclid)
         const res = await fetch(`/api/public/forms/${encodeURIComponent(slug)}/submit`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             answers: answersFinais,
-            ...contexto,
+            ...contextoDaVisita,
             ...cred,
+            fbc,
+            fbp,
+            fbclid: clickIds?.fbclid ?? contextoDaVisita.fbclid ?? null,
+            gclid: clickIds?.gclid ?? contextoDaVisita.gclid ?? null,
             ending_ref: endingRef,
             disqualified: Boolean(ending?.disqualified),
             event_source_url: typeof window !== "undefined" ? window.location.href : null,
@@ -208,6 +247,11 @@ export function ConversationalFormView({
         })
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         const json = await res.json()
+
+        // ANTES de qualquer redirecionamento: o `Lead` do browser leva o
+        // MESMO `event_id` da CAPI, a Meta deduplica e conta uma conversão.
+        // Disparar depois do `location.href` seria não disparar.
+        fireConversionPixels(form.tracking, json?.tracking as SubmitTracking | undefined)
 
         if (ending?.redirect_url) {
           window.location.href = ending.redirect_url
@@ -229,7 +273,7 @@ export function ConversationalFormView({
       void varsFinais
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [schema, preview, onSubmitFake, sessao, slug, contexto, irPara],
+    [schema, preview, onSubmitFake, sessao, slug, contextoDaVisita, clickIds, form.tracking, irPara],
   )
 
   const avancar = useCallback(

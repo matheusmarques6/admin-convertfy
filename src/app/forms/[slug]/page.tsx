@@ -123,12 +123,21 @@ export default async function PublicFormPage({
           theme: data.form.theme as FormTheme,
           success_message: data.form.success_message,
           redirect_url: data.form.redirect_url,
+          // Sem isto o conversacional não carrega pixel nenhum: nem o
+          // PageView da visita, nem o Lead deduplicado no envio. O
+          // formulário que recebe a verba era justamente o cego.
+          tracking: data.form.tracking as ComponentProps<
+            typeof ConversationalFormView
+          >["form"]["tracking"],
         }}
         contexto={{
           ...utm,
+          // O cliente preenche os dois: `document.referrer` e a URL real
+          // só existem no browser.
           referrer: null,
           landing_url: null,
         }}
+        clickIds={clickIds}
         hidden={hidden}
         retomarToken={typeof sp.retomar === "string" ? sp.retomar : null}
       />

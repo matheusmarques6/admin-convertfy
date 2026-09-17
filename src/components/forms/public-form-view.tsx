@@ -3,15 +3,12 @@
 import { useEffect, useState, useMemo, useId } from "react"
 import { CheckCircle2, AlertCircle, Loader2, ChevronDown } from "lucide-react"
 import {
-  loadMetaPixel,
-  fireMetaEvent,
-  setMetaUserData,
-  loadGtag,
-  fireGtagConversion,
-  ensureFbp,
-  ensureFbc,
-} from "@/lib/tracking/browser-pixels"
-import type { MetaAdvancedMatching } from "@/types/form-tracking"
+  fireConversionPixels,
+  matchingDoBrowser,
+  useFormPixels,
+  type FormTracking,
+  type SubmitTracking,
+} from "./form-pixels"
 import { defaults, gradientCss, shadowCss, type FormTheme } from "./form-theme"
 
 interface FormField {
@@ -28,15 +25,6 @@ interface FormField {
 }
 
 
-/** Descritor de tracking retornado pelo GET publico (sem token/regras). */
-interface FormTracking {
-  meta_browser_pixel: boolean
-  meta_pixel_id: string | null
-  google_enabled: boolean
-  google_ads_id: string | null
-  google_ads_conversion_label: string | null
-}
-
 interface FormConfig {
   id: string
   name: string
@@ -47,18 +35,6 @@ interface FormConfig {
   success_message: string | null
   redirect_url: string | null
   tracking?: FormTracking
-}
-
-/** Resposta de tracking do submit — event ids p/ deduplicar com o browser. */
-interface SubmitTracking {
-  event_id: string | null
-  qualified: boolean
-  qualified_event_id: string | null
-  qualified_event_name: string | null
-  /** Advanced matching do lead — presente SO quando qualified. */
-  qualified_user_data?: MetaAdvancedMatching | null
-  /** Params do evento custom (lead_source, company, utm_*, custom fields). */
-  qualified_custom_data?: Record<string, unknown> | null
 }
 
 interface Props {
@@ -108,44 +84,6 @@ const COUNTRIES = [
 ] as const
 
 
-// ── Disparo dos pixels de conversao no sucesso do submit ──
-
-function fireConversionPixels(
-  tracking: FormTracking | undefined,
-  submit: SubmitTracking | undefined,
-): void {
-  if (!tracking) return
-  // Meta: evento Lead (deduplicado por event_id) + qualificado se aplicavel.
-  if (tracking.meta_browser_pixel && tracking.meta_pixel_id) {
-    // "Lead" comum sai antes do advanced matching — permanece anonimo do
-    // lado do browser, como sempre foi.
-    fireMetaEvent("Lead", { eventId: submit?.event_id ?? undefined })
-    if (submit?.qualified && submit.qualified_event_name) {
-      // So o evento qualificado carrega os dados do lead: re-init do pixel
-      // com o advanced matching (o fbevents hasheia no browser) e params
-      // de contexto (origem, empresa, UTMs) no proprio evento.
-      if (submit.qualified_user_data) {
-        setMetaUserData(tracking.meta_pixel_id, submit.qualified_user_data)
-      }
-      fireMetaEvent(submit.qualified_event_name, {
-        eventId: submit.qualified_event_id ?? undefined,
-        custom: true,
-        params: submit.qualified_custom_data ?? undefined,
-      })
-    }
-  }
-  // Google Ads: conversao via gtag ("AW-XXXX/label").
-  if (
-    tracking.google_enabled &&
-    tracking.google_ads_id &&
-    tracking.google_ads_conversion_label
-  ) {
-    fireGtagConversion(`${tracking.google_ads_id}/${tracking.google_ads_conversion_label}`)
-  }
-}
-
-// ── Component ──
-
 export function PublicFormView({ slug, payload, utm, clickIds, preview = false, embed = false }: Props) {
   const { form, fields } = payload
   const theme = form.theme ?? {}
@@ -181,21 +119,8 @@ export function PublicFormView({ slug, payload, utm, clickIds, preview = false, 
     setAnswers(init)
   }, [fields])
 
-  // Inicializa os pixels de browser (Meta/Google) uma vez, no mount. O
-  // preview do editor nunca dispara pixel real.
-  useEffect(() => {
-    if (preview) return
-    const tracking = form.tracking
-    if (!tracking) return
-    if (tracking.meta_browser_pixel && tracking.meta_pixel_id) {
-      loadMetaPixel(tracking.meta_pixel_id)
-      fireMetaEvent("PageView")
-    }
-    if (tracking.google_enabled && tracking.google_ads_id) {
-      loadGtag(tracking.google_ads_id)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  // Pixels de browser (Meta/Google) no mount — mesmo hook do conversacional.
+  useFormPixels(form.tracking, preview)
 
   const update = (id: string, value: unknown) => {
     setAnswers((a) => ({ ...a, [id]: value }))
@@ -231,8 +156,7 @@ export function PublicFormView({ slug, payload, utm, clickIds, preview = false, 
     try {
       // Click ids p/ matching de conversao. Garante _fbp (gera se o
       // ad-blocker impediu o fbevents de setar) e _fbc (deriva do fbclid).
-      const fbc = ensureFbc(clickIds?.fbclid)
-      const fbp = ensureFbp()
+      const { fbc, fbp } = matchingDoBrowser(clickIds?.fbclid)
       const eventSourceUrl = typeof window !== "undefined" ? window.location.href : null
 
       const res = await fetch(`/api/public/forms/${slug}/submit`, {
