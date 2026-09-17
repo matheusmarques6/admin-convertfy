@@ -14,6 +14,7 @@ import {
   isOpenRouterModel,
   ehCreditoEsgotado,
 } from "../openrouter-invoke"
+import { userContentComCache } from "../shared/cache-de-prompt"
 
 export interface FormatChainConfig {
   model: string
@@ -39,6 +40,9 @@ export interface FormatModelResult {
    */
   finishReason?: string
   reasoningTokens?: number
+  /** Cache de prompt lido / escrito, quando o provedor reporta. */
+  cachedTokens?: number
+  cacheWriteTokens?: number
 }
 
 /**
@@ -66,6 +70,8 @@ export async function invokeFormatModel(params: {
    * suporta — ver a recusa explícita abaixo.
    */
   images?: string[]
+  /** Marca o user como prefixo cacheável (ver `OpenRouterInvokeInput`). */
+  cacheUserPrefix?: boolean
 }): Promise<FormatModelResult> {
   const {
     model,
@@ -77,6 +83,7 @@ export async function invokeFormatModel(params: {
     title,
     reasoning,
     images,
+    cacheUserPrefix,
   } = params
 
   if (isOpenRouterModel(model)) {
@@ -90,6 +97,7 @@ export async function invokeFormatModel(params: {
       title,
       reasoning,
       images,
+      cacheUserPrefix,
     })
     return {
       text: or.text,
@@ -99,6 +107,10 @@ export async function invokeFormatModel(params: {
       ...(or.finishReason ? { finishReason: or.finishReason } : {}),
       ...(typeof or.reasoningTokens === "number"
         ? { reasoningTokens: or.reasoningTokens }
+        : {}),
+      ...(typeof or.cachedTokens === "number" ? { cachedTokens: or.cachedTokens } : {}),
+      ...(typeof or.cacheWriteTokens === "number"
+        ? { cacheWriteTokens: or.cacheWriteTokens }
         : {}),
     }
   }
@@ -123,8 +135,15 @@ export async function invokeFormatModel(params: {
       model,
       max_tokens: maxTokens,
       temperature,
-      system: systemPrompt,
-      messages: [{ role: "user", content: userMessage }],
+      system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
+      messages: [
+        {
+          role: "user",
+          content: userContentComCache(userMessage, { ativo: !!cacheUserPrefix }) as
+            | string
+            | Anthropic.TextBlockParam[],
+        },
+      ],
     })
   } catch (err) {
     // Sem crédito na Anthropic → alerta CTO (deduplicado), igual ao
@@ -147,6 +166,10 @@ export async function invokeFormatModel(params: {
     .filter((b): b is Anthropic.TextBlock => b.type === "text")
     .map((b) => b.text)
     .join("")
+  const usage = resp.usage as typeof resp.usage & {
+    cache_read_input_tokens?: number | null
+    cache_creation_input_tokens?: number | null
+  }
   return {
     text,
     tokensInput: resp.usage.input_tokens,
@@ -154,5 +177,11 @@ export async function invokeFormatModel(params: {
     costUsd: 0, // Anthropic-direto: sem accounting do OpenRouter.
     // `stop_reason: "max_tokens"` é o `finish_reason: "length"` daqui.
     ...(resp.stop_reason ? { finishReason: resp.stop_reason } : {}),
+    ...(typeof usage.cache_read_input_tokens === "number"
+      ? { cachedTokens: usage.cache_read_input_tokens }
+      : {}),
+    ...(typeof usage.cache_creation_input_tokens === "number"
+      ? { cacheWriteTokens: usage.cache_creation_input_tokens }
+      : {}),
   }
 }

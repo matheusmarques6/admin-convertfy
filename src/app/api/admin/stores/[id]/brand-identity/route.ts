@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server"
 import { z } from "zod"
+import { normalizarPaleta, normalizarPapel } from "@/lib/stores/papeis-de-cor"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 
@@ -15,10 +16,16 @@ export const dynamic = "force-dynamic"
  *   já usado pelo Email Workspace.
  */
 
+// B5: o papel entra em qualquer grafia legada ("Principal", "Superfície",
+// "Secundário") e sai no vocabulário fechado, minúsculo — ou "" (sem
+// papel). A régua "uma principal por paleta" é conferida no PATCH.
 const colorSchema = z.object({
   hex: z.string(),
   name: z.string().optional(),
-  role: z.string().optional(),
+  role: z
+    .string()
+    .optional()
+    .transform((r) => normalizarPapel(r)),
 })
 
 const patchSchema = z.object({
@@ -124,6 +131,17 @@ export async function PATCH(
     for (const [k, v] of Object.entries(body)) {
       if (v !== undefined) merged[k] = v
     }
+
+    // Uma principal, N secundárias (decisão de 14/09): a paleta que VAI ser
+    // gravada — enviada ou herdada — é normalizada, nunca recusada. A
+    // primeira primária é a cor da marca; excedente desce para as
+    // secundárias e o agente Cores & Botões decide onde cada uma entra.
+    const paleta = normalizarPaleta(
+      (merged.colors_primary as Array<{ hex?: string; role?: string | null }>) ?? [],
+      (merged.colors_secondary as Array<{ hex?: string; role?: string | null }>) ?? [],
+    )
+    merged.colors_primary = paleta.principal
+    merged.colors_secondary = paleta.secundarias
 
     const { data: inserted, error } = await admin
       .from("store_brand_identity")

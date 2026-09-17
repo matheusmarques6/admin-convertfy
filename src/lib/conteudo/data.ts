@@ -9,6 +9,8 @@ import { PROMPTS_PRONTOS, type PromptPronto } from "./config"
 import { ST_TEMPLATES } from "./templates"
 import type { Agendado, BrandKit, DashboardData, Documento, EtapaFunil, Formato, ImagemSlot, LeadDoPost, MeuTemplate, Perfil, PerfilEditavel, PerfilFiltro, Reel, Referencia, ReferenciaCandidata, Template, Trend, TrendsStatus } from "./types"
 import type { Ideia } from "./ideias/banco"
+import type { RaioXData } from "./raio-x/tipos"
+import type { EspionagemResultado } from "./espionagem/tipos"
 import type { EtapaReel, ProgressoFunil } from "./reels/pipeline"
 
 export class ConteudoApiError extends Error {
@@ -53,6 +55,31 @@ export async function getDashboard(perfil: PerfilFiltro, periodo: PeriodoQuery, 
   if (opts.sync === false) q.set("sync", "0")
   const r = await api<{ dashboard: DashboardData }>(`/api/conteudo/dashboard?${q}`)
   return r.dashboard
+}
+
+/**
+ * Raio-X do perfil: nota, diagnóstico e desempenho por formato.
+ *
+ * Lê a MESMA janela do dashboard — a rota reusa `carregarDashboard`, então
+ * as duas telas nunca discordam sobre o mesmo perfil.
+ */
+export async function getRaioX(perfil: PerfilFiltro, periodo: PeriodoQuery): Promise<RaioXData> {
+  const q = new URLSearchParams({ perfil, start: periodo.start, end: periodo.end })
+  const r = await api<{ raioX: RaioXData }>(`/api/conteudo/raio-x?${q}`)
+  return r.raioX
+}
+
+/**
+ * Espionagem: varredura de um perfil público pela API oficial.
+ *
+ * `forcar` pula o cache de 6 h — e é o único jeito de custar uma chamada
+ * nova, porque quota da Graph API é por hora.
+ */
+export async function getEspionagem(handle: string, opts: { forcar?: boolean } = {}): Promise<EspionagemResultado> {
+  const q = new URLSearchParams({ handle })
+  if (opts.forcar) q.set("forcar", "1")
+  const r = await api<{ espionagem: EspionagemResultado }>(`/api/conteudo/espionagem?${q}`)
+  return r.espionagem
 }
 
 /** Força a sincronização com o Instagram (botão "Atualizar dados"). */
@@ -144,8 +171,17 @@ export async function getMeusTemplates(): Promise<MeuTemplate[]> {
   return r.templates
 }
 
-export async function criarMeuTemplate(t: { nome: string; templateId: string; estrutura: MeuTemplate["estrutura"]; fidelidade?: number | null; usos?: number }): Promise<MeuTemplate> {
+export async function criarMeuTemplate(t: { nome: string; templateId: string; familia?: MeuTemplate["familia"]; estrutura: MeuTemplate["estrutura"]; fidelidade?: number | null; usos?: number }): Promise<MeuTemplate> {
   const r = await api<{ template: MeuTemplate }>(`/api/conteudo/templates`, { method: "POST", body: JSON.stringify(t) })
+  return r.template
+}
+
+/** Substitui a FORMA de um template já cadastrado (nome, sequência, base). */
+export async function atualizarMeuTemplate(
+  id: string,
+  t: { nome?: string; templateId?: string; familia?: MeuTemplate["familia"]; estrutura?: MeuTemplate["estrutura"]; fidelidade?: number | null },
+): Promise<MeuTemplate> {
+  const r = await api<{ template: MeuTemplate }>(`/api/conteudo/templates/${id}`, { method: "PATCH", body: JSON.stringify(t) })
   return r.template
 }
 
@@ -434,6 +470,8 @@ export interface TrendsGeradas {
   fontes_descartadas: number
   /** Por que a rodada saiu sem fato externo, quando foi o caso. */
   busca_indisponivel: string | null
+  /** Assuntos que saíram do painel por validade nesta rodada. */
+  expirados: number
 }
 
 export async function gerarTrends(): Promise<TrendsGeradas> {

@@ -38,6 +38,7 @@ import { BrandResourceView } from "./brand-resource-view"
 import { BriefingResourceView } from "./briefing-resource-view"
 import { StartOnboardingButton } from "@/components/stores/start-onboarding-button"
 import { RerenderButton } from "./rerender-button"
+import { ProntidaoCard } from "./prontidao-card"
 import { filterFlowsByMode } from "./filter-flows-by-mode"
 import type {
   WorkspaceMode,
@@ -580,6 +581,11 @@ export function ProductionWorkspace({
               consome o que os designers produziram, não dispara geração). */}
           {mode !== "implementation" && (
             <>
+              {/* Prontidão para geração (B1): a MESMA régua do gate da fila. */}
+              <ProntidaoCard
+                storeId={store.id}
+                onOpenResource={(recurso) => setSelection({ kind: "resource", resource: recurso })}
+              />
               {/* Iniciar Onboarding (Epic AE) — pipeline completo de geracao */}
               <div style={{ padding: "12px 12px 4px" }}>
                 <StartOnboardingButton

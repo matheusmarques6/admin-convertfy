@@ -5,12 +5,12 @@
  *  - Auth invalida -> 401
  *  - Cron normal sem trabalho -> 200 + summary zerado
  *  - Sinais pending -> consumeQueueSignal eh chamado
- *  - Copy travada (attempts < MAX) -> claim + runCopyChainInProcess dispatched
- *  - Copy travada (attempts >= MAX) -> UPDATE direto para failed
+ *  - Copy sem callback do n8n -> UPDATE para failed:copy_timeout + run copy error
+ *    (nenhum fallback de copy — decisao de 14/09)
  *  - Phase 2 timeout -> UPDATE para failed (rendering + qa_running)
  *  - copy_ready stale -> POST pro endpoint interno
  *
- * Mocks: consumeQueueSignal, runCopyChainInProcess, fetch interno,
+ * Mocks: consumeQueueSignal, logGenerationRun, fetch interno,
  * after() (fire-and-forget no test), createAdminClient.
  */
 
@@ -196,7 +196,14 @@ function buildQuery(table: string): any {
         updateFilters.push({ op: "in", col, val })
         return updateChain
       },
-      not: () => updateChain,
+      is: (col: string, val: unknown) => {
+        updateFilters.push({ op: "is", col, val })
+        return updateChain
+      },
+      not: (col: string, op: string, val: unknown) => {
+        updateFilters.push({ op: `not.${op}`, col, val })
+        return updateChain
+      },
       select: () => {
         const selectChain2: any = {
           limit: () => selectChain2,
@@ -286,9 +293,10 @@ vi.mock("@/lib/services/email-generation-trigger.service", () => ({
   consumeQueueSignal: (id: string) => consumeSpy(id),
 }))
 
-const fallbackSpy = vi.fn<(params: unknown) => Promise<void>>(async () => undefined)
-vi.mock("@/lib/agents/copy-chain-fallback.service", () => ({
-  runCopyChainInProcess: (params: unknown) => fallbackSpy(params),
+// Front 2: a falha por copy sem callback grava uma run `copy` error.
+const runSpy = vi.fn(async (_params: unknown) => "run-id")
+vi.mock("@/lib/agents/callbacks/telemetry.callback", () => ({
+  logGenerationRun: (params: unknown) => runSpy(params),
 }))
 
 // Front 5 retoma IN-PROCESS via runPhase2HtmlQa — mockado pra observar.
@@ -329,7 +337,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   resetState()
   consumeSpy.mockClear()
-  fallbackSpy.mockClear()
+  runSpy.mockClear()
   fetchSpy.mockClear()
 })
 
@@ -369,8 +377,7 @@ describe("GET /api/cron/email-generation-watchdog — nothing to do", () => {
     const json = await res.json()
     expect(json.success).toBe(true)
     expect(json.signals_processed).toBe(0)
-    expect(json.copy_recovered).toBe(0)
-    expect(json.max_attempts_exhausted).toBe(0)
+    expect(json.copy_timed_out).toBe(0)
     expect(json.phase2_timed_out).toBe(0)
     expect(json.stale_copy_ready).toBe(0)
   })
@@ -413,52 +420,21 @@ describe("GET /api/cron/email-generation-watchdog — front 1: signals", () => {
   })
 })
 
-describe("GET /api/cron/email-generation-watchdog — front 2: copy stuck", () => {
-  it("dispatches runCopyChainInProcess for claimed rows", async () => {
-    state.updateReturns.set("email_flow_emails:copy_generating_recovery", [
-      {
-        id: "55555555-5555-4555-8555-eeeeeeeeeeee",
-        flow_id: "66666666-6666-4666-8666-ffffffffffff",
-        generation_batch_id: "77777777-7777-4777-8777-aaaaaaaaaaaa",
-        flow: { store_id: "88888888-8888-4888-8888-bbbbbbbbbbbb" },
-      },
-    ])
+describe("GET /api/cron/email-generation-watchdog — front 2: copy sem callback do n8n", () => {
+  const EMAIL = "55555555-5555-4555-8555-eeeeeeeeeeee"
+  const BATCH = "77777777-7777-4777-8777-aaaaaaaaaaaa"
+  const STORE = "88888888-8888-4888-8888-bbbbbbbbbbbb"
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const res = await GET(authedRequest() as any)
-    expect(res.status).toBe(200)
-    const json = await res.json()
-    expect(json.copy_recovered).toBe(1)
-    expect(fallbackSpy).toHaveBeenCalledTimes(1)
-    expect(fallbackSpy).toHaveBeenCalledWith(
-      expect.objectContaining({
-        emailId: "55555555-5555-4555-8555-eeeeeeeeeeee",
-        storeId: "88888888-8888-4888-8888-bbbbbbbbbbbb",
-      }),
-    )
-
-    // Verifica que o claim filtrou por status + attempts < MAX
-    const claim = state.updateCalls.find(
-      (c) =>
-        c.table === "email_flow_emails" &&
-        c.data.status === "copy_generating_recovery",
-    )
-    expect(claim).toBeDefined()
-    const statusEq = claim?.filters.find(
-      (f) => f.op === "eq" && f.col === "status",
-    )
-    expect(statusEq?.val).toBe("copy_generating")
-    const attemptsLt = claim?.filters.find(
-      (f) => f.op === "lt" && f.col === "attempts",
-    )
-    expect(attemptsLt?.val).toBe(3)
-  })
-
-  it("marks emails with attempts >= MAX as failed (max_attempts_exhausted)", async () => {
+  it("e-mail à espera do n8n além do prazo vira failed:copy_timeout com run copy error — NUNCA gera copy por fallback", async () => {
+    // Batch 879fe6e4 (14/09): dispatch pela aba Teste às 18:54:59, status
+    // `in_progress`, nenhum callback em mais de uma hora — e nada acusava.
     state.updateReturns.set("email_flow_emails:failed", [
       {
-        id: "99999999-9999-4999-8999-cccccccccccc",
-        generation_batch_id: "aaaaaaaa-aaaa-4aaa-8aaa-dddddddddddd",
+        id: EMAIL,
+        generation_batch_id: BATCH,
+        copy_started_at: "2026-09-14T18:54:59.000Z",
+        updated_at: "2026-09-14T18:54:59.000Z",
+        flow: { store_id: STORE },
       },
     ])
 
@@ -466,20 +442,61 @@ describe("GET /api/cron/email-generation-watchdog — front 2: copy stuck", () =
     const res = await GET(authedRequest() as any)
     expect(res.status).toBe(200)
     const json = await res.json()
-    expect(json.max_attempts_exhausted).toBeGreaterThanOrEqual(1)
+    expect(json.copy_timed_out).toBeGreaterThanOrEqual(1)
+    expect(json.copy_recovered).toBeUndefined()
+    expect(json.max_attempts_exhausted).toBeUndefined()
 
-    // O primeiro UPDATE para failed deve ter sido o exhaust (gte attempts 3)
-    const exhaustCall = state.updateCalls.find(
+    // Nenhum claim para `copy_generating_recovery`: o fallback in-process
+    // saiu do watchdog (decisão de 14/09 — sem copy do n8n, erro).
+    expect(
+      state.updateCalls.some((c) => c.data.status === "copy_generating_recovery"),
+    ).toBe(false)
+
+    const timeouts = state.updateCalls.filter(
       (c) =>
         c.table === "email_flow_emails" &&
         c.data.status === "failed" &&
-        c.data.failure_reason === "max_attempts_exhausted",
+        c.data.failure_reason === "copy_timeout",
     )
-    expect(exhaustCall).toBeDefined()
-    const gteFilter = exhaustCall?.filters.find(
-      (f) => f.op === "gte" && f.col === "attempts",
+    // Consulta A (copy_started_at) + consulta B (legado sem carimbo).
+    expect(timeouts.length).toBe(2)
+    const porStartedAt = timeouts.find((c) =>
+      c.filters.some((f) => f.op === "lt" && f.col === "copy_started_at"),
     )
-    expect(gteFilter?.val).toBe(3)
+    expect(porStartedAt).toBeDefined()
+    const statusIn = porStartedAt?.filters.find((f) => f.op === "in" && f.col === "status")
+    expect(statusIn?.val).toEqual(["copy_generating", "in_progress"])
+    // Sem cap de attempts: regerar é gesto humano, não do cron.
+    expect(porStartedAt?.filters.some((f) => f.col === "attempts")).toBe(false)
+
+    const legado = timeouts.find((c) =>
+      c.filters.some((f) => f.op === "is" && f.col === "copy_started_at"),
+    )
+    expect(legado).toBeDefined()
+    expect(legado?.filters.find((f) => f.op === "eq" && f.col === "status")?.val).toBe("in_progress")
+    expect(legado?.filters.some((f) => f.op === "lt" && f.col === "updated_at")).toBe(true)
+
+    // A run `copy` error é o que faz a falha aparecer na aba Execuções.
+    expect(runSpy).toHaveBeenCalled()
+    const run = runSpy.mock.calls.find((c) => (c[0] as { emailId?: string }).emailId === EMAIL)?.[0] as
+      | Record<string, unknown>
+      | undefined
+    expect(run).toMatchObject({
+      agent: "copy",
+      status: "error",
+      model: "n8n",
+      storeId: STORE,
+      batchId: BATCH,
+    })
+    expect(String(run?.errorMessage)).toContain("n8n_sem_callback")
+  })
+
+  it("sem e-mail vencido, nada é marcado e nenhuma run é gravada", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res = await GET(authedRequest() as any)
+    const json = await res.json()
+    expect(json.copy_timed_out).toBe(0)
+    expect(runSpy).not.toHaveBeenCalled()
   })
 })
 
@@ -715,11 +732,12 @@ describe("GET /api/cron/email-generation-watchdog — front 5: stale image_done/
     expect(phase2Spy).toHaveBeenCalledWith(
       expect.objectContaining({ emailId, storeId: "store-f5" }),
     )
-    // Nenhum kill do Front 5 (assinatura: UPDATE failed com filtro in(status))
+    // Nenhum kill do Front 5 (assinatura: UPDATE failed:timeout_phase2 com filtro in(status))
     const failedUpdate = state.updateCalls.find(
       (c) =>
         c.table === "email_flow_emails" &&
         c.data.status === "failed" &&
+        c.data.failure_reason === "timeout_phase2" &&
         c.filters.some((f) => f.op === "in" && f.col === "status"),
     )
     expect(failedUpdate).toBeUndefined()
@@ -781,6 +799,7 @@ describe("GET /api/cron/email-generation-watchdog — front 5: stale image_done/
       (c) =>
         c.table === "email_flow_emails" &&
         c.data.status === "failed" &&
+        c.data.failure_reason === "timeout_phase2" &&
         c.filters.some((f) => f.op === "in" && f.col === "status"),
     )
     expect(failedUpdate).toBeUndefined()

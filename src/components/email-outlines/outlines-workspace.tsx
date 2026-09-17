@@ -22,6 +22,7 @@ import {
 } from "@/components/email-generation/ui/eg-atoms"
 import type { EmailOutlineTemplate } from "@/types/email-generation"
 import { COMPONENT_CATEGORIES } from "@/lib/agents/shared/component-categories"
+import { STORE_LANGUAGE_OPTIONS } from "@/lib/i18n/store-language"
 
 // Rótulo PT-BR por chave de categoria (fonte: COMPONENT_CATEGORIES).
 const CATEGORY_LABEL: Record<string, string> = Object.fromEntries(
@@ -61,8 +62,11 @@ interface FormState {
   // de chaves de categoria; aqui carrega `id` estável pro drag-and-drop.
   suggested_blocks: BlockItem[]
   tone_hint: string
-  // Cupom padrão do email (código único). A variação por idioma/loja é depois.
+  // Cupom do toque: pt-BR em `coupon_code`, tradução por idioma em
+  // `coupon_codes` (decisão humana, 14/09) e valor do desconto.
   coupon_code: string
+  coupon_codes: Record<string, string>
+  coupon_value: string
   is_active: boolean
 }
 
@@ -75,6 +79,8 @@ function emptyForm(flowType: string): FormState {
     suggested_blocks: [],
     tone_hint: "",
     coupon_code: "",
+    coupon_codes: {},
+    coupon_value: "",
     is_active: true,
   }
 }
@@ -145,6 +151,8 @@ export function OutlinesWorkspace() {
       suggested_blocks: keysToBlockItems(o.suggested_blocks ?? []),
       tone_hint: o.tone_hint ?? "",
       coupon_code: o.coupon_code ?? "",
+      coupon_codes: { ...(o.coupon_codes ?? {}) },
+      coupon_value: o.coupon_value ?? "",
       is_active: o.is_active,
     })
   }
@@ -163,6 +171,8 @@ export function OutlinesWorkspace() {
       suggested_blocks: form.suggested_blocks.map((b) => b.key),
       tone_hint: form.tone_hint || null,
       coupon_code: form.coupon_code.trim() || null,
+      coupon_codes: form.coupon_codes,
+      coupon_value: form.coupon_value.trim() || null,
       is_active: form.is_active,
     }
     try {
@@ -480,22 +490,64 @@ export function OutlinesWorkspace() {
             </p>
           </div>
 
-          {/* Cupom do email — código único (global). A variação por idioma/
-              loja é feita depois, na etapa por-loja de cada email. */}
-          <label className="block space-y-1">
-            <span className="text-[12px] text-slate-500">
-              Cupom{" "}
-              <span className="text-slate-400">
-                (código — opcional; deixe vazio se o email não tem cupom)
+          {/* Cupom do toque: o pt-BR decide se o e-mail ENTREGA cupom
+              (vazio = toque sem incentivo). A tradução por idioma é
+              decisão humana e fica aqui (14/09) — sem ela a loja em outro
+              idioma recebe o pt-BR com `traducao_faltante` no QA. */}
+          <div className="grid grid-cols-[1fr_120px] gap-3">
+            <label className="block space-y-1">
+              <span className="text-[12px] text-slate-500">
+                Cupom (pt-BR){" "}
+                <span className="text-slate-400">
+                  (vazio = este e-mail não entrega cupom)
+                </span>
               </span>
-            </span>
-            <input
-              className={`${inputCls} font-mono uppercase`}
-              value={form.coupon_code}
-              onChange={(e) => set({ coupon_code: e.target.value.toUpperCase() })}
-              placeholder="BEMVINDO10"
-            />
-          </label>
+              <input
+                className={`${inputCls} font-mono uppercase`}
+                value={form.coupon_code}
+                onChange={(e) => set({ coupon_code: e.target.value.toUpperCase() })}
+                placeholder="BEMVINDO10"
+              />
+            </label>
+            <label className="block space-y-1">
+              <span className="text-[12px] text-slate-500">Valor</span>
+              <input
+                className={inputCls}
+                value={form.coupon_value}
+                onChange={(e) => set({ coupon_value: e.target.value })}
+                placeholder="10%"
+              />
+            </label>
+          </div>
+          {form.coupon_code.trim() ? (
+            <div className="space-y-1">
+              <span className="text-[12px] text-slate-500">
+                Tradução do cupom por idioma{" "}
+                <span className="text-slate-400">(vazio = usa o pt-BR)</span>
+              </span>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 sm:grid-cols-3">
+                {STORE_LANGUAGE_OPTIONS.filter((o) => o.value !== "pt-BR").map((o) => (
+                  <label key={o.value} className="flex items-center gap-2 text-[12px]">
+                    <span className="w-[72px] shrink-0 text-slate-500">{o.label}</span>
+                    <input
+                      className={`${inputCls} font-mono uppercase`}
+                      value={form.coupon_codes[o.value] ?? ""}
+                      onChange={(e) => {
+                        const v = e.target.value.toUpperCase()
+                        setForm((f) => {
+                          const next = { ...f.coupon_codes }
+                          if (v.trim()) next[o.value] = v
+                          else delete next[o.value]
+                          return { ...f, coupon_codes: next }
+                        })
+                      }}
+                      placeholder={form.coupon_code}
+                    />
+                  </label>
+                ))}
+              </div>
+            </div>
+          ) : null}
 
           <div className="grid grid-cols-2 gap-3">
             <label className="block space-y-1">

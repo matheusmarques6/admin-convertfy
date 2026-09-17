@@ -16,11 +16,14 @@ import { CT_MOLDE_COR, brandKitPadrao } from "@/lib/conteudo/brand"
 import { editorialVazio, headlineEscolhida, papeisDosFrames, podeGerarCopy } from "@/lib/conteudo/editorial"
 import { getPromptsProntos } from "@/lib/conteudo/data"
 import { ajustarQuantidadeFrames, comHistorico, documentoDeEstrutura, novoDocumento } from "@/lib/conteudo/documento"
+import { familiaDaPrevia, previaDoMeuTemplate } from "@/lib/conteudo/previa-de-template"
+import { normalizarEstrutura } from "@/lib/conteudo/estrutura-do-documento"
+import { tipoDesenhaImagem } from "@/lib/conteudo/referencia-para-documento"
 import { FAMILIAS, FAMILIA_OPCOES, aplicarFamilia } from "@/lib/conteudo/familias"
 import { chamarIA } from "@/lib/conteudo/ia/client"
 import type { SaidaInspiracao } from "@/lib/conteudo/ia/schemas"
 import { arquivosParaDataUrls } from "@/lib/conteudo/imagens"
-import { getTemplate, moldeKeyDoTemplate, ST_FUNIL, ST_TEMPLATES } from "@/lib/conteudo/templates"
+import { getTemplate, moldeKeyDoTemplate, ST_FUNIL, ST_TEMPLATES, TEMPLATE_PADRAO_ID, templatePorFunil } from "@/lib/conteudo/templates"
 import type { BrandKit, Documento, Editorial, EstruturaDetectada, FamiliaVisual, FrameTipo, MeuTemplate, Perfil, PerfilEditavel, Post } from "@/lib/conteudo/types"
 import { CtAvatar, CtBadge, CtLabel, TNUM, inputCls, selectCls, textareaCls } from "../ui"
 import type { Caminho } from "./biblioteca"
@@ -34,7 +37,7 @@ export interface CriacaoResultado {
   /** Referências visuais anexadas no caminho IA (vão para o chat do editor). */
   anexos?: string[]
   /** Também salvar como template reutilizável (caminho inspiração). */
-  salvarTemplate?: { nome: string; templateId: string; estrutura: EstruturaDetectada[]; fidelidade?: number | null }
+  salvarTemplate?: { nome: string; templateId: string; familia: FamiliaVisual; estrutura: EstruturaDetectada[]; fidelidade?: number | null }
   /** Template do time usado (incrementa usos). */
   meuTemplateUsado?: string
 }
@@ -157,7 +160,10 @@ export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, meuTemplat
     try {
       const r = await chamarIA({ acao: "analisar_inspiracao", imagens: refs })
       setInspiracao(r)
-      setEstrutura(r.frames.map((f) => ({ tipo: f.tipo, slotImagem: f.slotImagem, descricao: f.descricao })))
+      // O modelo marca foto num slide de número porque VIU uma arte; o
+      // renderer de `dado`/`cta` não tem lugar para imagem, e o slot
+      // gravado ali some do slide sem erro nenhum.
+      setEstrutura(normalizarEstrutura(r.frames.map((f) => ({ tipo: f.tipo, slotImagem: f.slotImagem, descricao: f.descricao }))))
       setAnalise("done")
     } catch (e) {
       setAnalise("idle")
@@ -170,17 +176,19 @@ export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, meuTemplat
   // ── motor editorial (caminho IA) ──
   const promptPronto = promptSel != null ? prompts[promptSel] : null
   const pautaCompleta = [prompt.trim(), promptPronto?.pauta].filter(Boolean).join("\n\n")
-  const templateIdIa = promptPronto?.tpl ?? (etapa === "meio" ? "molde-lista" : etapa === "fundo" ? "molde-bastidor" : "molde-turbo")
+  // O molde da IA sai da ETAPA DO FUNIL, não de ids escritos aqui: molde
+  // aposentado deixava `getTemplate` cair no primeiro da lista em silêncio.
+  const templateIdIa = promptPronto?.tpl ?? templatePorFunil(etapa).id
   const framesIa = useMemo(() => ajustarQuantidadeFrames(novoDocumento("prévia", perfil, templateIdIa, { brandKit: kitDoPerfil }), slides).frames, [perfil, templateIdIa, slides, kitDoPerfil])
   const editorialIa: Editorial = useMemo(() => ({ ...(motor ?? editorialVazio(pautaCompleta, voz, segundaPessoa)), insumo: pautaCompleta, voz, segundaPessoa }), [motor, pautaCompleta, voz, segundaPessoa])
   const pelaEspinha = podeGerarCopy(editorialIa)
 
   const docPrevia = useMemo(() => {
     if (!estrutura.length) return null
-    const d = documentoDeEstrutura(nome.trim() || "Prévia com a identidade da marca", perfil, estrutura, { templateBase: inspiracao?.templateSugerido, brandKit: kitDoPerfil })
+    const d = aplicarFamilia(documentoDeEstrutura(nome.trim() || "Prévia com a identidade da marca", perfil, estrutura, { templateBase: inspiracao?.templateSugerido, brandKit: kitDoPerfil }), familia)
     d.frames[0].textos.titulo = nome.trim() || "Sua afirmação forte aqui"
     return d
-  }, [estrutura, nome, perfil, inspiracao, kitDoPerfil])
+  }, [estrutura, nome, perfil, inspiracao, kitDoPerfil, familia])
 
   // ── criação ──
   const criar = async () => {
@@ -196,7 +204,7 @@ export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, meuTemplat
         onCriado({
           doc: comHistorico(d, `Template criado a partir de inspiração (fidelidade ${Math.round(inspiracao?.fidelidade ?? 0)}%)`),
           caminho: "template-review",
-          salvarTemplate: { nome: nomeTpl.trim(), templateId: inspiracao?.templateSugerido ?? "molde-benchmark", estrutura, fidelidade: inspiracao?.fidelidade ?? null },
+          salvarTemplate: { nome: nomeTpl.trim(), templateId: inspiracao?.templateSugerido ?? TEMPLATE_PADRAO_ID, familia, estrutura, fidelidade: inspiracao?.fidelidade ?? null },
         })
         return
       }
@@ -262,13 +270,17 @@ export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, meuTemplat
         return
       }
       if (caminho === "inspiracao") {
-        let d = documentoDeEstrutura(nome.trim(), perfil, estrutura, { templateBase: inspiracao?.templateSugerido, brandKit: kit })
+        // A identidade escolhida VALE aqui como nos outros caminhos: sem
+        // `comFamilia` a prévia ao lado mostrava a peça preta e o clique
+        // entregava a azul da casa — o mesmo defeito que a prévia do
+        // template tinha na prateleira.
+        let d = comFamilia(documentoDeEstrutura(nome.trim(), perfil, estrutura, { templateBase: inspiracao?.templateSugerido, brandKit: kit }))
         d.frames[0].textos.titulo = nome.trim()
         d = comHistorico(d, `Criado a partir de inspiração (fidelidade ${Math.round(inspiracao?.fidelidade ?? 0)}%)`)
         onCriado({
           doc: d,
           caminho: "inspiracao",
-          salvarTemplate: salvarComoTemplate ? { nome: nome.trim(), templateId: inspiracao?.templateSugerido ?? "molde-benchmark", estrutura, fidelidade: inspiracao?.fidelidade ?? null } : undefined,
+          salvarTemplate: salvarComoTemplate ? { nome: nome.trim(), templateId: inspiracao?.templateSugerido ?? TEMPLATE_PADRAO_ID, familia, estrutura, fidelidade: inspiracao?.fidelidade ?? null } : undefined,
         })
       }
     } catch (e) {
@@ -367,7 +379,7 @@ export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, meuTemplat
               </div>
               <div className="grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-3">
                 {meusTemplates.map((m) => {
-                  const previa = documentoDeEstrutura(m.nome, perfil, m.estrutura, { templateBase: m.templateId, brandKit: kitDoPerfil })
+                  const previa = previaDoMeuTemplate(m, perfil, kitDoPerfil)
                   const on = meuTpl === m.id
                   return (
                     <button
@@ -376,7 +388,13 @@ export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, meuTemplat
                       aria-pressed={on}
                       onClick={() => {
                         setMeuTpl(on ? null : m.id)
-                        if (!on) setTpl(null)
+                        if (!on) {
+                          setTpl(null)
+                          // A identidade do template do time também troca o
+                          // seletor: a prévia ao lado mostra a peça preta e
+                          // criar na paleta azul entregaria outra coisa.
+                          setFamilia(familiaDaPrevia(m))
+                        }
                       }}
                       className={cn("relative flex flex-col gap-2.5 rounded-[10px] border bg-[var(--ops-card)] p-3 text-left transition-colors", on ? "border-[var(--ops-accent)] shadow-[0_0_0_2px_var(--ops-track)]" : "border-[var(--ops-border)] hover:border-[var(--ops-mut)]")}
                     >
@@ -407,6 +425,11 @@ export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, meuTemplat
           {caminho === "template" &&
             (Object.keys(ST_FUNIL) as Array<keyof typeof ST_FUNIL>).map((k) => {
               const g = ST_FUNIL[k]
+              const doGrupo = ST_TEMPLATES.filter((t) => t.etapaFunil === k)
+              // Etapa sem molde não vira cabeçalho órfão: com a prateleira
+              // enxuta o "Meio de funil" ficaria como um título seguido de
+              // nada, lido como lista que falhou ao carregar.
+              if (doGrupo.length === 0) return null
               return (
                 <div key={k}>
                   <div className="mb-2.5 flex flex-wrap items-baseline gap-2.5">
@@ -416,7 +439,7 @@ export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, meuTemplat
                     <span className="text-[11.5px] text-[var(--ops-sec)]">{g.d}</span>
                   </div>
                   <div className="grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-3">
-                    {ST_TEMPLATES.filter((t) => t.etapaFunil === k).map((t) => (
+                    {doGrupo.map((t) => (
                       <TemplateCard
                         key={t.id}
                         tpl={t}
@@ -426,6 +449,11 @@ export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, meuTemplat
                         onClick={() => {
                           setTpl(t.id)
                           setMeuTpl(null)
+                          // Molde que pressupõe uma identidade troca o
+                          // seletor: o "Print de post" montado na paleta
+                          // azul da casa vira outra coisa. Continua
+                          // editável ao lado.
+                          if (t.familia) setFamilia(t.familia)
                         }}
                       />
                     ))}
@@ -628,11 +656,17 @@ export function NovoFlow({ caminhoInicial, tplInicial, perfilInicial, meuTemplat
                           </span>
                           <CtBadge txt={e.tipo} cor={e.tipo === "capa" || e.tipo === "cta" ? "#4E62D8" : e.tipo === "prova" ? "#7C3AED" : "#6B7280"} />
                           <span className="flex-1 text-[11.5px] text-[var(--ops-text)]">{inspiracao?.frames[i]?.descricao ?? ""}</span>
-                          <label className="flex items-center gap-1 text-[10px] text-[var(--ops-mut)]">
-                            <input type="checkbox" checked={Boolean(e.slotImagem)} onChange={(ev) => setEstrutura((s) => s.map((x, j) => (j === i ? { ...x, slotImagem: ev.target.checked } : x)))} className="m-0 accent-[var(--ops-accent)]" />
+                          <label className={cn("flex items-center gap-1 text-[10px]", tipoDesenhaImagem(e.tipo) ? "text-[var(--ops-mut)]" : "cursor-not-allowed text-[var(--ops-mut)]/50")} title={tipoDesenhaImagem(e.tipo) ? undefined : `O slide de ${e.tipo} não tem lugar para foto neste layout.`}>
+                            <input
+                              type="checkbox"
+                              disabled={!tipoDesenhaImagem(e.tipo)}
+                              checked={Boolean(e.slotImagem)}
+                              onChange={(ev) => setEstrutura((s) => s.map((x, j) => (j === i ? { ...x, slotImagem: ev.target.checked } : x)))}
+                              className="m-0 accent-[var(--ops-accent)]"
+                            />
                             foto
                           </label>
-                          <select value={e.tipo} onChange={(ev) => setEstrutura((s) => s.map((x, j) => (j === i ? { ...x, tipo: ev.target.value as FrameTipo } : x)))} className="h-6 rounded-md border border-[var(--ops-border)] bg-[var(--ops-page)] px-1 text-[10.5px] text-[var(--ops-sec)] outline-none">
+                          <select value={e.tipo} onChange={(ev) => setEstrutura((s) => normalizarEstrutura(s.map((x, j) => (j === i ? { ...x, tipo: ev.target.value as FrameTipo } : x))))} className="h-6 rounded-md border border-[var(--ops-border)] bg-[var(--ops-page)] px-1 text-[10.5px] text-[var(--ops-sec)] outline-none">
                             {TIPOS.map((o) => (
                               <option key={o}>{o}</option>
                             ))}

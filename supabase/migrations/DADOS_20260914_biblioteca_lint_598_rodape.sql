@@ -1,0 +1,49 @@
+-- ============================================================================
+-- DADOS · 14/09/2026 · aplicado em produção via MCP (não é migration de schema)
+--
+-- Registro do conserto feito por SQL depois que a peça bb2ef22d (Hero Boxers ·
+-- Welcome 1) reprovou no lint de envio às 22:50 UTC. Os UPDATEs foram
+-- gerados por POSIÇÃO (substr/||) a partir do diff local→corrigido, com
+-- guarda `md5(html) = md5(original)` e conferência `md5(html) = md5(esperado)`
+-- no RETURNING — os 18 + 1 registros voltaram `html_ok = true`. O HTML
+-- inteiro não viajou no SQL; por isso este arquivo descreve as operações e
+-- não as reproduz. Para refazer: `enforceEmailWidth` (email-width.ts) sobre
+-- cada variante abaixo, como a varredura "Largura 600px na biblioteca".
+--
+-- 1) email_component_variants — largura canônica (18 variantes)
+--    A montagem (`fitFragment`) só neutralizava a calha; a largura era
+--    normalizada apenas no salvar e na varredura, que nunca rodou. 14
+--    variantes ativas estavam em 598px (hero 3/4/5/6/8/9/10, produtos
+--    2/4/5/6, review 2/3, body 4) + body 5 (inativa) + review 7, body 3 e
+--    footer 1 (calha 100% → 600). `rendered_html_source_sha` foi
+--    reapontado só onde estava em dia com o html antigo (regra da varredura).
+--    Ids: 43f9b0ec, 4e9726d1, 63736c6c, 72c32ec8, 7bd9e98b, 7d1c214a,
+--    7dafa6ca, 7ef1a9f4, 85006b06, 8858709f, 8ef65206, a8468e9f, cff6c8d8,
+--    d9e34a1f, dc6c363c, e447ef06, fc41efe6, 35b5d8fd.
+--
+-- 2) footer 1 (35b5d8fd-59b5-4e0f-92ab-a180745242e0)
+--    Os seis "Link Here" viraram exemplos reais (Shop · New in · Bestsellers
+--    · About us · Returns · Contact) e o output_schema ganhou
+--    `footer_link_1_label` … `footer_link_6_label` (text_short, max_len 18,
+--    nature copy) — a copy do n8n passa a escrevê-los; sem copy, o exemplo
+--    fica e não é texto de example para o lint.
+--
+-- 3) email_flow_emails bb2ef22d-7653-4e92-9b52-be6cfbf96826 (html e html_marked)
+--    - 4 `<a>` sem href dos ícones sociais (Facebook/Instagram/TikTok/YouTube)
+--      removidos COM o ícone — a loja não tem redes cadastradas e o
+--      vocabulário de tokens não aponta a home no lugar do Instagram;
+--    - `v:roundrect` "DIGITAL GIFT CARD" que existia só no Outlook removido
+--      (o merge apagou o `<a>` do CTA negado; o gêmeo MSO ficou);
+--    - 6 "Link Here" → BOXERS / SOCKS / SHOP ALL / RETURNS / SHIPPING /
+--      OUR STORY, com destinos da loja (produtos pelo handle, /collections/all,
+--      /policies/refund-policy, /policies/shipping-policy, home);
+--    - tabelas, VML e background em 598 → 600;
+--    - credencial dos reviews "Verified Buyer" → "Verified purchase" (a régua
+--      antiga de example casava a copy; corrigida no código junto).
+--    Depois: status 'rendering', html_pipeline_stage 'image',
+--    rendering_started_at = now() − 16 min, failure_reason/failed_at nulos,
+--    qa_issues [] — o watchdog (Front 5) retoma typography → cores → lint →
+--    QA. Run `lint_envio` success inserida (origem conserto_manual_14_09) para
+--    o batch contar como ativo na régua `classifyStaleBatch`.
+-- ============================================================================
+select 'registro; nada a aplicar' as nota;

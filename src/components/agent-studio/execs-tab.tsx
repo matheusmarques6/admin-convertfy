@@ -34,6 +34,7 @@ import {
   AgentOrientacoes,
 } from "./estruturador-panel"
 import { AgentOutputView } from "./agent-output-views"
+import { ConformidadePanel } from "./conformidade-panel"
 import {
   InputSummaryView,
   PromptProvenanceView,
@@ -781,6 +782,7 @@ export function NodeRunPanel({
             onRascunho={onRascunho}
             disparando={rerunning}
             onDispararSoEste={() => onSoEsteNo?.(nodeKey)}
+            custoUsd={run.usd}
           />
         </div>
       )}
@@ -1207,6 +1209,26 @@ export function ExecutionsTab({ positions }: { positions: Positions }) {
                 </div>
               )}
             </div>
+            {/* Prints do HTML final (B2): 600 e 375px, tirados depois do
+                pós-processador — é a peça que vai ao cliente, não um
+                estágio. Sem print (Chromium falhou, fail-open) não há nada
+                aqui, e o run lint_envio diz o que aconteceu. */}
+            {exec.render_previews && (exec.render_previews.desktop || exec.render_previews.mobile) && (
+              <div style={{ display: "flex", gap: 6, alignItems: "flex-start" }} title={`Prints de ${fmtWhen(exec.render_previews.captured_at)}`}>
+                {exec.render_previews.desktop && (
+                  <a href={exec.render_previews.desktop} target="_blank" rel="noreferrer" title="600px (desktop)">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={exec.render_previews.desktop} alt="Print 600px" style={{ width: 64, height: 48, objectFit: "cover", objectPosition: "top", border: `1px solid ${C.border}`, borderRadius: 4, background: C.g50, display: "block" }} />
+                  </a>
+                )}
+                {exec.render_previews.mobile && (
+                  <a href={exec.render_previews.mobile} target="_blank" rel="noreferrer" title="375px (celular)">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={exec.render_previews.mobile} alt="Print 375px" style={{ width: 30, height: 48, objectFit: "cover", objectPosition: "top", border: `1px solid ${C.border}`, borderRadius: 4, background: C.g50, display: "block" }} />
+                  </a>
+                )}
+              </div>
+            )}
             {exec.manual && (
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <SeloExecucaoManual
@@ -1242,6 +1264,7 @@ export function ExecutionsTab({ positions }: { positions: Positions }) {
             </span>
           </div>
         )}
+        {exec && <ConformidadePanel key={exec.email_id} emailId={exec.email_id} />}
         <div style={{ flex: 1, position: "relative", minHeight: 0, display: "flex", flexDirection: "column" }}>
           <div style={{ flex: 1, position: "relative", minHeight: 0 }}>
           <FlowCanvas

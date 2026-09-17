@@ -27,9 +27,10 @@
  *     template global.
  */
 
+import { REGRAS_PENDENTES } from "@/lib/agents/shared/validadores/tipos"
 import { ALVO_AUSENTE_CURADOR } from "../objecoes/alvo-render"
 import { INTENCAO_NAO_SERVIDA } from "../estruturador/estruturador-prompt"
-import { cabeNaJanela, relogioParaTeto, restanteDoOrcamento } from "../fase1-orcamento"
+import { cabeNaJanela, custoTipicoDoAgente, restanteDoOrcamento } from "../fase1-orcamento"
 import type { AlvoParaMedicao } from "./curador-shadow"
 import crypto from "crypto"
 
@@ -54,8 +55,9 @@ import {
   buildProtocoloBlock,
   buildSecaoNotasBlock,
   emptyCuradorVaultKnowledge,
-  loadAprendizadosResumo,
+  loadAprendizadosPorToque,
   loadCuradorVaultKnowledge,
+  loadCuradorLequeMode,
   loadCuradorVaultMode,
   loadEstruturaRefsResumo,
   loadVariantUsageCounts,
@@ -75,9 +77,10 @@ import {
   type PreferenciasDoVault,
 } from "./curador-shadow"
 import { fieldOrMissing, renderTopProducts } from "./store-context"
-import { requisitosDaDecisao } from "../estruturador/estruturador-consume"
+import { recorteDaDecisao, requisitosDaDecisao } from "../estruturador/estruturador-consume"
 import {
   eliminarPorRequisitos,
+  elegiveisPorPosicao,
   indiceDeEliminadas,
   renderEliminadasPorRequisito,
 } from "../shared/field-roles"
@@ -108,8 +111,14 @@ import {
 } from "../shared/component-dimensions"
 import { variantIsFillable as coherenceVariantIsFillable } from "@/lib/email-workspace/schema-example-coherence"
 import { assembleDocument, coberturaSuficiente, validateBlockMarkers } from "./assemble-document"
+import type { ValoresDeTokens } from "../html/identity-tokens"
 import { normalizarSecao } from "./repeticao"
-import { menosIncompativel } from "./resgate-de-posicao"
+import { descartesEfetivos, doDispositivoPedido, menosIncompativel } from "./resgate-de-posicao"
+import type { DecisaoDoEmail } from "../shared/decisao-do-email"
+import { bloqueia, loadContratoModes, roda } from "../shared/contrato-mode"
+import { validarEscolhas, violacoesDaEscolha } from "../shared/validadores/escolhas"
+import { validarResgate } from "../shared/validadores/resgate"
+import type { Violacao } from "../shared/validadores/tipos"
 import type { OutlineSection } from "./outline-sections"
 import {
   interpolateSystem,
@@ -128,6 +137,7 @@ import {
 } from "../shared/prompt-provenance"
 import {
   loadCuradorMemory,
+  loadEscolhasRecentesPorSecao,
   logCuradorChoice,
   renderCuradorMemory,
   type ChoiceEntry,
@@ -245,7 +255,7 @@ Regras de coexistência entre variantes na MESMA peça (vault). O campo \`vault.
 </convivencia>
 
 Como usar os eixos do vault (variantes com campo \`vault\`):
-- O eixo \`momento\` foi APOSENTADO (07/09): o catálogo não traz \`momento\` nem \`momento_vetado\`, e nenhuma variante é eliminada nem rankeada por eles. Onde o protocolo do vault ou uma nota de seção falarem em momento — inclusive o passo 5 — está SUPERADO: ignore.
+- O eixo \`momento\` NÃO existe neste protocolo: o catálogo não traz \`momento\` nem \`momento_vetado\`, e nenhuma variante é eliminada nem rankeada por eles. Onde o protocolo do vault ou uma nota de seção falarem em momento — inclusive o passo 5 do protocolo do vault — este prompt tem precedência: ignore.
 - Material que a variante pede (foto, tipografia, tipo de campanha) NÃO elimina ninguém: a imagem é gerada depois. Adequação de material entra no ranking, nunca no corte.
 - Ranking LEXICOGRÁFICO com degradação, na ordem: objecao → aliviador → profundidade → registro → paleta → papel_na_peca. Compare \`vault.objecao\` com o eixo equivalente do alvo em <alvo> (ou com <objecoes> quando não há alvo); \`vault.aliviador\` com o \`aliviador pedido\`; \`vault.profundidade\` com a \`profundidade de prova\` pedida. Eixo que não separa os candidatos daquela seção é NEUTRO — desça para o próximo. \`registro_vetado\` que casa com o registro da marca elimina.
 - \`vault.peso\` é orçamento QUALITATIVO da peça: evite indicar pesado/peca-inteira em posições consecutivas sem leve/medio entre elas — olhe o conjunto das posições, não cada uma isolada.
@@ -544,7 +554,93 @@ export function resolveChoices(
  * sem variante na biblioteca (que vira placeholder com nota no fallback). */
 export type AssemblySlot =
   | { kind: "variant"; variant: EmailComponentVariant; section: string; label: string }
-  | { kind: "missing"; section: string; label: string }
+  | {
+      kind: "missing"
+      section: string
+      label: string
+      /** Por que a posição ficou sem variante (Passo 11). Ausente em slot anterior. */
+      motivo?: MotivoDePosicaoSemVariante
+      /** Dispositivo que a decisão pedia para a posição, quando havia. */
+      dispositivo_pedido?: string | null
+    }
+
+/**
+ * Por que uma posição decidida ficou sem variante (Passo 11, 14/09):
+ *   - `sem_candidata`: a seção não tem variante elegível no catálogo;
+ *   - `todas_descartadas`: só havia variantes de dispositivo que a decisão
+ *     DESCARTOU (o resgate recusa entrar contra a decisão);
+ *   - `resgate_recusado`: a menos incompatível viola a decisão em `high`
+ *     (validador estrutural em `on`);
+ *   - `dispositivo_indisponivel` (Passo 19, 15/09): a seção tem variante,
+ *     mas nenhuma realiza o dispositivo PEDIDO. É o motivo mais acionável
+ *     dos cinco — diz à curadoria exatamente qual bloco cadastrar;
+ *   - `orcamento_esgotado` (leque, 16/09): a chamada daquela posição não
+ *     aconteceu — relógio, rede ou provedor. **Falta de tempo não é lacuna
+ *     de biblioteca**, e confundir as duas alimenta
+ *     `vault-propostas.service` com pauta falsa: a curadoria cadastraria um
+ *     bloco para resolver um timeout.
+ */
+export type MotivoDePosicaoSemVariante =
+  | "sem_candidata"
+  | "todas_descartadas"
+  | "resgate_recusado"
+  | "dispositivo_indisponivel"
+  | "orcamento_esgotado"
+
+export interface PosicaoSemVariante {
+  block_index: number
+  section: string
+  label: string
+  dispositivo_pedido: string | null
+  motivo: MotivoDePosicaoSemVariante
+  /** Loja × flow × e-mail — é a chave da proposta de lacuna no vault. */
+  flow_type: string
+  email_number: number
+}
+
+/**
+ * Lacuna FATAL: a hero ficou sem variante (a fase 2 morre em
+ * `hero_failed` de qualquer jeito, e parar aqui é mais legível) ou mais de
+ * uma posição ficou vazia (peça com dois buracos não representa a
+ * decisão). Uma posição não-hero vazia é peça POBRE, não inviável: entra,
+ * e a lacuna viaja no `slot_map` e no QA (`posicao_sem_variante`).
+ */
+export function lacunaEhFatal(posicoes: ReadonlyArray<Pick<PosicaoSemVariante, "section">>): boolean {
+  if (posicoes.length === 0) return false
+  if (posicoes.length > 1) return true
+  return normalizarSecao(posicoes[0].section) === "hero"
+}
+
+/** De quem é a culpa pela peça não ter fechado. */
+export type CausaDaLacuna = "biblioteca" | "relogio"
+
+/**
+ * Fatal, sim — mas por quê?
+ *
+ * As duas causas levam ao MESMO descarte da referência (peça com buraco não
+ * representa a decisão, e referência que não representa é pior que
+ * referência nenhuma). O que elas não compartilham é nada depois disso:
+ *
+ * - **biblioteca**: o bloco não existe. `failed: lacuna_biblioteca`, o
+ *   e-mail é settled na fila (repetir paga pelo mesmo resultado) e a lacuna
+ *   vira pauta de cadastro no vault.
+ * - **relógio**: a chamada daquela posição não chegou a acontecer — a
+ *   janela acabou, o provedor recusou, o processo morreu. Não há veredito
+ *   nenhum sobre a biblioteca, e as posições já decididas estão gravadas
+ *   (`curador-leque-progresso.ts`). Settlar aqui seria enterrar uma peça a
+ *   uma retomada de distância; e chamar isso de `lacuna_biblioteca` manda
+ *   a curadoria cadastrar bloco que já existe.
+ *
+ * **Uma posição por relógio basta para a causa ser `relogio`**: com a peça
+ * decidida pela metade, qualquer veredito sobre a biblioteca é sobre o que
+ * ainda não foi perguntado. A retomada completa e a passada seguinte diz a
+ * verdade.
+ */
+export function causaDaLacuna(
+  posicoes: ReadonlyArray<Pick<PosicaoSemVariante, "motivo">>,
+): CausaDaLacuna {
+  return posicoes.some((p) => p.motivo === "orcamento_esgotado") ? "relogio" : "biblioteca"
+}
 
 /**
  * Escolha do Curador/Montador por parte do email — persistida em
@@ -567,6 +663,10 @@ export function slotMapFromSlots(
     variant_id: s.kind === "variant" ? s.variant.id : null,
     variant_name: s.kind === "variant" ? s.variant.name : null,
     assembled: s.kind === "variant" && !fora.has(i),
+    // Lacuna NOMEADA (Passo 11): sem isto o slot_map dizia só "variant_id:
+    // null" e ninguém sabia se faltou biblioteca ou se a decisão recusou.
+    ...(s.kind === "missing" && s.motivo ? { motivo: s.motivo } : {}),
+    ...(s.kind === "missing" && s.dispositivo_pedido ? { dispositivo_pedido: s.dispositivo_pedido } : {}),
   }))
 }
 
@@ -680,6 +780,11 @@ export interface AssembleReferenceInput {
   fontBody?: string | null
   fontHeadingWeight?: string | null
   fontBodyWeight?: string | null
+  /**
+   * B5: tokens de identidade da loja (`tokensDaLoja`). Resolvidos no
+   * encaixe de cada variante escrita com `{{COR_*}}`/`{{FONTE_*}}`.
+   */
+  tokens?: Partial<ValoresDeTokens> | null
   // ── Contrato editorial do vault (email_intents) — critério do Curador ──
   // Intenção do FLOW (o que a sequência inteira protege) e DESTE email (o
   // que este toque precisa entregar). null = vault sem material — o prompt
@@ -690,6 +795,8 @@ export interface AssembleReferenceInput {
   // o modo é 'on' e a run validou (em shadow o pipeline não vê a decisão).
   // Papéis na MESMA ordem da structure/<sequencia_do_email>.
   estruturadorDecisao?: string | null
+  /** O contrato de decisão (14/09) — o que os validadores comparam. */
+  decisao?: DecisaoDoEmail | null
 }
 
 // "code" = documento concatenado pelo código a partir das variantes
@@ -697,7 +804,20 @@ export interface AssembleReferenceInput {
 // "store" = reference+blueprint já persistidos foram REUSADOS sem regerar
 //   (guard de reuso do generate.service; só com force=false).
 // "llm" = legado: reference gravada pelo Montador LLM antes do CM-2.
-export type ReferenceSource = "llm" | "code" | "global" | "none" | "store"
+export type ReferenceSource =
+  | "llm"
+  | "code"
+  | "global"
+  | "none"
+  | "store"
+  | "lacuna"
+  /**
+   * A peça não fechou porque uma chamada não aconteceu (relógio, provedor,
+   * processo morto) — não porque a biblioteca não tem o bloco. As posições
+   * já decididas estão gravadas; a próxima passada retoma dali. Nunca
+   * settla a fila: settlar enterraria uma peça a uma retomada de distância.
+   */
+  | "retomavel"
 
 /**
  * O que o card "Outline" da Entrada mostra.
@@ -775,6 +895,12 @@ export interface AssembleReferenceResult {
    */
   papeisPorPosicao: string[] | null
   fioNarrativo: string | null
+  /**
+   * Posições decididas que ficaram sem variante (Passo 11). `fatal` = o
+   * e-mail não pode seguir (hero vazia ou 2+ lacunas) — o chamador marca
+   * `failed: lacuna_biblioteca` e NÃO manda ao n8n. `null` = nenhuma.
+   */
+  lacuna: { posicoes: PosicaoSemVariante[]; fatal: boolean; causa: CausaDaLacuna } | null
 }
 
 /**
@@ -1036,6 +1162,11 @@ export async function assembleStoreReference(
   // comportamento vivo é o de sempre (o shadow roda em call paralelo).
   // Fail-open em tudo: sem sync/tabela/coluna, degrada para 'off'.
   const curadorVaultMode = await loadCuradorVaultMode(input.storeId)
+  // Leque (migration 20261158). Lido INCONDICIONALMENTE e UMA vez por peça,
+  // e descido por parâmetro para as N iterações: pendurá-lo num loader
+  // condicional faria o gate nascer desligado em silêncio quando a condição
+  // não se desse. Nasce `off`.
+  const curadorLequeMode = await loadCuradorLequeMode(input.storeId)
   // Orientações do COO ao CURADOR (migration 20261111). Fail-open no
   // loader: sem a coluna `agente`, volta vazio e o prompt declara ausência.
   const orientacoesCurador = await loadOrientacoes("curador")
@@ -1067,10 +1198,36 @@ export async function assembleStoreReference(
   // Zero código veta a escolha — o prompt proíbe e o medidor registra
   // `requisito_violado`; quem fecha a porta é o Blueprint (`omitir`).
   const requisitosPorPosicao = requisitosDaDecisao(input.estruturadorDecisao)
+  // Recorte do MESMO JSON, para a cauda por posição do leque.
+  const recorteDoEstruturador = recorteDaDecisao(input.estruturadorDecisao)
   const eliminadasPorRequisito = eliminarPorRequisitos(
     sections,
     requisitosPorPosicao,
     catalog.sections,
+  )
+  // 14/09: a eliminação vira FILTRO. Elegíveis por posição decidem se a
+  // shortlist do Curador chama o modelo (≤ 3 elegíveis = por código),
+  // restringem as finalistas e são o pool do resgate.
+  // Janela de repetição entre e-mails (Fase 3 do leque). Em `shadow` ela é
+  // CALCULADA e não filtra: `bloqueadasPelaJanela` sobe na telemetria e os
+  // `ids` saem idênticos aos de sempre — é assim que se mede o efeito antes
+  // de ligar. `aplicar` é decisão do gate; hoje nasce em shadow.
+  const bloqueadasPorSecao = await loadEscolhasRecentesPorSecao(
+    input.storeId,
+    input.flowType,
+    input.emailNumber,
+  )
+  const elegiveisDaPosicao = elegiveisPorPosicao(sections, requisitosPorPosicao, catalog.sections, {
+    bloqueadasPorSecao,
+    aplicar: false,
+  })
+  // Contrato de decisão (14/09): o que os validadores estruturais comparam.
+  // Sem `decisao` (Estruturador desligado/falhou) não há o que validar —
+  // `_contrato` diz isso em vez de fingir "zero violações".
+  const decisao: DecisaoDoEmail | null = input.decisao ?? null
+  const contratoModo = decisao ? (await loadContratoModes(input.storeId)).estrutural : "off"
+  const contratoPorId = new Map(
+    catalog.sections.flatMap((c) => c.variantes.map((v) => [v.variant_id, v.contrato] as const)),
   )
   const intencoesHumanas = input.structure.filter((s) => (s.intencao ?? "").trim()).length
   const curatedReference = input.referenceTemplateHtml.trim()
@@ -1096,6 +1253,7 @@ export async function assembleStoreReference(
       })),
       papeisPorPosicao: null,
       fioNarrativo: null,
+      lacuna: null,
     }
   }
 
@@ -1388,11 +1546,12 @@ export async function assembleStoreReference(
   // narrowing do TS não enxerga closure — leria `null` para sempre.
   const parcialDoVault: { valor: PreferenciasDoVault | null } = { valor: null }
   if (curadorVaultMode === "on") {
-    const [aprendizadosOn, usageCountsOn, indiceDoVault] = await Promise.all([
-      loadAprendizadosResumo(input.flowType),
-      loadVariantUsageCounts(),
+    const [aprendizadosPorToqueOn, usageCountsOn, indiceDoVault] = await Promise.all([
+      loadAprendizadosPorToque(input.flowType, input.emailNumber),
+      loadVariantUsageCounts(input.storeId),
       loadIndiceDoVault(),
     ])
+    const aprendizadosOn = aprendizadosPorToqueOn.globais
     vaultResultado = await runCuradorShadow({
       storeId: input.storeId,
       flowType: input.flowType,
@@ -1413,6 +1572,7 @@ export async function assembleStoreReference(
         parcialDoVault.valor = p
       },
       eliminadasPorRequisito,
+      elegiveisPorPosicao: elegiveisDaPosicao,
       origins,
       alvoMedicao: input.alvoMedicao ?? null,
       vault: vaultKnowledge,
@@ -1420,6 +1580,7 @@ export async function assembleStoreReference(
       catalogComExtras: catalog,
       estruturasRef: estruturasRefAll,
       aprendizados: aprendizadosOn,
+      aprendizadosPorToque: aprendizadosPorToqueOn,
       usageCounts: usageCountsOn,
       typeIndex,
       aliasIndex,
@@ -1430,6 +1591,10 @@ export async function assembleStoreReference(
       indiceDoVault,
       // Sem call vivo não há com o que comparar — a comparação era da fase
       // de ensaio.
+      candidatasImpreenchiveis: excludedUntagged,
+      decisaoPorPosicao: recorteDoEstruturador.posicoes,
+      fioDoEstruturador: recorteDoEstruturador.fio,
+      lequeOn: curadorLequeMode === "on",
       liveViolations: [],
       liveRank1: new Map(),
       baseInputSummary: chooserInputSummary,
@@ -1502,7 +1667,7 @@ export async function assembleStoreReference(
     // o desfecho que `fase1-orcamento` existe para evitar. O relógio por
     // chamada já encolhe sozinho; o que faltava era não COMEÇAR.
     const cabe = cabeNaJanela({
-      custoMs: relogioParaTeto(chooserConfig.max_tokens),
+      custoMs: custoTipicoDoAgente("assembler_chooser", chooserConfig.max_tokens),
       restanteMs: restanteDoOrcamento(),
     })
     if (!cabe.cabe) {
@@ -1671,10 +1836,11 @@ export async function assembleStoreReference(
   // propósito (promise solta morre com o serverless); falha nunca propaga.
   if (curadorVaultMode === "shadow") {
     const shadowExtras = buildCatalogVaultExtras(vaultKnowledge, eligible)
-    const [aprendizados, usageCounts] = await Promise.all([
-      loadAprendizadosResumo(input.flowType),
-      loadVariantUsageCounts(),
+    const [aprendizadosPorToque, usageCounts] = await Promise.all([
+      loadAprendizadosPorToque(input.flowType, input.emailNumber),
+      loadVariantUsageCounts(input.storeId),
     ])
+    const aprendizados = aprendizadosPorToque.globais
     const liveRank1 = rank1ByBlock(rankingByBlock)
     await runCuradorShadow({
       storeId: input.storeId,
@@ -1691,6 +1857,7 @@ export async function assembleStoreReference(
       modelo: chooserConfig.model,
       maxTokens: chooserRow?.max_tokens ?? null,
       eliminadasPorRequisito,
+      elegiveisPorPosicao: elegiveisDaPosicao,
       origins,
       alvoMedicao: input.alvoMedicao ?? null,
       vault: vaultKnowledge,
@@ -1698,10 +1865,14 @@ export async function assembleStoreReference(
       catalogComExtras: buildCatalog(eligible, shadowExtras),
       estruturasRef: estruturasRefAll,
       aprendizados,
+      aprendizadosPorToque,
       usageCounts,
       typeIndex,
       aliasIndex,
       liveSections: sections,
+      candidatasImpreenchiveis: excludedUntagged,
+      decisaoPorPosicao: recorteDoEstruturador.posicoes,
+      fioDoEstruturador: recorteDoEstruturador.fio,
       liveViolations: measureProtocolViolations({
         rank1ByBlock: liveRank1,
         extras: shadowExtras,
@@ -1947,6 +2118,57 @@ export async function assembleStoreReference(
     })
   }
 
+  // ── Validador das escolhas × decisão (14/09, gate contrato_estrutural) ──
+  // A escolha final é conferida contra o contrato da variante, os
+  // requisitos da posição e o incentivo do toque. Em `on`, a posição que
+  // viola `high` é TROCADA por código pela próxima finalista do ranking
+  // que não viola; sem finalista limpa, a posição cai para o resgate (cujo
+  // pool já é o das elegíveis). É correção determinística — repetir o
+  // Curador com a mesma shortlist devolveria a mesma escolha, e desde o
+  // Passo 3 a shortlist já é a interseção com as elegíveis.
+  const substituicoes: Array<{ block_index: number; de: string; para: string | null; violacao: string }> = []
+  let violacoesDasEscolhas: Violacao[] = []
+  if (decisao && roda(contratoModo)) {
+    const val = validarEscolhas(
+      decisao,
+      Array.from(chosenById.entries()).map(([block_index, variant_id]) => ({ block_index, variant_id })),
+      contratoPorId,
+    )
+    violacoesDasEscolhas = val.violacoes
+    if (!val.ok) {
+      log.warn("assembler.contrato_violado", {
+        storeId: input.storeId,
+        flowType: input.flowType,
+        emailNumber: input.emailNumber,
+        modo: contratoModo,
+        violacoes: val.violacoes.filter((v) => v.severidade === "high").map((v) => `${v.block_index}:${v.tipo}`),
+      })
+    }
+    if (!val.ok && bloqueia(contratoModo)) {
+      const usadas = new Set(chosenById.values())
+      for (const v of val.violacoes) {
+        if (v.severidade !== "high") continue
+        const atual = chosenById.get(v.block_index)
+        if (!atual || atual !== v.variant_id) continue
+        const finalistas = (rankingByBlock.get(v.block_index) ?? []).map((c) => c.variant_id)
+        const limpa = finalistas.find(
+          (id) =>
+            id !== atual &&
+            byId.has(id) &&
+            !usadas.has(id) &&
+            !violacoesDaEscolha(decisao, v.block_index, id, contratoPorId.get(id)).some((x) => x.severidade === "high"),
+        )
+        chosenById.delete(v.block_index)
+        usadas.delete(atual)
+        if (limpa) {
+          chosenById.set(v.block_index, limpa)
+          usadas.add(limpa)
+        }
+        substituicoes.push({ block_index: v.block_index, de: atual, para: limpa ?? null, violacao: v.tipo })
+      }
+    }
+  }
+
   // ── Resgate da posição vazia ────────────────────────────────────────
   // Posição sem variante SOME do e-mail: `assembleDocument` a pula e nada é
   // puxado do template curado para a lacuna. O Curador não sabe disso — em
@@ -1959,25 +2181,110 @@ export async function assembleStoreReference(
   )
   const jaUsadas = new Set<string>()
   const resgatadas: Array<{ block_index: number; section: string; variant_id: string; motivo: string; custo: number }> = []
+  const resgatesRecusados: Array<{ block_index: number; section: string; variant_id: string; violacoes: string[] }> = []
+  const violacoesDoResgate: Violacao[] = []
+  // Posições que ficaram VAZIAS, com o motivo (Passo 11). Coletadas AQUI,
+  // antes da montagem: `coberturaSuficiente` só sabe contar buracos, e o
+  // desfecho `hero_failed` três minutos depois não diz o que faltou.
+  const posicoesSemVariante: PosicaoSemVariante[] = []
+  const posicoesComFalhaDeChamada = new Set(vaultResultado?.posicoesComFalhaDeChamada ?? [])
+  const descartesDaDecisao = decisao?.descartes ?? []
+  let resgatesTentados = 0
+  let descartadasPorDispositivo = 0
+  // Passo 19: candidatas fora por realizarem OUTRO dispositivo que não o
+  // pedido. Separado de `descartadasPorDispositivo` porque as duas contagens
+  // pedem ações opostas — descarte é acerto do filtro, "não existe a forma"
+  // é lacuna de biblioteca.
+  let foraDoDispositivo = 0
+
+  // O resgate desempata pela MESMA régua do Curador — a menos usada nesta
+  // loja (15/09). Antes ele desempatava por "a anatomia mais rica", que
+  // premia quem tem mais campos e é o oposto da rotação que o protocolo
+  // pede. A consulta só acontece quando há posição vazia: o resgate é a
+  // exceção, não o caminho comum.
+  const precisaResgate = sections.some((_, i) => !chosenById.get(i) || !byId.get(chosenById.get(i)!))
+  const usosPorVariante = precisaResgate
+    ? await loadVariantUsageCounts(input.storeId)
+    : new Map<string, number>()
 
   const slots: AssemblySlot[] = sections.map((section, i) => {
     const label = input.structure[i]?.label ?? section
     const id = chosenById.get(i)
     let variant = id ? byId.get(id) : undefined
+    // Chamada que não aconteceu NÃO é lacuna de biblioteca: o resgate
+    // ainda pode salvar a posição, mas se não salvar o motivo é o relógio,
+    // e é ele que tem de aparecer no vault e na tela.
+    let motivoDaLacuna: MotivoDePosicaoSemVariante = posicoesComFalhaDeChamada.has(i)
+      ? "orcamento_esgotado"
+      : "sem_candidata"
     if (!variant) {
-      const resgate = menosIncompativel(
-        variantesDaSecao.get(normalizarSecao(section)) ?? [],
-        requisitosPorPosicao[i],
-        section,
-        jaUsadas,
-      )
+      // Pool = elegíveis por contrato (fail-open: seção zerada devolve
+      // todas). Sem o filtro o resgate podia pôr uma eliminada na posição.
+      const elegiveisIds = elegiveisDaPosicao.get(i)?.ids
+      const pool = (variantesDaSecao.get(normalizarSecao(section)) ?? [])
+        .filter((c) => !elegiveisIds || elegiveisIds.includes(c.variant_id))
+        .map((c) => ({ ...c, usos: usosPorVariante.get(c.variant_id) ?? 0 }))
+      if (pool.length > 0) resgatesTentados++
+      // Os descartes da DECISÃO entram no resgate: variante de dispositivo
+      // descartado custa Infinity e nunca é a "menos incompatível" (batch
+      // 6249aef2: body-4, comparação descartada, entrou por aqui).
+      const resgate = menosIncompativel(pool, requisitosPorPosicao[i], section, jaUsadas, descartesDaDecisao)
+      if (resgate) {
+        descartadasPorDispositivo += resgate.descartadas_por_dispositivo
+        foraDoDispositivo += resgate.fora_do_dispositivo
+      } else if (pool.length > 0) {
+        // Pool não vazio e nenhum resgate = ninguém do dispositivo pedido,
+        // todas custaram Infinity, ou já estavam usadas. Nomear o motivo é o
+        // que transforma "a seção sumiu" em pedido de cadastro.
+        //
+        // A ordem importa: o dispositivo pedido é o PRIMEIRO corte (Passo
+        // 19), então o descarte só é olhado entre quem sobreviveu a ele —
+        // senão a lacuna diria "descartada" sobre variante que nunca chegou
+        // a ser considerada.
+        const { dentro, fora } = doDispositivoPedido(pool, requisitosPorPosicao[i])
+        if (dentro.length === 0) {
+          foraDoDispositivo += fora
+          motivoDaLacuna = "dispositivo_indisponivel"
+        } else {
+          const efetivos = descartesEfetivos(descartesDaDecisao, requisitosPorPosicao[i])
+          const todasDescartadas = dentro.every((c) => c.contrato?.dispositivo && efetivos.has(c.contrato.dispositivo))
+          if (todasDescartadas) {
+            descartadasPorDispositivo += dentro.length
+            foraDoDispositivo += fora
+            motivoDaLacuna = "todas_descartadas"
+          }
+        }
+      }
       const candidata = resgate ? byId.get(resgate.variant_id) : undefined
       if (resgate && candidata) {
-        variant = candidata
-        resgatadas.push({ block_index: i, section, variant_id: resgate.variant_id, motivo: resgate.motivo, custo: resgate.custo })
+        // O resgate aceita concessão de redação; anatomia contrária à
+        // decisão (cupom sem incentivo, CTA negado) não entra em `on`.
+        const val = decisao && roda(contratoModo)
+          ? validarResgate(decisao, { block_index: i, variant_id: resgate.variant_id }, contratoPorId.get(resgate.variant_id))
+          : null
+        if (val) violacoesDoResgate.push(...val.violacoes)
+        if (val && !val.ok && bloqueia(contratoModo)) {
+          resgatesRecusados.push({ block_index: i, section, variant_id: resgate.variant_id, violacoes: val.violacoes.filter((x) => x.severidade === "high").map((x) => x.tipo) })
+          motivoDaLacuna = "resgate_recusado"
+        } else {
+          variant = candidata
+          resgatadas.push({ block_index: i, section, variant_id: resgate.variant_id, motivo: resgate.motivo, custo: resgate.custo })
+        }
       }
     }
-    if (!variant) return { kind: "missing", section, label }
+    if (!variant) {
+      const dispositivo_pedido = requisitosPorPosicao[i]?.dispositivo ?? null
+      posicoesSemVariante.push({
+        block_index: i,
+        section,
+        label,
+        dispositivo_pedido,
+        motivo: motivoDaLacuna,
+        flow_type: input.flowType,
+        email_number: input.emailNumber,
+      })
+      return { kind: "missing", section, label, motivo: motivoDaLacuna, dispositivo_pedido }
+    }
     jaUsadas.add(variant.id)
     // A seção sai da VARIANTE, não do outline. O outline e o Estruturador
     // propõem a forma; quem decide é o Curador, e a posição adota a forma
@@ -1997,24 +2304,20 @@ export async function assembleStoreReference(
       resgatadas,
     })
   }
+  const lacunaFatal = lacunaEhFatal(posicoesSemVariante)
+  const lacunaCausa = causaDaLacuna(posicoesSemVariante)
+  if (posicoesSemVariante.length > 0) {
+    log.warn("assembler.posicoes_sem_variante", {
+      storeId: input.storeId,
+      flowType: input.flowType,
+      emailNumber: input.emailNumber,
+      fatal: lacunaFatal,
+      causa: lacunaCausa,
+      posicoes: posicoesSemVariante.map((p) => `${p.block_index}:${p.section}:${p.dispositivo_pedido ?? "-"}:${p.motivo}`),
+    })
+  }
 
   const chosen = slots.flatMap((s) => (s.kind === "variant" ? [s.variant] : []))
-
-  // Registra as escolhas desta geração no histórico append-only (memória do
-  // Curador). Fire-and-forget: não bloqueia o run nem falha a geração.
-  const choiceEntries: ChoiceEntry[] = slots.flatMap((s) =>
-    s.kind === "variant"
-      ? [{ section: s.section, variant_id: s.variant.id, variant_name: s.variant.name }]
-      : [],
-  )
-  void logCuradorChoice({
-    storeId: input.storeId,
-    orgId: memory.orgId,
-    flowType: input.flowType,
-    emailNumber: input.emailNumber,
-    batchId: input.batchId,
-    choices: choiceEntries,
-  })
 
   // Com o Curador do vault vigente, quem fechou o run foi ele.
   if (chooserRunId) {
@@ -2052,6 +2355,7 @@ export async function assembleStoreReference(
   // remover tag de imagem ou emitir marcador inválido.
   const assembled = assembleDocument({
     slots,
+    tokens: input.tokens ?? null,
     fonts: {
       heading: input.fontHeading,
       body: input.fontBody,
@@ -2105,8 +2409,24 @@ export async function assembleStoreReference(
 
   // Cobertura, não só "entrou alguma coisa": 1 bloco de 6 é ruína, e seguir
   // com ela só adia a falha para a hero (incidente 07/09).
-  const cobertura = coberturaSuficiente(assembled.stats)
-  const source: ReferenceSource = cobertura.ok ? "code" : "none"
+  // A lacuna fatal vence a cobertura: a régua de cobertura só vê buracos;
+  // aqui os buracos têm nome e a peça não representa a decisão.
+  const cobertura = lacunaFatal
+    ? {
+        ok: false,
+        motivo: `${lacunaCausa === "relogio" ? "posições não decididas (relógio)" : "lacuna de biblioteca"}: ${posicoesSemVariante.map((p) => `${p.section}${p.dispositivo_pedido ? ` (${p.dispositivo_pedido})` : ""}`).join(", ")}`,
+      }
+    : coberturaSuficiente(assembled.stats)
+  // O descarte da referência é o mesmo nos dois casos (peça com buraco não
+  // representa a decisão); o que muda é o desfecho na fila e o rótulo —
+  // ver `causaDaLacuna`.
+  const source: ReferenceSource = lacunaFatal
+    ? lacunaCausa === "relogio"
+      ? "retomavel"
+      : "lacuna"
+    : cobertura.ok
+      ? "code"
+      : "none"
 
   if (source === "code") {
     await upsertStoreReference(
@@ -2124,7 +2444,9 @@ export async function assembleStoreReference(
     // seguiu lendo a referência das 13:45 (um bloco, sem hero) e a hero
     // falhou de novo. Referência que não representa o email é pior que
     // nenhuma: `store_email_references` é cache regenerável, e sem ela o
-    // consumidor usa o template global, que TEM hero.
+    // consumidor usa o template global do flow (documento inteiro; o do
+    // welcome-1 NÃO tem marcador de hero — a fase 2 pode morrer em
+    // `hero_failed`, e é o desfecho honesto para uma montagem inviável).
     await descartarStoreReference(input)
     html = curatedReference
     log.warn("assembler.cobertura_insuficiente", {
@@ -2134,6 +2456,37 @@ export async function assembleStoreReference(
       motivo: cobertura.motivo,
       blocos: assembled.stats.blocks,
       skipped: assembled.stats.skipped,
+    })
+  }
+
+  // Histórico append-only das escolhas (memória do Curador). Duas coisas
+  // mudaram aqui, e as duas são de correção:
+  //
+  // 1. `await`, não `void`. Em serverless a promise solta morre quando o
+  //    processo congela depois do `return` — é a mesma armadilha que perdeu
+  //    os eventos de conversão da Meta. A tabela que deveria registrar cada
+  //    escolha registrava as que dessem sorte de o processo ainda existir.
+  // 2. Só quando a referência foi PERSISTIDA (`source === "code"`). Escolha
+  //    de montagem recusada (lacuna fatal ou cobertura insuficiente) não
+  //    virou e-mail nenhum: a referência foi apagada e o consumidor caiu no
+  //    template global. Guardá-la faria a memória do Curador desaconselhar
+  //    uma variante que nunca chegou a ser usada.
+  //
+  // Falha de gravação continua sendo `log.warn` dentro de `logCuradorChoice`
+  // — registrar histórico não pode derrubar uma geração que deu certo.
+  if (source === "code") {
+    const choiceEntries: ChoiceEntry[] = slots.flatMap((s) =>
+      s.kind === "variant"
+        ? [{ section: s.section, variant_id: s.variant.id, variant_name: s.variant.name }]
+        : [],
+    )
+    await logCuradorChoice({
+      storeId: input.storeId,
+      orgId: memory.orgId,
+      flowType: input.flowType,
+      emailNumber: input.emailNumber,
+      batchId: input.batchId,
+      choices: choiceEntries,
     })
   }
 
@@ -2196,6 +2549,26 @@ export async function assembleStoreReference(
       // biblioteca cobrada: o e-mail saiu inteiro, mas a curadoria deve
       // uma variante que realize o papel sem concessão.
       posicoes_resgatadas: resgatadas,
+      // Passo 11: o que o resgate tentou, o que recusou por descarte da
+      // decisão, e as posições que ficaram VAZIAS com o motivo. É daqui que
+      // o cron `vault-lacunas-propostas` lê `lacuna_biblioteca` (limiar 1).
+      resgates: {
+        tentados: resgatesTentados,
+        recusados_por_dispositivo: descartadasPorDispositivo,
+        // Passo 19: candidatas de OUTRO dispositivo, que antes entravam por
+        // 150 de custo. Número alto aqui com `dispositivo_indisponivel` em
+        // `posicoes_sem_variante` é lacuna de biblioteca, não defeito.
+        fora_do_dispositivo: foraDoDispositivo,
+        sem_candidata: posicoesSemVariante.filter((p) => p.motivo === "sem_candidata").length,
+        dispositivo_indisponivel: posicoesSemVariante.filter((p) => p.motivo === "dispositivo_indisponivel").length,
+      },
+      posicoes_sem_variante: posicoesSemVariante,
+      // Só é lacuna de BIBLIOTECA quando a causa é a biblioteca. Peça que
+      // não fechou por relógio vira `lacuna_causa: "relogio"` e não entra
+      // na contagem que o vault lê — cobrar cadastro por chamada que não
+      // aconteceu é pauta falsa (ver `causaDaLacuna`).
+      lacuna_biblioteca: lacunaFatal && lacunaCausa === "biblioteca",
+      ...(lacunaFatal ? { lacuna_causa: lacunaCausa } : {}),
       wrapped_unknown: assembled.stats.wrappedUnknown,
       // Variantes cadastradas como documento completo: a casca foi removida
       // antes do encaixe. Sem isto a montagem embrulhava o documento inteiro
@@ -2205,6 +2578,13 @@ export async function assembleStoreReference(
       // recuo somava ao container e o email saía com 656/680px em vez de
       // 600 — cada bloco numa largura diferente (incidente 08/09).
       gutters_neutralized: assembled.stats.guttersNeutralized,
+      // B5: posições montadas com tokens de identidade — o Cores & Botões
+      // lê o mesmo dado pelo slot_map; aqui fica o registro da montagem.
+      blocos_tokenizados: assembled.stats.blocosTokenizados,
+      tokens_aplicados: assembled.stats.tokensAplicados,
+      ...(assembled.stats.tokensSemValor.length > 0
+        ? { tokens_sem_valor: assembled.stats.tokensSemValor }
+        : {}),
       fonts_normalized: assembled.stats.fontsNormalized,
       weights_normalized: assembled.stats.weightsNormalized,
       reference_source: source,
@@ -2212,6 +2592,17 @@ export async function assembleStoreReference(
       // Self-checks da concatenação: os dois têm de ser sempre limpos.
       marker_selfcheck: markerCheck.status,
       image_tags_dropped: droppedImageTags,
+      // Validadores estruturais (14/09): o que a escolha e o resgate
+      // violaram da decisão, e o que o código trocou por causa disso.
+      // `modo: "off"` com `decisao_presente: false` = não havia decisão.
+      _contrato: {
+        modo: contratoModo,
+        decisao_presente: decisao != null,
+        violacoes: [...violacoesDasEscolhas, ...violacoesDoResgate],
+        substituicoes,
+        resgates_recusados: resgatesRecusados,
+        regra_pendente: [...REGRAS_PENDENTES],
+      },
   }
 
   if (asmRunId !== null) await finishGenerationRun(asmRunId, {
@@ -2290,6 +2681,10 @@ export async function assembleStoreReference(
     // consumidor não muda de comportamento.
     papeisPorPosicao: vaultResultado?.papeis ?? null,
     fioNarrativo: vaultResultado?.fioNarrativo ?? null,
+    lacuna:
+      posicoesSemVariante.length > 0
+        ? { posicoes: posicoesSemVariante, fatal: lacunaFatal, causa: lacunaCausa }
+        : null,
   }
 }
 

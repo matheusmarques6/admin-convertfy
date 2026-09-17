@@ -10,7 +10,7 @@ import { clarear } from "./brand"
 import type { DocFrame, Documento, FamiliaVisual } from "./types"
 
 const agora = new Date("2026-09-09T10:00:00-03:00")
-const doc = (): Documento => novoDocumento("x", "canal-1", "molde-turbo", { agora })
+const doc = (): Documento => novoDocumento("x", "canal-1", "molde-manchete", { agora })
 
 describe("família visual", () => {
   it("documento sem família é o padrão, e toda família tem traço completo", () => {
@@ -73,8 +73,13 @@ describe("família visual", () => {
   })
 
   it("sem alternância, o fundo vem do TIPO: capa, prova e CTA no gradiente", () => {
-    for (const key of Object.keys(FAMILIAS) as FamiliaVisual[]) {
-      if (FAMILIAS[key].traco.alternaFundo) continue
+    // A lista é DECLARADA, não derivada por exclusão. Antes ela era "todas
+    // menos as exceções que eu lembrei", e uma família nova entrava no laço
+    // sem ninguém decidir — reprovando por um motivo que não é o do teste.
+    // Cada exceção tem cobertura própria: `formato-post.test.ts`,
+    // `familia-manchete.test.ts` e `familia-thread.test.ts`.
+    const DA_CASA: FamiliaVisual[] = ["padrao", "editorial"]
+    for (const key of DA_CASA) {
       expect(fundoPadraoDaFamilia(key, "capa", 0)).toBe("gradiente")
       expect(fundoPadraoDaFamilia(key, "prova", 4)).toBe("gradiente")
       expect(fundoPadraoDaFamilia(key, "cta", 6)).toBe("gradiente")
@@ -218,9 +223,9 @@ describe("campos opcionais do slide", () => {
   })
 
   it("só oferece o campo onde o renderer o desenha", () => {
-    expect(camposOpcionaisDoTipo("texto")).toEqual(["gancho", "anotacao"])
+    expect(camposOpcionaisDoTipo("texto")).toEqual(["gancho", "anotacao", "destaque"])
     expect(camposOpcionaisDoTipo("capa")).toEqual(["gancho"])
-    expect(camposOpcionaisDoTipo("prova")).toEqual(["gancho"])
+    expect(camposOpcionaisDoTipo("prova")).toEqual(["gancho", "destaque"])
     expect(camposOpcionaisDoTipo("cta")).toEqual([])
     expect(aceitaCampoOpcional("capa", "anotacao")).toBe(false)
   })
@@ -246,7 +251,7 @@ describe("campos opcionais do slide", () => {
     const base = doc()
     const alvo = base.frames.findIndex((f) => f.tipo === "texto")
     const d: Documento = { ...base, frames: base.frames.map((f, i) => (i === alvo ? comOpcionais("texto") : f)) }
-    const { doc: novo } = trocarTemplate(d, getTemplate("molde-benchmark"))
+    const { doc: novo } = trocarTemplate(d, getTemplate("molde-post"))
     const texto = novo.frames.find((f) => f.tipo === "texto")!
     expect(texto.campos).toContain("gancho")
     expect(texto.textos.gancho).toBe("o que ninguém olha")

@@ -1,5 +1,16 @@
 # Nomenclatura padrão de tags dos HTML references
 
+> **HISTÓRICO — não use para cadastrar variante (aviso de 15/09/2026).** Este
+> vocabulário foi fechado para o Montador antigo, que escrevia o HTML do zero
+> e inventava 2.490 tags. Hoje o Montador está desligado e a biblioteca
+> endereça copy pela **frase do `example`**, não por tag; `url` e `image`
+> endereçam por `{{CHAVE_EM_MAIUSCULAS}}` derivada da key do schema, que não
+> precisa estar nesta lista. Para cadastrar um bloco novo, siga
+> `docs/email-generation/guia-de-cadastro-de-variante.md`. O que continua
+> valendo aqui: a lista de tokens que **a plataforma preenche** (LOGO,
+> PREHEADER, `*_URL`, `PRODUCT_N_*`) e que o schema não deve declarar.
+
+
 Vocabulário CANÔNICO e FECHADO de placeholders `{{TAG}}` para os HTML de
 arquitetura (`store_email_references` e variantes da biblioteca
 `email_component_variants`).

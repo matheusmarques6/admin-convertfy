@@ -67,7 +67,7 @@ export interface IntentContract {
    * `catalogo` (catálogo da loja) ou `default` (derivado do modo). O contrato
    * deixou de ter fonte única, então a origem deixou de ser óbvia.
    */
-  origens: Partial<Record<keyof IntentContract, "nota" | "catalogo" | "default">>
+  origens: Partial<Record<keyof IntentContract, "nota" | "catalogo" | "outline" | "default">>
 }
 
 /** O que o montador precisa do catálogo da loja — subconjunto de `CatalogoDeObjecoes`. */
@@ -87,6 +87,14 @@ export interface CatalogoParaContrato {
 
 export interface ParseIntentContractInput {
   frontmatter?: Record<string, unknown> | null
+  /**
+   * Decisão de incentivo do TOQUE (14/09), vinda do catálogo de outlines
+   * (`incentivo-da-loja.service`). Quando informada, VENCE o
+   * `catalogo.incentivo` do Catalogador na promessa e na proibição: com
+   * `existe: true` a promessa é o valor/código; com `false` o alerta do
+   * catálogo vira proibição de redação. Ausente = comportamento anterior.
+   */
+  incentivo?: { existe: boolean; codigo?: string | null; valor?: string | null } | null
   /** Catálogo da loja, já filtrado pelo flow deste email (ou inteiro). */
   catalogo?: CatalogoParaContrato | null
   /** Flow deste email — filtra as objeções por `flows_elegiveis`. */
@@ -189,7 +197,13 @@ export function parseIntentContract(
   // Alertas do catálogo viram proibição de REDAÇÃO — é o que a loja não pode
   // afirmar hoje. A prosa da intenção acrescenta as dela pelo frontmatter.
   const proibicoesDoCatalogo: string[] = []
-  if (doCatalogo.incentivo?.alerta) proibicoesDoCatalogo.push(doCatalogo.incentivo.alerta)
+  const incentivoDoToque = p.incentivo ?? null
+  // O alerta do Catalogador ("não afirmar oferta sem confirmação") só faz
+  // sentido quando o toque NÃO entrega cupom; com o outline dizendo que
+  // entrega, proibir a oferta contradiz a decisão do flow.
+  if (doCatalogo.incentivo?.alerta && (incentivoDoToque ? !incentivoDoToque.existe : true)) {
+    proibicoesDoCatalogo.push(doCatalogo.incentivo.alerta)
+  }
   for (const [, v] of Object.entries(p.catalogo?.veiculos_de_argumento ?? {})) {
     if (v?.alerta && v.texto) proibicoesDoCatalogo.push(v.alerta)
   }
@@ -225,7 +239,7 @@ export function parseIntentContract(
   if (dimRaw != null && !isDimensao(dimRaw)) desconhecidos.push(`dimensao_alvo: ${str(dimRaw)}`)
 
   // ── Cada campo: nota, senão catálogo, senão default ──────────────────
-  const marca = (campo: keyof IntentContract, origem: "nota" | "catalogo" | "default") => {
+  const marca = (campo: keyof IntentContract, origem: "nota" | "catalogo" | "outline" | "default") => {
     origens[campo] = origem
   }
 
@@ -282,7 +296,14 @@ export function parseIntentContract(
   // possível aqui.
   let promessa = str(f.promessa_a_pagar) || null
   if (promessa) marca("promessa_a_pagar", "nota")
-  else if (doCatalogo.incentivo?.existe === true) {
+  else if (incentivoDoToque) {
+    // Decisão do toque (outline): promessa só com incentivo; sem ele, nada —
+    // mesmo que o Catalogador tenha visto oferta no anúncio.
+    if (incentivoDoToque.existe) {
+      promessa = [incentivoDoToque.valor, incentivoDoToque.codigo].filter(Boolean).join(" · ") || null
+      if (promessa) marca("promessa_a_pagar", "outline")
+    }
+  } else if (doCatalogo.incentivo?.existe === true) {
     promessa = [doCatalogo.incentivo.valor, doCatalogo.incentivo.codigo].filter(Boolean).join(" · ") || null
     if (promessa) marca("promessa_a_pagar", "catalogo")
   }

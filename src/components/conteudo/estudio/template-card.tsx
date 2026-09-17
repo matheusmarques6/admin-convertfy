@@ -10,17 +10,19 @@ import { useMemo } from "react"
 import { Check } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Icon } from "@/components/ui/icon"
-import { novoDocumento } from "@/lib/conteudo/documento"
+import { previaDoMolde } from "@/lib/conteudo/previa-de-template"
 import { moldeKeyDoTemplate } from "@/lib/conteudo/templates"
 import type { BrandKit, Post, Template } from "@/lib/conteudo/types"
 import { TNUM, fmtDec, fmtNum } from "../ui"
 import { ThumbFit } from "./thumb"
 
+/**
+ * A capa do card na identidade que o molde PRESSUPÕE — a regra (e o porquê)
+ * está em `previa-de-template`. Antes a prévia nascia sempre na família
+ * padrão, e escolher o molde aplicava outra.
+ */
 export function docDePrevia(tpl: Template, brandKit?: BrandKit) {
-  const d = novoDocumento(tpl.nome, "", tpl.id, { brandKit })
-  d.frames[0].textos.titulo = tpl.nome
-  d.frames[0].textos.subtitulo = tpl.descricao.split(".")[0]
-  return d
+  return previaDoMolde(tpl, brandKit)
 }
 
 export function TemplateCard({ tpl, posts, sel, onClick, compact, brandKit }: { tpl: Template; posts: Post[]; sel?: boolean; onClick?: () => void; compact?: boolean; brandKit?: BrandKit }) {

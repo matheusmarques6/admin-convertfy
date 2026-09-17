@@ -90,6 +90,20 @@ interface TotalRevenueData {
     count: number
     stores: Array<{ storeId: string; storeName: string; clientName: string; error: string }>
   }
+  /**
+   * Lojas sem plataforma de e-mail conectada: o número delas continua nos
+   * cards, mas é o último coletado e nenhuma sincronização o atualiza.
+   */
+  cacheOrfao?: {
+    count: number
+    stores: Array<{
+      storeId: string
+      storeName: string
+      clientName?: string | null
+      fetchedAt: string | null
+      diasParado: number | null
+    }>
+  }
 }
 
 /**
@@ -402,6 +416,44 @@ export function OpsDashboard({ userName }: { userName: string }) {
             <div className="mt-2 text-[11px] text-[var(--ops-mut)]">
               Corrija a credencial em Lojas → editar loja. Depois de salvar, clique em
               &ldquo;Sincronizar agora&rdquo; que a loja volta a contar.
+            </div>
+          </details>
+        )}
+
+        {/* Lojas que o sync NÃO ALCANÇA — sem plataforma conectada.
+            Elas não aparecem em "não sincronizam" porque o último sync
+            delas deu certo; o que falta é a chave para haver um próximo.
+            Antes, o cache parado de uma delas ancorava a idade do
+            dashboard inteiro e o banner de desatualizado nunca apagava. */}
+        {revenue?.cacheOrfao != null && revenue.cacheOrfao.count > 0 && (
+          <details className="rounded-[10px] border border-[var(--ops-warn-br)] bg-[var(--ops-warn-bg)] px-4 py-2.5 text-[12.5px]">
+            <summary className="cursor-pointer select-none text-[var(--ops-warn)] font-medium list-none flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-current shrink-0" />
+              <span className="flex-1">
+                {revenue.cacheOrfao.count === 1
+                  ? "1 loja está sem plataforma de e-mail conectada"
+                  : `${revenue.cacheOrfao.count} lojas estão sem plataforma de e-mail conectada`}{" "}
+                — o faturamento delas ainda entra nos cards, mas é o último número coletado.
+              </span>
+              <span className="text-[10.5px] uppercase tracking-[0.05em] opacity-70">detalhes</span>
+            </summary>
+            <ul className="mt-2.5 grid gap-1 sm:grid-cols-2 text-[var(--ops-sec)]">
+              {revenue.cacheOrfao.stores.map((s) => (
+                <li key={s.storeId} className="flex gap-1.5 min-w-0">
+                  <span className="font-medium text-[var(--ops-text)] shrink-0">{s.storeName}:</span>
+                  <span className="truncate">
+                    {s.diasParado == null
+                      ? "sem data de coleta"
+                      : s.diasParado === 0
+                        ? "coletado hoje"
+                        : `parado há ${s.diasParado} ${s.diasParado === 1 ? "dia" : "dias"}`}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <div className="mt-2 text-[11px] text-[var(--ops-mut)]">
+              Reconecte a API key em Lojas → editar loja para o número voltar a atualizar, ou
+              desative a loja para tirá-la dos cards.
             </div>
           </details>
         )}

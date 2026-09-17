@@ -56,6 +56,32 @@ describe("agregarLacunas", () => {
     const r = agregarLacunas(runs)
     expect(r[0]).toMatchObject({ tipo: "posicao_sem_variante", secao: "reviews", ocorrencias: 3 })
   })
+
+  // Passo 11: a lacuna com DISPOSITIVO pedido vira proposta na primeira
+  // ocorrência — o e-mail já reprovou por causa dela.
+  it("lacuna de biblioteca (dispositivo pedido) propõe com UMA ocorrência, chaveada por flow e dispositivo", () => {
+    const r = agregarLacunas([
+      run("a", "10", [], [{ section: "products", block_index: 4, dispositivo_pedido: "products_grade_preco", flow_type: "welcome", motivo: "sem_candidata" }]),
+    ])
+    expect(r).toHaveLength(1)
+    expect(r[0]).toMatchObject({ tipo: "lacuna_biblioteca", chave: "lacuna_biblioteca:welcome:products_grade_preco", secao: "products", ocorrencias: 1 })
+    expect(r[0].detalhe).toContain("products_grade_preco")
+  })
+
+  it("o mesmo dispositivo em duas lojas cai no mesmo balde", () => {
+    const r = agregarLacunas([
+      run("a", "10", [], [{ section: "body", dispositivo_pedido: "body_garantias", flow_type: "welcome" }]),
+      run("b", "11", [], [{ section: "body", dispositivo_pedido: "body_garantias", flow_type: "welcome" }]),
+    ])
+    expect(r).toHaveLength(1)
+    expect(r[0].ocorrencias).toBe(2)
+  })
+
+  it("o limiar por tipo é sobrescrevível e não afeta os outros tipos", () => {
+    const runs = [run("a", "10", [], [{ section: "reviews" }])]
+    expect(agregarLacunas(runs)).toEqual([])
+    expect(agregarLacunas(runs, { minimoPorTipo: { posicao_sem_variante: 1 } })).toHaveLength(1)
+  })
 })
 
 describe("buildLacunaDraft", () => {
@@ -71,5 +97,65 @@ describe("buildLacunaDraft", () => {
     expect(a.markdown).toContain("ocorrencias: 3")
     expect(a.markdown).toContain("Loja x0")
     expect(a.markdown).toContain("status: retratada")
+  })
+
+  it("rascunho da lacuna de biblioteca nomeia o dispositivo no slug e explica a reprovação", () => {
+    const [agg] = agregarLacunas([
+      run("a", "10", [], [{ section: "products", dispositivo_pedido: "products_grade_preco", flow_type: "welcome" }]),
+    ])
+    const d = buildLacunaDraft(agg, "2026-09-14T12:00:00Z")
+    expect(d.slug).toBe("products-lacuna-biblioteca-welcome-products-grade-preco")
+    expect(d.markdown).toContain("violacao: lacuna_biblioteca")
+    expect(d.markdown).toContain("lacuna_biblioteca")
+    expect(d.markdown).toContain("1 geração em 14 dias")
+  })
+})
+
+describe("biblioteca escassa (janela afrouxada, 16/09)", () => {
+  const run = (id: string, flow: string, section: string, store: string) => ({
+    id,
+    createdAt: `2026-09-1${id}T00:00:00Z`,
+    storeName: store,
+    violations: [],
+    posicoesSemVariante: [],
+    janelaAfrouxada: [{ section, flow_type: flow }],
+  })
+
+  it("a chave é FIXA por (flow, seção): lojas diferentes somam no MESMO balde", () => {
+    // Sem `chaveFixa` o detalhe entraria na normalização por texto, cada
+    // loja abriria um balde próprio, o limiar de 3 nunca seria atingido e a
+    // pauta nunca apareceria.
+    const r = agregarLacunas([
+      run("1", "welcome", "body", "Loja A"),
+      run("2", "welcome", "body", "Loja B"),
+      run("3", "welcome", "body", "Loja C"),
+    ])
+    expect(r).toHaveLength(1)
+    expect(r[0].chave).toBe("biblioteca_escassa:welcome:body")
+    expect(r[0].ocorrencias).toBe(3)
+    expect(r[0].secao).toBe("body")
+  })
+
+  it("flows diferentes são baldes diferentes — a lacuna é por toque", () => {
+    const r = agregarLacunas(
+      [run("1", "welcome", "body", "A"), run("2", "offer", "body", "B")],
+      { minimo: 1 },
+    )
+    expect(r.map((x) => x.chave).sort()).toEqual([
+      "biblioteca_escassa:offer:body",
+      "biblioteca_escassa:welcome:body",
+    ])
+  })
+
+  it("abaixo do mínimo não vira pauta", () => {
+    expect(agregarLacunas([run("1", "welcome", "body", "A")])).toEqual([])
+  })
+
+  it("seção vazia é ignorada em vez de abrir balde sem nome", () => {
+    const r = agregarLacunas(
+      [{ id: "1", createdAt: "2026-09-16T00:00:00Z", violations: [], posicoesSemVariante: [], janelaAfrouxada: [{ flow_type: "welcome" }] }],
+      { minimo: 1 },
+    )
+    expect(r).toEqual([])
   })
 })

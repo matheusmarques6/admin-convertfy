@@ -211,3 +211,37 @@ describe("superfícies (surface / surface_strong)", () => {
     expect(r.surface_strong).toBe("#E9D4CB")
   })
 })
+
+describe("papéis explícitos texto/superficie (B5)", () => {
+  it("texto explícito vence a derivação quando lê sobre o fundo; ilegível cai no derivado", async () => {
+    const { deriveColorRoles } = await import("./color-roles")
+    const ok = deriveColorRoles([
+      { hex: "#FFFFFF", name: "Branco", role: "fundo" },
+      { hex: "#2B2B60", name: "Marinho", role: "texto" },
+      { hex: "#C8102E", name: "Vermelho", role: "principal" },
+    ])
+    expect(ok.text).toBe("#2B2B60")
+    const ilegivel = deriveColorRoles([
+      { hex: "#FFFFFF", name: "Branco", role: "fundo" },
+      { hex: "#F0F0F0", name: "Cinza claro", role: "texto" },
+    ])
+    expect(ilegivel.text).toBe("#1F1F1F")
+  })
+
+  it("superficie explícita vence quando se separa do canvas e deixa o texto legível; legado 'Principal' segue casando", async () => {
+    const { deriveColorRoles } = await import("./color-roles")
+    const r = deriveColorRoles([
+      { hex: "#FFFFFF", name: "Branco", role: "Fundo" },
+      { hex: "#034326", name: "Verde", role: "Principal" },
+      { hex: "#EAF3EE", name: "Verde claro", role: "Superfície" },
+    ])
+    expect(r.button_bg).toBe("#034326")
+    expect(r.surface).toBe("#EAF3EE")
+    // Surface igual ao canvas não separa nada → derivada.
+    const igual = deriveColorRoles([
+      { hex: "#FFFFFF", name: "Branco", role: "fundo" },
+      { hex: "#FFFFFF", name: "Branco 2", role: "superficie" },
+    ])
+    expect(igual.surface).not.toBe("#FFFFFF")
+  })
+})

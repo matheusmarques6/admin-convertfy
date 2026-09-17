@@ -51,6 +51,7 @@ import {
 import { locateBlockRegions } from "./slot-finder"
 import { extractColorInventory } from "./color-inventory"
 import { extrairCtas, extrairFaixas, tonsDeFundo } from "./color-faixas"
+import { htmlSemBlocos } from "./blocos-tokenizados"
 // A classificação por nome mora num módulo PURO: a tela de tipografia
 // precisa dela, e importar este arquivo no navegador traria o cliente
 // Supabase junto. Reexportada aqui para os call sites antigos não mudarem.
@@ -614,7 +615,6 @@ export const COLOR_FORMAT_VAR_ORIGINS: Record<string, SegmentOrigin> = {
   tons_json: { cls: "sistema", rotulo: "Fundos de seção e sua procedência — contados por código" },
   ctas_json: { cls: "sistema", rotulo: "Botões do documento, com a faixa de cada um — extrairCtas" },
   brand_colors: LOJA_BRAND,
-  pesquisa_full_text: { cls: "loja", rotulo: "Pesquisa & Diagnóstico — client_stores" },
   email_name: EMAIL_ROW,
   subject: EMAIL_ROW,
 }
@@ -675,7 +675,7 @@ export function buildHeroVars(
       "",
     hero_source: params.grafted ? "library" : "montador",
     hero_variant_schema_json: params.variant?.output_schema
-      ? JSON.stringify(params.variant.output_schema, null, 2)
+      ? JSON.stringify(params.variant.output_schema)
       : "",
     // Regras de design da variante (cadastro). Vão SEMPRE que existirem —
     // diferente do exemplo renderizado, aqui é texto escrito para ser lido
@@ -688,10 +688,10 @@ export function buildHeroVars(
     hero_design_system_block: heroDesignSystemBlock(params.variant?.design_system),
     // ARRAY: todos os blocos da região (hero composta = cupom+logo+hero).
     hero_content_json:
-      heroBlocks.length > 0 ? JSON.stringify(heroBlocks, null, 2) : "[]",
+      heroBlocks.length > 0 ? JSON.stringify(heroBlocks) : "[]",
     // Campos que o merge por example deixou pendentes na região — decide o
     // que o agente PODE remover (lista vazia = remover nada).
-    hero_pending_json: JSON.stringify(params.heroPending ?? [], null, 2),
+    hero_pending_json: JSON.stringify(params.heroPending ?? []),
     hero_image_url: heroImage?.url ?? "",
     hero_image_alt: "",
     // Preenchida pelo chain com o contrato de output — presente aqui só
@@ -737,8 +737,8 @@ export function buildTextFormatVars(
     preheader: ctx.emailRow?.preheader || "",
     objective: ctx.blueprint?.objective || "",
     messaging: ctx.blueprint?.messaging || "",
-    blocks_with_content_json: JSON.stringify(nonHeroBlocks, null, 2),
-    fields_json: JSON.stringify(fields, null, 2),
+    blocks_with_content_json: JSON.stringify(nonHeroBlocks),
+    fields_json: JSON.stringify(fields),
     top_products_json: ctx.topProductsJson,
   }
   return validateVars(TextFormatPromptVarsSchema, vars, "text_format")
@@ -751,7 +751,23 @@ export function buildColorFormatVars(
     brand: StoreBrandIdentity | null
     niche: string
     tones: string
-    pesquisaFullText: string
+    /**
+     * @deprecated Passo 14: a pesquisa (15,5k chars) saiu do prompt do
+     * Cores & Botões — o agente nunca a usou, e ela custava ~30% do input.
+     * Aceito e ignorado para o chamador antigo não quebrar.
+     */
+    pesquisaFullText?: string
+    /**
+     * Passo 14: o botão de cada bloco pelo CONTRATO (`inventarioDeCtas`).
+     * Entra em `ctas_json` como `tem_cta_por_contrato` por bloco.
+     */
+    inventarioDeCtas?: ReadonlyArray<{ bloco: number; tem_cta_por_contrato: boolean | null }> | null
+    /**
+     * B5: `block_index` dos blocos com tokens de identidade. Eles saem do
+     * inventário, das faixas e dos botões servidos — a cor deles já é a da
+     * loja, e o agente não decide sobre o que não vê.
+     */
+    blocosExcluidos?: readonly number[]
   },
 ): Record<string, string> {
   // Arquitetura por views (F4): o maior prompt da cadeia (doc inteiro)
@@ -761,15 +777,17 @@ export function buildColorFormatVars(
   // Com os pares texto↔fundo anotados: sem eles o agente via `#FFFFFF`
   // como uma linha só e não tinha como saber que estava trocando o fundo
   // debaixo de um texto branco (incidente Luxe Lift, 22/08).
-  const inventory = annotateInventoryPairs(html, extractColorInventory(html))
-  const faixas = extrairFaixas(html)
-  const ctas = extrairCtas(html, faixas)
+  const excluidos = new Set(extras.blocosExcluidos ?? [])
+  const htmlVisto = excluidos.size > 0 ? htmlSemBlocos(html, [...excluidos]) : html
+  const inventory = annotateInventoryPairs(htmlVisto, extractColorInventory(htmlVisto))
+  const faixas = extrairFaixas(html).filter((f) => !excluidos.has(f.bloco))
+  const ctas = extrairCtas(html, faixas).filter((c) => c.bloco == null || !excluidos.has(c.bloco))
   const vars = {
     brand_name: ctx.brandName,
     niche: extras.niche,
     locale: ctx.locale,
     tones: extras.tones,
-    color_inventory_json: JSON.stringify(inventory, null, 2),
+    color_inventory_json: JSON.stringify(inventory),
     brand_colors: serializeBrandColors(extras.brand),
     // Papéis resolvidos via `identityVars` — o MESMO helper da hero, e não
     // uma segunda lista escrita à mão.
@@ -783,18 +801,32 @@ export function buildColorFormatVars(
     // template. Medido: brand_share entre 0,27 e 0,53 em 15 gerações
     // seguidas, enquanto a hero — que usa este helper — saía certa.
     ...identityVars(ctx),
-    pesquisa_full_text: extras.pesquisaFullText,
     // A sequência do documento. O inventário diz QUANTO cada cor aparece;
     // isto diz ONDE — e é o que torna executável decidir por faixa em vez de
     // por valor. Documento sem marcadores devolve `[]`, e o prompt trata o
     // caso: sem a lista ele não decide ritmo, faz só o trabalho de valor.
-    faixas_json: JSON.stringify(faixas, null, 2),
+    faixas_json: JSON.stringify(faixas),
     // A R2 ("no máximo 3 tons de fundo") é aritmética, e decidir faixa a
     // faixa não a enxerga: em 11/09 o agente manteve dois cinzas com
     // justificativa boa em cada um e a peça saiu com quatro fundos. A conta
     // vem PRONTA para ele, e é refeita por código depois de aplicar.
     tons_json: JSON.stringify(tonsDeFundo(faixas, fundosLegitimos(ctx.roles, extras.brand))),
-    ctas_json: JSON.stringify(ctas, null, 2),
+    // Passo 14: junto de cada botão vai o que o CONTRATO do bloco diz. É o
+    // que o agente lê antes de decidir "este bloco não tem CTA".
+    ctas_json: JSON.stringify(
+      (() => {
+        const porBloco = new Map((extras.inventarioDeCtas ?? []).map((i) => [i.bloco, i.tem_cta_por_contrato]))
+        const semBotao = faixas
+          .filter((f) => !ctas.some((c) => c.bloco === f.bloco))
+          .map((f) => ({ bloco: f.bloco, tipo: f.tipo, tem_cta_por_contrato: porBloco.get(f.bloco) ?? null }))
+        return {
+          botoes: ctas.map((c) => ({ ...c, tem_cta_por_contrato: c.bloco == null ? null : (porBloco.get(c.bloco) ?? null) })),
+          blocos_sem_botao_visivel: semBotao,
+        }
+      })(),
+      null,
+      2,
+    ),
     email_name: ctx.emailRow?.name || "",
     subject: ctx.emailRow?.subject || "",
   }

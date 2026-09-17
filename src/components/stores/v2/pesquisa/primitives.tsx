@@ -30,6 +30,7 @@ import { ExternalLink, Loader2, Sparkles } from "lucide-react"
 import Link from "next/link"
 import { ROUTES } from "@/lib/routes"
 import type { CatalogoDeObjecoes } from "@/lib/agents/objecoes/vocabulario"
+import type { PoliticasDaLoja } from "@/lib/stores/politicas"
 import { fichaVazia, type FichaOperacional } from "@/lib/stores/ficha-operacional"
 import { cn } from "@/lib/utils"
 
@@ -1263,6 +1264,90 @@ export function FichaOperacionalCard({
       <div className="text-[11px] text-slate-400 mt-2">
         Só o que está aqui pode ser afirmado nos e-mails como fato. Depois de salvar, &ldquo;Regenerar objeções&rdquo; refaz o catálogo com a ficha.
       </div>
+    </IcpBlock>
+  )
+}
+
+// ─── PoliticasPublicasCard (Passo 16) ─────────────────────
+
+/**
+ * Troca e frete lidos das PÁGINAS PÚBLICAS da loja, com a URL de origem.
+ * Não é a ficha (que o time verifica): é o que a loja publica. O Seletor
+ * lê daqui o insumo com a URL; a ficha, quando preenchida, vence.
+ */
+export function PoliticasPublicasCard({
+  politicas,
+  running,
+  onRun,
+}: {
+  politicas: PoliticasDaLoja | null | undefined
+  running?: boolean
+  onRun: () => void
+}) {
+  const tem = politicas && (politicas.troca || politicas.frete)
+  const quando = politicas?.capturado_em ? new Date(politicas.capturado_em).toLocaleString("pt-BR") : null
+  return (
+    <IcpBlock>
+      <IcpBlockHeader
+        title="Políticas públicas da loja"
+        subtitle={
+          tem
+            ? `Lidas das páginas da loja${quando ? ` em ${quando}` : ""} (${politicas?.fonte}) — não verificadas pelo time; a ficha vence quando divergem`
+            : "Nenhuma página de troca/frete lida ainda — o Seletor só afirma prazo e garantia com fonte"
+        }
+        right={
+          <button
+            onClick={onRun}
+            disabled={running}
+            className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border text-[11px] font-semibold disabled:opacity-60"
+            style={{ borderColor: INDIGO.border, color: INDIGO.color, background: INDIGO.bg }}
+          >
+            {running ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+            {tem ? "Reler políticas" : "Ler políticas"}
+          </button>
+        }
+      />
+      {tem ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="rounded-md border p-3" style={{ borderColor: "rgba(0,0,0,0.06)", background: "#FBFBFD" }}>
+            <div className="text-[10.5px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Troca / devolução</div>
+            {politicas?.troca ? (
+              <>
+                <div className="text-[13px] font-semibold text-slate-900">{politicas.troca.dias != null ? `${politicas.troca.dias} dias` : "prazo não lido"}</div>
+                {politicas.troca.texto && <div className="text-[11.5px] text-slate-600 mt-1" style={{ lineHeight: 1.5 }}>“{politicas.troca.texto.slice(0, 220)}”</div>}
+                <a href={politicas.troca.url} target="_blank" rel="noreferrer" className="text-[11px] underline text-slate-500 mt-1 inline-block break-all">{politicas.troca.url}</a>
+              </>
+            ) : (
+              <div className="text-[11.5px] text-slate-500">página não encontrada</div>
+            )}
+          </div>
+          <div className="rounded-md border p-3" style={{ borderColor: "rgba(0,0,0,0.06)", background: "#FBFBFD" }}>
+            <div className="text-[10.5px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Envio</div>
+            {politicas?.frete ? (
+              <>
+                <div className="text-[13px] font-semibold text-slate-900">
+                  {[
+                    politicas.frete.gratis ? `frete grátis${politicas.frete.gratis_condicao ? ` acima de ${politicas.frete.gratis_condicao}` : ""}` : null,
+                    politicas.frete.prazo ? `prazo ${politicas.frete.prazo}` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ") || "detalhes não lidos"}
+                </div>
+                {politicas.frete.texto && <div className="text-[11.5px] text-slate-600 mt-1" style={{ lineHeight: 1.5 }}>“{politicas.frete.texto.slice(0, 220)}”</div>}
+                <a href={politicas.frete.url} target="_blank" rel="noreferrer" className="text-[11px] underline text-slate-500 mt-1 inline-block break-all">{politicas.frete.url}</a>
+              </>
+            ) : (
+              <div className="text-[11.5px] text-slate-500">página não encontrada</div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="rounded-md border border-dashed p-4 text-center text-[11.5px] text-slate-500" style={{ borderColor: "rgba(0,0,0,0.10)" }}>
+          {politicas && politicas.erros.length > 0
+            ? `Tentamos ${politicas.erros.length} URL(s) e nenhuma respondeu com política (${politicas.erros[0].motivo}). Loja com página própria: preencha a ficha operacional.`
+            : "Clique em Ler políticas para buscar /policies/refund-policy e /policies/shipping-policy na loja."}
+        </div>
+      )}
     </IcpBlock>
   )
 }

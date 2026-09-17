@@ -15,9 +15,9 @@ import { Icon } from "@/components/ui/icon"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { OpsCard, SectionTitle } from "@/components/dashboard/ops/primitives"
-import { documentoDeEstrutura } from "@/lib/conteudo/documento"
+import { previaDoMeuTemplate } from "@/lib/conteudo/previa-de-template"
 import { getTemplate, ST_TEMPLATES } from "@/lib/conteudo/templates"
-import type { DocStatus, Documento, MeuTemplate, Perfil, PerfilEditavel } from "@/lib/conteudo/types"
+import type { BrandKit, DocStatus, Documento, MeuTemplate, Perfil, PerfilEditavel } from "@/lib/conteudo/types"
 import { ROUTES } from "@/lib/routes"
 import { CtAvatar, CtBadge, CtBtn, CtEmpty, CtSeg, CtSkel, TNUM, inputCls, selectCls } from "../ui"
 import { perfilPorId } from "./use-estudio-data"
@@ -43,10 +43,18 @@ interface Props {
   erro: string | null
   perfis: Perfil[] | null
   meusTemplates: MeuTemplate[]
+  /**
+   * Brand kit do primeiro perfil, só para a PRÉVIA: as identidades de print
+   * desenham o cartão de perfil, e sem kit o card sai com o avatar vazio —
+   * que não é o que criar a partir do template entrega.
+   */
+  brandKit?: BrandKit
   promptsProntos: number
   onAbrir: (id: string, modal?: string) => void
   onNovo: (caminho?: Caminho, perfil?: PerfilEditavel, meuTemplateId?: string) => void
   onCriarTemplate: () => void
+  /** "Salvar como template": a forma do carrossel vai para Meus templates, sem IA. */
+  onSalvarComoTemplate: (d: Documento) => void
   onExcluir: (id: string) => Promise<void>
   onExcluirTemplate: (id: string) => Promise<void>
   onDuplicar: (id: string) => Promise<void>
@@ -56,7 +64,7 @@ interface Props {
   referencias?: ReactNode
 }
 
-export function Biblioteca({ docs, erro, perfis, meusTemplates, promptsProntos, onAbrir, onNovo, onCriarTemplate, onExcluir, onExcluirTemplate, onDuplicar, onRenomear, onBrandKit, referencias }: Props) {
+export function Biblioteca({ docs, erro, perfis, meusTemplates, brandKit, promptsProntos, onAbrir, onNovo, onCriarTemplate, onSalvarComoTemplate, onExcluir, onExcluirTemplate, onDuplicar, onRenomear, onBrandKit, referencias }: Props) {
   const [fPerfil, setFPerfil] = useState<string>("todos")
   const [fStatus, setFStatus] = useState<"todos" | DocStatus>("todos")
   const [q, setQ] = useState("")
@@ -74,7 +82,7 @@ export function Biblioteca({ docs, erro, perfis, meusTemplates, promptsProntos, 
     if (nome) await onRenomear(renomeando.id, nome)
   }
 
-  const previas = useMemo(() => new Map(meusTemplates.map((m) => [m.id, documentoDeEstrutura(m.nome, "", m.estrutura, { templateBase: m.templateId })])), [meusTemplates])
+  const previas = useMemo(() => new Map(meusTemplates.map((m) => [m.id, previaDoMeuTemplate(m, perfis?.[0]?.id ?? "", brandKit)])), [meusTemplates, perfis, brandKit])
   const semPerfil = perfis !== null && perfis.length === 0
 
   return (
@@ -251,12 +259,13 @@ export function Biblioteca({ docs, erro, perfis, meusTemplates, promptsProntos, 
                           <Icon icon={MoreHorizontal} customSize={14} />
                         </button>
                       </PopoverTrigger>
-                      <PopoverContent align="end" sideOffset={4} className="w-[150px] rounded-[9px] border-[var(--ops-border)] bg-[var(--ops-card)] p-1 shadow-lg" onClick={(e) => e.stopPropagation()}>
+                      <PopoverContent align="end" sideOffset={4} className="w-[186px] rounded-[9px] border-[var(--ops-border)] bg-[var(--ops-card)] p-1 shadow-lg" onClick={(e) => e.stopPropagation()}>
                         {(
                           [
                             ["Abrir", () => onAbrir(d.id)],
                             ["Duplicar", () => void onDuplicar(d.id)],
                             ["Renomear", () => setRenomeando({ id: d.id, nome: d.nome })],
+                            ["Salvar como template", () => onSalvarComoTemplate(d)],
                             ["Excluir", () => setExcluindo(d)],
                           ] as Array<[string, () => void]>
                         ).map(([l, fn]) => (
@@ -284,7 +293,7 @@ export function Biblioteca({ docs, erro, perfis, meusTemplates, promptsProntos, 
         {referencias}
 
         <div className="flex items-baseline gap-2.5">
-          <SectionTitle title="Meus templates" hint="criados a partir de inspirações do time" />
+          <SectionTitle title="Meus templates" hint="a forma de um carrossel seu ou de uma inspiração do time" />
           <button type="button" onClick={onCriarTemplate} className="ml-auto text-[11.5px] font-medium text-[var(--ops-accent)] hover:underline">
             Criar template
           </button>
@@ -315,7 +324,9 @@ export function Biblioteca({ docs, erro, perfis, meusTemplates, promptsProntos, 
               <Icon icon={ImageIcon} customSize={15} />
             </span>
             Criar template
-            <span className="px-[18px] text-center text-[10.5px] font-normal leading-relaxed text-[var(--ops-mut)]">Suba uma inspiração e a ConvertIA converte em template</span>
+            <span className="px-[18px] text-center text-[10.5px] font-normal leading-relaxed text-[var(--ops-mut)]">
+              Suba uma inspiração e a ConvertIA converte em template. Já tem um carrossel pronto? Use &ldquo;Salvar como template&rdquo; no menu dele — sem upload, sem IA.
+            </span>
           </button>
         </div>
       </div>

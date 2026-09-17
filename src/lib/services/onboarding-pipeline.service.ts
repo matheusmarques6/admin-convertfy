@@ -577,6 +577,16 @@ interface AdvanceOptions {
   onboardingId: string
   actorId: string
   forceOverride?: { justification: string; itemsSkipped: unknown[] }
+  /**
+   * Enviar a mensagem de WhatsApp da coluna de destino ao CLIENTE.
+   *
+   * Omitido = NAO envia. A omissao e o default de proposito: avancar etapa e
+   * um gesto de gestao interna, e ate 15/09/2026 ele disparava mensagem ao
+   * cliente sem nenhum aviso — arrastar um card no kanban de madrugada mandou
+   * 16 mensagens pra 5 clientes. Quem quer avisar o cliente diz isso
+   * explicitamente; caminho novo (script, automacao, rota) nasce mudo.
+   */
+  sendWhatsApp?: boolean
 }
 
 export async function advanceColumn(
@@ -733,8 +743,10 @@ export async function advanceColumn(
     }
   }
 
-  // WhatsApp automatico da nova coluna (fire-and-forget)
-  if (nextCol.whatsapp_template) {
+  // WhatsApp da nova coluna — SO com permissao explicita de quem avancou.
+  // `=== true` e nao truthy: undefined de um caller que nao conhece a opcao
+  // tem de significar "nao envie".
+  if (nextCol.whatsapp_template && opts.sendWhatsApp === true) {
     void (async () => {
       try {
         const { sendColumnWhatsApp } = await import(
@@ -743,6 +755,9 @@ export async function advanceColumn(
         await sendColumnWhatsApp({
           onboardingId: opts.onboardingId,
           columnId: nextCol.id,
+          // Quem marcou o interruptor. O evento de envio precisa nomear o
+          // responsavel — "o sistema mandou" foi o que se leu no incidente.
+          actorId: opts.actorId,
         })
       } catch (e) {
         log.error("sendColumnWhatsApp failed", e)

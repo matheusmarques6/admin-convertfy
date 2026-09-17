@@ -26,7 +26,7 @@
  * Puro (zero I/O) — a leitura do banco fica no service.
  */
 
-import { cabeNaJanela, relogioParaTeto } from "../fase1-orcamento"
+import { cabeNaJanela, custoTipicoDoAgente } from "../fase1-orcamento"
 
 export interface DecisaoDaJanela {
   /** `rodar` chama o modelo; `reusar` usa a decisão vigente. */
@@ -44,12 +44,34 @@ export function decidirPelaJanela(input: {
   reservaMs: number
   /** Existe decisão vigente deste e-mail para reusar? */
   temVigente: boolean
+  /**
+   * Pinado numa execução MANUAL — "não execute; a decisão gravada vale".
+   *
+   * Vem antes da conta de janela porque é pedido explícito de quem está na
+   * tela, não estimativa. Sem isto o pin do Estruturador caía no ramo de
+   * DESATIVADO (`gateFor` devolve `disabled: true` para os dois) e a
+   * estrutura vinha do OUTLINE em vez da decisão gravada — o pin prometia
+   * uma coisa e entregava outra, em silêncio.
+   *
+   * `temVigente` continua mandando: pin sem artefato não vira reuso aqui.
+   * Quem recusa antes de gastar é `verificarPins`, com I/O; esta função é
+   * pura e só pode se defender do caso em que a decisão não existe.
+   */
+  pinado?: boolean
 }): DecisaoDaJanela {
+  if (input.pinado) {
+    return input.temVigente
+      ? { acao: "reusar", motivo: "pinado nesta execução — a decisão gravada vale" }
+      : { acao: "rodar", motivo: "pinado, mas não há decisão vigente para reusar" }
+  }
   // Sem janela aberta o comportamento é o de sempre: roda. É o caminho de
   // quem chama estes serviços por fora da fase 1.
   if (input.restanteMs == null) return { acao: "rodar" }
+  // O custo é o MEDIDO, não o teto de tokens. Estimar pelo teto (371s para
+  // 32.000) e reservar para o Curador ao mesmo tempo é pedir duas vezes o
+  // mesmo tempo — foi assim que este agente parou de rodar em 11/09.
   const cabe = cabeNaJanela({
-    custoMs: relogioParaTeto(input.maxTokens),
+    custoMs: custoTipicoDoAgente("estruturador", input.maxTokens),
     restanteMs: input.restanteMs,
     reservaMs: input.reservaMs,
   })

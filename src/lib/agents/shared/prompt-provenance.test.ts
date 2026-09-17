@@ -6,7 +6,8 @@ vi.mock("@/lib/supabase/server", () => ({
 }))
 
 import { renderImageTemplate } from "../image/template-renderer"
-import { interpolateSystem } from "../architect/llm-invoke"
+import { CACHE_PREFIX_MARKER, interpolateSystem } from "../architect/llm-invoke"
+import { semMarcadores } from "./cache-de-prompt"
 import {
   buildInterpolatedSegments,
   buildSegmentedPrompt,
@@ -67,7 +68,7 @@ describe("buildSegmentedPrompt", () => {
       vars,
       ORIGINS,
     )
-    expect(prompt).toBe(renderImageTemplate(DEFAULT_ESTRUTURADOR_USER, vars))
+    expect(prompt).toBe(semMarcadores(renderImageTemplate(DEFAULT_ESTRUTURADOR_USER, vars)))
     expect(segments).not.toBeNull()
     expect(recompose(segments!)).toBe(prompt)
   })
@@ -93,7 +94,7 @@ describe("buildSegmentedPrompt", () => {
     }
     for (const tpl of [DEFAULT_CHOOSER_USER, DEFAULT_ASSEMBLER_USER]) {
       const { prompt, segments } = buildSegmentedPrompt(tpl, vars, ORIGINS)
-      expect(prompt).toBe(renderImageTemplate(tpl, vars))
+      expect(prompt).toBe(semMarcadores(renderImageTemplate(tpl, vars)))
       expect(recompose(segments!)).toBe(prompt)
     }
   })
@@ -142,7 +143,7 @@ describe("buildSegmentedPrompt", () => {
     const { prompt, segments } = buildSegmentedPrompt(tpl, vars, {
       X: { cls: "loja", rotulo: "Loja" },
     })
-    expect(prompt).toBe(renderImageTemplate(tpl, vars))
+    expect(prompt).toBe(semMarcadores(renderImageTemplate(tpl, vars)))
     expect(prompt).toContain("X=valor")
     expect(recompose(segments!)).toBe(prompt)
     expect(segments!.find((s) => s.texto === "valor")?.cls).toBe("loja")
@@ -154,7 +155,7 @@ describe("buildSegmentedPrompt", () => {
     const { prompt, segments } = buildSegmentedPrompt(tpl, vars, {
       X: { cls: "loja", rotulo: "Loja" },
     })
-    expect(prompt).toBe(renderImageTemplate(tpl, vars))
+    expect(prompt).toBe(semMarcadores(renderImageTemplate(tpl, vars)))
     expect(prompt).not.toContain("valor")
     expect(recompose(segments!)).toBe(prompt)
   })
@@ -165,9 +166,17 @@ describe("buildSegmentedPrompt", () => {
     const { prompt, segments } = buildSegmentedPrompt(tpl, vars, {
       brand: { cls: "loja", rotulo: "Loja" },
     })
-    expect(prompt).toBe(renderImageTemplate(tpl, vars))
+    expect(prompt).toBe(semMarcadores(renderImageTemplate(tpl, vars)))
     expect(prompt).toBe("Boas-vindas de Innova.")
     expect(recompose(segments!)).toBe(prompt)
+  })
+
+  it("o marcador de cache some do prompt e não vira segmento — nunca chega ao modelo, não pode chegar à telemetria", () => {
+    const r = buildSegmentedPrompt(`a${CACHE_PREFIX_MARKER}{{x}}${CACHE_PREFIX_MARKER}b`, { x: "1" }, {}, { parte: "user" })
+    expect(r.prompt).toBe("a1b")
+    expect((r.segments ?? []).some((s) => s.texto?.includes(CACHE_PREFIX_MARKER))).toBe(false)
+    const sys = buildInterpolatedSegments(`s${CACHE_PREFIX_MARKER}{{k}}`, { k: "v" }, {}, { parte: "system" })
+    expect(sys.prompt).toBe("sv")
   })
 
   it("funde literais adjacentes separados por var vazia", () => {

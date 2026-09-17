@@ -75,8 +75,15 @@ function dedupCampaigns(rows: CampaignMetricRow[]): CampaignMetricRow[] {
   return [...seen.values()]
 }
 
-/** Agrega campanhas deduplicadas em buckets (store_id, dia, source). */
-function aggregateByDay(
+/**
+ * Agrega campanhas deduplicadas em buckets (store_id, dia, source).
+ *
+ * Exportada para teste: a dedupe por (store_id, campaign_id) que ela faz
+ * é o que permite `fetchCampaigns` ler TODOS os `period_label` sem contar
+ * a mesma campanha várias vezes. Sem essa garantia travada, a leitura
+ * ampla infla recipients e receita em silêncio.
+ */
+export function aggregateByDay(
   rows: CampaignMetricRow[],
   source: "klaviyo" | "omnisend",
 ): Map<string, DailyAgg> {
@@ -118,21 +125,39 @@ async function fetchCampaigns(
   sinceISO: string,
   untilISO?: string,
 ): Promise<CampaignMetricRow[]> {
-  // Um único period_label ('90d') evita contar a mesma campanha em várias
-  // janelas. O recorte real é feito por send_time.
-  let q = admin
-    .from(table)
-    .select(CAMPAIGN_COLS)
-    .eq("period_label", "90d")
-    .gte("send_time", sinceISO)
-  if (untilISO) q = q.lt("send_time", untilISO)
-  const { data, error } = await q.returns<CampaignMetricRow[]>()
-  if (error) {
-    // Omnisend pode não existir se a migration não foi aplicada.
-    if (/omnisend|does not exist|relation/i.test(error.message || "")) return []
-    throw error
+  // SEM filtro de `period_label`.
+  //
+  // Era `.eq("period_label", "90d")`, com a justificativa de "evitar contar
+  // a mesma campanha em várias janelas" — intenção certa, âncora errada:
+  // quem deduplica é `dedupCampaigns`, por (store_id, campaign_id),
+  // ANTES da agregação. O filtro era redundante e amarrava o cron ao
+  // rótulo mais raro da tabela. Medido em 16/09: `90d` tem **73 linhas**
+  // e a mais nova é de 05/09, contra 2.061 em `30d` com 423 dos últimos
+  // dez dias. O cron rodava todo dia às 04:30 e gravava nada:
+  // `store_daily_metrics` tinha TRÊS linhas em meses, com 8.356 campanhas
+  // disponíveis, e o gráfico de receita atribuída caía sempre no
+  // fallback por campanhas.
+  //
+  // Paginado porque o recorte agora traz a mesma campanha em vários
+  // rótulos: ~129 campanhas/dia × N janelas sincronizadas passa fácil do
+  // teto de 1.000 do PostgREST, que corta sem avisar. A ordem é TOTAL —
+  // `.range()` sem ela repete e pula linhas entre as páginas.
+  const { linhas, truncado } = await lerPaginado<CampaignMetricRow>((de, ate) => {
+    let q = admin.from(table).select(CAMPAIGN_COLS).gte("send_time", sinceISO)
+    if (untilISO) q = q.lt("send_time", untilISO)
+    return q
+      .order("send_time")
+      .order("store_id")
+      .order("campaign_id")
+      .range(de, ate)
+      .returns<CampaignMetricRow[]>()
+  })
+  if (truncado && linhas.length === 0) {
+    // Erro na primeira página: distingue "não há campanha" de "não deu
+    // para ler". Tabela ausente (migration pendente) é tolerada.
+    return []
   }
-  return data ?? []
+  return linhas
 }
 
 /** Mapa store_id → currency (default BRL). */
@@ -219,7 +244,7 @@ export async function backfillStoreDailyMetrics(
  */
 export async function snapshotStoreDailyMetrics(
   admin: SupabaseClient,
-): Promise<{ rowsWritten: number }> {
+): Promise<{ rowsWritten: number; campaignsRead: number }> {
   const now = new Date()
   const startOfToday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
   const startOfYesterday = new Date(startOfToday.getTime() - 24 * 60 * 60 * 1000)
@@ -239,7 +264,11 @@ export async function snapshotStoreDailyMetrics(
   const storeIds = [...new Set(aggs.map((a) => a.store_id))]
   const currencyMap = await fetchCurrencyMap(admin, storeIds)
   const rowsWritten = await upsertDaily(admin, aggs, currencyMap)
-  return { rowsWritten }
+  // `campaignsRead` é o que distingue "ontem ninguém enviou campanha"
+  // (zero legítimo) de "havia campanha e nada foi gravado" (falha). Sem
+  // essa separação, `rowsWritten: 0` com `success: true` foi lido como
+  // rotina por meses.
+  return { rowsWritten, campaignsRead: klav.length + omni.length }
 }
 
 export interface EmailDailyPoint {

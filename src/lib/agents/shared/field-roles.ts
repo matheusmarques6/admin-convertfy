@@ -19,6 +19,9 @@
  * leem a MESMA classificação. Puro, sem I/O.
  */
 
+import { conflitoDeDispositivo } from "./dispositivos"
+import { normalizarSecao } from "../architect/repeticao"
+
 export type FamiliaDeItem = "product" | "review" | "item" | "feature"
 
 export interface PapelDoCampo {
@@ -57,6 +60,9 @@ const RE_PRAZO = /(^|_)(deadline|prazo|expires?|expiry|until|countdown|valid_unt
 const RE_AVALIACAO = /(^|_)(rating|stars?|avaliacao|verified)(_|$)/i
 const RE_CREDENCIAL = /(^|_)(credential|role|initial|context)(_|$)/i
 const RE_NOME = /(^|_)(name|author)$/i
+// Slot de logo — `brand_logo`, `logo`, `logo_url`. Não passa por
+// `papelDoCampo` porque não é papel de COPY: é presença de ativo.
+const RE_LOGO = /(^|_)logo(_|$)/i
 
 /**
  * Famílias numeradas. `headline_l1`/`lockup_l2` são LINHAS, não itens —
@@ -97,6 +103,8 @@ export function papelDoCampo(key: string): PapelDoCampo {
   }
 }
 
+import { conflitoCenaDirecao } from "../image/direcao-fotografica"
+
 /** Resumo do contrato de uma variante — o que a anatomia obriga. */
 export interface ContratoResumo {
   /** Campos com `required:true` (raro na biblioteca; fica por honestidade). */
@@ -115,6 +123,37 @@ export interface ContratoResumo {
   /** Contagem de campos de copy e de imagem. */
   copy: number
   imagens: number
+  /**
+   * A FORMA da peça, derivada do MESMO `output_schema` (15/09). O catálogo
+   * publicava cinco booleanos e parava; medido nas 11 famílias com mais de
+   * uma variante ativa, os eixos escritos à mão deixavam três delas
+   * indistinguíveis (`hero_lineup` com UMA tupla para duas variantes), e
+   * estes derivados separam dez das onze. São grátis: saem de um campo que
+   * já é obrigatório e nunca desatualizam.
+   */
+  /** Prazo/validade declarado (`badge_deadline`, `expires_at`). */
+  tem_prazo: boolean
+  /** Preço anterior riscado — a metade "de" do "de/por". */
+  tem_preco_antigo: boolean
+  /** Nome/autor do depoente (reviews). */
+  tem_nome_depoente: boolean
+  /** Slot de logo da marca. */
+  tem_logo: boolean
+  /** Quantos botões a anatomia tem (dois CTAs não são uma grade). */
+  n_ctas: number
+  /**
+   * Dispositivo da variante (B3, coluna `email_component_variants.dispositivo`).
+   * Não vem do schema — quem monta o catálogo o preenche. `null` = variante
+   * ainda não classificada: nunca conflita (fail-open).
+   */
+  dispositivo?: string | null
+  /**
+   * O que a direção fotográfica cadastrada DIZ (15/09, `image/direcao-
+   * fotografica.ts`): rascunho ("Pendente da referência…") e veto a
+   * pessoa/mão. Não vem do schema — o catálogo preenche de
+   * `photo_direction`. Ausente = não lida: nunca conflita.
+   */
+  direcao?: { rascunho: boolean; proibe_pessoa: boolean } | null
 }
 
 type CampoMinimo = { key?: unknown; type?: unknown; nature?: unknown; required?: unknown }
@@ -141,6 +180,11 @@ export function resumirContrato(schema: unknown): ContratoResumo {
     n_itens: null,
     copy: 0,
     imagens: 0,
+    tem_prazo: false,
+    tem_preco_antigo: false,
+    tem_nome_depoente: false,
+    tem_logo: false,
+    n_ctas: 0,
   }
   for (const f of campos) {
     const img = ehImagem(f)
@@ -151,6 +195,10 @@ export function resumirContrato(schema: unknown): ContratoResumo {
     if (p.familia && p.indice != null) {
       itens[p.familia] = Math.max(itens[p.familia] ?? 0, p.indice)
     }
+    // O logo é medido ANTES do `continue` abaixo porque ele quase sempre é
+    // um campo de IMAGEM — checá-lo junto dos papéis de copy o deixaria
+    // sempre falso.
+    if (RE_LOGO.test(f.key)) out.tem_logo = true
     // Slot de cupom/preço/avaliação só conta como copy: imagem de fundo do
     // cupom (`coupon_background_image`) não obriga a escrever um código.
     if (img) continue
@@ -159,6 +207,13 @@ export function resumirContrato(schema: unknown): ContratoResumo {
     if (p.preco) out.tem_preco = true
     if (p.avaliacao) out.tem_avaliacao = true
     if (p.credencial) out.tem_credencial = true
+    if (p.prazo) out.tem_prazo = true
+    if (p.preco_antigo) out.tem_preco_antigo = true
+    if (p.nome) out.tem_nome_depoente = true
+    // Botão NUMERADO (`cta_1_label`) conta como botão distinto; o par
+    // label/url do mesmo botão conta UMA vez, senão toda variante com
+    // `cta_url` apareceria com o dobro de CTAs.
+    if (p.cta && !/_url$/i.test(f.key)) out.n_ctas++
   }
   const ns = Object.values(itens).filter((n): n is number => typeof n === "number")
   out.n_itens = ns.length ? Math.max(...ns) : null
@@ -171,28 +226,165 @@ export function resumirContrato(schema: unknown): ContratoResumo {
  * (passo 2 do plano); até lá o filtro só recebe o que o alvo já sabe.
  */
 export interface RequisitosDuros {
+  /** Dispositivo pedido pela decisão (B3). É o PRIMEIRO filtro. */
+  dispositivo?: string | null
   cupom?: boolean | null
   cta?: boolean | null
   n_itens?: { min?: number | null; max?: number | null } | null
   preco?: boolean | null
   avaliacao?: boolean | null
+  /** Cena decidida para a posição (`requisitos.imagem`) — cruza com a direção da variante. */
+  imagem?: string | null
 }
 
 /** Motivo pelo qual um contrato colide com os requisitos; null = compatível. */
 export function conflitoDeContrato(c: ContratoResumo, r: RequisitosDuros | null | undefined): string | null {
   if (!r) return null
+  // Dispositivo ANTES de tudo (B3): variante de outro dispositivo não realiza
+  // o papel por definição — o resto do contrato nem é olhado.
+  const disp = conflitoDeDispositivo(c.dispositivo, r.dispositivo)
+  if (disp) return disp
+  // Cena × direção (15/09): a hero-3 diz "nenhuma mão, nenhuma pessoa" e o
+  // Estruturador pediu "mão adulta encaixando o plug". Até aqui as duas iam
+  // ao MESMO prompt de imagem e o modelo fazia o híbrido; o lugar de
+  // decidir é aqui, onde a variante ainda pode ser trocada. Direção
+  // ausente/rascunho nunca colide.
+  const cena = conflitoCenaDirecao(r.imagem, c.direcao)
+  if (cena) return cena
   if (r.cupom === false && c.tem_cupom) return "tem slot de cupom e a decisão nega cupom"
   if (r.cupom === true && !c.tem_cupom) return "não tem slot de cupom e a decisão exige cupom"
-  if (r.cta === false && c.tem_cta) return "tem CTA e a decisão nega CTA"
+  // `cta: false` com anatomia que TEM botão NÃO é conflito de anatomia: o
+  // blueprint omite o campo (`arbitrarCampos`, estruturador-consume) e a
+  // linha sai no merge. Tratar como conflito eliminava body-3 da posição
+  // `body_garantias` e deixava a posição VAZIA (batch 879fe6e4, 14/09) —
+  // uma lacuna criada pela régua, não pela biblioteca. O validador de
+  // escolhas registra `medium` (aviso), o resgate cobra 5 de custo.
   if (r.preco === true && !c.tem_preco) return "não mostra preço e a decisão exige preço"
   if (r.avaliacao === true && !c.tem_avaliacao) return "não mostra avaliação e a decisão exige avaliação"
   const max = r.n_itens?.max
   const min = r.n_itens?.min
-  if (c.n_itens != null) {
-    if (typeof max === "number" && c.n_itens > max) return `grade de ${c.n_itens} itens e a decisão pede no máximo ${max}`
-    if (typeof min === "number" && c.n_itens < min) return `grade de ${c.n_itens} itens e a decisão pede no mínimo ${min}`
+  if (c.n_itens != null && typeof max === "number" && c.n_itens > max) {
+    return `grade de ${c.n_itens} itens e a decisão pede no máximo ${max}`
+  }
+  // `n_itens: null` = a anatomia não tem família numerada — numa posição
+  // que pede 2+ itens isso é UM item, não "qualquer quantidade". Mesma
+  // régua do resgate (`resgate-de-posicao.ts`); a assimetria deixou
+  // products-4 (1 item) escapar do mínimo de 2 em 11/09.
+  const entrega = c.n_itens ?? 1
+  if (typeof min === "number" && entrega < min) {
+    return c.n_itens == null
+      ? `sem família numerada (1 item) e a decisão pede no mínimo ${min}`
+      : `grade de ${c.n_itens} itens e a decisão pede no mínimo ${min}`
   }
   return null
+}
+
+/**
+ * Elegíveis por POSIÇÃO: as variantes da seção daquela posição menos as
+ * eliminadas por requisito — fail-open: quando o filtro zeraria a seção,
+ * todas continuam elegíveis (lacuna de biblioteca é dado, não corte).
+ *
+ * É a lista que a shortlist do Curador e o resgate consomem (14/09). Até
+ * aqui a eliminação só informava o prompt (`<eliminadas_por_requisito>`) e
+ * o catálogo chegava inteiro ao modelo — "eliminada" era recomendação.
+ * Posição cuja seção não existe no catálogo fica FORA do mapa (o chamador
+ * distingue "sem seção" de "zero elegíveis").
+ */
+export interface ElegiveisDaPosicao {
+  ids: string[]
+  /**
+   * A lista veio do FAIL-OPEN de `filtrarPorRequisitos` — o requisito
+   * eliminaria todas e nenhuma foi eliminada.
+   *
+   * Sem este campo a lista é indistinguível de uma seleção real, e quem a
+   * lê conta candidatas que o contrato reprova: era assim que
+   * `planejarShortlist` via "7 elegíveis", passava do limiar e pagava uma
+   * chamada para escolher entre variantes que já estavam todas fora.
+   */
+  zerou: boolean
+  /**
+   * Variantes que a JANELA de e-mails recentes bloqueou nesta posição —
+   * sempre preenchido, mesmo quando `aplicar` é false.
+   *
+   * Em shadow o campo existe e os `ids` não mudam: é assim que se mede o
+   * efeito da janela antes de ligá-la. Sem isto o shadow não mede nada.
+   */
+  bloqueadasPelaJanela: string[]
+  /** A janela foi afrouxada por escassez (ver `elegiveisPorPosicao`). */
+  janelaAfrouxada: boolean
+}
+
+/**
+ * A janela de repetição entre e-mails (Fase 3 do leque).
+ *
+ * Ela entra ANTES de `filtrarPorRequisitos`, e não depois, porque o filtro
+ * é fail-open no CONJUNTO: aplicada depois, a janela poderia zerar a lista
+ * e o fail-open a devolveria inteira, anulando a janela sem nada dizer.
+ *
+ * **O afrouxamento é por ESCASSEZ, não por zero.** A régua é "sobraram
+ * menos variantes distintas do que posições desta seção neste e-mail".
+ * Medido no caso real: com 2 posições `body` e 4 variantes, a janela
+ * bloqueia 3, a régua de zero não dispara, as duas posições recebem a
+ * MESMA variante e a segunda cai no dedupe sem alternativa. Afrouxar por
+ * escassez devolve as bloqueadas e deixa o Curador escolher — variedade
+ * entre e-mails não vale uma posição vazia.
+ */
+function aplicarJanela<T extends { variant_id: string }>(
+  candidatas: T[],
+  bloqueadas: ReadonlySet<string> | undefined,
+  posicoesDestaSecao: number,
+): { pool: T[]; bloqueadasPelaJanela: string[]; afrouxada: boolean } {
+  if (!bloqueadas || bloqueadas.size === 0) {
+    return { pool: candidatas, bloqueadasPelaJanela: [], afrouxada: false }
+  }
+  const bloqueadasPelaJanela = candidatas.filter((c) => bloqueadas.has(c.variant_id)).map((c) => c.variant_id)
+  if (bloqueadasPelaJanela.length === 0) {
+    return { pool: candidatas, bloqueadasPelaJanela: [], afrouxada: false }
+  }
+  const sobrando = candidatas.filter((c) => !bloqueadas.has(c.variant_id))
+  if (sobrando.length < Math.max(1, posicoesDestaSecao)) {
+    return { pool: candidatas, bloqueadasPelaJanela, afrouxada: true }
+  }
+  return { pool: sobrando, bloqueadasPelaJanela, afrouxada: false }
+}
+
+export function elegiveisPorPosicao(
+  sections: string[],
+  requisitos: Array<RequisitosDuros | null | undefined>,
+  catalogo: Array<{ section: string; variantes: Array<{ variant_id: string; contrato?: ContratoResumo }> }>,
+  janela?: {
+    /** seção normalizada → variantes usadas nos últimos e-mails. */
+    bloqueadasPorSecao: ReadonlyMap<string, ReadonlySet<string>>
+    /**
+     * `false` = SHADOW: calcula e não filtra. Os `ids` saem idênticos aos
+     * de sempre e `bloqueadasPelaJanela` diz o que a janela teria tirado.
+     */
+    aplicar: boolean
+  },
+): Map<number, ElegiveisDaPosicao> {
+  const porSecao = new Map(catalogo.map((c) => [normalizarSecao(c.section), c.variantes]))
+  // Quantas posições DESTE e-mail pedem cada seção — é o piso da régua de
+  // escassez.
+  const posicoesPorSecao = new Map<string, number>()
+  for (const s of sections) {
+    const k = normalizarSecao(s)
+    posicoesPorSecao.set(k, (posicoesPorSecao.get(k) ?? 0) + 1)
+  }
+  const out = new Map<number, ElegiveisDaPosicao>()
+  sections.forEach((section, i) => {
+    const chave = normalizarSecao(section)
+    const candidatas = porSecao.get(chave)
+    if (!candidatas) return
+    const j = aplicarJanela(candidatas, janela?.bloqueadasPorSecao.get(chave), posicoesPorSecao.get(chave) ?? 1)
+    const r = filtrarPorRequisitos(janela?.aplicar ? j.pool : candidatas, requisitos[i])
+    out.set(i, {
+      ids: r.elegiveis.map((v) => v.variant_id),
+      zerou: r.zerou,
+      bloqueadasPelaJanela: j.bloqueadasPelaJanela,
+      janelaAfrouxada: j.afrouxada,
+    })
+  })
+  return out
 }
 
 /**
@@ -221,13 +413,39 @@ export function filtrarPorRequisitos<T extends { variant_id: string; contrato?: 
 
 export interface CapacidadeDaSecao {
   variantes: number
+  /** Variantes ativas por dispositivo (B3). Só as classificadas contam. */
+  por_dispositivo?: Record<string, number>
+  /** Quantas variantes da seção têm dispositivo (0 = seção ainda não classificada → filtro fail-open). */
+  classificadas?: number
   /** Faixa de itens das variantes que têm grade (null = nenhuma tem). */
   itens: { min: number; max: number } | null
+  /**
+   * Faixa de itens POR DISPOSITIVO (15/09).
+   *
+   * A faixa da seção inteira não responde a pergunta que importa: o
+   * Estruturador escolhe um dispositivo E uma faixa de itens, e as duas
+   * podem ser incompatíveis por construção. Medido na Innova (15/09): ele
+   * pediu `reviews_3plus` com `n_itens: {min:2, max:2}` — "três ou mais"
+   * limitado a dois. As três variantes do dispositivo entregam 3 e 4 itens,
+   * então todas foram eliminadas, a seção zerou, a peça reprovou em
+   * `posicao_sem_variante` e a culpa foi atribuída à BIBLIOTECA, que estava
+   * certa. Com a faixa por dispositivo no prompt, o pedido impossível não
+   * nasce; com ela na auditoria, não passa.
+   *
+   * Dispositivo cujas variantes não têm grade nenhuma fica FORA do mapa —
+   * "sem grade" não é faixa, e inventar `{min:0,max:0}` reprovaria pedido
+   * legítimo de quem só quer o bloco.
+   */
+  itens_por_dispositivo?: Record<string, { min: number; max: number }>
   com_preco: number
   com_avaliacao: number
   com_cupom: number
   com_cta: number
   com_credencial: number
+  /** Variantes com slot de imagem GERADA (15/09) — onde o Estruturador tem de decidir a cena. */
+  com_imagem?: number
+  /** Idem, por dispositivo: a cena é obrigatória quando TODAS as variantes do dispositivo têm imagem. */
+  com_imagem_por_dispositivo?: Record<string, number>
 }
 
 /**
@@ -237,25 +455,49 @@ export interface CapacidadeDaSecao {
  * exige o que a biblioteca não tem (quando exige, é lacuna declarada).
  */
 export function capacidadePorSecao(
-  variantes: Array<{ block_type: string; output_schema?: unknown }>,
+  variantes: Array<{ block_type: string; output_schema?: unknown; dispositivo?: string | null }>,
 ): Record<string, CapacidadeDaSecao> {
   const out: Record<string, CapacidadeDaSecao> = {}
   for (const v of variantes) {
     const c = resumirContrato(v.output_schema)
     const cap = (out[v.block_type] ??= {
       variantes: 0,
+      por_dispositivo: {},
+      classificadas: 0,
       itens: null,
       com_preco: 0,
       com_avaliacao: 0,
       com_cupom: 0,
       com_cta: 0,
       com_credencial: 0,
+      com_imagem: 0,
+      com_imagem_por_dispositivo: {},
+      itens_por_dispositivo: {},
     })
     cap.variantes++
+    if (v.dispositivo) {
+      cap.classificadas = (cap.classificadas ?? 0) + 1
+      cap.por_dispositivo ??= {}
+      cap.por_dispositivo[v.dispositivo] = (cap.por_dispositivo[v.dispositivo] ?? 0) + 1
+    }
+    if (c.imagens > 0) {
+      cap.com_imagem = (cap.com_imagem ?? 0) + 1
+      if (v.dispositivo) {
+        cap.com_imagem_por_dispositivo ??= {}
+        cap.com_imagem_por_dispositivo[v.dispositivo] = (cap.com_imagem_por_dispositivo[v.dispositivo] ?? 0) + 1
+      }
+    }
     if (c.n_itens != null) {
       cap.itens = cap.itens
         ? { min: Math.min(cap.itens.min, c.n_itens), max: Math.max(cap.itens.max, c.n_itens) }
         : { min: c.n_itens, max: c.n_itens }
+      if (v.dispositivo) {
+        cap.itens_por_dispositivo ??= {}
+        const atual = cap.itens_por_dispositivo[v.dispositivo]
+        cap.itens_por_dispositivo[v.dispositivo] = atual
+          ? { min: Math.min(atual.min, c.n_itens), max: Math.max(atual.max, c.n_itens) }
+          : { min: c.n_itens, max: c.n_itens }
+      }
     }
     if (c.tem_preco) cap.com_preco++
     if (c.tem_avaliacao) cap.com_avaliacao++
@@ -277,7 +519,27 @@ export function renderCapacidade(cap: Record<string, CapacidadeDaSecao>): string
       if (c.itens) partes.push(c.itens.min === c.itens.max ? `${c.itens.max} itens` : `${c.itens.min}–${c.itens.max} itens`)
       partes.push(`com preço: ${c.com_preco}`, `com avaliação: ${c.com_avaliacao}`, `com cupom: ${c.com_cupom}`, `com CTA: ${c.com_cta}`)
       if (c.com_credencial > 0) partes.push(`com credencial do depoente: ${c.com_credencial}`)
-      return `- ${k}: ${partes.join(" · ")}`
+      // Onde há imagem gerada, "imagem" deixa de ser opcional (15/09): a
+      // posição sem cena saiu com a mesma foto do hero.
+      if ((c.com_imagem ?? 0) > 0) partes.push(`com imagem gerada: ${c.com_imagem} (decida "imagem" nessas)`)
+      // Dispositivos com variante ATIVA nesta seção (B3): é a lista de onde o
+      // Estruturador escolhe `requisitos.dispositivo`. Seção sem nenhuma
+      // classificada diz isso — pedir dispositivo ali é lacuna declarada.
+      const disps = Object.entries(c.por_dispositivo ?? {}).sort((a, b) => a[0].localeCompare(b[0]))
+      const classificadas = c.classificadas ?? 0
+      // A faixa de itens vai COLADA no dispositivo, e não só na linha da
+      // seção: quem escolhe a forma escolhe a grade junto, e a faixa da
+      // seção inteira deixa passar o pedido que se contradiz sozinho
+      // (`reviews_3plus` com no máximo 2 itens — Innova, 15/09).
+      const comFaixa = ([d, n]: [string, number]) => {
+        const f = (c.itens_por_dispositivo ?? {})[d]
+        if (!f) return `${d} (${n})`
+        return `${d} (${n}, ${f.min === f.max ? `${f.min} ${f.min === 1 ? "item" : "itens"}` : `${f.min}–${f.max} itens`})`
+      }
+      const linhaDisp = disps.length > 0
+        ? `  dispositivos: ${disps.map(comFaixa).join(", ")}${classificadas < c.variantes ? ` · ${c.variantes - classificadas} sem classificação` : ""}`
+        : "  dispositivos: (nenhuma variante classificada — qualquer dispositivo desta seção é lacuna)"
+      return `- ${k}: ${partes.join(" · ")}\n${linhaDisp}`
     })
     .join("\n")
 }
@@ -309,12 +571,16 @@ export function eliminarPorRequisitos(
   requisitos: Array<RequisitosDuros | null | undefined>,
   catalogo: Array<{ section: string; variantes: Array<{ variant_id: string; name?: string; contrato?: ContratoResumo }> }>,
 ): EliminacaoDaPosicao[] {
-  const porSecao = new Map(catalogo.map((c) => [c.section, c.variantes]))
+  // A MESMA normalização de `elegiveisPorPosicao`. Sem ela, caixa ou espaço
+  // diferente entre `sections` e `catalogo.section` faziam esta função não
+  // achar a seção e devolver [] — enquanto a irmã, sobre os mesmos dados,
+  // achava. O prompt recebia "nenhuma eliminada" e a régua, a lista cheia.
+  const porSecao = new Map(catalogo.map((c) => [normalizarSecao(c.section), c.variantes]))
   const out: EliminacaoDaPosicao[] = []
   sections.forEach((section, i) => {
     const req = requisitos[i]
     if (!req) return
-    const candidatas = porSecao.get(section) ?? []
+    const candidatas = porSecao.get(normalizarSecao(section)) ?? []
     if (candidatas.length === 0) return
     const r = filtrarPorRequisitos(candidatas, req)
     if (r.eliminadas.length === 0) return

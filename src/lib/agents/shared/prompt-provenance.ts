@@ -15,6 +15,7 @@
  * Puro (zero I/O) — client-safe: a UI importa os tipos e as cores.
  */
 
+import { semMarcadores } from "./cache-de-prompt"
 import { resolveBlockHelpers } from "../image/template-renderer"
 
 /** As 7 classes de proveniência (cores idênticas às dos artifacts). */
@@ -174,10 +175,14 @@ export function buildSegmentedPrompt(
   // condicional É template, e sai marcado como tal. Era aqui que o
   // `campaign_image` (prompt do banco cheio de `{{#if}}`) ficava sem
   // proveniência nenhuma.
+  // O marcador de cache nunca chega ao modelo (`userContent` o remove), e
+  // por isso também não pode chegar à proveniência: como literal, viraria
+  // um segmento `agente` com um NUL no meio do prompt gravado.
+  const semMarca = semMarcadores(template)
   const plano =
-    dialeto === "double" && template.includes("{{#")
-      ? resolveBlockHelpers(template, vars)
-      : template
+    dialeto === "double" && semMarca.includes("{{#")
+      ? resolveBlockHelpers(semMarca, vars)
+      : semMarca
 
   const parte = opts?.parte
   const segments: PromptSegment[] = []
@@ -248,7 +253,7 @@ export function buildInterpolatedSegments(
 
   // Varre o texto achando a PRÓXIMA ocorrência de qualquer `{{key}}` literal
   // (a mais à esquerda vence) — mesma ordem de substituição do replaceAll.
-  let rest = systemPrompt
+  let rest = semMarcadores(systemPrompt)
   for (;;) {
     let bestIdx = -1
     let bestKey: string | null = null

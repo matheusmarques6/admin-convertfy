@@ -208,10 +208,34 @@ async function verificarPins(
   }
   const out: Recusa[] = []
 
+  const precisaDecisao = pinned.includes("estruturador")
   const precisaReferencia =
     pinned.includes("assembler_chooser") || pinned.includes("assembler")
   const precisaBlueprint = pinned.includes("blueprint")
   const precisaCopy = pinned.includes("copy") || pinned.includes("copy_dispatch")
+
+  // O artefato do Estruturador não é uma tabela própria: é o
+  // `parsed_output` da última run bem-sucedida dele neste e-mail, que é o
+  // que `loadDecisaoVigenteDesteEmail` lê para reusar. Sem ela o pin não
+  // vira reuso — cai em "rodar", e o operador que pediu "não execute" paga
+  // a chamada sem entender por quê.
+  if (precisaDecisao) {
+    const { data } = await admin
+      .from("email_generation_runs")
+      .select("id")
+      .eq("agent", "estruturador")
+      .eq("email_id", emailId)
+      .eq("status", "success")
+      .limit(1)
+      .maybeSingle()
+    if (!data) {
+      out.push({
+        node: "estruturador",
+        motivo:
+          "não existe decisão gravada do Estruturador para este e-mail — não há o que reusar. Rode a fase 1 uma vez antes de pinar",
+      })
+    }
+  }
 
   if (precisaReferencia) {
     const { data } = await admin
@@ -385,6 +409,60 @@ export async function finalizarExecucao(
     .eq("id", executionId)
     .in("status", ["running", "paused"])
   if (error) log.error("execucao.finalizar_falhou", { executionId, status, error })
+}
+
+/** Estados em que o e-mail está a meio caminho, sem ninguém trabalhando nele. */
+const ESTADOS_INTERMEDIARIOS = ["rendering", "image_done", "qa_running"] as const
+
+/**
+ * Fechada a pausa, o e-mail não pode ficar no meio do caminho.
+ *
+ * `stop_after` deixa o e-mail em `rendering`, e é isso que o watchdog
+ * respeita enquanto a pausa vale. Quando ela termina — por cancelamento
+ * humano ou por prazo — sobra um e-mail em estado intermediário que ninguém
+ * vai terminar, e deixá-lo assim tem dois custos medidos:
+ *
+ *   • a tela continua dizendo "rodando" sobre uma geração que acabou;
+ *   • o **Front 5 do watchdog o RETOMA** (janela 15–25 min sobre
+ *     `rendering_started_at`), fazendo o pipeline seguir sozinho exatamente
+ *     de onde o operador mandou parar. Cancelar viraria "continue".
+ *
+ * Então o e-mail sai daqui com o motivo verdadeiro, e não com o
+ * `timeout_phase2` que o Front 3 lhe daria 25 min depois. O `html` NÃO é
+ * tocado: é ele que permite ao disparo seguinte retomar com `start_from`.
+ *
+ * Só mexe em estado INTERMEDIÁRIO — e-mail que já chegou a `ready` ou
+ * `failed` tem desfecho próprio, e sobrescrevê-lo apagaria o que aconteceu.
+ */
+export async function liberarEmailDaExecucao(
+  emailId: string,
+  failureReason: string,
+): Promise<boolean> {
+  try {
+    const admin = createAdminClient()
+    const nowIso = new Date().toISOString()
+    const { data, error } = await admin
+      .from("email_flow_emails")
+      .update({
+        status: "failed",
+        failure_reason: failureReason,
+        failed_at: nowIso,
+        updated_at: nowIso,
+      })
+      .eq("id", emailId)
+      .in("status", [...ESTADOS_INTERMEDIARIOS])
+      .select("id")
+    if (error) throw error
+    const liberou = (data ?? []).length > 0
+    if (liberou) log.info("execucao.email_liberado", { emailId, failureReason })
+    return liberou
+  } catch (err) {
+    // Fail-open: a execução já foi fechada, e o watchdog volta a enxergar o
+    // e-mail na próxima rodada — pior desfecho é o `timeout_phase2` de
+    // sempre, não um e-mail preso.
+    log.warn("execucao.liberar_email_falhou", { emailId, err })
+    return false
+  }
 }
 
 /** Grava o batch da copy na execução, quando ele nasce. */

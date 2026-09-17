@@ -183,3 +183,22 @@ describe("fitFragment + calha", () => {
     )
   })
 })
+
+describe("tokens de identidade no encaixe (B5)", () => {
+  it("resolve os tokens ANTES de encaixar e reporta o total; sem valores o fragmento passa cru", async () => {
+    const { fitFragment, fitFragmentToRow } = await import("./fragment-fit")
+    const frag = '<tr><td bgcolor="{{COR_FUNDO}}" style="background-color:{{COR_FUNDO}};color:{{COR_TEXTO}}">x</td></tr>'
+    const fit = fitFragment(frag, { tokens: { COR_FUNDO: "#FAF5F3", COR_TEXTO: "#1F1F1F" } })
+    expect(fit?.html).toBe('<tr><td bgcolor="#FAF5F3" style="background-color:#FAF5F3;color:#1F1F1F">x</td></tr>')
+    expect(fit?.tokens).toEqual({ total: 3, sem_valor: [] })
+    expect(fitFragment(frag)?.html).toBe(frag)
+    expect(fitFragment(frag)?.tokens).toBeUndefined()
+    expect(fitFragmentToRow(frag, { COR_FUNDO: "#FFFFFF" })).toContain("#FFFFFF")
+    // Documento completo com tokens no <head> e no corpo: resolvido também.
+    const doc = `<!DOCTYPE html><html><head><style>body{background:{{COR_FUNDO}}}</style></head><body>${frag}</body></html>`
+    const d = fitFragment(doc, { tokens: { COR_FUNDO: "#EEEEEE" } })
+    expect(d?.unshelled).toBe(true)
+    expect(d?.styles?.[0]).toContain("#EEEEEE")
+    expect(d?.tokens?.sem_valor).toEqual(["COR_TEXTO"])
+  })
+})

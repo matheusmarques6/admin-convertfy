@@ -47,6 +47,7 @@ import { formatDate, getInitials } from "@/lib/utils"
 import { createClient } from "@/lib/supabase/client"
 import { cn } from "@/lib/utils"
 import { ClientPortalUsers } from "@/components/clients/client-portal-users"
+import { documentoDoCliente, lerPagador, rotuloDoPagador, validarPagador } from "@/lib/clients/pagador"
 import type { ClientWithRelations } from "@/components/clients/client-overview"
 import { useRouter } from "next/navigation"
 
@@ -294,6 +295,10 @@ export function ClientConfig({ client }: ClientConfigProps) {
   const [creatingField, setCreatingField] = useState(false)
 
   const customFields = (client.custom_fields as Record<string, unknown>) ?? {}
+  const pagador = lerPagador(client)
+  // 26 dos 56 cadastros têm o documento só em `custom_fields` — mostrar a
+  // coluna crua deixaria a ficha deles vazia.
+  const documento = documentoDoCliente(client)
 
   // Notification preferences (stored in custom_fields.notifications)
   const notifPrefs = (customFields.notifications as Record<string, boolean>) ?? {
@@ -473,13 +478,67 @@ export function ClientConfig({ client }: ClientConfigProps) {
                 type="tel"
               />
             </div>
-            <div className="group">
-              <InlineEditField
-                label="CPF / CNPJ"
-                value={client.cpf_cnpj}
-                onSave={(v) => updateClient({ cpf_cnpj: v })}
-              />
+            <div
+              className={cn(
+                "grid grid-cols-[140px_1fr_auto] gap-3 items-center py-3",
+                "border-b last:border-b-0 border-[rgba(0,0,0,0.06)] dark:border-[rgba(255,255,255,0.06)]",
+              )}
+            >
+              <Label className="text-[12px] text-gray-500 dark:text-[#8B92A5] font-normal">Quem paga</Label>
+              <p className="text-sm text-gray-900 dark:text-[#EAEDF3]">{rotuloDoPagador(pagador)}</p>
+              <span />
             </div>
+            {pagador.tipo === "exterior" ? (
+              // Quatro campos ligados entre si não se editam um a um por aqui
+              // — a régua deles (razão social obrigatória, país ISO) vive no
+              // formulário. Aqui eles são mostrados.
+              <div
+                className={cn(
+                  "grid grid-cols-[140px_1fr_auto] gap-3 items-start py-3",
+                  "border-b last:border-b-0 border-[rgba(0,0,0,0.06)] dark:border-[rgba(255,255,255,0.06)]",
+                )}
+              >
+                <Label className="text-[12px] text-gray-500 dark:text-[#8B92A5] font-normal">Empresa pagadora</Label>
+                <div className="text-sm text-gray-900 dark:text-[#EAEDF3] space-y-0.5">
+                  <p className="font-medium">{pagador.razao_social}</p>
+                  {pagador.tax_id || pagador.pais ? (
+                    <p className="text-[12px] text-gray-500 dark:text-[#8B92A5]">
+                      {[pagador.tax_id, pagador.pais].filter(Boolean).join(" · ")}
+                    </p>
+                  ) : null}
+                  {pagador.endereco ? (
+                    <p className="text-[12px] text-gray-500 dark:text-[#8B92A5]">{pagador.endereco}</p>
+                  ) : null}
+                </div>
+                <span />
+              </div>
+            ) : (
+              <div className="group">
+                <InlineEditField
+                  label="CPF / CNPJ"
+                  value={documento.valor}
+                  onSave={async (v) => {
+                    // A MESMA régua do formulário: esta porta não validava
+                    // nada, e é por uma delas que entrou um documento com 22
+                    // zeros no banco.
+                    const r = validarPagador({ tipo: "br", cpf_cnpj: v })
+                    if (!r.ok) {
+                      toast({ variant: "destructive", title: "CPF/CNPJ inválido", description: r.erros.cpf_cnpj })
+                      throw new Error(r.erros.cpf_cnpj)
+                    }
+                    if (r.avisos.cpf_cnpj) {
+                      toast({ title: "Confira o CPF/CNPJ", description: r.avisos.cpf_cnpj })
+                    }
+                    // O documento passa a viver na COLUNA; o legado do JSONB
+                    // sai junto para não restarem duas verdades.
+                    await updateClient({
+                      cpf_cnpj: v ? v.replace(/\D/g, "") : null,
+                      custom_fields: { ...customFields, cpf_cnpj: undefined },
+                    })
+                  }}
+                />
+              </div>
+            )}
             <div className="group">
               <InlineEditField
                 label="Empresa"

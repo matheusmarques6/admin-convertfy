@@ -47,6 +47,7 @@ import { aplicarPropostas, ehTextoGuia, novaVersao, propostasDeLinhas, setTexto 
 import { agendarDocumento } from "@/lib/conteudo/data"
 import { chamarIA } from "@/lib/conteudo/ia/client"
 import { resumoDocumento } from "@/lib/conteudo/ia/prompt"
+import { familiaDe, tracoDe } from "@/lib/conteudo/familias"
 import { CAMPO_LABEL, camposExcedidos } from "@/lib/conteudo/limites"
 import type { BrandKit, Campo, DocFrame, Documento, EstiloTexto, Perfil, PerfilEditavel } from "@/lib/conteudo/types"
 import { ROUTES } from "@/lib/routes"
@@ -111,11 +112,17 @@ interface Props {
   abaInicial?: "ia" | "ajustes"
   modoTemplate?: boolean
   onSalvarTemplate?: (doc: Documento) => Promise<void>
+  /**
+   * "Salvar como template" fora do fluxo de revisão: guarda a FORMA deste
+   * carrossel em Meus templates. Quem monta o diálogo é o chamador — o
+   * editor não conhece a prateleira.
+   */
+  onSalvarComoTemplate?: (doc: Documento) => void
   anexosIniciais?: string[]
   onSalvo?: (doc: Documento) => void
 }
 
-export function Editor({ doc: docInicial, perfis, brandKits, onSalvarBrandKit, modalInicial, abaInicial, modoTemplate = false, onSalvarTemplate, anexosIniciais, onSalvo }: Props) {
+export function Editor({ doc: docInicial, perfis, brandKits, onSalvarBrandKit, modalInicial, abaInicial, modoTemplate = false, onSalvarTemplate, onSalvarComoTemplate, anexosIniciais, onSalvo }: Props) {
   const router = useRouter()
   const ed = useEditor(docInicial, onSalvo)
   const { doc, set, preview } = ed
@@ -254,7 +261,10 @@ export function Editor({ doc: docInicial, perfis, brandKits, onSalvarBrandKit, m
   }
 
   const ehGuia = f ? ehTextoGuia(f) : false
-  const excedidos = f ? camposExcedidos(f) : []
+  // O limite depende da IDENTIDADE: no print de tweet o texto ocupa a peça
+  // inteira e cabe muito mais, então o aviso de "corpo longo" com a régua
+  // do tipo apareceria sobre um texto que cabe.
+  const excedidos = f ? camposExcedidos(f, familiaDe(doc)) : []
   const imgAtivo = imgSel ? doc.frames.find((x) => x.frameId === imgSel.frameId) : null
   const [stL, stC] = ST_STATUS[doc.status]
   const versoes = useMemo(() => {
@@ -320,6 +330,7 @@ export function Editor({ doc: docInicial, perfis, brandKits, onSalvarBrandKit, m
             Salvar template
           </button>
         )}
+        {!modoTemplate && onSalvarComoTemplate && ghost("Salvar como template", () => onSalvarComoTemplate(doc), LayoutTemplate)}
         {ghost("Preview", () => setModal("preview"), Instagram)}
         {ed.salvo === "conflito" ? (
           <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-[var(--ops-warn-br)] bg-[var(--ops-warn-bg)] px-2 py-1 text-[10.5px] text-[var(--ops-warn)]" title={ed.erroSalvar ?? undefined}>

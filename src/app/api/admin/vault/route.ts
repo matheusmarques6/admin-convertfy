@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
         .select("id, flow_type, slug, emails, escopo, amostra, procedencia, secoes, secoes_normalizadas, status, is_active, updated_at")
         .order("flow_type").order("slug"),
       admin.from("email_learnings")
-        .select("id, flow_type, slug, aplica_a, origem_estrutura, autor, status, is_active, updated_at")
+        .select("id, flow_type, slug, aplica_a, origem_estrutura, autor, status, is_active, updated_at, frontmatter")
         .order("flow_type", { nullsFirst: true }).order("slug"),
       admin.from("email_vault_docs")
         .select("kind, grupo, slug, variant_id, frontmatter, body_md, file_path, status, is_active")
@@ -79,7 +79,7 @@ export async function GET(request: NextRequest) {
         const docs = (docsRes.data ?? []) as VaultDocRow[]
         const conhecimento = indexVaultDocs(docs)
         const extras = buildCatalogVaultExtras(conhecimento, variantes)
-        const { divergentes } = buildCatalog(variantes, extras)
+        const { divergentes, duplicatas, compact } = buildCatalog(variantes, extras)
         const notas: NotaDeVariante[] = docs
           .filter((d) => d.kind === "variante")
           .map((d) => ({
@@ -91,10 +91,18 @@ export async function GET(request: NextRequest) {
           notas,
           variantes.map((v) => ({ id: v.id, name: v.name, block_type: v.block_type })),
           divergentes,
+          duplicatas,
+          compact.naoClassificadas,
         )
       } catch (e) {
         log.warn("higiene do vault falhou", e)
-        return { divergentes: [], notas_orfas: [], variantes_sem_nota: [] }
+        return {
+          divergentes: [],
+          notas_orfas: [],
+          variantes_sem_nota: [],
+          duplicatas: [],
+          nao_classificadas: [],
+        }
       }
     })()
 

@@ -22,6 +22,26 @@ const nextConfig = {
     "/api/admin/email-flows/*/emails/*/export-png": [
       "node_modules/.pnpm/@sparticuz+chromium@*/node_modules/@sparticuz/chromium/bin/**",
     ],
+    // Prints do HTML final (B2): toda rota que chega ao runner da fase 2
+    // (`runPhase2HtmlQa`) tira os dois prints com o mesmo Chromium.
+    "/api/internal/run-phase2/*": [
+      "node_modules/.pnpm/@sparticuz+chromium@*/node_modules/@sparticuz/chromium/bin/**",
+    ],
+    "/api/internal/run-phase2-image/*": [
+      "node_modules/.pnpm/@sparticuz+chromium@*/node_modules/@sparticuz/chromium/bin/**",
+    ],
+    "/api/internal/run-phase2-html-qa/*": [
+      "node_modules/.pnpm/@sparticuz+chromium@*/node_modules/@sparticuz/chromium/bin/**",
+    ],
+    "/api/cron/email-generation-watchdog": [
+      "node_modules/.pnpm/@sparticuz+chromium@*/node_modules/@sparticuz/chromium/bin/**",
+    ],
+    "/api/admin/stores/*/generate-email": [
+      "node_modules/.pnpm/@sparticuz+chromium@*/node_modules/@sparticuz/chromium/bin/**",
+    ],
+    "/api/webhooks/n8n/email-copy": [
+      "node_modules/.pnpm/@sparticuz+chromium@*/node_modules/@sparticuz/chromium/bin/**",
+    ],
   },
   experimental: {
     // recharts, date-fns e lucide-react já estão na lista default do Next 15.5

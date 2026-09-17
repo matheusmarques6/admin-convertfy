@@ -455,7 +455,7 @@ export function buildTopProductsJson(products: TopProduct[]): string {
     image_url: p.image_url,
     url: p.url ?? "",
   }))
-  return JSON.stringify(slim, null, 2)
+  return JSON.stringify(slim)
 }
 
 export async function buildHtmlPromptVars(

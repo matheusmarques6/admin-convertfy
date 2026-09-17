@@ -21,7 +21,9 @@
  */
 
 import type { EmailComponentVariant } from "@/types/email-generation"
-import { resumirContrato, type ContratoResumo } from "../shared/field-roles"
+import { resumirContrato, type ContratoResumo, type FamiliaDeItem } from "../shared/field-roles"
+import { lerDirecao } from "../image/direcao-fotografica"
+import { normalizarSecao } from "./repeticao"
 
 /**
  * Extras do VAULT de componentes para uma variante (curador-vault, 31/08):
@@ -130,6 +132,32 @@ export interface DivergenciaDeCatalogo {
   similaridade: number
 }
 
+/**
+ * Duas variantes ATIVAS do mesmo dispositivo que descrevem a mesma peça.
+ *
+ * Medido em 15/09: as duas de `hero_lineup` dizem literalmente o mesmo
+ * ("rotina, kit ou linha completa", "descoberta e educação", "amplitude do
+ * catálogo") e o placar de 45 dias é 5 × 0. Escolher sempre a mesma entre
+ * duas idênticas é o comportamento CERTO — o defeito é de curadoria, e nada
+ * o denunciava. Isto não elimina ninguém: é worklist.
+ */
+export interface DuplicataNoDispositivo {
+  dispositivo: string
+  a: { variant_id: string; name: string }
+  b: { variant_id: string; name: string }
+  /** 0 a 1, pelo mesmo Dice de `similaridadeDeDescricao`. */
+  similaridade: number
+}
+
+/**
+ * Acima disto as duas descrições contam a mesma peça. Mais alto que o
+ * `LIMIAR_DE_DIVERGENCIA` (0,5) de propósito: lá o número decide se as DUAS
+ * descrições da mesma variante viajam juntas, e servir a mais é inofensivo;
+ * aqui ele acusa o time de ter cadastrado duas vezes, e acusar errado
+ * ensina a ignorar o aviso.
+ */
+export const LIMIAR_DE_DUPLICATA = 0.65
+
 /** Entrada do catálogo — o que o Curador vê de cada variante. */
 export interface CatalogEntry {
   variant_id: string
@@ -196,14 +224,52 @@ export interface CompactCatalogEntry {
 export interface CompactCatalog {
   entries: CompactCatalogEntry[]
   text: string
+  /** Tamanho do índice servido. */
+  chars: number
+  /**
+   * O que CADA variante custa no índice — é esta a medida que importa, não
+   * o total (15/09).
+   *
+   * O teto de 15.000 chars no total era comentário e um teste sobre
+   * fixture; a produção passou dele em 15/09 (16.255 chars para 37
+   * variantes, 439 por linha) sem nada medir, avisar ou cortar. Pior: um
+   * teto no TOTAL é incompatível com uma biblioteca que cresce — ele
+   * proíbe cadastrar. O que precisa ficar barato é o custo MARGINAL de
+   * acrescentar uma variante, e ele é o tamanho da linha, num bloco que é
+   * cacheado (leitura a 0,1×).
+   */
+  charsPorVariante: number
+  /** Linha acima de `LIMITE_CHARS_POR_VARIANTE` — cadastro a revisar. */
+  linhasLongas: Array<{ variant_id: string; chars: number }>
+  /**
+   * Variante ATIVA sem `dispositivo` (15/09). É o pior estado possível na
+   * biblioteca e o único que ninguém enxergava: o filtro por dispositivo é
+   * fail-open, então ela nunca é eliminada e concorre em TODA posição da
+   * seção; e `capacidadePorSecao` só conta as classificadas, então o
+   * Estruturador nunca consegue pedi-la. Ela custa e não compete.
+   *
+   * O único lugar que dizia isso era uma linha dentro do prompt do
+   * Estruturador ("· N sem classificação"), que nenhuma pessoa lê. Agora
+   * sobe na telemetria do `assembler_chooser` e aparece na aba Conhecimento.
+   */
+  naoClassificadas: Array<{ variant_id: string; name: string; section: string }>
 }
+
+/**
+ * Teto por LINHA do índice. Folga sobre os 439 chars/variante medidos em
+ * produção (15/09): passar disto é descrição longa demais ou eixo
+ * duplicando o que a `forma:` já diz, não biblioteca grande.
+ */
+export const LIMITE_CHARS_POR_VARIANTE = 600
 
 export interface BuildCatalogResult {
   /** JSON que entra no `{{catalogo}}` do system prompt. */
   json: string
   /**
-   * Catálogo ENXUTO (09/09): uma linha por variante, ≤ 15k chars, com os
-   * MESMOS dados do `json` — ids, eixos do vault e contrato da anatomia.
+   * Catálogo ENXUTO (09/09): uma linha por variante, com os MESMOS dados
+   * do `json` — ids, eixos do vault e contrato da anatomia. O "≤ 15k" que
+   * esta linha afirmava era falso desde 15/09 (16.255 em produção); a
+   * régua agora é por variante — ver `LIMITE_CHARS_POR_VARIANTE`.
    * É o índice de títulos do Curador: rankeia por aqui e abre a finalista
    * por `ler_nota` antes de decidir. O `json` completo tinha 128k dos 190k
    * chars da chamada (67k tokens) e o modelo lia tudo de todas para
@@ -230,6 +296,12 @@ export interface BuildCatalogResult {
    * para a aba Conhecimento.
    */
   divergentes: DivergenciaDeCatalogo[]
+  /**
+   * Pares do MESMO dispositivo cuja descrição conta a mesma peça. Higiene,
+   * como `divergentes`: não entra no prompt, vai para a telemetria e para a
+   * aba Conhecimento. Mais parecido primeiro.
+   */
+  duplicatas: DuplicataNoDispositivo[]
 }
 
 /**
@@ -273,7 +345,56 @@ export function buildCatalog(
     total: variants.length,
     types,
     divergentes,
+    duplicatas: duplicatasPorDispositivo(sections),
   }
+}
+
+/**
+ * Pares do mesmo dispositivo que contam a mesma peça. Variante sem
+ * dispositivo fica FORA: sem a classificação não se sabe se as duas
+ * disputam a mesma posição, e apontar par que nunca concorre é ruído.
+ */
+export function duplicatasPorDispositivo(
+  sections: ReadonlyArray<CatalogSection>,
+): DuplicataNoDispositivo[] {
+  const porDispositivo = new Map<string, CatalogEntry[]>()
+  for (const sec of sections) {
+    for (const e of sec.variantes) {
+      // Sem dispositivo, o grupo é a SEÇÃO (15/09). Pular a não classificada
+      // deixava justamente o grupo mais suspeito invisível: as 8 heroes que
+      // entraram naquele dia sem etiqueta incluíam duas que descrevem a
+      // mesma decisão de uso ("data comemorativa + oferta única + cupom"),
+      // e o detector não as via. Quem não tem etiqueta concorre em toda
+      // posição da seção, então é ali que a duplicata dela pesa.
+      const d = e.contrato.dispositivo ?? `sem dispositivo · ${sec.section}`
+      const arr = porDispositivo.get(d) ?? []
+      arr.push(e)
+      porDispositivo.set(d, arr)
+    }
+  }
+  const out: DuplicataNoDispositivo[] = []
+  for (const [dispositivo, entries] of porDispositivo) {
+    for (let i = 0; i < entries.length; i++) {
+      for (let j = i + 1; j < entries.length; j++) {
+        const a = entries[i]
+        const b = entries[j]
+        const descA = (a.description ?? "").trim()
+        const descB = (b.description ?? "").trim()
+        // Descrição vazia não é duplicata — é cadastro incompleto, e o
+        // Dice devolveria 1 para dois vazios.
+        if (!descA || !descB) continue
+        const sim = similaridadeDeDescricao(descA, descB)
+        if (sim < LIMIAR_DE_DUPLICATA) continue
+        out.push({
+          dispositivo,
+          a: { variant_id: a.variant_id, name: a.name },
+          b: { variant_id: b.variant_id, name: b.name },
+          similaridade: Number(sim.toFixed(3)),
+        })
+      }
+    }
+  }
+  return out.sort((x, y) => y.similaridade - x.similaridade)
 }
 
 /** Corte da descrição na linha enxuta — a primeira frase, até este tamanho. */
@@ -295,6 +416,86 @@ function campo(chave: string, valores: ReadonlyArray<string> | string | number |
   if (valores == null || valores === "") return ""
   if (Array.isArray(valores)) return valores.length ? `${chave}: ${valores.join(", ")}` : ""
   return `${chave}: ${String(valores)}`
+}
+
+/**
+ * Como `campo`, mas o VAZIO aparece (15/09). `campo` omite chave sem valor,
+ * e o modelo não tinha como distinguir "esta variante não se compromete com
+ * nada" de "este eixo não se aplica aqui" — a que declara vazio saía como
+ * uma linha curta e limpa, a que declara sai carregando o que declarou.
+ *
+ * Só para os três eixos do TOPO do ranking. `registro vetado: (não declara)`
+ * seria ruído: não vetar nada é o normal, não uma omissão.
+ */
+function campoDeclarado(chave: string, valores: ReadonlyArray<string> | string | null | undefined): string {
+  if (valores == null || valores === "" || (Array.isArray(valores) && valores.length === 0)) {
+    return `${chave}: (não declara)`
+  }
+  return campo(chave, valores)
+}
+
+/**
+ * A FORMA da peça em uma expressão curta: quantos campos de copy, quantas
+ * imagens e os traços que existem ou não. É o que distingue duas variantes
+ * que servem ao mesmo papel e declaram os mesmos eixos.
+ */
+function forma(c: ContratoResumo): string {
+  const partes = [
+    `${c.copy} ${c.copy === 1 ? "campo" : "campos"}`,
+    c.imagens > 0 ? `${c.imagens} ${c.imagens === 1 ? "imagem" : "imagens"}` : "",
+    c.n_ctas > 1 ? `${c.n_ctas} botões` : "",
+    c.tem_prazo ? "prazo" : "",
+    c.tem_preco_antigo ? "preço riscado" : "",
+    c.tem_nome_depoente ? "nome do depoente" : "",
+    c.tem_logo ? "logo" : "",
+  ]
+  return partes.filter(Boolean).join(" · ")
+}
+
+/**
+ * Todas as famílias numeradas, não só `product`. A linha publicava
+ * `slots: 4` e calava `review: 3` / `feature: 5` — e é a grade que decide
+ * se a variante realiza o papel ("grade de 4 quando o papel pede 2").
+ */
+function grades(c: ContratoResumo): string {
+  const ordem: FamiliaDeItem[] = ["product", "review", "item", "feature"]
+  return ordem
+    .map((f) => {
+      const n = c.itens[f]
+      return n && n > 0 ? `${f} ${n}` : ""
+    })
+    .filter(Boolean)
+    .join(", ")
+}
+
+/**
+ * A fatia do catálogo que UMA posição vê: a seção dela, só com as
+ * candidatas elegíveis.
+ *
+ * O leque (uma chamada por posição) precisa disto porque o catálogo inteiro
+ * no prompt de cada posição é o mesmo custo repetido N vezes — e porque o
+ * modelo, vendo as seis seções, tem o que confundir. A fatia é renderizada
+ * pelo MESMO `buildCompactCatalog` que monta o enxuto: se a fatia tivesse
+ * render próprio, a linha da variante mudaria de forma entre o catálogo
+ * inteiro e a fatia, e as duas medições (chars por variante, duplicatas)
+ * passariam a falar de textos diferentes.
+ *
+ * `idsPermitidos` ausente = a seção inteira. Ids que não estão na seção são
+ * ignorados (não inventa entrada); seção inexistente devolve `[]`, e quem
+ * chama decide — servir "(nenhuma candidata)" é decisão do prompt, não
+ * daqui. Puro.
+ */
+export function fatiarCatalogo(
+  sections: ReadonlyArray<CatalogSection>,
+  secao: string,
+  idsPermitidos?: ReadonlyArray<string> | null,
+): CatalogSection[] {
+  const alvo = normalizarSecao(secao)
+  const encontrada = sections.find((s) => normalizarSecao(s.section) === alvo)
+  if (!encontrada) return []
+  if (!idsPermitidos) return [encontrada]
+  const permitidos = new Set(idsPermitidos)
+  return [{ section: encontrada.section, variantes: encontrada.variantes.filter((v) => permitidos.has(v.variant_id)) }]
 }
 
 /**
@@ -345,15 +546,32 @@ export function buildCompactCatalog(sections: ReadonlyArray<CatalogSection>): Co
       ].filter(Boolean)
       const partes = [
         `${e.variant_id} · ${e.title}${e.note_slug ? ` [${e.note_slug}]` : ""} — ${e.summary}`,
-        campo("objeção", e.axes.objecao),
-        campo("aliviador", e.axes.aliviador),
-        campo("profundidade", e.axes.profundidade),
+        campo("dispositivo", c.dispositivo ?? null),
+        campoDeclarado("objeção", e.axes.objecao),
+        campoDeclarado("aliviador", e.axes.aliviador),
+        campoDeclarado("profundidade", e.axes.profundidade),
         campo("registro", e.axes.registro),
         campo("registro vetado", e.axes.registro_vetado),
         campo("paleta", e.axes.paleta),
         campo("papel", e.axes.papel_na_peca),
         campo("anatomia", anatomia),
-        campo("slots", c.itens.product && c.itens.product > 0 ? c.itens.product : null),
+        // A FORMA, derivada do schema (15/09). Medido nas 11 famílias com
+        // mais de uma variante ativa: os eixos escritos à mão deixavam três
+        // indistinguíveis — `hero_lineup` tinha UMA tupla para duas
+        // variantes — e estes derivados separam dez das onze. O que separa
+        // `offer 1` de `offer 2` (3 campos sem imagem × 11 campos com prazo)
+        // não estava em eixo nenhum.
+        campo("forma", forma(c)),
+        campo("grades", grades(c)),
+        // Slot de imagem GERADA declarado (15/09): o Curador leu "cards de
+        // vidro" como cards de TEXTO — a composição fotográfica de 600×850
+        // não aparecia em lugar nenhum da linha.
+        campo(
+          "imagem",
+          c.imagens > 0
+            ? `${c.imagens} slot${c.imagens === 1 ? "" : "s"} de imagem gerada${c.direcao == null ? " · sem direção fotográfica" : c.direcao.rascunho ? " · direção fotográfica EM RASCUNHO" : c.direcao.proibe_pessoa ? " · direção veta pessoa/mão" : ""}`
+            : null,
+        ),
         campo("itens", e.axes.itens),
         campo("peso", e.axes.peso),
         campo("convivência", e.axes.convivencia),
@@ -362,7 +580,25 @@ export function buildCompactCatalog(sections: ReadonlyArray<CatalogSection>): Co
     })
     blocos.push(`## ${sec.section} (${sec.variantes.length})\n${linhas.join("\n")}`)
   }
-  return { entries, text: blocos.join("\n\n") }
+  const text = blocos.join("\n\n")
+  const linhasLongas = entries
+    .map((e) => {
+      const linha = text.split("\n").find((l) => l.startsWith(`- ${e.variant_id} `))
+      return { variant_id: e.variant_id, chars: linha?.length ?? 0 }
+    })
+    .filter((l) => l.chars > LIMITE_CHARS_POR_VARIANTE)
+    .sort((a, b) => b.chars - a.chars)
+  const naoClassificadas = entries
+    .filter((e) => !e.requirements.dispositivo)
+    .map((e) => ({ variant_id: e.variant_id, name: e.title, section: e.section }))
+  return {
+    entries,
+    text,
+    chars: text.length,
+    charsPorVariante: entries.length ? Math.round(text.length / entries.length) : 0,
+    linhasLongas,
+    naoClassificadas,
+  }
 }
 
 function toEntry(
@@ -405,7 +641,17 @@ function toEntry(
     product_slots: v.product_slots ?? 0,
     orientacao_copy: v.copy_guidance ?? "",
     notas_implementacao: v.long_description ?? "",
-    contrato: resumirContrato(v.output_schema),
+    // B3: o dispositivo viaja DENTRO do contrato — assim `conflitoDeContrato`
+    // o compara em todos os lugares (elegíveis, eliminação, resgate,
+    // validadores) sem um segundo mapa que pudesse divergir.
+    contrato: {
+      ...resumirContrato(v.output_schema),
+      ...(v.dispositivo ? { dispositivo: v.dispositivo } : {}),
+      // 15/09: o que a direção fotográfica diz (rascunho / veta pessoa) —
+      // é o que permite eliminar a variante cuja direção contradiz a cena
+      // decidida, em vez de mandar as duas ao prompt de imagem.
+      direcao: (v.photo_direction ?? "").trim() ? lerDirecao(v.photo_direction) : null,
+    },
   }
   if (extra) {
     entry.vault = {
@@ -508,6 +754,17 @@ export interface HigieneDoVault {
   divergentes: DivergenciaDeCatalogo[]
   notas_orfas: NotaOrfa[]
   variantes_sem_nota: VarianteSemNota[]
+  /**
+   * Variante ativa sem `dispositivo` — concorre em toda posição da seção e
+   * nunca é pedida. Vem do `compact.naoClassificadas`.
+   */
+  nao_classificadas?: Array<{ variant_id: string; name: string; section: string }>
+  /**
+   * Duas variantes ATIVAS do mesmo dispositivo contando a mesma peça
+   * (15/09). Não é defeito de código: a escolha sempre recair na mesma é o
+   * comportamento certo quando as duas são iguais. É trabalho de curadoria.
+   */
+  duplicatas: DuplicataNoDispositivo[]
 }
 
 /** Uma nota de variante do vault, do ponto de vista da higiene. */
@@ -527,6 +784,8 @@ export function levantarHigieneDoVault(
   notas: NotaDeVariante[],
   variantesAtivas: { id: string; name: string; block_type: string }[],
   divergentes: DivergenciaDeCatalogo[],
+  duplicatas: DuplicataNoDispositivo[] = [],
+  nao_classificadas: Array<{ variant_id: string; name: string; section: string }> = [],
 ): HigieneDoVault {
   const ativas = new Map(variantesAtivas.map((v) => [v.id, v]))
   const comNota = new Set<string>()
@@ -548,5 +807,5 @@ export function levantarHigieneDoVault(
     .filter((v) => !comNota.has(v.id))
     .map((v) => ({ variant_id: v.id, name: v.name, block_type: v.block_type }))
 
-  return { divergentes, notas_orfas, variantes_sem_nota }
+  return { divergentes, notas_orfas, variantes_sem_nota, duplicatas, nao_classificadas }
 }

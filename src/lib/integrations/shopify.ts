@@ -50,6 +50,29 @@ export class ShopifyService {
     return response.json()
   }
 
+  /**
+   * Chamada GraphQL Admin (Passo 16). A REST é legada desde out/2024 e
+   * `discountNodes` só existe no GraphQL. Erros de GraphQL (`errors[]`)
+   * viram exceção — o chamador decide se é fail-open.
+   */
+  async graphql<T>(query: string, variables: Record<string, unknown> = {}): Promise<T> {
+    const response = await fetchWithRetry(`${this.baseUrl}/graphql.json`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Shopify-Access-Token": this.accessToken,
+      },
+      body: JSON.stringify({ query, variables }),
+    })
+    if (!response.ok) throw new Error(`Shopify GraphQL error: ${response.status}`)
+    const json = (await response.json()) as { data?: T; errors?: Array<{ message?: string }> }
+    if (json.errors && json.errors.length > 0) {
+      throw new Error(`Shopify GraphQL: ${json.errors.map((e) => e.message ?? "?").join("; ")}`)
+    }
+    if (!json.data) throw new Error("Shopify GraphQL: resposta sem data")
+    return json.data
+  }
+
   private async requestRaw(
     endpoint: string,
     options: RequestInit = {}

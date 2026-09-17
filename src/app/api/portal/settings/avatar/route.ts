@@ -10,6 +10,9 @@ import {
   type AvatarMimeType,
   validateMagicBytes,
   getAvatarExtension as getExtension,
+  avatarPath,
+  avatarPathsToClean,
+  avatarPathsAll,
 } from "@/lib/avatar-validation"
 
 const log = logger.child("PortalAvatarUpload")
@@ -66,17 +69,7 @@ export async function POST(request: NextRequest) {
     }
 
     const ext = getExtension(file.type)
-    const otherExts = ["jpg", "png", "webp"].filter((e) => e !== ext)
-    const filesToRemove = otherExts.map((e) => `${user.id}/avatar.${e}`)
-
-    if (filesToRemove.length > 0) {
-      const { error: removeError } = await supabase.storage.from(BUCKET).remove(filesToRemove)
-      if (removeError) {
-        log.warn("Failed to remove old avatar files:", removeError)
-      }
-    }
-
-    const path = `${user.id}/avatar.${ext}`
+    const path = avatarPath(user.id, ext, "portal")
 
     const { error: uploadError } = await supabase.storage
       .from(BUCKET)
@@ -103,6 +96,17 @@ export async function POST(request: NextRequest) {
     if (updateError) {
       log.error("Failed to update portal avatar_url:", updateError)
       throw new AppError("Erro ao atualizar perfil", 500)
+    }
+
+    // A limpeza vem DEPOIS do update, e só dentro do escopo do portal
+    // (`<uid>/portal/`). Antes ela vinha primeiro e usava o mesmo caminho
+    // do admin: apagava o arquivo que `profiles.avatar_url` apontava, numa
+    // rota que nem escreve nessa tabela.
+    const { error: removeError } = await supabase.storage
+      .from(BUCKET)
+      .remove(avatarPathsToClean(user.id, ext, "portal"))
+    if (removeError) {
+      log.warn("Failed to remove old avatar files:", removeError)
     }
 
     return successResponse(request, { avatar_url: `${publicUrl}?t=${Date.now()}` })
@@ -136,11 +140,9 @@ export async function DELETE(request: NextRequest) {
       throw new AppError("Sem permissão", 403)
     }
 
-    const filesToRemove = ["jpg", "png", "webp"].map(
-      (ext) => `${user.id}/avatar.${ext}`
-    )
-
-    const { error: removeError } = await supabase.storage.from(BUCKET).remove(filesToRemove)
+    const { error: removeError } = await supabase.storage
+      .from(BUCKET)
+      .remove(avatarPathsAll(user.id, "portal"))
     if (removeError) {
       log.warn("Failed to remove portal avatar files:", removeError)
     }

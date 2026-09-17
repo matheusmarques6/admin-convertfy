@@ -4,12 +4,13 @@
  * Usado pela UI ("Regenerar") e para validação manual.
  */
 import { ensureObjectionTargets } from "@/lib/agents/objecoes/seletor.service"
-import { NextRequest } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { randomUUID } from "crypto"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 import { generateForEmails } from "@/lib/agents/architect/generate.service"
+import { aplicarGate } from "@/lib/stores/prontidao.service"
 
 const log = logger.child("GenerateBlueprints")
 
@@ -33,9 +34,11 @@ export async function POST(
     const body = (await request.json().catch(() => ({}))) as {
       flow_ids?: string[]
       force?: boolean
+      override_motivo?: string
     }
     const flowIds = Array.isArray(body?.flow_ids) ? body.flow_ids : null
     const force = body?.force === true
+    const overrideMotivo = typeof body?.override_motivo === "string" && body.override_motivo.trim().length >= 10 ? body.override_motivo.trim() : null
 
     let flowQuery = admin
       .from("email_flows")
@@ -70,8 +73,16 @@ export async function POST(
           typeof e.flowType === "string",
       )
 
-    // Seletor de objeções antes da fase 1 (set/2026): sequencial por email.
     const batchId = randomUUID()
+    // Gate de prontidão (B1): 422 com o checklist, a menos que venha motivo.
+    const gate = await aplicarGate({ storeId, batchId, triggeredBy: user.id, origem: "generate-blueprints", override: overrideMotivo ? { motivo: overrideMotivo } : null })
+    if (gate.bloqueada) {
+      return NextResponse.json(
+        { error: "A loja não está pronta para gerar. Resolva os bloqueios ou informe um motivo para gerar mesmo assim.", code: "store_not_ready", bloqueios: gate.prontidao.bloqueios, avisos: gate.prontidao.avisos },
+        { status: 422 },
+      )
+    }
+    // Seletor de objeções antes da fase 1 (set/2026): sequencial por email.
     await ensureObjectionTargets({ storeId, emails: list, triggeredBy: user.id, batchId, force, logSkipped: true })
     const result = await generateForEmails(
       storeId,

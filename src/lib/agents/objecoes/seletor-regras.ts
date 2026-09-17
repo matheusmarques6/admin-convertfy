@@ -52,6 +52,12 @@ export function normalizarAlvo(
   contrato: IntentContract,
   catalogo: CatalogoDeObjecoes,
   jaAtacadas: readonly JaAtacada[],
+  /**
+   * Decisão de incentivo do TOQUE (14/09): vem do catálogo de outlines,
+   * resolvida por `incentivo-da-loja.service`. Ausente = sem incentivo —
+   * "não se sabe" deixou de existir, e sem informação não se promete.
+   */
+  incentivo: IncentivoDoAlvo | null = null,
 ): NormalizacaoAlvo {
   const o = rec(parsed)
   const avisos: string[] = []
@@ -143,8 +149,9 @@ export function normalizarAlvo(
       alerta_de_lastro: str(o.alerta_de_lastro) || null,
       razao: str(o.razao),
       lacuna,
-      // Do CATÁLOGO, por código — o modelo não decide se há incentivo.
-      incentivo: incentivoDoCatalogoNormalizado(catalogo),
+      // Do catálogo de OUTLINES, por código — o modelo não decide se há
+      // incentivo, e o Catalogador (LLM) também não (14/09).
+      incentivo: incentivoDoToque(incentivo),
       insumos_permitidos: insumos,
       contradicoes: [],
     },
@@ -155,12 +162,12 @@ export function normalizarAlvo(
   return resultado
 }
 
-function incentivoDoCatalogoNormalizado(catalogo: CatalogoDeObjecoes): IncentivoDoAlvo {
-  const inc = catalogo.incentivo
+function incentivoDoToque(incentivo: IncentivoDoAlvo | null | undefined): IncentivoDoAlvo {
+  if (!incentivo) return { existe: false, codigo: null, valor: null }
   return {
-    existe: typeof inc?.existe === "boolean" ? inc.existe : null,
-    codigo: inc?.codigo ?? null,
-    valor: inc?.valor ?? null,
+    existe: incentivo.existe === true,
+    codigo: incentivo.codigo ?? null,
+    valor: incentivo.valor ?? null,
   }
 }
 
@@ -344,7 +351,7 @@ export function alvoSintetico(
   motivo: string,
   detalhe: string | null,
   jaAtacadas: readonly JaAtacada[] = [],
-  catalogo: CatalogoDeObjecoes | null = null,
+  incentivo: IncentivoDoAlvo | null = null,
 ): AlvoDoEmail {
   return {
     modo: contrato?.modo ?? "quebra_de_objecao",
@@ -361,7 +368,7 @@ export function alvoSintetico(
     alerta_de_lastro: null,
     razao: "",
     lacuna: { motivo, detalhe },
-    incentivo: catalogo ? incentivoDoCatalogoNormalizado(catalogo) : { existe: null, codigo: null, valor: null },
+    incentivo: incentivoDoToque(incentivo),
     insumos_permitidos: [],
     contradicoes: [],
   }

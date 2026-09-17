@@ -7,6 +7,8 @@
 
 import { streamOpenRouterChat, type ChatContentPart, type ChatMessage } from "@/lib/ai/openrouter-chat"
 import { logger } from "@/lib/logger"
+import { ST_TEMPLATES } from "../templates"
+import { MOLDE_KEYS } from "../types"
 import { SYSTEM_PROMPT } from "./prompt"
 import { SAIDA_SCHEMA, type EntradaIA, type SaidaPorAcao } from "./schemas"
 
@@ -87,7 +89,7 @@ Campos:
 - transformacao: o que mudou, com costura e consequência (2 a 4 frases).
 - friccaoCentral: a tensão REAL do fenômeno (conflito, não só tema) para quem vende online.
 - anguloDominante: a leitura mais forte para o carrossel, em uma frase.
-- evidencias: A), B), C) (até 6) — só o que está no insumo ou nos resultados de busca (quando houver, vêm no fim deste pedido); cada uma com "fonte": a URL INTEIRA de um dos resultados, ou o nome + ano quando o dado veio do insumo. Sem fonte, deixe o campo fora e o dado será marcado [confirmar].
+- evidencias: A), B), C) (até 6) — só o que está no insumo, nos resultados de busca (quando houver, vêm no fim deste pedido) ou nas notas da base da casa (quando houver, vêm no início). Cada uma com "fonte": a URL INTEIRA de um dos resultados, o caminho EXATO da nota como escrito em "Fonte:" (ex.: Convertfy/estruturas/welcome.md), ou o nome + ano quando o dado veio do insumo. Caminho de nota que não foi servido acima é removido como link inventado — não escreva de memória. Sem fonte, deixe o campo fora e o dado será marcado [confirmar].
 - eixo: mercado | cases | noticias | cultura | produto.
 - funil: topo (alcançar gente nova) | meio (aquecer quem segue) | fundo (converter).
 - promessa: o que o hook vai prometer e a peça TEM de cumprir antes do CTA.
@@ -261,7 +263,7 @@ Responda com JSON: {"texto": string, "acao": {"tipo": string, "label": string} o
     case "analisar_inspiracao":
       return {
         imagens: e.imagens,
-        texto: `As imagens em anexo são os slides de um carrossel de referência (na ordem). Leia a ESTRUTURA (não o conteúdo): para cada slide, classifique o tipo entre capa, dado, texto, prova, lista, mec, cta e descreva o layout em poucas palavras (ex.: "imagem full + título 2 linhas", "número gigante + apoio serif", "citação sobre foto escura"). Marque slotImagem quando o slide depende de fotografia. Estime a fidelidade (0 a 100) com que os moldes da casa reproduzem essa estrutura e sugira o molde mais próximo (molde-turbo, molde-benchmark, molde-lista, molde-mec ou molde-bastidor).
+        texto: `As imagens em anexo são os slides de um carrossel de referência (na ordem). Leia a ESTRUTURA (não o conteúdo): para cada slide, classifique o tipo entre capa, dado, texto, prova, lista, mec, cta e descreva o layout em poucas palavras (ex.: "imagem full + título 2 linhas", "número gigante + apoio serif", "citação sobre foto escura"). Marque slotImagem quando o slide depende de fotografia. Estime a fidelidade (0 a 100) com que os moldes da casa reproduzem essa estrutura e sugira o molde mais próximo entre ${ST_TEMPLATES.map((t) => `${t.id} (${t.nome})`).join(", ")}.
 Responda com JSON: {"frames": [{"tipo": string, "descricao": string, "slotImagem": boolean}], "fidelidade": number, "observacoes": string, "templateSugerido": string}`,
       }
     case "transcrever_referencia":
@@ -271,7 +273,7 @@ Responda com JSON: {"frames": [{"tipo": string, "descricao": string, "slotImagem
 1. Transcreva a COPY de cada slide, fiel ao que está escrito (título e texto de apoio, separados). Não resuma, não corrija, não invente o que não está legível — deixe o campo vazio.
 2. Classifique cada slide entre capa, dado, texto, prova, lista, mec, cta.
 3. Diga em 3 a 5 bullets curtos POR QUE a peça funciona (gancho da capa, ritmo, tipo de prova, como fecha no CTA) — é o que a próxima geração vai imitar.
-4. Sugira pilar (Case, Educacional, Bastidor, Benchmark) e molde (Turbo, MEC, Benchmark, Lista, Bastidor) mais próximos, e a palavra-chave do comment gate se houver.
+4. Sugira pilar (Case, Educacional, Bastidor, Benchmark) e molde (${MOLDE_KEYS.join(", ")}) mais próximos, e a palavra-chave do comment gate se houver.
 5. "nome" = a headline da capa.
 ${e.legenda ? `Legenda publicada com o post (use para entender o fechamento e a palavra-chave):\n"""\n${e.legenda}\n"""` : ""}
 ${e.nome ? `Nome de trabalho informado: "${e.nome}".` : ""}
@@ -345,6 +347,19 @@ export interface ResultadoIA<K extends keyof SaidaPorAcao> {
 /** Ações que ESCREVEM copy — só elas recebem as referências de estilo. */
 const ACOES_COM_REFERENCIAS = new Set<EntradaIA["acao"]>(["gerar_estrutura", "preencher_frame", "headlines", "ajustar_headline", "espinha", "legenda", "distribuir", "chat"])
 
+/**
+ * Quem recebe a doutrina da base.
+ *
+ * Inclui a `triagem`, que as referências NÃO recebem: é ali que o insumo
+ * vira transformação, fricção e evidência, e é o momento em que saber o
+ * mecanismo muda a leitura. Fora dali entram as ações que escrevem o
+ * argumento. `revisar`, `distribuir`, `corrigir_legenda` e as de leitura
+ * (`analisar_inspiracao`, `transcrever_referencia`) ficam de fora: elas
+ * julgam ou transportam texto que já existe, e doutrina ali só gastaria
+ * contexto.
+ */
+const ACOES_COM_CONHECIMENTO = new Set<EntradaIA["acao"]>(["triagem", "espinha", "gerar_estrutura", "preencher_frame", "headlines", "legenda", "chat", "pautas"])
+
 const MAX_TOKENS: Partial<Record<EntradaIA["acao"], number>> = { classificar_ideia: 1200, trends: 2500, pautas: 3500, gerar_estrutura: 6000, transcrever_referencia: 6000, revisar: 7000, headlines: 5000, espinha: 4000, triagem: 3000 }
 const TEMPERATURA: Partial<Record<EntradaIA["acao"], number>> = { classificar_ideia: 0.4, trends: 0.7, pautas: 0.8, headlines: 0.8, ajustar_headline: 0.8, revisar: 0.2, triagem: 0.4 }
 
@@ -364,12 +379,22 @@ export async function executarIA<K extends keyof SaidaPorAcao>(
      * triagem. Quem chama a internet é a rota — este módulo não faz I/O.
      */
     blocoFontes?: string
+    /**
+     * Doutrina da base do Obsidian (`blocoDeConhecimento`), já renderizada.
+     * É a SUBSTÂNCIA — o mecanismo e os limites do que a peça afirma —,
+     * enquanto `blocoReferencias` é o ESTILO. Vem primeiro dos dois porque
+     * decide o que dizer; a referência decide como dizer.
+     */
+    blocoConhecimento?: string
   } = {},
 ): Promise<ResultadoIA<K>> {
   const model = opts.model ?? CONTEUDO_IA_MODEL
   const instrucao = instrucaoDaAcao(entrada)
   const usaReferencias = Boolean(opts.blocoReferencias) && ACOES_COM_REFERENCIAS.has(entrada.acao)
-  const base = usaReferencias ? `${opts.blocoReferencias}\n\n---\n\n${instrucao.texto}` : instrucao.texto
+  const usaConhecimento = Boolean(opts.blocoConhecimento) && ACOES_COM_CONHECIMENTO.has(entrada.acao)
+  const base = [usaConhecimento ? opts.blocoConhecimento : "", usaReferencias ? opts.blocoReferencias : "", instrucao.texto]
+    .filter(Boolean)
+    .join("\n\n---\n\n")
   // As fontes vão DEPOIS do pedido, coladas nas regras de citação: assim a
   // última coisa que o modelo lê antes de responder é a lista fechada de
   // URLs e a proibição de inventar outra.
@@ -407,7 +432,7 @@ export async function executarIA<K extends keyof SaidaPorAcao>(
       if (!parsed.success) {
         throw new IaJsonInvalidoError(parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; "))
       }
-      log.info("conteudo_ia.ok", { acao: entrada.acao, model, ms: Date.now() - inicio, custo, tentativa, referencias: usaReferencias })
+      log.info("conteudo_ia.ok", { acao: entrada.acao, model, ms: Date.now() - inicio, custo, tentativa, referencias: usaReferencias, conhecimento: usaConhecimento })
       return { dados: parsed.data as SaidaPorAcao[K], modelo: model, ms: Date.now() - inicio, custoUsd: custo, tentativas: tentativa }
     } catch (e) {
       ultimoErro = e as Error

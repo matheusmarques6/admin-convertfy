@@ -30,6 +30,7 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { requireWebhookSecret } from "@/lib/api/n8n-auth"
 import { enqueueDispatchJob } from "@/lib/services/email-dispatch-queue.service"
 import { runCatalogador } from "@/lib/agents/objecoes/catalogador.service"
+import { capturarPoliticas } from "@/lib/stores/politicas.service"
 import { comOrcamentoDeFase1 } from "@/lib/agents/fase1-orcamento"
 import {
   errorResponse,
@@ -47,6 +48,8 @@ export const maxDuration = 300
  * de banco (poucos segundos), mas perdê-las custa a geração inteira da loja.
  */
 const RESERVA_POS_CATALOGADOR_MS = 40_000
+/** Passo 16: teto da leitura das páginas de política (duas páginas + uma chamada curta). */
+const ORCAMENTO_POLITICAS_MS = 20_000
 
 const schema = z.object({
   store_id: z.string().uuid(),
@@ -74,6 +77,25 @@ export async function POST(request: NextRequest) {
     // Gatilho em background — falha não derruba o 200 (o n8n não deve re-tentar
     // por erro nosso). A idempotência vive no enqueue (dedup de job ativo).
     after(async () => {
+      // Políticas públicas ANTES do Catalogador (Passo 16): troca e frete
+      // lidos das páginas da loja entram como <politicas_publicas> no
+      // catálogo e como insumo do Seletor. Teto curto e fail-open — a
+      // pesquisa nunca fica presa numa página que não responde.
+      try {
+        const pol = await comOrcamentoDeFase1(ORCAMENTO_POLITICAS_MS, () => capturarPoliticas(admin, body.store_id))
+        logger.info("[n8n:pesquisa-completa] politicas", {
+          store_id: body.store_id,
+          status: pol.status,
+          ...(pol.status === "ok" || pol.status === "nada_encontrado"
+            ? { troca_dias: pol.politicas.troca?.dias ?? null, frete_gratis: pol.politicas.frete?.gratis ?? null, erros: pol.politicas.erros.length, gravado: pol.gravado }
+            : {}),
+        })
+      } catch (err) {
+        logger.warn("[n8n:pesquisa-completa] politicas_failed", {
+          store_id: body.store_id,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      }
       // Catalogador ANTES de enfileirar (set/2026): o Seletor da fase 1 lê o
       // catálogo, e a pesquisa acabou de mudar. Fail-open — sem catálogo o
       // Seletor degrada para lacuna; a geração nunca fica presa aqui.
@@ -87,7 +109,7 @@ export async function POST(request: NextRequest) {
         // enqueue — que é a geração inteira dos e-mails — nunca acontece.
         // Em `after()` isso some sem deixar rastro, porque a resposta 200 já
         // foi enviada ao n8n.
-        const cat = await comOrcamentoDeFase1(maxDuration * 1000 - RESERVA_POS_CATALOGADOR_MS, () =>
+        const cat = await comOrcamentoDeFase1(maxDuration * 1000 - RESERVA_POS_CATALOGADOR_MS - ORCAMENTO_POLITICAS_MS, () =>
           runCatalogador({
             storeId: body.store_id,
             triggeredBy: body.regeneration ? "pesquisa_regenerada" : "pesquisa_completa",

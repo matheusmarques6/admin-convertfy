@@ -59,7 +59,13 @@ export function contarTracos(texto: string): number {
  * referencia os campos novos — então a correção passou a ser nossa, no
  * agente que já reescreve campo e cujo veredicto é do código.
  */
-export type MotivoDeAlvo = "max_len" | "travessao" | "idioma" | "ausente"
+/**
+ * `ausente` SAIU (Passo 13, 14/09): o encurtador criava o item de lista que
+ * o gerador pulou — e criou `column_b_item_6`, que o dispatch tinha OMITIDO
+ * de propósito. Item que não veio sai do e-mail pelo merge (a linha some),
+ * que é o desfecho certo: o encurtador encurta, não inventa.
+ */
+export type MotivoDeAlvo = "max_len" | "travessao" | "idioma"
 
 /** Um campo a corrigir, endereçado para o prompt e para a tela. */
 export interface AlvoDeEncurtamento {
@@ -83,21 +89,28 @@ export interface AlvoDeEncurtamento {
   /** O idioma da loja (`client_stores.language`), como está gravado. */
   idioma_esperado?: string
   /**
-   * Só no motivo `ausente`: os itens já preenchidos da MESMA lista
-   * (`column_b_item_1..5` para um `column_b_item_6` vazio). É o material
-   * de que o modelo cria o item que faltou — e a régua do guard
-   * `igual_a_irmao`.
+   * Itens já preenchidos da MESMA lista (`column_b_item_1..5`). Régua do
+   * guard `igual_a_irmao`: a reescrita não pode virar cópia de um irmão.
    */
   irmaos?: string[]
+  /**
+   * Passo 13: coluna COMPARATIVA — a célula do outro lado da mesma linha
+   * (`column_a_item_3` para `column_b_item_3`). Vai ao modelo como
+   * contexto para a reescrita manter o LADO da comparação.
+   */
+  par?: string
   /**
    * 09/09: o CÓDIGO já resolveu (travessão trocado por vírgula/ponto e o
    * texto cabe). O chain aceita sem chamar o modelo.
    */
   proposta_por_codigo?: string
   /**
-   * 09/09: coluna COMPARATIVA — nunca vai ao modelo (é onde o sentido
+   * Coluna COMPARATIVA. Até 14/09 nunca ia ao modelo (é onde o sentido
    * inverte: "Sits low — rolls down" virou "Low rise, no midday roll" na
-   * coluna dos concorrentes). Só aparar por código, ou manter.
+   * coluna dos concorrentes) e o excesso que não coubesse no aparo era
+   * MANTIDO — a célula ia ao cliente estourada. Passo 13: o aparo por
+   * código continua primeiro; o que não cabe vai ao modelo com `par` e a
+   * instrução de manter o lado, e o guard cobra o tamanho.
    */
   so_codigo?: boolean
 }
@@ -110,6 +123,29 @@ const COLUNA_COMPARATIVA_RE = /^(column_|col_|coluna_|vs_|compar)/i
  * comparativa. Item ausente aqui NÃO é para inventar — o copy_fit
  * preencheu a coluna "Others" com um benefício da Hero (08/09).
  */
+/**
+ * O texto da célula do OUTRO lado da mesma linha comparativa
+ * (`column_a_item_3` ↔ `column_b_item_3`), quando existe e está preenchida.
+ */
+export function parComparativoDe(
+  key: string,
+  fields: ReadonlyArray<{ key: string }>,
+  content: Record<string, unknown> | null | undefined,
+): string | null {
+  const m = ITEM_DE_LISTA_RE.exec(key)
+  if (!m) return null
+  const n = m[2]
+  const meuPrefixo = m[1].toLowerCase()
+  for (const f of fields) {
+    const mm = ITEM_DE_LISTA_RE.exec(f.key)
+    if (!mm || mm[2] !== n || mm[1].toLowerCase() === meuPrefixo) continue
+    if (!COLUNA_COMPARATIVA_RE.test(f.key)) continue
+    const v = content?.[f.key]
+    if (typeof v === "string" && v.trim()) return v.trim()
+  }
+  return null
+}
+
 export function temParComparativo(key: string, fields: ReadonlyArray<{ key: string }>): boolean {
   const m = ITEM_DE_LISTA_RE.exec(key)
   if (!m) return false
@@ -151,22 +187,30 @@ export function removerTravessao(texto: string): { texto: string; removidos: num
 }
 
 /**
- * Aparar no limite por código (09/09): corta na última fronteira de palavra
+ * Aparar no limite por código: corta na última FRONTEIRA DE FRASE (`. ! ?`)
  * que cabe, sem reticências, só quando o excesso é pequeno (≤ 15%, a mesma
- * régua do QA `copy_excede_max_len`). Excesso maior devolve null — cortar
- * metade de um parágrafo foi o plano B que mandou "Plugs directly into any
- * standard outlet." ao cliente (02/09).
+ * régua do QA `copy_excede_max_len`). Sem fronteira de frase devolve null
+ * — o alvo vai ao modelo com "reescreva em ≤ N chars, frase completa".
+ *
+ * 09/09 cortava na última PALAVRA: "cortou `column_a_item_3` no meio"
+ * (batch 6249aef2) — uma frase decepada com ponto colado no fim parece
+ * frase e não é. Excesso maior também devolve null: cortar metade de um
+ * parágrafo foi o plano B que mandou "Plugs directly into any standard
+ * outlet." ao cliente (02/09).
  */
 export function apararNoLimite(texto: string, max: number, tolerancia = 0.15): string | null {
   const t = texto.trim()
   if (!(max > 0) || t.length <= max) return null
   if (t.length > Math.floor(max * (1 + tolerancia))) return null
   const corte = t.slice(0, max + 1)
-  const ultimoEspaco = corte.lastIndexOf(" ")
-  if (ultimoEspaco <= 0) return null
-  let out = t.slice(0, ultimoEspaco).replace(/[\s,;:—–\-]+$/g, "")
-  if (!out) return null
-  if (/[.!?]$/.test(t) && !/[.!?]$/.test(out)) out += "."
+  // Última pontuação de fim de frase que cabe — e que não seja a do fim do
+  // texto inteiro (aí não haveria o que aparar).
+  const m = corte.match(/[.!?](?=\s|$)/g)
+  if (!m) return null
+  const ultimaPontuacao = corte.lastIndexOf(m[m.length - 1])
+  if (ultimaPontuacao <= 0) return null
+  const out = t.slice(0, ultimaPontuacao + 1).trim()
+  if (!out || out.length >= t.length) return null
   return out.length <= max ? out : null
 }
 
@@ -204,6 +248,8 @@ export function irmaosDeLista(
  * não do tamanho da frase.
  */
 export interface RelatorioDeAlvos {
+  /** Passo 13: itens de lista vazios (≥ 2 irmãos) que NÃO viram alvo — saem pelo merge. */
+  itens_ausentes: string[]
   /** Item ausente com par em outra coluna — NÃO entra como `ausente`. */
   par_comparativo: string[]
   /** Coluna comparativa: alvo marcado `so_codigo` (nunca vai ao modelo). */
@@ -217,7 +263,8 @@ export function alvosDeEncurtamento(
   opts?: { idiomaDaLoja?: string | null; relatorio?: RelatorioDeAlvos },
 ): AlvoDeEncurtamento[] {
   const idiomaDaLoja = opts?.idiomaDaLoja ?? null
-  const rel: RelatorioDeAlvos = opts?.relatorio ?? { par_comparativo: [], comparativa_sem_llm: [], travessao_por_codigo: [] }
+  const rel: RelatorioDeAlvos = opts?.relatorio ?? { itens_ausentes: [], par_comparativo: [], comparativa_sem_llm: [], travessao_por_codigo: [] }
+  rel.itens_ausentes ??= []
   const out: AlvoDeEncurtamento[] = []
   blocos.forEach((b, i) => {
     const fields = b.fields ?? []
@@ -234,40 +281,15 @@ export function alvosDeEncurtamento(
       if (deriveFieldNature(f) !== "copy") continue
       const texto = String(b.content?.[f.key] ?? "").trim()
       if (!texto) {
-        // ITEM AUSENTE (02/09, body-4): o n8n devolveu 5 dos 6 itens da
-        // coluna "Others" e o badge "6" foi ao cliente sem texto. O
-        // contrato diz `required:false` e o flow ignora as nossas
-        // diretivas — então quem cria o item é o encurtador, a partir dos
-        // irmãos, sob o mesmo guard (idioma, tamanho, não repetir irmão).
-        // Só item de LISTA com ≥ 2 irmãos preenchidos: não é licença para
-        // inventar copy de campo solto.
-        const irmaos = irmaosDeLista(f.key, fields, b.content)
-        if (irmaos.length < 2) continue
-        // Linha de tabela comparativa: item ausente não se inventa (09/09).
-        // Fica vazio e o merge remove a linha quando as duas células estão
-        // vazias.
-        if (temParComparativo(f.key, fields)) {
-          rel.par_comparativo.push(`${position}.${f.key}`)
-          continue
+        // ITEM AUSENTE não vira alvo (Passo 13, 14/09). De 02/09 a 14/09 o
+        // encurtador criava o item de lista que o gerador pulou, a partir
+        // dos irmãos — e criou `column_b_item_6`, que o dispatch tinha
+        // OMITIDO por arbitragem (batch 6249aef2). Campo vazio sai do
+        // e-mail pelo merge (a linha some); o registro diz quantos.
+        if (irmaosDeLista(f.key, fields, b.content).length >= 2) {
+          rel.itens_ausentes.push(`${position}.${f.key}`)
         }
-        out.push({
-          id: `${position}.${f.key}`,
-          position,
-          block_id: b.id ?? null,
-          type: b.block_type ?? "",
-          key: f.key,
-          label: f.label || f.key,
-          orientacao: f.guidance || "",
-          texto: "",
-          max: f.max_len,
-          min: f.min_len ?? null,
-          motivos: ["ausente"],
-          tracos: 0,
-          irmaos,
-          ...((idiomaDaLoja ?? "").trim()
-            ? { idioma_esperado: (idiomaDaLoja ?? "").trim() }
-            : {}),
-        })
+        if (temParComparativo(f.key, fields)) rel.par_comparativo.push(`${position}.${f.key}`)
         continue
       }
       const max = estouroPorChave.get(f.key)
@@ -285,10 +307,12 @@ export function alvosDeEncurtamento(
       // mantém, e o registro diz qual.
       if (ehColunaComparativa(f.key, fields)) {
         rel.comparativa_sem_llm.push(id)
+        const par = parComparativoDe(f.key, fields, b.content)
         out.push({
           id, position, block_id: b.id ?? null, type: b.block_type ?? "", key: f.key,
           label: f.label || f.key, orientacao: f.guidance || "", texto, max: limite,
           min: f.min_len ?? null, motivos, tracos, so_codigo: true,
+          ...(par ? { par } : {}),
           ...((idiomaDaLoja ?? "").trim() ? { idioma_esperado: (idiomaDaLoja ?? "").trim() } : {}),
         })
         continue
@@ -376,7 +400,7 @@ export function aceitarReescrita(
      * língua do campo, tenha ela entrado por tamanho, travessão ou idioma.
      */
     idiomaEsperado?: string | null
-    /** Só no motivo `ausente`: o item novo não pode repetir um irmão. */
+    /** Itens da mesma lista: a reescrita não pode virar cópia de um irmão. */
     irmaos?: ReadonlyArray<string> | null
   },
 ): VeredictoDeReescrita {
@@ -384,7 +408,7 @@ export function aceitarReescrita(
   const texto = typeof novo === "string" ? novo.trim() : ""
   if (!texto) return { ok: false, motivo: "vazio" }
   if (texto === original.trim()) return { ok: false, motivo: "identico" }
-  if (motivos.includes("ausente") && limites.irmaos?.length) {
+  if (limites.irmaos?.length) {
     const chave = chaveDeComparacao(texto)
     if (limites.irmaos.some((i) => chaveDeComparacao(i) === chave)) {
       return { ok: false, motivo: "igual_a_irmao" }
@@ -529,9 +553,8 @@ export function limiteDoCampo(
  * que tinha traço **e** tamanho — e para esse a resposta do código existe
  * e é a mesma: trocar o traço e, se ainda estourar, aparar no limite.
  *
- * O que NÃO se faz aqui: inventar texto. Alvo `ausente` (item de lista que
- * o gerador pulou) só o modelo cria — sem ele a linha sai do e-mail pelo
- * merge, que é o desfecho correto.
+ * O que NÃO se faz aqui: inventar texto. Campo vazio nunca é preenchido —
+ * a linha sai do e-mail pelo merge, que é o desfecho correto (Passo 13).
  *
  * Puro (zero I/O) — testável.
  */

@@ -16,8 +16,14 @@
 import crypto from "crypto"
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
+import { montarInsumos, normalizarPoliticas, type PoliticasDaLoja } from "@/lib/stores/politicas"
 import { classificarFalha, planejarRetentativa, avisoDeContaPerdida } from "../retry-teto"
-import { tetoDeRelogioDoAgente } from "../fase1-orcamento"
+import {
+  cabeNaJanela,
+  custoTipicoDoAgente,
+  restanteDoOrcamento,
+  tetoDeRelogioDoAgente,
+} from "../fase1-orcamento"
 import { loadTopProducts } from "../top-products"
 import { renderTopProducts } from "../architect/store-context"
 import {
@@ -53,6 +59,8 @@ import {
   validarAlvo,
 } from "./seletor-regras"
 import type { AlvoDoEmail, CatalogoDeObjecoes, JaAtacada } from "./vocabulario"
+import type { DecisaoDeIncentivo } from "./incentivo"
+import { resolverIncentivoDoEmail } from "./incentivo-da-loja.service"
 
 const log = logger.child("Seletor")
 
@@ -241,6 +249,14 @@ export interface RunSeletorInput {
   intencaoBody: string
   jaAtacadas: JaAtacada[]
   topProductsTexto: string
+  /** Decisão de incentivo do toque (outline + idioma + override), 14/09. */
+  incentivo: DecisaoDeIncentivo
+  /**
+   * Passo 16: políticas públicas da loja (`client_stores.politicas`). O
+   * código as INJETA em `insumos_permitidos` com a URL — o modelo não
+   * decide se a troca existe; a página decide.
+   */
+  politicas?: PoliticasDaLoja | null
 }
 
 /** Um call do Seletor para um email. Persiste alvo (válido ou sintético) e a run. Nunca lança. */
@@ -257,6 +273,8 @@ export async function runSeletor(input: RunSeletorInput): Promise<ObjectionTarge
     ...(tetoDeRelogioDoAgente("seletor") ? { timeoutMs: tetoDeRelogioDoAgente("seletor")! } : {}),
     system_prompt: cfgRow?.system_prompt?.trim() || DEFAULT_SELETOR_SYSTEM,
     user_template: cfgRow?.user_template?.trim() || DEFAULT_SELETOR_USER,
+    // Loja + catálogo antes da marca: lidos do cache pelos irmãos do lote.
+    cache_user_prefix: true,
   }
   const candidatas = candidatasElegiveis(input.catalogo, input.contrato, input.flowType, input.jaAtacadas)
   // O piso de `n_objecoes` cede ao catálogo (ver validarAlvo). Registrado
@@ -314,6 +332,10 @@ export async function runSeletor(input: RunSeletorInput): Promise<ObjectionTarge
   })
 
   let tokensIn = 0
+
+  let tokensCache = 0
+
+  let tokensCacheEscrita = 0
   let tokensOut = 0
   let costUsd = 0
   let raw = ""
@@ -345,6 +367,8 @@ export async function runSeletor(input: RunSeletorInput): Promise<ObjectionTarge
       tokensIn += res.tokensInput
       tokensOut += res.tokensOutput
       costUsd += res.costUsd
+      if (typeof res.cachedTokens === "number") tokensCache += res.cachedTokens
+      if (typeof res.cacheWriteTokens === "number") tokensCacheEscrita += res.cacheWriteTokens
       const seg = buildSegmentedPrompt(config.user_template, vars, SELETOR_ORIGINS, { parte: "user" })
       promptFinal = seg.segments ? seg.prompt : renderImageTemplate(config.user_template, vars)
       segmentsFinal = seg.segments
@@ -354,8 +378,19 @@ export async function runSeletor(input: RunSeletorInput): Promise<ObjectionTarge
       } catch {
         throw new Error(res.tokensOutput >= tetoDaVez ? `resposta truncada no teto de ${tetoDaVez} tokens` : "resposta não é JSON válido")
       }
-      const { alvo, avisos } = normalizarAlvo(parsed, input.contrato, input.catalogo, input.jaAtacadas)
+      const { alvo, avisos } = normalizarAlvo(parsed, input.contrato, input.catalogo, input.jaAtacadas, input.incentivo)
       avisosFinais = avisos
+      // Passo 16: os insumos da PÁGINA PÚBLICA entram primeiro (fato com
+      // URL), os do modelo completam até o teto de 12 — o Seletor deixa de
+      // proibir "prometer troca" quando a loja promete na própria página.
+      const insumosDePolitica = montarInsumos(input.politicas)
+      if (insumosDePolitica.length > 0) {
+        const vistos = new Set(insumosDePolitica.map((i) => i.toLowerCase()))
+        alvo.insumos_permitidos = [
+          ...insumosDePolitica,
+          ...(alvo.insumos_permitidos ?? []).filter((i) => !vistos.has(i.toLowerCase())),
+        ].slice(0, 12)
+      }
       const reprovacoes = validarAlvo(alvo, input.contrato, input.catalogo, input.jaAtacadas, input.flowType)
       if (reprovacoes.length) throw new ValidacaoError(reprovacoes)
 
@@ -394,12 +429,16 @@ export async function runSeletor(input: RunSeletorInput): Promise<ObjectionTarge
             lacuna_com_candidatas: Boolean(alvo.lacuna) && candidatas.length > 0,
             catalog_sha8: input.catalogSha8,
             target_id: row?.id ?? null,
+            // Passo 16: quantos insumos vieram das páginas públicas da loja.
+            insumos_de_politica: montarInsumos(input.politicas).length,
             // De onde saiu o modo: a nota tipou, ou o agente leu a prosa.
             // Sem isto não dá para auditar a decisão nem medir quantas
             // intenções ainda estão sem `modo` declarado (07/09).
             modo_adotado: alvo.modo,
             modo_origem: input.contrato.modo ? "declarado" : "deduzido",
             contrato_origens: input.contrato.origens,
+            tokens_cache: tokensCache,
+            tokens_cache_escrita: tokensCacheEscrita,
           },
         },
         tokensInput: tokensIn,
@@ -441,7 +480,7 @@ export async function runSeletor(input: RunSeletorInput): Promise<ObjectionTarge
   }
 
   // 2 falhas → alvo sintético com lacuna (nunca alvo inventado) + run error.
-  const sintetico = alvoSintetico(input.contrato, "seletor_falhou", erros.join("; ").slice(0, 600), input.jaAtacadas, input.catalogo)
+  const sintetico = alvoSintetico(input.contrato, "seletor_falhou", erros.join("; ").slice(0, 600), input.jaAtacadas, input.incentivo)
   const row = await persistTarget({
     storeId: input.storeId, flowType: input.flowType, emailNumber: input.emailNumber,
     catalogSha8: input.catalogSha8, target: sintetico, consumido: input.mode === "on", runId,
@@ -483,6 +522,12 @@ export interface EnsureTargetsResult {
   ran: number
   reused: number
   skipped: number
+  /**
+   * E-mails que ficaram sem alvo porque a janela da fase 1 acabou no meio
+   * do pré-passo. NÃO é `skipped`: eles não foram dispensados, foram
+   * adiados — o próximo tick reaproveita o que já saiu e continua daqui.
+   */
+  semOrcamento: number
   error?: string
 }
 
@@ -497,9 +542,13 @@ const MOTIVO_LEGIVEL: Record<string, string> = {
 /**
  * O único caminho para ter alvos antes da fase 1. Sequencial por flow e por
  * `email_number` (ja_atacadas depende da ordem). Nunca lança.
+ *
+ * Respeita a janela da fase 1 quando há uma aberta: acabou o orçamento,
+ * para no e-mail em que estava e devolve `semOrcamento`. Os que ficaram
+ * seguem `pending` no job e o próximo tick continua daqui.
  */
 export async function ensureObjectionTargets(input: EnsureTargetsInput): Promise<EnsureTargetsResult> {
-  const result: EnsureTargetsResult = { mode: "off", targets: [], ran: 0, reused: 0, skipped: 0 }
+  const result: EnsureTargetsResult = { mode: "off", targets: [], ran: 0, reused: 0, skipped: 0, semOrcamento: 0 }
   try {
     const mode = await loadSeletorMode(input.storeId)
     result.mode = mode
@@ -508,10 +557,11 @@ export async function ensureObjectionTargets(input: EnsureTargetsInput): Promise
     const admin = createAdminClient()
     const { data: store } = await admin
       .from("client_stores")
-      .select("store_name, store_url, objection_catalog")
+      .select("store_name, store_url, objection_catalog, politicas")
       .eq("id", input.storeId)
       .maybeSingle()
-    const s = (store ?? {}) as { store_name?: string | null; store_url?: string | null; objection_catalog?: unknown }
+    const s = (store ?? {}) as { store_name?: string | null; store_url?: string | null; objection_catalog?: unknown; politicas?: unknown }
+    const politicas = normalizarPoliticas(s.politicas)
     const batchId = input.batchId ?? crypto.randomUUID()
 
     const porFlow = new Map<string, number[]>()
@@ -555,7 +605,9 @@ export async function ensureObjectionTargets(input: EnsureTargetsInput): Promise
     const brandName = s.store_name || "Loja"
     const topProductsTexto = renderTopProducts(await loadTopProducts(admin, input.storeId, s.store_url ?? null))
 
+    let semOrcamento = false
     for (const [flowType, nums] of porFlow) {
+      if (semOrcamento) break
       const [intents, vigentes] = await Promise.all([loadIntents(flowType), loadCurrentTargets(input.storeId, flowType)])
       const porNumero = new Map(vigentes.map((t) => [t.email_number, t]))
       for (const n of Array.from(new Set(nums)).sort((a, b) => a - b)) {
@@ -573,16 +625,41 @@ export async function ensureObjectionTargets(input: EnsureTargetsInput): Promise
         // O contrato vem das TRÊS fontes (07/09): nota tipada > catálogo da
         // loja > default por modo. Nunca é null — falta de etiqueta no
         // frontmatter não desliga mais o agente.
+        // Incentivo do TOQUE (14/09): outline + idioma da loja + override do
+        // bloco `coupon`. Entra no contrato (promessa/proibição) e no alvo.
+        const refDoEmail = await resolveEmailRef(input.storeId, flowType, n)
+        const incentivo = await resolverIncentivoDoEmail({
+          storeId: input.storeId, flowType, emailNumber: n, emailId: refDoEmail.emailId ?? null,
+        })
         const contrato = parseIntentContract({
           frontmatter: intent.frontmatter,
           catalogo,
           flowType,
+          incentivo,
         })
+        // A janela da fase 1 passou a valer no cron (set/2026). Sem esta
+        // guarda o `invokeAgent` LANÇA "sem orçamento" quando a janela
+        // acaba, e como este laço não tem try por e-mail o throw abortaria
+        // o pré-passo INTEIRO: os e-mails seguintes iriam para a fase 1 sem
+        // alvo nenhum, em silêncio. Parar limpo os deixa `pending` para o
+        // próximo tick, que reusa o que já saiu (`catalog_sha8`) e continua
+        // daqui — que é o desenho da fila.
+        const janela = cabeNaJanela({
+          custoMs: custoTipicoDoAgente("seletor", 24_000),
+          restanteMs: restanteDoOrcamento(),
+        })
+        if (!janela.cabe) {
+          result.semOrcamento++
+          semOrcamento = true
+          break
+        }
         const anteriores = Array.from(porNumero.values()).filter((t) => t.email_number < n)
         const jaAtacadas = jaAtacadasDe(anteriores.map((t) => ({ email_number: t.email_number, target: t.target })))
         const row = await runSeletor({
           storeId: input.storeId, flowType, emailNumber: n, batchId, triggeredBy: input.triggeredBy, mode,
           brandName, catalogo, catalogSha8: sha8, contrato, intencaoBody: intent?.body_md ?? "", jaAtacadas, topProductsTexto,
+          incentivo,
+          politicas,
         })
         result.ran++
         if (row) {
@@ -591,7 +668,7 @@ export async function ensureObjectionTargets(input: EnsureTargetsInput): Promise
         }
       }
     }
-    log.info("seletor.ensure_done", { storeId: input.storeId, mode, ran: result.ran, reused: result.reused, skipped: result.skipped })
+    log.info("seletor.ensure_done", { storeId: input.storeId, mode, ran: result.ran, reused: result.reused, skipped: result.skipped, semOrcamento: result.semOrcamento })
     return result
   } catch (err) {
     result.error = err instanceof Error ? err.message : String(err)

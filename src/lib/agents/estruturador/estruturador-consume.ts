@@ -81,7 +81,9 @@ export function estruturaParaPosicoes(
 export const DECISAO_MAX_CHARS = 24_000
 
 export function decisaoCompletaParaCurador(output: EstruturadorOutput): string {
-  const json = JSON.stringify(output, null, 2)
+  // Compacto (14/09): são até 24k chars que viajam nas DUAS chamadas do
+  // Curador; a indentação era ~20% deles e o modelo lê JSON compacto igual.
+  const json = JSON.stringify(output)
   if (json.length <= DECISAO_MAX_CHARS) return json
   return `${json.slice(0, DECISAO_MAX_CHARS)}\n(… decisão truncada em ${DECISAO_MAX_CHARS} caracteres — o restante está na run do Estruturador)`
 }
@@ -279,5 +281,61 @@ export function requisitosDaDecisao(json: string | null | undefined): Array<Requ
     )
   } catch {
     return []
+  }
+}
+
+/**
+ * O recorte da decisão que o LEQUE serve na cauda de cada posição: papel,
+ * requisitos e o fio.
+ *
+ * **Não é uma segunda fonte** — sai do MESMO JSON que já vai inteiro em
+ * `<decisao_do_estruturador>`, no prefixo cacheado. O recorte existe porque
+ * lá as N posições chegam juntas e, numa chamada que decide uma, achar a
+ * posição 3 dentro de um bloco de seis é exatamente onde o modelo se perde.
+ *
+ * O `fio` vem daqui e não do modelo porque, no leque, nenhuma chamada vê o
+ * e-mail inteiro: pedi-lo a uma delas seria pedir síntese do que ela não
+ * recebeu. **Consequência declarada**: com o Estruturador desligado o fio
+ * sai vazio, e o `generate.service` cai no `outline?.guidance`, como já faz
+ * quando o Curador não devolve fio.
+ *
+ * Fail-open como as irmãs: JSON ilegível devolve lista vazia e fio vazio, e
+ * a cauda passa a dizer que o papel está no bloco do prefixo.
+ */
+export function recorteDaDecisao(json: string | null | undefined): {
+  posicoes: Array<{ papel: string; requisitos: string }>
+  fio: string
+} {
+  const vazio = { posicoes: [], fio: "" }
+  if (!json) return vazio
+  const start = json.indexOf("{")
+  const end = json.lastIndexOf("}")
+  if (start < 0 || end <= start) return vazio
+  try {
+    const obj = JSON.parse(json.slice(start, end + 1)) as {
+      estrutura?: unknown
+      fio_narrativo?: unknown
+    }
+    const fio = typeof obj.fio_narrativo === "string" ? obj.fio_narrativo.trim() : ""
+    if (!Array.isArray(obj.estrutura)) return { posicoes: [], fio }
+    const posicoes = obj.estrutura.map((p) => {
+      if (!p || typeof p !== "object") return { papel: "", requisitos: "" }
+      const rec = p as Record<string, unknown>
+      const papelBase = typeof rec.papel === "string" ? rec.papel.trim() : ""
+      const adaptacao = typeof rec.adaptacao === "string" ? rec.adaptacao.trim() : ""
+      const porque = typeof rec.porque === "string" ? rec.porque.trim() : ""
+      return {
+        papel: [papelBase, adaptacao && `Adaptação: ${adaptacao}`, porque && `Por quê: ${porque}`]
+          .filter(Boolean)
+          .join(" — "),
+        // Serializado, não em prosa: é o mesmo objeto que o filtro duro lê,
+        // e descrevê-lo em texto abriria espaço para as duas versões
+        // discordarem.
+        requisitos: rec.requisitos ? JSON.stringify(rec.requisitos) : "",
+      }
+    })
+    return { posicoes, fio }
+  } catch {
+    return vazio
   }
 }

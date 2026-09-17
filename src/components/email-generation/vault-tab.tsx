@@ -16,6 +16,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { RefreshCw, BookOpen, AlertTriangle, Copy, Check, X } from "lucide-react"
 import { C, F } from "./ui/eg-theme"
 import { EGBadge, EGBtn, EGCard, EGNotice, EGSecTitle } from "./ui/eg-atoms"
+import { classificarAprendizado, classificarReferencia } from "@/lib/vault/toque"
 
 interface SyncState {
   repo: string | null
@@ -67,6 +68,8 @@ interface LearningRow {
   origem_estrutura: string | null
   status: string
   is_active: boolean
+  /** `serve_a` mora aqui (passo 6) — o sync grava o frontmatter inteiro. */
+  frontmatter?: Record<string, unknown> | null
 }
 /**
  * Higiene das notas de COMPONENTE (03/09). A geração deixou de arbitrar
@@ -84,6 +87,13 @@ interface HigieneData {
   }>
   notas_orfas: Array<{ slug: string; variant_id: string | null; nome_no_banco: string | null }>
   variantes_sem_nota: Array<{ variant_id: string; name: string; block_type: string }>
+  duplicatas?: Array<{
+    dispositivo: string
+    a: { variant_id: string; name: string }
+    b: { variant_id: string; name: string }
+    similaridade: number
+  }>
+  nao_classificadas?: Array<{ variant_id: string; name: string; section: string }>
 }
 /**
  * Lacuna da biblioteca proposta pela TELEMETRIA do Curador (09/09): a
@@ -133,6 +143,11 @@ export function VaultTab() {
   const [error, setError] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [syncMsg, setSyncMsg] = useState<string | null>(null)
+  // Passo 6: "o que o toque N recebe". Sem toque escolhido a lista é a do
+  // flow inteiro, como sempre; com toque, cada estrutura/aprendizado diz se
+  // serve, se é global ou se fica FORA daquele e-mail — pela MESMA régua
+  // que o Estruturador aplica (`@/lib/vault/toque`).
+  const [toque, setToque] = useState<number | null>(null)
 
   const load = useCallback(() => {
     fetchVault().then(setData).catch((e) => setError(e.message))
@@ -291,6 +306,29 @@ export function VaultTab() {
       )}
 
       {/* Material ativo por flow */}
+      {flows.length > 0 && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <label htmlFor="vault-toque" style={{ fontFamily: F.sans, fontSize: 12, color: C.g700 }}>
+            O que o toque recebe
+          </label>
+          <select
+            id="vault-toque"
+            value={toque ?? ""}
+            onChange={(e) => setToque(e.target.value === "" ? null : Number(e.target.value))}
+            style={{ fontFamily: F.sans, fontSize: 12, padding: "4px 8px", border: `1px solid ${C.g200}`, borderRadius: 4, background: "#fff" }}
+          >
+            <option value="">flow inteiro (sem filtro)</option>
+            {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
+              <option key={n} value={n}>{`e-mail #${n}`}</option>
+            ))}
+          </select>
+          <span style={{ fontFamily: F.sans, fontSize: 11, color: C.g400 }}>
+            {toque === null
+              ? "Escolha um e-mail para ver o que o Estruturador recebe dele — a régua é a mesma do loader (`emails:` nas estruturas, `serve_a:` nos aprendizados)."
+              : "serve = declarado para este toque · global = sem declaração ou `todos` · FORA = de outro toque, não servido."}
+          </span>
+        </div>
+      )}
       {flows.length === 0 ? (
         <EGNotice tone={lastRun?.error ? "neg" : "neut"}>
           {lastRun?.error
@@ -305,6 +343,17 @@ export function VaultTab() {
           const globals = data.learnings.filter(
             (l) => l.flow_type === null && (l.aplica_a ?? []).includes(flow),
           )
+          const rotuloRef = (r: RefRow) => {
+            if (toque === null) return ""
+            const c = classificarReferencia(r.emails, toque)
+            return c.classe === "toque" ? ` · serve #${toque}` : c.classe === "global" ? " · global" : ` · FORA do #${toque}`
+          }
+          const rotuloApr = (l: LearningRow) => {
+            if (toque === null) return ""
+            const c = classificarAprendizado(l.frontmatter?.serve_a, flow, toque)
+            const base = c.classe === "toque" ? ` · serve #${toque}` : c.classe === "global" ? " · global" : ` · FORA do #${toque}`
+            return c.aviso ? `${base} (aviso: ${c.aviso})` : base
+          }
           return (
             <EGCard key={flow}>
               <EGSecTitle title={flow} />
@@ -323,7 +372,7 @@ export function VaultTab() {
                   rows={refs.map((r) => ({
                     key: r.id,
                     label: r.slug,
-                    sub: `#${(r.emails ?? []).join(",#")} · ${r.secoes_normalizadas.length} posições servíveis`,
+                    sub: `#${(r.emails ?? []).join(",#")} · ${r.secoes_normalizadas.length} posições servíveis${rotuloRef(r)}`,
                     active: r.is_active,
                     status: r.status,
                   }))}
@@ -331,8 +380,8 @@ export function VaultTab() {
                 <MaterialCol
                   title={`Aprendizados (${learnings.filter((l) => l.is_active).length + globals.filter((g) => g.is_active).length})`}
                   rows={[
-                    ...learnings.map((l) => ({ key: l.id, label: l.slug, active: l.is_active, status: l.status })),
-                    ...globals.map((g) => ({ key: g.id, label: g.slug, sub: "cross-flow", active: g.is_active, status: g.status })),
+                    ...learnings.map((l) => ({ key: l.id, label: l.slug, sub: rotuloApr(l).replace(/^ · /, "") || undefined, active: l.is_active, status: l.status })),
+                    ...globals.map((g) => ({ key: g.id, label: g.slug, sub: `cross-flow${rotuloApr(g)}`, active: g.is_active, status: g.status })),
                   ]}
                 />
               </div>
@@ -474,10 +523,14 @@ function LacunasPropostasCard({ propostas, onChanged }: { propostas: PropostaRow
 }
 
 function HigieneCard({ higiene }: { higiene: HigieneData }) {
+  const duplicatas = higiene.duplicatas ?? []
+  const naoClassificadas = higiene.nao_classificadas ?? []
   const total =
     higiene.divergentes.length +
     higiene.notas_orfas.length +
-    higiene.variantes_sem_nota.length
+    higiene.variantes_sem_nota.length +
+    duplicatas.length +
+    naoClassificadas.length
   return (
     <EGCard>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
@@ -515,6 +568,57 @@ function HigieneCard({ higiene }: { higiene: HigieneData }) {
                     </div>
                     <div style={{ fontFamily: F.sans, fontSize: 12, color: C.g500 }}>
                       <b>cadastro:</b> {d.banco}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {naoClassificadas.length > 0 && (
+            <div>
+              <div style={{ fontFamily: F.sans, fontSize: 12, fontWeight: 600, color: C.g700, marginBottom: 6 }}>
+                Variante ativa sem dispositivo ({naoClassificadas.length})
+              </div>
+              <div style={{ fontFamily: F.sans, fontSize: 12, color: C.g500, marginBottom: 6 }}>
+                O filtro por dispositivo é fail-open: sem ele a variante nunca
+                é eliminada e concorre em TODA posição da seção. E como a
+                capacidade só conta as classificadas, o Estruturador nunca
+                consegue pedi-la. Ela custa e não compete — e ainda ganha o
+                desempate do resgate por ter zero usos. Classifique na aba
+                Componentes.
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {naoClassificadas.map((v) => (
+                  <div key={v.variant_id} style={{ borderLeft: `2px solid ${C.warn}`, paddingLeft: 8 }}>
+                    <div style={{ fontFamily: F.mono, fontSize: 12, color: C.g900 }}>{v.name}</div>
+                    <div style={{ fontFamily: F.sans, fontSize: 12, color: C.g400, marginTop: 2 }}>
+                      seção {v.section}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {duplicatas.length > 0 && (
+            <div>
+              <div style={{ fontFamily: F.sans, fontSize: 12, fontWeight: 600, color: C.g700, marginBottom: 6 }}>
+                Duas variantes contando a mesma peça ({duplicatas.length})
+              </div>
+              <div style={{ fontFamily: F.sans, fontSize: 12, color: C.g500, marginBottom: 6 }}>
+                Elas disputam a mesma posição e descrevem o mesmo bloco. O
+                Curador escolher sempre a mesma está CERTO — o que decide é
+                desativar uma ou dar a cada uma a sua peculiaridade.
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {duplicatas.map((d) => (
+                  <div key={`${d.a.variant_id}-${d.b.variant_id}`} style={{ borderLeft: `2px solid ${C.warn}`, paddingLeft: 8 }}>
+                    <div style={{ fontFamily: F.mono, fontSize: 12, color: C.g900 }}>
+                      {d.a.name} ↔ {d.b.name}
+                    </div>
+                    <div style={{ fontFamily: F.sans, fontSize: 12, color: C.g400, marginTop: 2 }}>
+                      {d.dispositivo} · semelhança {d.similaridade.toFixed(2)}
                     </div>
                   </div>
                 ))}

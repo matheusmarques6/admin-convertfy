@@ -10,7 +10,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { Layers, Trash2, Check, Plus, Loader2, Ruler, ImageOff } from "lucide-react"
+import { Layers, Trash2, Check, Plus, Loader2, Ruler, ImageOff, Palette, Sparkles } from "lucide-react"
 import type {
   EmailComponentVariant,
 } from "@/types/email-generation"
@@ -34,6 +34,8 @@ import { VariantEditor, type VariantDraft } from "./variant-editor"
 import { VariantTestCard } from "./variant-test-card"
 import { Base64ExtractDialog } from "./base64-extract-dialog"
 import { WidthNormalizeDialog } from "./width-normalize-dialog"
+import { IdentityTokenizeDialog } from "./identity-tokenize-dialog"
+import { GerarAnatomiaDialog } from "./gerar-anatomia-dialog"
 import { enforceEmailWidth } from "@/lib/email-workspace/email-width"
 
 const FIRST_CATEGORY = COMPONENT_CATEGORIES[0].key
@@ -146,6 +148,8 @@ function emptyDraft(blockType: string): VariantDraft {
     tones: [],
     density: "",
     product_slots: 0,
+    dispositivo: "",
+    anatomia_slug: "",
     output_schema: [],
     slots: "",
     tags: "",
@@ -173,6 +177,8 @@ function draftFromVariant(v: EmailComponentVariant): VariantDraft {
     tones: v.tones ?? [],
     density: v.density ?? "",
     product_slots: v.product_slots ?? 0,
+    dispositivo: v.dispositivo ?? "",
+    anatomia_slug: v.anatomia_slug ?? "",
     output_schema: v.output_schema ?? [],
     slots: arrToCsv(v.slots),
     tags: arrToCsv(v.tags),
@@ -200,6 +206,8 @@ function payloadFromDraft(draft: VariantDraft) {
     tones: draft.tones,
     density: draft.density || null,
     product_slots: draft.product_slots,
+    dispositivo: draft.dispositivo || null,
+    anatomia_slug: draft.anatomia_slug.trim() || null,
     // Canoniza a chave técnica no save — destrava rascunhos com chaves em
     // maiúsculo/acento sem obrigar a reeditar campo a campo (o servidor
     // também normaliza, mas garantir aqui melhora o feedback imediato).
@@ -225,6 +233,8 @@ export function ComponentsWorkspace() {
   const [saving, setSaving] = useState(false)
   const [widthDialog, setWidthDialog] = useState(false)
   const [base64Dialog, setBase64Dialog] = useState(false)
+  const [tokenizeDialog, setTokenizeDialog] = useState(false)
+  const [gerarDialog, setGerarDialog] = useState(false)
 
   const load = useCallback(async (): Promise<EmailComponentVariant[]> => {
     setLoading(true)
@@ -446,7 +456,38 @@ export function ComponentsWorkspace() {
         >
           <ImageOff size={15} /> Imagem embutida
         </EGBtn>
+        <EGBtn
+          onClick={() => setGerarDialog(true)}
+          title="Gera uma anatomia nova para um dispositivo (entra desativada, com prévia nas paletas de prova)"
+        >
+          <Sparkles size={15} /> Gerar anatomia
+        </EGBtn>
+        <EGBtn
+          onClick={() => setTokenizeDialog(true)}
+          title="Troca hex e fontes fixas por tokens {{COR_*}}/{{FONTE_*}} resolvidos por loja (prévia nas duas paletas de prova)"
+        >
+          <Palette size={15} /> Tokens de identidade
+        </EGBtn>
       </div>
+      <GerarAnatomiaDialog
+        open={gerarDialog}
+        onClose={() => setGerarDialog(false)}
+        dispositivoInicial={(draft.dispositivo || null) as Parameters<typeof GerarAnatomiaDialog>[0]["dispositivoInicial"]}
+        onCreated={async (variantId) => {
+          const list = await load()
+          const v = list.find((x) => x.id === variantId)
+          if (v) selectVariant(v)
+        }}
+      />
+      <IdentityTokenizeDialog
+        open={tokenizeDialog}
+        onClose={() => setTokenizeDialog(false)}
+        onApplied={async () => {
+          const list = await load()
+          const v = selectedId ? list.find((x) => x.id === selectedId) : null
+          if (v) setDraft(draftFromVariant(v))
+        }}
+      />
       <Base64ExtractDialog
         open={base64Dialog}
         onClose={() => setBase64Dialog(false)}
@@ -526,9 +567,9 @@ export function ComponentsWorkspace() {
                       active={v.id === selectedId}
                       onClick={() => selectVariant(v)}
                       title={v.name}
-                      sub={v.description ?? undefined}
+                      sub={v.source === "gerada" && !v.is_active ? `gerada · aguardando ativação${v.description ? ` — ${v.description}` : ""}` : (v.description ?? undefined)}
                       dot
-                      dotColor={v.is_active ? "#10B981" : C.g300}
+                      dotColor={v.is_active ? "#10B981" : v.source === "gerada" ? "#7C3AED" : C.g300}
                     />
                 ))}
                 {filtered.length === 0 && (

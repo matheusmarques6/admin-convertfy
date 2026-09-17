@@ -7,6 +7,8 @@ vi.mock("@/lib/supabase/server", () => ({
 
 import type { EmailComponentVariant } from "@/types/email-generation"
 import {
+  causaDaLacuna,
+  lacunaEhFatal,
   parseAssemblerOutput,
   resolveChoices,
   slotMapFromSlots,
@@ -127,6 +129,57 @@ describe("slotMapFromSlots", () => {
     // o variant_id continua registrado — quem foi descartado tambem precisa
     // aparecer no diagnostico
     expect(map[1].variant_id).toBe("vb")
+  })
+
+  // Passo 11: a lacuna tem NOME no slot_map — sem isto "variant_id: null"
+  // não distinguia falta de biblioteca de recusa pela decisão.
+  it("missing com motivo e dispositivo pedido viaja no slot_map", () => {
+    const slots: AssemblySlot[] = [
+      { kind: "missing", section: "products", label: "Produtos", motivo: "todas_descartadas", dispositivo_pedido: "products_grade_preco" },
+      { kind: "missing", section: "offer", label: "Oferta" },
+    ]
+    const map = slotMapFromSlots(slots)
+    expect(map[0]).toMatchObject({ variant_id: null, motivo: "todas_descartadas", dispositivo_pedido: "products_grade_preco" })
+    expect(map[1]).not.toHaveProperty("motivo")
+  })
+})
+
+describe("lacunaEhFatal (Passo 11)", () => {
+  it("nenhuma posição vazia não é fatal", () => {
+    expect(lacunaEhFatal([])).toBe(false)
+  })
+  // Peça com uma seção a menos é POBRE, não inviável — entra e o QA registra.
+  it("uma posição não-hero vazia não é fatal", () => {
+    expect(lacunaEhFatal([{ section: "products" }])).toBe(false)
+  })
+  // Sem hero a fase 2 morre em hero_failed de qualquer jeito.
+  it("hero vazia é fatal", () => {
+    expect(lacunaEhFatal([{ section: "hero" }])).toBe(true)
+    expect(lacunaEhFatal([{ section: " HERO " }])).toBe(true)
+  })
+  it("duas ou mais posições vazias são fatais", () => {
+    expect(lacunaEhFatal([{ section: "body" }, { section: "products" }])).toBe(true)
+  })
+})
+
+describe("causaDaLacuna (16/09)", () => {
+  it("sem posição por relógio, a causa é a biblioteca", () => {
+    expect(causaDaLacuna([{ motivo: "sem_candidata" }])).toBe("biblioteca")
+    expect(
+      causaDaLacuna([{ motivo: "todas_descartadas" }, { motivo: "dispositivo_indisponivel" }]),
+    ).toBe("biblioteca")
+  })
+
+  // Uma basta: com a peça decidida pela metade, qualquer veredito sobre a
+  // biblioteca é sobre o que ainda não foi perguntado.
+  it("uma posição por relógio já muda a causa", () => {
+    expect(
+      causaDaLacuna([{ motivo: "sem_candidata" }, { motivo: "orcamento_esgotado" }]),
+    ).toBe("relogio")
+  })
+
+  it("lista vazia não acusa relógio", () => {
+    expect(causaDaLacuna([])).toBe("biblioteca")
   })
 })
 

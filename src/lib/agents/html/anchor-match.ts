@@ -737,7 +737,11 @@ const EXEMPLO_RE: RegExp[] = [
   /\bsection\s+(title|copy)\b/i,
   /\bcta\s*\d/i,
   /\bfeature\s*\d/i,
-  /\bverified\s+buyer\b/i,
+  // "Verified Buyer 1" é o EXAMPLE do campo `review_N_credential` das
+  // variantes de review (review 2/3/7). Sem o dígito casava também a copy
+  // real que o n8n escreve nesse campo ("Verified Buyer") — 14/09, Hero
+  // Boxers welcome 1: o lint reprovou a peça por texto que era copy.
+  /\b(?:\d\s*verified\s+buyer|verified\s+buyer\s*\d)\b/i,
   /\bname\.\s*\d/i,
   /X{4,}/,
   /_AQUI\b/i,

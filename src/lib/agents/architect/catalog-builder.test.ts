@@ -6,7 +6,11 @@ import {
   buildCatalog,
   buildCatalogoEnxuto,
   buildTypeIndex,
+  duplicatasPorDispositivo,
+  fatiarCatalogo,
   levantarHigieneDoVault,
+  LIMIAR_DE_DUPLICATA,
+  LIMITE_CHARS_POR_VARIANTE,
   similaridadeDeDescricao,
 } from "./catalog-builder"
 import type { CatalogVaultExtra } from "./catalog-builder"
@@ -95,10 +99,17 @@ describe("buildCatalog", () => {
         tem_preco: false,
         tem_avaliacao: false,
         tem_credencial: false,
+        tem_prazo: false,
+        tem_preco_antigo: false,
+        tem_nome_depoente: false,
+        tem_logo: false,
+        n_ctas: 0,
         itens: {},
         n_itens: null,
         copy: 0,
         imagens: 0,
+        // 15/09: sem direção fotográfica cadastrada, nada foi lido.
+        direcao: null,
       },
     })
   })
@@ -472,9 +483,16 @@ describe("buildCatalogoEnxuto", () => {
     expect(linha).toContain("aliviador: incentivo")
     expect(linha).toContain("peso: medio · 900px")
     expect(linha).toContain("convivência: offer-2")
-    // Sem nota no vault: sem os campos do vault, sem ruído de "chave: ".
+    // Sem nota no vault, os TRÊS eixos de topo dizem que não declaram
+    // (15/09). Antes a linha saía curta e limpa, e o modelo não tinha como
+    // distinguir "não se compromete com nada" de "não se aplica aqui" — era
+    // metade do ofuscamento. Os demais eixos seguem omitidos.
     const corpo = r.enxuto.split("\n").find((l) => l.startsWith("- b1"))!
-    expect(corpo).not.toContain("objeção")
+    expect(corpo).toContain("objeção: (não declara)")
+    expect(corpo).toContain("aliviador: (não declara)")
+    expect(corpo).toContain("profundidade: (não declara)")
+    expect(corpo).not.toContain("registro vetado")
+    expect(corpo).not.toContain("paleta")
     expect(corpo).toContain("Bloco de texto.")
   })
 
@@ -492,7 +510,14 @@ describe("buildCatalogoEnxuto", () => {
     const linhas = r.enxuto.split("\n").filter((l) => l.startsWith("- ")).length
     expect(linhas).toBe(r.total)
     for (const sec of r.sections) expect(r.enxuto).toContain(`## ${sec.section} (${sec.variantes.length})`)
-    expect(r.enxuto.length).toBeLessThanOrEqual(15_000)
+    // O que se mede é o custo POR VARIANTE, não o total (15/09). O teto de
+    // 15.000 no total ficava verde aqui (302 chars/linha neste fixture)
+    // enquanto a produção o ultrapassava — 16.255 chars para 37 variantes,
+    // 439 por linha — e proibiria a biblioteca de crescer, que é o
+    // contrário do que se quer.
+    expect(r.compact.charsPorVariante).toBeLessThanOrEqual(LIMITE_CHARS_POR_VARIANTE)
+    expect(r.compact.linhasLongas).toEqual([])
+    expect(r.compact.chars).toBe(r.enxuto.length)
   })
 
   it("é estável: mesma entrada em outra ordem gera o MESMO enxuto", () => {
@@ -519,5 +544,279 @@ describe("buildCatalogoEnxuto", () => {
     expect(JSON.stringify(r.compact.entries[0])).not.toContain("when_use")
     expect(JSON.stringify(r.compact.entries[0])).not.toContain("copy_guidance")
     expect(r.compact.text).not.toContain("texto longo que não pode vazar")
+  })
+})
+
+// ── 15/09: o slot de imagem gerada e o estado da direção aparecem na linha ─
+//
+// O Curador leu "body 8 - cards vidro" como cards de TEXTO: a composição
+// fotográfica de 600×850 não aparecia em lugar nenhum do índice, e a
+// direção era rascunho ("Pendente da referência… aguardando o PNG").
+describe("buildCatalogoEnxuto — imagem gerada e direção fotográfica (15/09)", () => {
+  const schemaImg = [
+    { key: "glass_title", type: "text_short" },
+    { key: "glass_subtitle", type: "text_short" },
+    { key: "glass_composition_image", type: "image" },
+  ] as never
+  it("declara o slot, o rascunho e o veto a pessoa; sem imagem a linha não fala disso", () => {
+    const txt = buildCatalogoEnxuto(
+      buildCatalog([
+        v("b8", "body", "body 8 - cards vidro", { output_schema: schemaImg, photo_direction: "Pendente da referência. Aguardando o PNG." } as never),
+        v("h3", "hero", "hero 3", { output_schema: schemaImg, photo_direction: "Flat-lay. Nenhuma mão, nenhuma pessoa." } as never),
+        v("b2", "body", "body 2 - textos", { output_schema: [{ key: "t", type: "text_short" }] as never }),
+        v("b9", "body", "body 9 - sem direção", { output_schema: schemaImg, photo_direction: null } as never),
+      ]).sections,
+    )
+    expect(txt).toContain("body 8 - cards vidro")
+    expect(txt).toMatch(/body 8[^\n]*imagem: 1 slot de imagem gerada · direção fotográfica EM RASCUNHO/)
+    expect(txt).toMatch(/hero 3[^\n]*imagem: 1 slot de imagem gerada · direção veta pessoa\/mão/)
+    expect(txt).toMatch(/body 9[^\n]*imagem: 1 slot de imagem gerada · sem direção fotográfica/)
+    expect(txt.split("\n").find((l) => l.includes("body 2 - textos"))).not.toContain("imagem:")
+  })
+  it("o contrato tipado carrega a leitura da direção; ausente fica null", () => {
+    const cat = buildCatalog([
+      v("h3", "hero", "hero 3", { output_schema: schemaImg, photo_direction: "Nenhuma mão, nenhuma pessoa." } as never),
+      v("h9", "hero", "hero 9", { output_schema: schemaImg }),
+    ])
+    const h3 = cat.sections[0].variantes.find((e) => e.variant_id === "h3")!
+    const h9 = cat.sections[0].variantes.find((e) => e.variant_id === "h9")!
+    expect(h3.contrato.direcao).toEqual({ rascunho: false, proibe_pessoa: true })
+    expect(h9.contrato.direcao).toBeNull()
+  })
+})
+
+
+// ── A forma derivada do schema (15/09) ──────────────────────────────────
+//
+// Medido em 45 dias de escolhas: 8 de 37 variantes ativas NUNCA foram
+// escolhidas, e três dispositivos concentravam 100% num único bloco. Em
+// `hero_lineup` os quatro eixos escritos à mão davam a MESMA tupla para as
+// duas variantes — o catálogo não tinha como diferenciá-las. Os derivados
+// do `output_schema` separam dez dos onze dispositivos com mais de uma
+// variante ativa, e não custam curadoria nenhuma: saem de um campo que já
+// é obrigatório.
+describe("forma derivada do schema", () => {
+  const campo = (key: string, type = "text_short") =>
+    ({ key, type, label: key, max_len: 0, required: false, example: "", guidance: "" }) as never
+
+  it("separa as duas de offer_sem_cupom, que os eixos do vault não separavam", () => {
+    // Caso real: `offer 1` tem 3 campos e nenhuma imagem; `offer 2` tem 11
+    // campos, uma imagem e prazo. O catálogo dizia quase a mesma coisa das
+    // duas, e o placar de 45 dias foi 19 × 0.
+    const offer1 = v("o1", "offer", "offer 1", {
+      description: "Bloco de oferta sem imagem.",
+      output_schema: [campo("offer_headline"), campo("offer_body"), campo("offer_cta_label")],
+    })
+    const offer2 = v("o2", "offer", "offer 2", {
+      description: "Bloco de oferta para data comemorativa.",
+      output_schema: [
+        campo("offer_headline"),
+        campo("offer_eyebrow"),
+        campo("offer_deadline"),
+        campo("offer_discount_value"),
+        campo("offer_cta_label"),
+        campo("offer_background_image", "image"),
+      ],
+    })
+    const r = buildCatalog([offer1, offer2])
+    const l1 = r.enxuto.split("\n").find((l) => l.startsWith("- o1"))!
+    const l2 = r.enxuto.split("\n").find((l) => l.startsWith("- o2"))!
+    expect(l1).toContain("forma: 3 campos")
+    expect(l1).not.toContain("prazo")
+    expect(l2).toContain("1 imagem")
+    expect(l2).toContain("prazo")
+    expect(l1).not.toBe(l2)
+  })
+
+  it("conta o botão uma vez por botão, não por campo do botão", () => {
+    // `cta_1_label` + `cta_1_url` é UM botão. Contar o par dobraria a
+    // contagem de toda variante que declara o destino no schema.
+    const r = buildCatalog([
+      v("h", "hero", "H", {
+        output_schema: [campo("cta_1_label"), campo("cta_1_url", "url"), campo("cta_2_label"), campo("cta_2_url", "url")],
+      }),
+    ])
+    expect(r.sections[0].variantes[0].contrato.n_ctas).toBe(2)
+    expect(r.enxuto).toContain("2 botões")
+  })
+
+  it("um botão só não vira ruído na linha", () => {
+    const r = buildCatalog([v("h", "hero", "H", { output_schema: [campo("cta_label")] })])
+    expect(r.sections[0].variantes[0].contrato.n_ctas).toBe(1)
+    expect(r.enxuto).not.toContain("botões")
+  })
+
+  it("publica TODAS as famílias numeradas, não só product", () => {
+    // A linha dizia `slots: 4` e calava `review: 3` — e é a grade que
+    // decide se a variante realiza o papel ("grade de 4 quando pede 2").
+    const r = buildCatalog([
+      v("r", "reviews", "R", {
+        output_schema: [campo("review_1_text"), campo("review_2_text"), campo("review_3_text"), campo("product_1_name")],
+      }),
+    ])
+    const linha = r.enxuto.split("\n").find((l) => l.startsWith("- r"))!
+    expect(linha).toContain("grades: product 1, review 3")
+  })
+
+  it("nome do depoente, preço riscado e logo entram porque distinguem peças reais", () => {
+    const r = buildCatalog([
+      v("p", "products", "P", {
+        output_schema: [
+          campo("brand_logo", "image"),
+          campo("product_price"),
+          campo("product_price_old"),
+          campo("review_1_name"),
+        ],
+      }),
+    ])
+    const c = r.sections[0].variantes[0].contrato
+    expect(c.tem_logo).toBe(true)
+    expect(c.tem_preco_antigo).toBe(true)
+    expect(c.tem_nome_depoente).toBe(true)
+  })
+})
+
+// ── Duplicata no mesmo dispositivo (15/09) ──────────────────────────────
+describe("duplicatasPorDispositivo", () => {
+  // As duas de `hero_lineup` descrevem literalmente a mesma peça, e o
+  // placar de 45 dias é 5 × 0. Escolher sempre a mesma entre duas
+  // idênticas é o comportamento CERTO — o defeito é de curadoria.
+  const d10 =
+    "Anuncia uma rotina, kit ou linha completa e manda para a coleção. Vive no meio do email, no momento de descoberta e educação, quando o cliente ainda está conhecendo a amplitude do catálogo."
+  const d8 =
+    "Anuncia uma rotina, kit ou linha completa e leva à coleção correspondente. Momento de descoberta e educação: o cliente está conhecendo a amplitude do catálogo."
+
+  it("aponta o par do mesmo dispositivo que conta a mesma peça", () => {
+    const r = buildCatalog([
+      v("a", "hero", "hero section 10", { description: d10, dispositivo: "hero_lineup" }),
+      v("b", "hero", "hero sectiion 8", { description: d8, dispositivo: "hero_lineup" }),
+    ])
+    expect(r.duplicatas).toHaveLength(1)
+    expect(r.duplicatas[0].dispositivo).toBe("hero_lineup")
+    expect(r.duplicatas[0].similaridade).toBeGreaterThanOrEqual(LIMIAR_DE_DUPLICATA)
+  })
+
+  it("peças diferentes do mesmo dispositivo não são duplicata", () => {
+    const r = buildCatalog([
+      v("a", "offer", "offer 1", { description: "Bloco de oferta sem nenhuma imagem, para declarar a condição comercial.", dispositivo: "offer_sem_cupom" }),
+      v("b", "offer", "offer 2", { description: "Oferta de data comemorativa com duas condições sobre foto de cena.", dispositivo: "offer_sem_cupom" }),
+    ])
+    expect(r.duplicatas).toEqual([])
+  })
+
+  it("dispositivos diferentes nunca formam par, por mais parecidas que sejam", () => {
+    const r = buildCatalog([
+      v("a", "hero", "A", { description: d10, dispositivo: "hero_lineup" }),
+      v("b", "body", "B", { description: d10, dispositivo: "body_tese" }),
+    ])
+    expect(r.duplicatas).toEqual([])
+  })
+
+  // Este teste afirmava o contrário ("variante sem dispositivo fica fora")
+  // e era ele que mantinha o defeito vivo: quem não tem etiqueta concorre em
+  // TODA posição da seção, então é ali que a duplicata dela pesa. Medido em
+  // 15/09, com as 8 heroes novas ainda sem classificação: duas delas
+  // descrevem a mesma decisão de uso e o detector não as via.
+  it("duas sem dispositivo na mesma seção formam par, agrupadas pela seção", () => {
+    const r = buildCatalog([
+      v("a", "hero", "A", { description: d10 }),
+      v("b", "hero", "B", { description: d8 }),
+    ])
+    expect(r.duplicatas).toHaveLength(1)
+    expect(r.duplicatas[0].dispositivo).toBe("sem dispositivo · hero")
+  })
+
+  it("sem dispositivo em seções diferentes não forma par", () => {
+    const r = buildCatalog([
+      v("a", "hero", "A", { description: d10 }),
+      v("b", "body", "B", { description: d10 }),
+    ])
+    expect(r.duplicatas).toEqual([])
+  })
+
+  it("classificada e não classificada não formam par: os grupos são outros", () => {
+    const r = buildCatalog([
+      v("a", "hero", "A", { description: d10, dispositivo: "hero_lineup" }),
+      v("b", "hero", "B", { description: d8 }),
+    ])
+    expect(r.duplicatas).toEqual([])
+  })
+
+  it("lista a variante ativa sem dispositivo, com a seção", () => {
+    const r = buildCatalog([
+      v("a", "hero", "hero section 13", { description: d10 }),
+      v("b", "hero", "hero section 3", { description: d8, dispositivo: "hero_oferta_cupom" }),
+    ])
+    expect(r.compact.naoClassificadas).toEqual([
+      { variant_id: "a", name: "hero section 13", section: "hero" },
+    ])
+  })
+
+  it("biblioteca inteira classificada devolve lista vazia", () => {
+    const r = buildCatalog([
+      v("a", "hero", "A", { description: d10, dispositivo: "hero_lineup" }),
+    ])
+    expect(r.compact.naoClassificadas).toEqual([])
+  })
+
+  it("descrição vazia não é duplicata — é cadastro incompleto", () => {
+    // Dois vazios dariam Dice 1 e a lista encheria de par inútil.
+    const r = buildCatalog([
+      v("a", "hero", "A", { description: "", dispositivo: "hero_lineup" }),
+      v("b", "hero", "B", { description: "", dispositivo: "hero_lineup" }),
+    ])
+    expect(duplicatasPorDispositivo(r.sections)).toEqual([])
+  })
+})
+
+// O leque (uma chamada por posição) serve a cada posição só a seção dela.
+// A fatia tem de sair pelo MESMO renderizador do catálogo inteiro: com
+// render próprio, a linha da variante mudaria de forma entre os dois e as
+// medições (chars por variante, duplicatas) passariam a falar de textos
+// diferentes.
+describe("fatiarCatalogo", () => {
+  const cat = () =>
+    buildCatalog(
+      [
+        v("h1", "hero", "Hero cupom", { description: "Abre com incentivo." }),
+        v("h2", "hero", "Hero pergunta", { description: "Abre perguntando." }),
+        v("b1", "body", "Corpo", { description: "Bloco de texto." }),
+      ],
+      new Map(),
+    )
+
+  it("devolve só a seção pedida, e a linha é idêntica à do catálogo inteiro", () => {
+    const r = cat()
+    const fatia = fatiarCatalogo(r.sections, "hero")
+    expect(fatia).toHaveLength(1)
+    expect(fatia[0].variantes.map((x) => x.variant_id)).toEqual(["h1", "h2"])
+    const texto = buildCatalogoEnxuto(fatia)
+    expect(texto).toContain("## hero (2)")
+    expect(texto).not.toContain("## body")
+    // byte a byte a mesma linha — é isso que mantém as medições comparáveis
+    const doInteiro = r.enxuto.split("\n").find((l) => l.startsWith("- h1"))
+    expect(texto.split("\n").find((l) => l.startsWith("- h1"))).toBe(doInteiro)
+  })
+
+  it("`idsPermitidos` corta as candidatas; id de fora da seção é ignorado", () => {
+    const fatia = fatiarCatalogo(cat().sections, "hero", ["h2", "b1", "nao-existe"])
+    expect(fatia[0].variantes.map((x) => x.variant_id)).toEqual(["h2"])
+  })
+
+  it("sem `idsPermitidos` vai a seção inteira; seção inexistente devolve []", () => {
+    expect(fatiarCatalogo(cat().sections, "hero")[0].variantes).toHaveLength(2)
+    expect(fatiarCatalogo(cat().sections, "reviews")).toEqual([])
+  })
+
+  it("a seção é normalizada como no resto do pipeline", () => {
+    expect(fatiarCatalogo(cat().sections, "  HERO ")[0].variantes).toHaveLength(2)
+  })
+
+  // Lista vazia é diferente de ausente: o chamador precisa distinguir "esta
+  // posição não tem candidata" de "esta seção não existe no catálogo".
+  it("nenhuma candidata elegível devolve a seção com zero variantes, não []", () => {
+    const fatia = fatiarCatalogo(cat().sections, "hero", [])
+    expect(fatia).toHaveLength(1)
+    expect(fatia[0].variantes).toEqual([])
   })
 })

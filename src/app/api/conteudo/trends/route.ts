@@ -48,6 +48,7 @@ export async function POST(request: NextRequest) {
       status: await statusTrends(admin, orgId, r.trends),
       fontes_descartadas: r.fontesDescartadas,
       busca_indisponivel: r.buscaIndisponivel,
+      expirados: r.expirados,
     })
   } catch (error) {
     return errorResponse(request, error, "conteudo-trends-post")

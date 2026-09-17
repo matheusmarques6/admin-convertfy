@@ -25,7 +25,15 @@ export type Formato = "Carrossel" | "Reels" | "Imagem" | "Vídeo"
 
 export type Pilar = "Case" | "Educacional" | "Bastidor" | "Benchmark"
 
-export type MoldeKey = "Turbo" | "MEC" | "Benchmark" | "Lista" | "Bastidor"
+/**
+ * Moldes de conteúdo — o vocabulário da classificação dos posts e dos
+ * templates do Estúdio. A lista é a FONTE: três telas repetiam o array à
+ * mão, então acrescentar um molde acertava o tipo e deixava os filtros
+ * para trás, em silêncio.
+ */
+export const MOLDE_KEYS = ["Turbo", "MEC", "Benchmark", "Lista", "Bastidor", "Post", "Manchete", "Thread"] as const
+
+export type MoldeKey = (typeof MOLDE_KEYS)[number]
 
 export interface Perfil {
   /** id do canal (`crm_channels.id`). */
@@ -226,14 +234,22 @@ export interface DashboardData {
 
 export type FrameTipo = "capa" | "dado" | "texto" | "prova" | "lista" | "mec" | "cta"
 
-export type Campo = "titulo" | "subtitulo" | "corpo" | "botao" | "gancho" | "anotacao"
+export type Campo = "titulo" | "subtitulo" | "corpo" | "botao" | "gancho" | "anotacao" | "destaque"
 
 /**
  * Identidade visual do documento (paleta, tipografia, forma do CTA). O
  * molde decide a sequência dos slides; a família decide como eles são
  * desenhados. Ausente = "padrao" (a identidade azul da casa).
  */
-export type FamiliaVisual = "padrao" | "editorial" | "alternado"
+export type FamiliaVisual = "padrao" | "editorial" | "alternado" | "post" | "post-largo" | "manchete" | "thread" | "tweet"
+
+/**
+ * Tema das identidades que simulam o X. `print` é o medido na referência
+ * (o padrão); `claro`, `dim` e `escuro` são os três temas da plataforma.
+ * As cores moram em `formato-post.ts` — o tipo fica aqui para `types.ts`
+ * continuar sem nenhum import.
+ */
+export type TemaDoPost = "print" | "claro" | "dim" | "escuro"
 
 export type EtapaFunil = "topo" | "meio" | "fundo"
 
@@ -252,6 +268,14 @@ export interface Template {
   nome: string
   etapaFunil: EtapaFunil
   descricao: string
+  /**
+   * Identidade visual que este molde PRESSUPÕE. O molde e a família são
+   * independentes por desenho, mas há sequência que só faz sentido numa
+   * identidade — o "Print de post" montado na paleta azul da casa vira
+   * outra coisa. A escolha continua do usuário: o diálogo troca o seletor
+   * e ele pode mudar depois.
+   */
+  familia?: FamiliaVisual
   cor: string
   frames: TemplateFrame[]
 }
@@ -271,6 +295,12 @@ export interface MeuTemplate {
   usos: number
   /** Template base usado para materializar (a estrutura detectada). */
   templateId: string
+  /**
+   * Identidade visual com que o template foi salvo. Ausente nos criados
+   * antes da coluna — a prévia cai no que o molde base pressupõe
+   * (`familiaDaPrevia`), nunca na padrão fixa.
+   */
+  familia?: FamiliaVisual
   estrutura: EstruturaDetectada[]
   fidelidade: number | null
   criadoEm: string
@@ -311,7 +341,12 @@ export interface DocFrame {
   slotsImagem: 0 | 1
   campos: Campo[]
   textos: Partial<Record<Campo, string>>
-  imagens: { slot1?: ImagemSlot }
+  /**
+   * `slot2` é a SEGUNDA foto da colagem, e só o formato largo a desenha
+   * (`gapGaleria > 0`). Fora dele ela fica guardada sem aparecer — trocar
+   * de identidade não pode apagar o que alguém enviou.
+   */
+  imagens: { slot1?: ImagemSlot; slot2?: ImagemSlot }
   oculto?: boolean
   variante?: VarianteLayout
   /**
@@ -325,6 +360,32 @@ export interface DocFrame {
    * renderer mostra a imagem full-bleed e não escreve nada por cima.
    */
   imagemModo?: ModoImagem
+  /**
+   * As "informações" do cartão do X (identidade `tweet`): hora, data e os
+   * cinco contadores. Ausente = cartão sem número — o que o X mostra num
+   * post recém-publicado, e o único estado que não inventa engajamento.
+   *
+   * Fica FORA de `campos`/`textos` de propósito: `Campo` é o conjunto de
+   * copy — o que a IA escreve, o que `ST_LIMITES` limita e o que o auto-fit
+   * encolhe. Contador não é copy: tem painel próprio, formato próprio e
+   * não entra na régua de caracteres.
+   */
+  tweet?: TweetMeta
+}
+
+/** Hora, data e contadores de um cartão do X. Tudo texto livre: a peça vira PNG. */
+export interface TweetMeta {
+  hora?: string
+  data?: string
+  visualizacoes?: string
+  respostas?: string
+  reposts?: string
+  curtidas?: string
+  salvos?: string
+  /** `false` esconde a linha `hora · data · visualizações` neste slide. */
+  mostrarInfo?: boolean
+  /** `false` esconde a barra de contadores neste slide. */
+  mostrarMetricas?: boolean
 }
 
 /** Como a imagem gerada entra no slide (via B). */
@@ -400,6 +461,12 @@ export interface Documento {
   /** Identidade visual (paleta + tipografia). Ausente = "padrao". */
   familia?: FamiliaVisual
   /**
+   * Tema das identidades que simulam o X (claro · Dim · Lights out · o
+   * medido no print). Ausente = o do print, que é o que as peças
+   * existentes usam. Cores em `formato-post.ts`.
+   */
+  temaPost?: TemaDoPost
+  /**
    * Cor da marca da qual a paleta da família Alternado é derivada. Fica
    * gravada porque é ela que permite trocar de cor DE NOVO sem que a
    * segunda troca confunda o que era padrão com o que o usuário escolheu
@@ -463,7 +530,15 @@ export interface Trend {
   dificuldade: "facil" | "medio" | "dificil"
   categoria: "viral" | "venda" | "educativo"
   comoUsar: string
-  fonte: "web" | "manual"
+  /**
+   * `web` = busca na internet com o link conferido; `interno` = a rodada
+   * aconteceu SEM busca, do contexto da casa; `manual` = alguém digitou.
+   *
+   * `interno` existe porque o rodapé do painel lê o ambiente de AGORA: com um
+   * cron diário, uma rodada de três dias atrás pode ter acontecido sem
+   * provedor de busca e o rodapé de hoje diria que ela teve fato externo.
+   */
+  fonte: "web" | "manual" | "interno"
   fonteUrl: string | null
   fonteTitulo: string | null
   geradoEm: string
@@ -471,11 +546,18 @@ export interface Trend {
 
 /** O estado da fonte de trends — a tela DIZ de onde o painel veio. */
 export interface TrendsStatus {
-  /** Nunca gerado = null. */
+  /**
+   * Quando o radar rodou pela última vez — lido INCLUSIVE das linhas já
+   * arquivadas. Painel vazio depois de uma rodada não é "nunca gerado": são
+   * estados diferentes e pedem ações opostas ("ligue o radar" × "a última
+   * rodada foi há N dias e tudo já venceu").
+   */
   geradoEm: string | null
   /** Provedor de busca configurado no ambiente (null = não configurado). */
   buscaConfigurada: boolean
   total: number
+  /** Dias que um assunto fica no painel — a tela DIZ a regra. */
+  validadeDias: number
 }
 
 export type EixoNarrativo = "mercado" | "cases" | "noticias" | "cultura" | "produto"

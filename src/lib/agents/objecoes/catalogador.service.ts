@@ -45,6 +45,7 @@ import {
 } from "./catalogador-prompt"
 import { normalizarCatalogo, projetarObjecoes, validarCatalogo } from "./catalogo-regras"
 import { aplicarFichaAoCatalogo, fichaParaPrompt, normalizarFicha } from "@/lib/stores/ficha-operacional"
+import { normalizarPoliticas, politicasParaPrompt } from "@/lib/stores/politicas"
 import { relogioDaChamada, relogioParaTeto, restanteDoOrcamento } from "../fase1-orcamento"
 import { classificarFalha, planejarRetentativa } from "../retry-teto"
 import { motivoDaFalha } from "./catalogador-erros"
@@ -141,6 +142,9 @@ export async function runCatalogador(input: RunCatalogadorInput): Promise<RunCat
     brand_name: brandName,
     idioma: (s.language as string | null)?.trim() || "pt-BR",
     ficha_operacional: fichaParaPrompt(ficha),
+    // Passo 16: troca/frete lidos das páginas públicas, com URL. Contexto
+    // abaixo da ficha — a ficha vence; isto NÃO é verificado pelo time.
+    politicas_publicas: politicasParaPrompt(normalizarPoliticas(s.politicas)),
     pesquisa: pesquisa || "(sem pesquisa)",
     top_products: renderTopProducts(topProducts),
     objecoes_anteriores: renderObjecoesAnteriores(objecoesAnteriores),
@@ -155,6 +159,7 @@ export async function runCatalogador(input: RunCatalogadorInput): Promise<RunCat
   const inputSummary: InputSummaryItem[] = [
     { rotulo: "Loja", cls: "loja", valor: brandName },
     { rotulo: "Ficha operacional", cls: "loja", valor: ficha ? "preenchida pelo time — vence a pesquisa" : "(ausente — nada verificado)" },
+    { rotulo: "Políticas públicas", cls: "loja", valor: normalizarPoliticas(s.politicas) ? "lidas das páginas da loja (troca/frete com URL) — não verificadas" : "(nenhuma página lida)" },
     { rotulo: "Perfil da marca", cls: "loja", valor: `${pesquisa.length.toLocaleString("pt-BR")} chars do dossiê · ${topProducts.length} produto(s)` },
     { rotulo: "Objeções anteriores", cls: "loja", valor: `${objecoesAnteriores.length} cadastrada(s) (material, não gabarito)` },
     { rotulo: "Vocabulário da cliente", cls: "loja", valor: `${Array.isArray(s.icp_vocabulary) ? s.icp_vocabulary.length : 0} quote(s)` },

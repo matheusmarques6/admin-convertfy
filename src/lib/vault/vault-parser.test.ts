@@ -190,6 +190,16 @@ describe("normalizeSecoes — mapa de absorção", () => {
 })
 
 describe("validateNote", () => {
+  // Passo 6 (14/09): `serve_a` roteia o aprendizado por TOQUE. Fora do
+  // formato é erro de cadastro (a nota fica fora até corrigir); ausente é
+  // global, como sempre foi.
+  it("aprendizado: `serve_a` aceita flow-N e 'todos'; fora disso reprova; ausente passa", () => {
+    const base = { tipo: "aprendizado", status: "aprovada" }
+    expect(validateNote("aprendizado", { ...base, serve_a: ["welcome-1", "welcome-3"] }, { slug: "a" })).toEqual([])
+    expect(validateNote("aprendizado", { ...base, serve_a: ["todos"] }, { slug: "a" })).toEqual([])
+    expect(validateNote("aprendizado", base, { slug: "a" })).toEqual([])
+    expect(validateNote("aprendizado", { ...base, serve_a: ["primeiro email"] }, { slug: "a" }).join(" ")).toContain("serve_a")
+  })
   it("estrutura sem secoes reprova com motivo legível", () => {
     const errs = validateNote("estrutura", { tipo: "estrutura", status: "aprovada", emails: [1] }, { slug: "x" })
     expect(errs.join(" ")).toContain("secoes")

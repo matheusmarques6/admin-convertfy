@@ -14,13 +14,14 @@
  * FALTA fechar, não ideia solta.
  */
 
-import { useState } from "react"
-import { AlertTriangle, ArrowUpRight, Check, Globe, Loader2, Plus, Sparkles, TrendingUp, X } from "lucide-react"
+import { useMemo, useState } from "react"
+import { AlertTriangle, ArrowUpRight, Check, Globe, Loader2, Plus, ShieldAlert, Sparkles, TrendingUp, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Icon } from "@/components/ui/icon"
 import { arquivarTrend, criarIdeia, gerarIdeias, gerarTrends } from "@/lib/conteudo/data"
 import type { Ideia } from "@/lib/conteudo/ideias/banco"
 import { FUNIL_LABEL, FUNIL_META, type ProgressoFunil } from "@/lib/conteudo/reels/pipeline"
+import { daRodadaMaisRecente, idadeCurta } from "@/lib/conteudo/trends/validade"
 import type { Trend, TrendsStatus } from "@/lib/conteudo/types"
 import { CtBtn, CtEmpty, CtSeg, CtSkel, TNUM, alpha } from "../ui"
 
@@ -38,23 +39,31 @@ const CATEGORIA: Record<Trend["categoria"], { label: string; cor: string }> = {
   educativo: { label: "Educativo", cor: "#4E62D8" },
 }
 
-/** "há 2h", "há 3 dias", "hoje" — o painel precisa dizer a IDADE da lista. */
-function idadeDe(iso: string | null): string {
-  if (!iso) return "nunca gerado"
-  const ms = Date.now() - new Date(iso).getTime()
-  if (!Number.isFinite(ms) || ms < 0) return "agora"
-  const min = Math.floor(ms / 60000)
-  if (min < 2) return "agora"
-  if (min < 60) return `há ${min} min`
-  const h = Math.floor(min / 60)
-  if (h < 24) return `há ${h}h`
-  const d = Math.floor(h / 24)
-  return d === 1 ? "há 1 dia" : `há ${d} dias`
+/**
+ * Por que a fonte não está no card — e a resposta NÃO é a mesma para os dois
+ * casos, apesar de os dois chegarem com `fonteUrl` nulo.
+ *
+ * A referência marca "TEMA SENSÍVEL · CONFIRA AS FONTES" em bloco. Aqui dá
+ * para ser mais preciso, porque a linha guarda a procedência: ou a rodada
+ * inteira aconteceu sem busca (`interno`), ou ela teve busca e o link que o
+ * modelo citou foi REMOVIDO por não estar entre os resultados servidos.
+ */
+function semFonte(t: Trend): { rotulo: string; titulo: string } | null {
+  if (t.fonteUrl) return null
+  if (t.fonte === "interno") {
+    return { rotulo: "sem fato externo", titulo: "Esta rodada aconteceu sem busca na internet: o assunto saiu do contexto da casa. Confira antes de publicar." }
+  }
+  if (t.fonte === "manual") return null
+  return { rotulo: "fonte não conferida", titulo: "A busca rodou, mas o link citado não estava entre os resultados servidos e foi removido. Confira o assunto antes de publicar." }
 }
 
-function TrendCard({ t, onVirarIdeia, onArquivar, virando }: { t: Trend; onVirarIdeia: () => void; onArquivar: () => void; virando: boolean }) {
+function TrendCard({ t, recente, onVirarIdeia, onArquivar, virando }: { t: Trend; recente: boolean; onVirarIdeia: () => void; onArquivar: () => void; virando: boolean }) {
   const dif = DIFICULDADE[t.dificuldade]
   const cat = CATEGORIA[t.categoria]
+  const alerta = semFonte(t)
+  // Idade só nos que NÃO são da rodada de hoje: "há 2 min" em todo card seria
+  // ruído, e "há 6 dias" é justamente o que muda a leitura de "em alta".
+  const idade = recente ? null : idadeCurta(t.geradoEm)
   return (
     <div className="group rounded-[10px] border border-[var(--ops-border)] bg-[var(--ops-card)] px-[13px] py-3">
       <div className="flex items-start gap-2">
@@ -76,7 +85,7 @@ function TrendCard({ t, onVirarIdeia, onArquivar, virando }: { t: Trend; onVirar
         <span className="inline-flex h-[19px] items-center rounded-[5px] px-[7px] text-[10px] font-semibold" style={{ color: dif.cor, background: alpha(dif.cor, 0.12) }}>
           {dif.label}
         </span>
-        {t.fonteUrl && (
+        {t.fonteUrl ? (
           <a
             href={t.fonteUrl}
             target="_blank"
@@ -87,6 +96,21 @@ function TrendCard({ t, onVirarIdeia, onArquivar, virando }: { t: Trend; onVirar
             <Icon icon={Globe} customSize={9} />
             fonte
           </a>
+        ) : (
+          alerta && (
+            <span
+              title={alerta.titulo}
+              className="inline-flex h-[19px] items-center gap-1 rounded-[5px] border border-[var(--ops-warn-br)] bg-[var(--ops-warn-bg)] px-[7px] text-[10px] font-semibold text-[var(--ops-warn)]"
+            >
+              <Icon icon={ShieldAlert} customSize={9} />
+              {alerta.rotulo}
+            </span>
+          )
+        )}
+        {idade && (
+          <span className="text-[10px] text-[var(--ops-mut)]" style={TNUM} title="Este assunto é de uma rodada anterior">
+            {idade}
+          </span>
         )}
         <span className="flex-1" />
         <button
@@ -138,6 +162,9 @@ export function TrendsPanel({
 
   const vigentes = lista ?? trends
   const stVigente = st ?? status
+  // A faixa "em alta" é a rodada mais recente, não uma janela de horas — os
+  // cards de rodadas anteriores continuam no painel, com a idade na cara.
+  const recentes = useMemo(() => daRodadaMaisRecente(vigentes), [vigentes])
 
   const lacunas = progresso.filter((p) => p.feitos < p.meta)
   const lacunaTexto = lacunas.map((p) => `${FUNIL_LABEL[p.funil]}: ${p.meta - p.feitos === 1 ? "falta 1" : `faltam ${p.meta - p.feitos}`}`)
@@ -153,6 +180,7 @@ export function TrendsPanel({
       const partes: string[] = []
       if (r.busca_indisponivel) partes.push(`Rodou sem fato externo: ${r.busca_indisponivel}`)
       if (r.fontes_descartadas > 0) partes.push(`${r.fontes_descartadas} link${r.fontes_descartadas > 1 ? "s" : ""} citado${r.fontes_descartadas > 1 ? "s" : ""} fora da busca — removido${r.fontes_descartadas > 1 ? "s" : ""}.`)
+      if (r.expirados > 0) partes.push(`${r.expirados} assunto${r.expirados > 1 ? "s saíram" : " saiu"} do painel por validade.`)
       setAviso(partes.join(" ") || null)
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao atualizar")
@@ -247,21 +275,29 @@ export function TrendsPanel({
               ))
             ) : vigentes.length === 0 ? (
               <div className="rounded-[10px] border border-dashed border-[var(--ops-border)] bg-[var(--ops-card)]">
+                {/* Painel vazio DEPOIS de uma rodada não é "nunca gerado": os
+                    dois estados pedem ações opostas. */}
                 <CtEmpty
                   icon={TrendingUp}
-                  title="Nenhum assunto no painel"
-                  desc="A ConvertIA busca na internet e propõe assuntos ligados ao que a casa publica. Cada link é conferido contra o resultado da busca."
+                  title={stVigente?.geradoEm ? "Tudo que o radar trouxe já venceu" : "Nenhum assunto no painel"}
+                  desc={
+                    stVigente?.geradoEm
+                      ? `A última rodada foi ${idadeCurta(stVigente.geradoEm) ?? "há algum tempo"} e nenhum assunto dela continua dentro da validade de ${stVigente.validadeDias} dias.`
+                      : "A ConvertIA busca na internet e propõe assuntos ligados ao que a casa publica. Cada link é conferido contra o resultado da busca."
+                  }
                 />
               </div>
             ) : (
-              vigentes.map((t) => <TrendCard key={t.id} t={t} virando={virando === t.id} onVirarIdeia={() => virarIdeia(t)} onArquivar={() => arquivar(t)} />)
+              vigentes.map((t) => (
+                <TrendCard key={t.id} t={t} recente={recentes.has(t.id)} virando={virando === t.id} onVirarIdeia={() => virarIdeia(t)} onArquivar={() => arquivar(t)} />
+              ))
             )}
           </div>
 
           <div className="px-1 text-[10px] leading-relaxed text-[var(--ops-mut)]">
             {stVigente?.buscaConfigurada === false
               ? "Sem provedor de busca configurado: os assuntos saem do contexto da casa, sem fato externo."
-              : `Gerado pela ConvertIA com busca na internet · ${idadeDe(stVigente?.geradoEm ?? null)}`}
+              : `O radar roda todo dia de manhã · ${idadeCurta(stVigente?.geradoEm ?? null) ? `última rodada ${idadeCurta(stVigente?.geradoEm ?? null)}` : "ainda não rodou aqui"}. Assunto sai do painel depois de ${stVigente?.validadeDias ?? 14} dias.`}
           </div>
         </>
       ) : (

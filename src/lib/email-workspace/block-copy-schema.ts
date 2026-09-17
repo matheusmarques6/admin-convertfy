@@ -29,6 +29,8 @@
  * de imagem. O que o copywriter não usa não entra no prompt dele.
  */
 
+import { avaliarClaims, type IncentivoParaClaims } from "@/lib/agents/shared/validadores/claims"
+
 export interface BlockCopySchemaField {
   label: string
   tipo: string
@@ -37,6 +39,13 @@ export interface BlockCopySchemaField {
   min_caracteres: number | null
   exemplo: string | null
   orientacao: string | null
+  /**
+   * Passo 13: instrução POR CAMPO que vence o `exemplo`. Hoje só nasce
+   * quando o exemplo foi removido por prometer o que a decisão nega
+   * ("SHOP 10% OFF" numa posição `cupom: false`) — diz ao n8n o que
+   * escrever no lugar. Ausente quando o exemplo vale.
+   */
+  directive?: string | null
 }
 
 export interface BlockCopySchema {
@@ -49,6 +58,13 @@ export interface BlockCopySchema {
   total_campos: number
   obrigatorios: string[]
   campos: Record<string, BlockCopySchemaField>
+  /**
+   * Passo 13: exemplos que a régua de claims removeu (`avaliarClaims`), com
+   * o motivo. O n8n obedeceu ao exemplo "SHOP 10% OFF" numa loja sem
+   * incentivo (batch 6249aef2) — o exemplo é a instrução mais forte do
+   * prompt dele, e mandá-lo era mandar a oferta.
+   */
+  exemplos_removidos?: Array<{ campo: string; exemplo: string; motivo: string }>
 }
 
 /** Só o que o builder precisa de um BlueprintBlockField/BlueprintFieldV2. */
@@ -89,10 +105,21 @@ export function buildBlockCopySchema(
     purpose?: string | null
     papel?: string | null
     requisitos?: Record<string, unknown> | null
+    /**
+     * Passo 13: a decisão de incentivo do e-mail e as proibições. Com ela,
+     * `exemplo` que promete oferta/percentual/código que a decisão nega é
+     * REMOVIDO e vira `directive`. Ausente → exemplos passam como vieram.
+     */
+    incentivo?: IncentivoParaClaims | null
+    proibido?: readonly string[] | null
   },
 ): BlockCopySchema {
   const campos: Record<string, BlockCopySchemaField> = {}
   const obrigatorios: string[] = []
+  const exemplosRemovidos: NonNullable<BlockCopySchema["exemplos_removidos"]> = []
+  const exigeDaPosicao = Array.isArray(meta?.requisitos?.exige)
+    ? (meta.requisitos!.exige as unknown[]).filter((x): x is string => typeof x === "string" && x.trim().length > 0)
+    : []
 
   for (const f of fields) {
     const key = texto(f?.key)
@@ -102,14 +129,28 @@ export function buildBlockCopySchema(
     if (f?.omitir === true) continue
 
     const obrigatorio = f?.required === true
+    let exemplo = texto(f?.example)
+    let directive: string | null = null
+    if (exemplo && meta?.incentivo) {
+      const violacoes = avaliarClaims(exemplo, meta.incentivo, meta.proibido ?? []).filter((v) => v.severidade === "high")
+      if (violacoes.length > 0) {
+        const motivo = violacoes.map((v) => `${v.tipo}: "${v.trecho}" — ${v.esperado}`).join("; ")
+        exemplosRemovidos.push({ campo: key, exemplo, motivo })
+        exemplo = null
+        directive =
+          (exigeDaPosicao.length > 0 ? `Exigências desta posição: ${exigeDaPosicao.join("; ")}. ` : "") +
+          `Sem oferta neste campo (${violacoes[0].esperado}). Escreva no mesmo formato e tamanho de um ${texto(f?.type) ?? "text_short"}, sem cupom, percentual ou código.`
+      }
+    }
     campos[key] = {
       label: texto(f?.label) ?? key,
       tipo: texto(f?.type) ?? "text_short",
       obrigatorio,
       max_caracteres: numeroPositivo(f?.max_len),
       min_caracteres: numeroPositivo(f?.min_len),
-      exemplo: texto(f?.example),
+      exemplo,
       orientacao: texto(f?.guidance),
+      ...(directive ? { directive } : {}),
     }
     if (obrigatorio) obrigatorios.push(key)
   }
@@ -122,5 +163,6 @@ export function buildBlockCopySchema(
     total_campos: Object.keys(campos).length,
     obrigatorios,
     campos,
+    ...(exemplosRemovidos.length > 0 ? { exemplos_removidos: exemplosRemovidos } : {}),
   }
 }

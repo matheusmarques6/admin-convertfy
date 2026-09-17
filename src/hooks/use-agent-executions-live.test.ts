@@ -27,6 +27,7 @@ function exec(
     email_status: "rendering",
     bucket: "running",
     failure_reason: null,
+    render_previews: null,
     updated_at: updatedAt,
     ready_at: null,
     failed_at: null,

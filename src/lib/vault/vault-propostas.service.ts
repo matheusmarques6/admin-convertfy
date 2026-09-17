@@ -1,7 +1,7 @@
 /**
  * Lacunas propostas por telemetria — o I/O em volta de `lacuna-draft.ts`.
  *
- * Lê as runs `assembler_chooser` da janela, agrega por chave e faz upsert em
+ * Lê as runs `assembler_chooser` e `assembler` da janela, agrega por chave e faz upsert em
  * `vault_propostas`. Proposta `descartada` NÃO volta a `proposta` quando a
  * violação se repete: descartar é dizer "isto não é lacuna", e o cron
  * ressuscitá-la todo dia ensinaria a ignorar a lista. `copiada` mantém o
@@ -15,7 +15,14 @@ import { agregarLacunas, buildLacunaDraft, type RunParaLacuna } from "@/lib/agen
 
 const log = logger.child("VaultPropostas")
 
-const MISSING = new Set(["42P01", "PGRST205", "PGRST204", "42703"])
+/**
+ * Tabela/cache ausentes — a migration 20261135 não rodou. `42703` (coluna
+ * inexistente) saiu daqui em 14/09: ali ele traduzia "escrevi a coluna
+ * errada" em `schema_missing: true`, e a resposta acusava uma migration que
+ * está aplicada enquanto o defeito era nosso. Erro de nome de coluna tem de
+ * aparecer como erro.
+ */
+const MISSING = new Set(["42P01", "PGRST205", "PGRST204"])
 
 export interface ProporLacunasResult {
   runs: number
@@ -38,7 +45,9 @@ export async function proporLacunas(
   const { data: runs, error } = await admin
     .from("email_generation_runs")
     .select("id, store_id, created_at, parsed_output")
-    .eq("agent", "assembler_chooser")
+    // `assembler` entra pelo Passo 11: é a run que grava
+    // `posicoes_sem_variante` com dispositivo pedido e motivo.
+    .in("agent", ["assembler_chooser", "assembler"])
     .gte("created_at", desde)
     .order("created_at", { ascending: false })
     .limit(500)
@@ -50,8 +59,21 @@ export async function proporLacunas(
   const storeIds = Array.from(new Set((runs ?? []).map((r) => r.store_id).filter((v): v is string => Boolean(v))))
   const nomes = new Map<string, string>()
   if (storeIds.length > 0) {
-    const { data: lojas } = await admin.from("client_stores").select("id, name").in("id", storeIds)
-    for (const l of (lojas ?? []) as Array<{ id: string; name: string | null }>) if (l.name) nomes.set(l.id, l.name)
+    // `store_name`, não `name` (14/09): a coluna errada devolvia 400 do
+    // PostgREST em TODA rodada e o `error` não era lido — `nomes` ficava
+    // vazio e cada exemplo entrava com `storeName: null`, então o "Onde
+    // apareceu" de toda proposta saía "(loja não identificada)". Medido
+    // antes do conserto: 7 propostas, 35 exemplos, zero com nome.
+    const { data: lojas, error: errLojas } = await admin
+      .from("client_stores")
+      .select("id, store_name")
+      .in("id", storeIds)
+    // Fail-open de propósito — o nome DECORA a proposta, não a habilita —,
+    // mas nunca em silêncio: foi a falha calada que fez isto durar.
+    if (errLojas) log.warn("lojas_load_failed", { error: errLojas.message, code: errLojas.code })
+    for (const l of (lojas ?? []) as Array<{ id: string; store_name: string | null }>) {
+      if (l.store_name) nomes.set(l.id, l.store_name)
+    }
   }
 
   const entrada: RunParaLacuna[] = (runs ?? []).map((r) => {
@@ -63,6 +85,13 @@ export async function proporLacunas(
       violations: Array.isArray(po.protocol_violations) ? (po.protocol_violations as RunParaLacuna["violations"]) : [],
       posicoesSemVariante: Array.isArray(po.posicoes_sem_variante)
         ? (po.posicoes_sem_variante as RunParaLacuna["posicoesSemVariante"])
+        : [],
+      // Fase 3 (16/09): seções em que a janela de repetição precisou ser
+      // afrouxada por escassez. O `flow_type` vem DENTRO do payload — a
+      // chave da pauta é (flow, seção) e a tabela de runs não tem coluna
+      // de flow.
+      janelaAfrouxada: Array.isArray((po.janela as { afrouxadas?: unknown } | undefined)?.afrouxadas)
+        ? ((po.janela as { afrouxadas: RunParaLacuna["janelaAfrouxada"] }).afrouxadas ?? [])
         : [],
     }
   })

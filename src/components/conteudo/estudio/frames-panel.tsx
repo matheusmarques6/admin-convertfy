@@ -8,16 +8,18 @@
  * expõe tipo e slot por frame.
  */
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { MessageCircle, MoreVertical, Plus } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Icon } from "@/components/ui/icon"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { adicionarFrame, contarPalavras, dividirFrame, duplicarFrame, excluirFrame, MIN_FRAMES, reordenarFrames, trocarTipoFrame } from "@/lib/conteudo/documento"
+import { aplicarSlideNoFrame, formatosParaOTipo, importarSlide, posicaoPadrao, slidesDeOutrosMoldes, type SlideImportavel } from "@/lib/conteudo/slide-de-outro-template"
+import { tracoDe, familiaDe } from "@/lib/conteudo/familias"
 import { impedimentosDoGate } from "@/lib/conteudo/comment-gate"
 import { chamarIA } from "@/lib/conteudo/ia/client"
 import { resumoDocumento } from "@/lib/conteudo/ia/prompt"
-import { ST_TIPOS_TROCA, ST_VARIANTES } from "@/lib/conteudo/templates"
+import { ST_TIPOS_TROCA, variantesDoTipo } from "@/lib/conteudo/templates"
 import type { FrameTipo, VarianteLayout } from "@/lib/conteudo/types"
 import { CtLabel, TNUM, inputCls, textareaCls } from "../ui"
 import type { EditorApi } from "./editor-types"
@@ -27,10 +29,61 @@ import { Thumb } from "./thumb"
 
 const TIPOS: FrameTipo[] = ["capa", "dado", "texto", "prova", "lista", "mec", "cta"]
 
+/**
+ * Painel "Adicionar": slide em branco ou um passo emprestado de outro
+ * molde. As miniaturas são do documento DE DESTINO com o slide já
+ * importado — mostrar a peça na identidade do molde de origem seria a
+ * prévia que não bate com o clique, o mesmo defeito que a prateleira tinha.
+ */
+function AdicionarSlide({ api, onFeito }: { api: EditorApi; onFeito: () => void }) {
+  const { doc } = api
+  const grupos = useMemo(() => slidesDeOutrosMoldes(doc.templateId).filter((g) => g.slides.length > 0), [doc.templateId])
+  const pos = posicaoPadrao(doc)
+  const importar = (s: SlideImportavel) => {
+    api.set(() => importarSlide(doc, s), null)
+    api.setAtivo(pos)
+    onFeito()
+  }
+  return (
+    <div className="max-h-[420px] overflow-y-auto">
+      <button
+        type="button"
+        onClick={() => {
+          api.set(() => adicionarFrame(doc), null)
+          api.setAtivo(pos)
+          onFeito()
+        }}
+        className="mb-2 flex w-full items-center gap-1.5 rounded-lg border border-[var(--ops-border)] px-2.5 py-2 text-[11.5px] font-medium text-[var(--ops-title)] hover:bg-[var(--ops-hover)]"
+      >
+        <Icon icon={Plus} customSize={13} /> Slide em branco
+      </button>
+      {grupos.map((g) => (
+        <div key={g.template.id} className="mb-1.5">
+          <div className="px-1 pb-1.5 pt-0.5 text-[9.5px] font-bold uppercase tracking-[0.07em] text-[var(--ops-mut)]">{g.template.nome}</div>
+          <div className="grid grid-cols-3 gap-1.5">
+            {g.slides.map((s) => (
+              <button key={`${s.templateId}:${s.origemId}`} type="button" title={`${s.label} · ${s.tipo}`} onClick={() => importar(s)} className="rounded-[7px] border-2 border-[var(--ops-border)] p-1 text-left hover:border-[var(--ops-accent)]">
+                <div className="overflow-hidden rounded">
+                  <Thumb doc={importarSlide(doc, s, pos)} ix={pos} w={62} />
+                </div>
+                <div className="mt-0.5 truncate text-[9.5px] text-[var(--ops-sec)]">{s.label}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
+      <div className="px-1 pt-1 text-[10px] leading-relaxed text-[var(--ops-mut)]">O slide vem com o texto-guia e desenhado na identidade DESTE carrossel — molde é forma, não conteúdo.</div>
+    </div>
+  )
+}
+
 export function FramesPanel({ api }: { api: EditorApi }) {
   const { doc, ativo, modoTemplate } = api
+  const tracoDoDoc = tracoDe(familiaDe(doc))
+  const cartaoPerfil = tracoDoDoc.cartaoPerfil
   const [aba, setAba] = useState<"frames" | "legenda">("frames")
   const [trocar, setTrocar] = useState<string | null>(null)
+  const [adicionar, setAdicionar] = useState(false)
   const [menu, setMenu] = useState<string | null>(null)
   const [dragIx, setDragIx] = useState<number | null>(null)
   const [overIx, setOverIx] = useState<number | null>(null)
@@ -132,7 +185,8 @@ export function FramesPanel({ api }: { api: EditorApi }) {
       <div className={cn("grid grid-cols-2 gap-2", aba !== "frames" && "hidden")}>
         {doc.frames.map((x, i) => {
           const on = i === ativo
-          const variantes = ST_VARIANTES[x.tipo]
+          const variantes = variantesDoTipo(x.tipo, tracoDoDoc)
+          const formatos = on ? formatosParaOTipo(doc.templateId, x.tipo) : []
           return (
             <div
               key={x.frameId}
@@ -171,7 +225,7 @@ export function FramesPanel({ api }: { api: EditorApi }) {
                   {String(i + 1).padStart(2, "0")}
                 </span>
                 <span className="flex-1 truncate">{x.label}</span>
-                {on && x.tipo !== "cta" && (
+                {on && (variantes !== undefined || formatos.length > 0) && (
                   <Popover open={trocar === x.frameId} onOpenChange={(o) => setTrocar(o ? x.frameId : null)}>
                     <PopoverTrigger asChild>
                       <button type="button" onClick={(e) => e.stopPropagation()} className="text-[10px] font-semibold text-[var(--ops-accent)] hover:underline">
@@ -206,7 +260,40 @@ export function FramesPanel({ api }: { api: EditorApi }) {
                           </div>
                         </>
                       )}
-                      {x.tipo !== "capa" && (
+                      {formatos.length > 0 && (
+                        <>
+                          {/* Outro DESENHO para o mesmo passo: é o "usar
+                              outra capa". Só formatos do mesmo tipo — trocar
+                              por outro papel é o seletor logo abaixo — e a
+                              copy escrita sobrevive à troca. */}
+                          <div className="px-1 pb-1.5 pt-2.5 text-[9.5px] font-bold uppercase tracking-[0.07em] text-[var(--ops-mut)]">Formato de outro molde</div>
+                          <div className="grid grid-cols-3 gap-1.5">
+                            {formatos.map((s) => {
+                              const docS = aplicarSlideNoFrame(doc, i, s)
+                              return (
+                                <button
+                                  key={`${s.templateId}:${s.origemId}`}
+                                  type="button"
+                                  title={`${s.label} · ${s.templateNome}`}
+                                  onClick={() => {
+                                    api.set(() => docS, null)
+                                    setTrocar(null)
+                                  }}
+                                  className="rounded-[7px] border-2 border-[var(--ops-border)] p-1 text-left hover:border-[var(--ops-accent)]"
+                                >
+                                  <div className="overflow-hidden rounded">
+                                    <Thumb doc={docS} ix={i} w={62} />
+                                  </div>
+                                  <div className="mt-0.5 truncate text-[9.5px] text-[var(--ops-sec)]">{s.templateNome}</div>
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </>
+                      )}
+                      {/* Capa e CTA são papéis fixos da sequência: virar
+                          outro tipo ali quebraria a abertura e o fecho. */}
+                      {x.tipo !== "capa" && x.tipo !== "cta" && (
                         <>
                           <div className="px-1 pb-1.5 pt-2.5 text-[9.5px] font-bold uppercase tracking-[0.07em] text-[var(--ops-mut)]">Tipo de frame</div>
                           <div className="flex flex-wrap gap-1">
@@ -283,17 +370,17 @@ export function FramesPanel({ api }: { api: EditorApi }) {
             </div>
           )
         })}
-        <button
-          type="button"
-          onClick={() => {
-            api.set(() => adicionarFrame(doc), null)
-            api.setAtivo(Math.max(0, doc.frames.length - 1))
-          }}
-          className="flex aspect-[4/5] flex-col items-center justify-center gap-1 rounded-[7px] border border-dashed border-[var(--ops-border)] text-[10.5px] text-[var(--ops-mut)] hover:bg-[var(--ops-hover)]"
-        >
-          <Icon icon={Plus} customSize={14} />
-          Adicionar
-        </button>
+        <Popover open={adicionar} onOpenChange={setAdicionar}>
+          <PopoverTrigger asChild>
+            <button type="button" className="flex aspect-[4/5] flex-col items-center justify-center gap-1 rounded-[7px] border border-dashed border-[var(--ops-border)] text-[10.5px] text-[var(--ops-mut)] hover:bg-[var(--ops-hover)]">
+              <Icon icon={Plus} customSize={14} />
+              Adicionar
+            </button>
+          </PopoverTrigger>
+          <PopoverContent align="end" sideOffset={6} className="w-[248px] rounded-[10px] border-[var(--ops-border)] bg-[var(--ops-card)] p-2 shadow-lg" onClick={(e) => e.stopPropagation()}>
+            <AdicionarSlide api={api} onFeito={() => setAdicionar(false)} />
+          </PopoverContent>
+        </Popover>
       </div>
       {gate && <CommentGateModal doc={doc} perfil={api.perfil} onClose={() => setGate(false)} onFeito={(m) => api.avisar(m)} />}
     </aside>

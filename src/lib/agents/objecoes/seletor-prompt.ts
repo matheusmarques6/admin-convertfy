@@ -8,6 +8,7 @@
  * seguintes trabalham.
  */
 
+import { CACHE_PREFIX_MARKER } from "../shared/cache-de-prompt"
 import type { SegmentOrigin } from "../shared/prompt-provenance"
 import { objecoesElegiveisNoFlow } from "./catalogo-regras"
 import type { IntentContract } from "./intent-contract"
@@ -85,10 +86,26 @@ Responda APENAS o JSON, sem markdown e sem texto ao redor, no formato:
  "razao":"uma frase",
  "lacuna":null}`
 
+/**
+ * User em dois blocos separados por marca de cache (14/09): loja +
+ * catálogo + oferta (iguais nos 4 e-mails) antes; contrato, intenção,
+ * já-atacadas e correções (deste e-mail) depois.
+ */
 export const DEFAULT_SELETOR_USER = `<loja>
 - marca: {{brand_name}}
-- flow: {{flow_type}} — email #{{email_number}}
 </loja>
+
+<catalogo_da_loja>
+{{catalogo_da_loja}}
+</catalogo_da_loja>
+
+<oferta_e_produtos>
+{{oferta_e_produtos}}
+</oferta_e_produtos>
+${CACHE_PREFIX_MARKER}
+<email>
+- flow: {{flow_type}} — email #{{email_number}}
+</email>
 
 <contrato_do_toque>
 {{contrato_do_toque}}
@@ -98,17 +115,9 @@ export const DEFAULT_SELETOR_USER = `<loja>
 {{intencao_do_toque}}
 </intencao_do_toque>
 
-<catalogo_da_loja>
-{{catalogo_da_loja}}
-</catalogo_da_loja>
-
 <ja_atacadas>
 {{ja_atacadas}}
 </ja_atacadas>
-
-<oferta_e_produtos>
-{{oferta_e_produtos}}
-</oferta_e_produtos>
 
 <correcoes>
 {{correcoes}}

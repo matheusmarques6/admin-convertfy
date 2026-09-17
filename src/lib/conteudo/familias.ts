@@ -1,7 +1,8 @@
 /**
  * Famílias visuais do Estúdio — a "cara" do carrossel, separada da estrutura.
  *
- * O molde (Turbo, Benchmark…) decide a SEQUÊNCIA de slides; a família decide
+ * O molde (Print de post, Tese em manchete…) decide a SEQUÊNCIA de slides; a
+ * família decide
  * como eles são desenhados: paleta, tipografia, forma do CTA, raio dos
  * cartões. Trocar de família não mexe em uma palavra da copy.
  *
@@ -15,8 +16,12 @@
  */
 
 import { CORES_PADRAO, GRADIENTE_PADRAO, SLIDE } from "./brand"
+import { POST_CORES, type EstiloPost } from "./formato-post"
+import { THREAD_CORES } from "./formato-thread"
+import { MANCHETE_CORES } from "./formato-manchete"
 import { paletaDeUmaCor, tintaSobre, type Paleta } from "./paleta"
 import type { Documento, FamiliaVisual, FrameTipo, Gradiente } from "./types"
+import { camposDaIdentidade, desenhoDaIdentidade, reconciliarCampos } from "./campos-da-identidade"
 
 export type { FamiliaVisual }
 
@@ -37,8 +42,58 @@ export interface TracoFamilia {
   tituloEntrelinha: number
   /** O corpo é itálico serif (padrão) ou sans regular (editorial)? */
   corpoItalico: boolean
-  /** Botão sólido com sombra, ou pílula clara com borda. */
-  cta: "botao" | "pilula"
+  /**
+   * Botão sólido com sombra, pílula clara com borda, ou BLOCO: retângulo
+   * sólido de canto quase reto com o texto condensado em caixa alta — o
+   * "caixa azul" da identidade Manchete, que é parte do desenho e não um
+   * botão de interface.
+   */
+  cta: "botao" | "pilula" | "bloco"
+  /**
+   * Régua curta entre o título e o corpo nos slides de texto. Separa a
+   * afirmação do argumento quando não há foto para fazer esse corte.
+   */
+  reguaSobCorpo: boolean
+  /**
+   * A peça inteira é CLARA, com a capa escura e UM escuro no meio. Não é a
+   * alternância do Alternado (claro/escuro a cada passo): aqui o preto
+   * marca a tensão (o slide do problema) e o branco carrega o argumento.
+   * Lido dos cinco slides da referência da Manchete.
+   */
+  respiroEscuro: boolean
+  /**
+   * O título quebrado em linhas sai em ESCADA decrescente, e **só na
+   * capa**: na referência o slide preto da pergunta tem as duas linhas do
+   * mesmo corpo. A escada é o gesto de ABRIR a peça, não um traço do fundo
+   * escuro — amarrá-la ao fundo (a primeira versão) errava o slide do
+   * problema.
+   */
+  escadaNoTitulo: boolean
+  /**
+   * Retângulo sólido na cor de destaque com o texto do campo `destaque`
+   * dentro. Não é o CTA: é o callout no meio da peça, e sem esta flag o
+   * campo nem é oferecido no painel.
+   */
+  caixaDeDestaque: boolean
+  /**
+   * O TÍTULO não sai na tinta do corpo: no fundo claro ele usa a cor de
+   * destaque e no escuro o creme. Medido na referência da Manchete, onde o
+   * título do slide do erro é um bloco AZUL que ocupa um terço da peça —
+   * com a tinta do corpo ele saía preto e a peça deixava de ser a mesma.
+   */
+  tituloDestacado: boolean
+  /**
+   * Só o ÍCONE da marca, pequeno, no topo — sem nome e sem `@handle`. É o
+   * que a Manchete usa no lugar da assinatura completa; sem avatar no
+   * brand kit nada é desenhado, porque inventar marca é pior que o vazio.
+   */
+  logoNoTopo: boolean
+  /**
+   * Cada slide repete avatar + nome acima do título. É a assinatura das
+   * famílias da casa; na Manchete quem carrega a marca é o `logoNoTopo`, e
+   * repetir o nome colado no título só duplica a mesma informação.
+   */
+  assinaturaNoSlide: boolean
   /** Raio do slot de imagem e dos cartões, na base 1080. */
   raio: number
   /** Inclinação da anotação manuscrita, em graus. */
@@ -65,6 +120,34 @@ export interface TracoFamilia {
    * aqui vem da POSIÇÃO, que é o que dá o ritmo do formato.
    */
   alternaFundo: boolean
+  /**
+   * O slide é um CARTÃO DE PERFIL (o print de tweet): avatar, nome com
+   * selo, `@handle` e o texto embaixo — um desenho só, para todo tipo de
+   * frame. Ligada, ela também tira o rodapé de marca, o contador e o
+   * filete: a peça imita uma captura de tela, e enfeite da casa denuncia
+   * que não é uma. Medidas em `formato-post.ts`.
+   */
+  cartaoPerfil: boolean
+  /**
+   * Qual dos dois desenhos do print de tweet a família usa. Só vale com
+   * `cartaoPerfil`; as medidas moram em `formato-post.ts`.
+   */
+  estiloPost?: EstiloPost
+  /**
+   * O slide é um CARTÃO DE THREAD: barra de metadados no topo, bloco de
+   * autoria e um FIO de parágrafos com foto no meio. É primo do
+   * `cartaoPerfil` (os dois simulam a mesma rede) e igualmente exclusivo
+   * com ele — um slide não pode ser captura de post E peça editorial ao
+   * mesmo tempo. Medidas em `formato-thread.ts`.
+   */
+  cartaoThread: boolean
+  /**
+   * O slide é o CARTÃO COMPLETO do X: moldura, logo no canto, linha de
+   * `hora · data · visualizações` e barra de contadores. O `cartaoPerfil` é
+   * o RECORTE do mesmo cartão — os dois simulam a mesma rede e são
+   * exclusivos entre si. Medidas em `formato-tweet.ts`.
+   */
+  cartaoTweet: boolean
 }
 
 export interface Familia {
@@ -85,6 +168,37 @@ const FONTE_SERIF = "Georgia, 'Times New Roman', serif"
 const FONTE_SANS = "'Inter Slides', Inter, -apple-system, BlinkMacSystemFont, sans-serif"
 const FONTE_SERIF_DISPLAY = "'Instrument Serif', Georgia, 'Times New Roman', serif"
 const FONTE_MANUSCRITA = "'Caveat', 'Segoe Script', cursive"
+/**
+ * A fonte de quem SIMULA um post é a da plataforma — pesquisada, não
+ * escolhida por gosto.
+ *
+ * O X usa a **Chirp** (Grilli Type, 2021) e cai, quando ela não carrega,
+ * nesta pilha exata: Segoe UI, Roboto, Helvetica, Arial, sans-serif. Chirp é
+ * proprietária e não pode ser embarcada; **Inter** é o substituto livre
+ * apontado em toda comparação séria — grotesca de tela, x-height alta,
+ * proporções muito próximas. É também o que os aplicativos nativos entregam
+ * na prática (SF Pro no iOS, Roboto no Android), todos grotescos.
+ *
+ * O primeiro desenho desta família usava Poppins, e isso era o defeito que
+ * o usuário nomeou como "cara de feito com IA": Poppins é GEOMÉTRICA
+ * (derivada de Futura) — `a` de um andar só, bojos circulares. Nenhuma
+ * interface social usa geométrica no corpo do post, e esse `a` é o detalhe
+ * que denuncia a peça como card de Canva em vez de captura de tela.
+ *
+ * Inter fica antes da pilha da plataforma porque a EXPORTAÇÃO precisa de
+ * fonte determinística: com fonte de sistema o PNG mudaria de máquina para
+ * máquina.
+ */
+const FONTE_POST = "'Inter Slides', Inter, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+/**
+ * O formato largo usa a MESMA pilha, e isso é o certo: os dois simulam a
+ * mesma interface, e o que os separa é a métrica (margem, avatar,
+ * entrelinha, colagem), não o tipo. A referência do largo foi capturada num
+ * Windows, onde a pilha do X cai justamente em Segoe UI.
+ */
+const FONTE_POST_LARGO = FONTE_POST
+
+
 
 /**
  * A família Alternado inteira sai de UMA cor: é o que permite a mesma peça
@@ -127,6 +241,16 @@ export function alternadoDaPaleta(p: Paleta): Omit<Familia, "key" | "nome" | "de
       barraTopo: true,
       barraProgresso: true,
       alternaFundo: true,
+      cartaoPerfil: false,
+      cartaoThread: false,
+      cartaoTweet: false,
+      assinaturaNoSlide: true,
+      reguaSobCorpo: false,
+      respiroEscuro: false,
+      escadaNoTitulo: false,
+      caixaDeDestaque: false,
+      tituloDestacado: false,
+      logoNoTopo: false,
     },
   }
 }
@@ -160,6 +284,16 @@ export const FAMILIAS: Record<FamiliaVisual, Familia> = {
       barraTopo: false,
       barraProgresso: false,
       alternaFundo: false,
+      cartaoPerfil: false,
+      cartaoThread: false,
+      cartaoTweet: false,
+      assinaturaNoSlide: true,
+      reguaSobCorpo: false,
+      respiroEscuro: false,
+      escadaNoTitulo: false,
+      caixaDeDestaque: false,
+      tituloDestacado: false,
+      logoNoTopo: false,
     },
   },
   editorial: {
@@ -199,6 +333,16 @@ export const FAMILIAS: Record<FamiliaVisual, Familia> = {
       barraTopo: false,
       barraProgresso: false,
       alternaFundo: false,
+      cartaoPerfil: false,
+      cartaoThread: false,
+      cartaoTweet: false,
+      assinaturaNoSlide: true,
+      reguaSobCorpo: false,
+      respiroEscuro: false,
+      escadaNoTitulo: false,
+      caixaDeDestaque: false,
+      tituloDestacado: false,
+      logoNoTopo: false,
     },
   },
   alternado: {
@@ -207,16 +351,283 @@ export const FAMILIAS: Record<FamiliaVisual, Familia> = {
     descricao: "Claro e escuro alternados, filete no topo e barra de progresso; paleta derivada de uma cor só.",
     ...alternadoDaPaleta(paletaDeUmaCor(COR_PRIMARIA_PADRAO)),
   },
+  thread: {
+    key: "thread",
+    nome: "Thread",
+    descricao: "Cartão de thread: barra de metadados no topo, autoria com avatar e um fio de parágrafos com foto no meio. Fecho preto.",
+    cores: {
+      hook: THREAD_CORES.tinta,
+      destaque: THREAD_CORES.tinta,
+      metadado: THREAD_CORES.metadado,
+      "fundo-bloco": "#F1F2F4",
+    },
+    // Como na `post`, o gradiente existe porque o tipo pede e o formato
+    // não o usa: o cartão é branco chapado e o fecho é preto chapado.
+    gradiente: { de: THREAD_CORES.cartao, meio: THREAD_CORES.cartao, ate: THREAD_CORES.cartao, angulo: 160 },
+    fundoClaro: THREAD_CORES.cartao,
+    fundoEscuro: THREAD_CORES.preto,
+    cta: { fundo: THREAD_CORES.preto, cor: "#FFFFFF" },
+    traco: {
+      fonteTitulo: FONTE_POST,
+      fonteGancho: FONTE_POST,
+      fonteCorpo: FONTE_POST,
+      fonteMeta: FONTE_POST,
+      fonteAnotacao: FONTE_MANUSCRITA,
+      tituloCaixaAlta: false,
+      tituloPeso: 700,
+      tituloTracking: "-0.01em",
+      tituloEntrelinha: 1.28,
+      corpoItalico: false,
+      cta: "pilula",
+      raio: 10,
+      anotacaoRotacao: -3,
+      ganchoFator: 1,
+      ganchoCor: "tinta",
+      barraTopo: false,
+      barraProgresso: false,
+      alternaFundo: false,
+      cartaoPerfil: false,
+      cartaoThread: true,
+      cartaoTweet: false,
+      assinaturaNoSlide: false,
+      reguaSobCorpo: false,
+      respiroEscuro: false,
+      escadaNoTitulo: false,
+      caixaDeDestaque: false,
+      tituloDestacado: false,
+      logoNoTopo: false,
+    },
+  },
+  post: {
+    key: "post",
+    nome: "Post",
+    descricao: "Print de tweet: fundo quase preto, avatar com nome e @handle, texto grande. Sem contador nem rodapé.",
+    cores: {
+      hook: POST_CORES.texto,
+      destaque: POST_CORES.selo,
+      metadado: POST_CORES.handle,
+      "fundo-bloco": "#1A1A1A",
+    },
+    // O gradiente existe porque o tipo pede, mas o formato não o usa: todo
+    // slide é o mesmo preto, que é o que faz os quatro parecerem a mesma
+    // captura de tela.
+    gradiente: { de: "#1A1A1A", meio: "#131313", ate: POST_CORES.fundo, angulo: 160 },
+    fundoClaro: POST_CORES.fundo,
+    fundoEscuro: POST_CORES.fundo,
+    cta: { fundo: "#FFFFFF", cor: POST_CORES.fundo },
+    traco: {
+      fonteTitulo: FONTE_POST,
+      fonteGancho: FONTE_POST,
+      fonteCorpo: FONTE_POST,
+      fonteMeta: FONTE_POST,
+      fonteAnotacao: FONTE_MANUSCRITA,
+      tituloCaixaAlta: false,
+      tituloPeso: 700,
+      tituloTracking: "0",
+      tituloEntrelinha: 1.32,
+      corpoItalico: false,
+      cta: "pilula",
+      raio: 10,
+      anotacaoRotacao: -3,
+      ganchoFator: 1,
+      ganchoCor: "tinta",
+      barraTopo: false,
+      barraProgresso: false,
+      alternaFundo: false,
+      cartaoPerfil: true,
+      cartaoThread: false,
+      cartaoTweet: false,
+      assinaturaNoSlide: true,
+      reguaSobCorpo: false,
+      respiroEscuro: false,
+      escadaNoTitulo: false,
+      caixaDeDestaque: false,
+      tituloDestacado: false,
+      logoNoTopo: false,
+      estiloPost: "post",
+    },
+  },
+  "post-largo": {
+    key: "post-largo",
+    nome: "Post largo",
+    descricao: "Print de post com margem estreita, fonte neutra e colagem de duas fotos — a cara de uma captura crua.",
+    cores: {
+      hook: POST_CORES.texto,
+      destaque: POST_CORES.selo,
+      metadado: POST_CORES.handle,
+      "fundo-bloco": "#1A1A1A",
+    },
+    gradiente: { de: "#151515", meio: "#101010", ate: POST_CORES.fundo, angulo: 160 },
+    fundoClaro: POST_CORES.fundo,
+    fundoEscuro: POST_CORES.fundo,
+    cta: { fundo: "#FFFFFF", cor: POST_CORES.fundo },
+    traco: {
+      fonteTitulo: FONTE_POST_LARGO,
+      fonteGancho: FONTE_POST_LARGO,
+      fonteCorpo: FONTE_POST_LARGO,
+      fonteMeta: FONTE_POST_LARGO,
+      fonteAnotacao: FONTE_MANUSCRITA,
+      tituloCaixaAlta: false,
+      tituloPeso: 700,
+      tituloTracking: "0",
+      tituloEntrelinha: 1.37,
+      corpoItalico: false,
+      cta: "pilula",
+      raio: 15,
+      anotacaoRotacao: -3,
+      ganchoFator: 1,
+      ganchoCor: "tinta",
+      barraTopo: false,
+      barraProgresso: false,
+      alternaFundo: false,
+      cartaoPerfil: true,
+      cartaoThread: false,
+      cartaoTweet: false,
+      assinaturaNoSlide: true,
+      reguaSobCorpo: false,
+      respiroEscuro: false,
+      escadaNoTitulo: false,
+      caixaDeDestaque: false,
+      tituloDestacado: false,
+      logoNoTopo: false,
+      estiloPost: "post-largo",
+    },
+  },
+  tweet: {
+    key: "tweet",
+    nome: "Card do X",
+    descricao: "O cartão completo do X: moldura, logo no canto, hora, data e a barra de contadores — tudo editável. Use com o molde Card do X.",
+    cores: {
+      hook: POST_CORES.texto,
+      destaque: POST_CORES.selo,
+      metadado: POST_CORES.handle,
+      "fundo-bloco": POST_CORES.fundo,
+    },
+    // Como na `post`, o gradiente existe porque o tipo pede e o formato não
+    // o usa: o fundo é o mesmo em todo slide, e o que separa o cartão dele
+    // é a MOLDURA — que é como o X faz, e é o que permite tema claro sem o
+    // cartão sumir na página.
+    gradiente: { de: POST_CORES.fundo, meio: POST_CORES.fundo, ate: POST_CORES.fundo, angulo: 160 },
+    fundoClaro: POST_CORES.fundo,
+    fundoEscuro: POST_CORES.fundo,
+    cta: { fundo: "#FFFFFF", cor: POST_CORES.fundo },
+    traco: {
+      fonteTitulo: FONTE_POST,
+      fonteGancho: FONTE_POST,
+      fonteCorpo: FONTE_POST,
+      fonteMeta: FONTE_POST,
+      fonteAnotacao: FONTE_MANUSCRITA,
+      tituloCaixaAlta: false,
+      // O X não tem negrito no texto do post: os dois parágrafos saem no
+      // mesmo peso, e é o peso do embed (`--tweet-body-font-weight: 400`).
+      tituloPeso: 400,
+      tituloTracking: "0",
+      tituloEntrelinha: 24 / 20,
+      corpoItalico: false,
+      cta: "pilula",
+      raio: 22,
+      anotacaoRotacao: -3,
+      ganchoFator: 1,
+      ganchoCor: "tinta",
+      barraTopo: false,
+      barraProgresso: false,
+      alternaFundo: false,
+      cartaoPerfil: false,
+      cartaoThread: false,
+      cartaoTweet: true,
+      assinaturaNoSlide: false,
+      reguaSobCorpo: false,
+      respiroEscuro: false,
+      escadaNoTitulo: false,
+      caixaDeDestaque: false,
+      tituloDestacado: false,
+      logoNoTopo: false,
+    },
+  },
+  manchete: {
+    key: "manchete",
+    nome: "Manchete",
+    descricao: "Título condensado em caixa alta, azul elétrico como acento e caixa sólida de destaque. Peça clara com a capa e o slide do problema em preto.",
+    cores: {
+      // `hook` é a TINTA sobre o claro (no escuro o renderer usa branco).
+      hook: MANCHETE_CORES.tinta,
+      destaque: MANCHETE_CORES.azul,
+      apoio: MANCHETE_CORES.tinta,
+      metadado: "#8A8A8A",
+      "fundo-bloco": "#F2F2F2",
+    },
+    // A capa da referência é FOTO, não degradê. Este gradiente existe só
+    // para quem pedir "gradiente" num slide: um azul muito escuro entrando
+    // no preto, que de longe continua lendo como bloco preto.
+    gradiente: { de: "#0E1330", meio: "#080A18", ate: MANCHETE_CORES.preto, angulo: 165 },
+    fundoClaro: MANCHETE_CORES.claro,
+    fundoEscuro: MANCHETE_CORES.preto,
+    cta: { fundo: MANCHETE_CORES.azul, cor: "#FFFFFF" },
+    traco: {
+      fonteTitulo: FONTE_CONDENSADA,
+      fonteGancho: FONTE_SANS,
+      fonteCorpo: FONTE_SANS,
+      fonteMeta: FONTE_SANS,
+      fonteAnotacao: FONTE_MANUSCRITA,
+      tituloCaixaAlta: true,
+      // Pesada e fechada: o título é a massa da peça, e o que faz a massa
+      // é o espaço APERTADO entre as linhas.
+      tituloPeso: 800,
+      tituloTracking: "-0.01em",
+      tituloEntrelinha: 0.92,
+      corpoItalico: false,
+      // A caixa sólida do fecho é o MESMO elemento do callout do meio —
+      // um retângulo de canto quase reto, não um botão de interface.
+      cta: "bloco",
+      // Só a foto tem canto redondo; o resto da peça é chapado.
+      raio: 18,
+      anotacaoRotacao: -3,
+      ganchoFator: 0.9,
+      ganchoCor: "destaque",
+      barraTopo: false,
+      barraProgresso: false,
+      alternaFundo: false,
+      cartaoPerfil: false,
+      cartaoThread: false,
+      cartaoTweet: false,
+      // O ícone pequeno no topo substitui a assinatura completa: a peça
+      // parece um editorial, e avatar com nome e handle a devolveria para
+      // a cara de post de rede social.
+      assinaturaNoSlide: false,
+      logoNoTopo: true,
+      reguaSobCorpo: false,
+      respiroEscuro: true,
+      escadaNoTitulo: true,
+      caixaDeDestaque: true,
+      tituloDestacado: true,
+    },
+  },
 }
 
-export const FAMILIA_OPCOES: Array<[FamiliaVisual, string]> = [
-  ["padrao", FAMILIAS.padrao.nome],
-  ["editorial", FAMILIAS.editorial.nome],
-  ["alternado", FAMILIAS.alternado.nome],
-]
+/**
+ * As identidades que o seletor oferece — derivadas de `FAMILIAS`, na ordem
+ * em que elas são declaradas lá.
+ *
+ * Era a TERCEIRA lista escrita à mão da mesma família de defeito (as outras
+ * duas: `ehFamilia` e o `recalcula` de `aplicarFamilia`). Aqui o preço era
+ * peculiar: a identidade nova existia no tipo, no mapa e no molde — a peça
+ * nascia certa ao escolher o molde — e simplesmente **não podia ser
+ * escolhida** em Marca → Identidade visual nem no diálogo de criação, sem
+ * erro nenhum e sem nada na tela dizendo que faltava uma opção.
+ */
+export const FAMILIA_OPCOES: Array<[FamiliaVisual, string]> = (Object.keys(FAMILIAS) as FamiliaVisual[]).map((k) => [k, FAMILIAS[k].nome])
 
+/**
+ * Deriva de `FAMILIAS`, nunca de uma lista escrita à mão.
+ *
+ * A versão anterior enumerava os nomes num `||` encadeado, e uma família
+ * nova ficava de fora dele: `familiaDe` caía no padrão **em silêncio**, o
+ * documento nascia com a identidade errada e nada em teste ou tela dizia
+ * por quê. Foi o que aconteceu ao acrescentar a Thread, que já existia no
+ * tipo, no mapa e no molde.
+ */
 export function ehFamilia(v: unknown): v is FamiliaVisual {
-  return v === "padrao" || v === "editorial" || v === "alternado"
+  return typeof v === "string" && Object.prototype.hasOwnProperty.call(FAMILIAS, v)
 }
 
 export function familiaDe(doc: Pick<Documento, "familia">): FamiliaVisual {
@@ -247,6 +658,28 @@ export function fundoPadraoDaFamilia(
   total?: number,
 ): string {
   const f = FAMILIAS[familia]
+  // No print de tweet TODO slide tem o mesmo preto: é isso que faz os
+  // quatro parecerem capturas da mesma tela. Gradiente na capa quebraria a
+  // ilusão no primeiro slide.
+  if (f.traco.cartaoPerfil) return f.fundoClaro
+  // Cartão COMPLETO do X: o fundo é a "página" atrás do cartão e é o mesmo
+  // em todo slide — quem separa os dois é a moldura. Gradiente aqui poria
+  // um degradê onde o X tem cor chapada.
+  if (f.traco.cartaoTweet) return f.fundoClaro
+  // Cartão de thread: todo slide é o MESMO branco — é o que faz os oito
+  // parecerem a mesma peça — e o FECHO é preto. Na referência ele é o
+  // único slide escuro, e é o contraste que o marca como fim do fio.
+  if (f.traco.cartaoThread) return tipo === "cta" ? f.fundoEscuro : f.fundoClaro
+  // Manchete: peça CLARA com a capa preta e UM preto no meio — o slide do
+  // problema, onde a tensão mora. Lido dos cinco slides da referência.
+  // Sem saber o total não dá para achar o meio, e aí só a capa é escura:
+  // inventar a posição do corte o põe no slide errado, e um corte no lugar
+  // errado é pior que nenhum.
+  if (f.traco.respiroEscuro) {
+    if (indice === 0) return f.fundoEscuro
+    if (total !== undefined && total >= 4 && indice === Math.floor(total / 2)) return f.fundoEscuro
+    return f.fundoClaro
+  }
   if (f.traco.alternaFundo) {
     if (tipo === "capa") return "gradiente"
     if (tipo === "cta") return f.fundoClaro
@@ -273,7 +706,10 @@ export function fundoPadraoDaFamilia(
 export function ritmoDeFundos(doc: Documento): Documento {
   const fam = familiaDe(doc)
   const f = FAMILIAS[fam]
-  if (!f.traco.alternaFundo) return doc
+  // Vale para toda família cujo fundo é função da POSIÇÃO — a alternância
+  // do Alternado e o corte único da Manchete. Inserir um slide no meio
+  // desloca os seguintes nas duas.
+  if (!f.traco.alternaFundo && !f.traco.respiroEscuro) return doc
 
   const ehPadrao = (v: string) => v === f.fundoClaro || v === f.fundoEscuro || v === "gradiente"
   let mudou = false
@@ -348,6 +784,14 @@ export function aplicarFamilia(doc: Documento, nova: FamiliaVisual): Documento {
   for (const [chave, valorNovo] of Object.entries(para.cores)) {
     if (doc.cores[chave] === undefined || doc.cores[chave] === de.cores[chave]) cores[chave] = valorNovo
   }
+  // Cor que só a família ANTERIOR declara tem de SAIR, senão ela sobrevive
+  // à troca e pinta na identidade seguinte: uma cor de apoio que só a
+  // família anterior declarava ficaria
+  // no corpo dos slides claros da casa, sem ninguém ter escolhido isso.
+  // Só o que ainda é o padrão da antiga — cor posta à mão continua.
+  for (const [chave, valorAntigo] of Object.entries(de.cores)) {
+    if (para.cores[chave] === undefined && doc.cores[chave] === valorAntigo) delete cores[chave]
+  }
 
   const gradiente = mesmoGradiente(doc.gradiente, de.gradiente) ? { ...para.gradiente, angulo: doc.gradiente.angulo } : doc.gradiente
 
@@ -355,16 +799,30 @@ export function aplicarFamilia(doc: Documento, nova: FamiliaVisual): Documento {
   // antiga vira o padrão da nova. Quando a alternância entra ou sai de
   // cena, "o padrão da nova" depende da POSIÇÃO — daí recalcular pela
   // lista de frames em vez de trocar cor por cor.
-  const recalcula = de.traco.alternaFundo !== para.traco.alternaFundo
-  const ehPadraoDaAntiga = (v: string) => v === de.fundoClaro || v === de.fundoEscuro || v === "gradiente"
+  // Recalcular também ao entrar ou sair do print de tweet: lá o fundo é o
+  // MESMO preto em todo slide, e trocar cor por cor deixaria o "gradiente"
+  // da capa intacto — o degradê sutil que denuncia que não é uma captura.
+  // Quem decide se recalcula é o RESULTADO, não uma lista de traços.
+  // A versão anterior enumerava `alternaFundo`/`cartaoPerfil`/
+  // `respiroEscuro`, e uma família nova ficava de fora dela: o cartão de
+  // thread herdava o "gradiente" que a casa põe na capa e no fecho, então
+  // o fecho preto da referência nascia BRANCO com texto branco — invisível,
+  // sem erro nenhum. Comparar os dois padrões não tem como envelhecer.
   const fundoPorFrame: Record<string, string> = { ...doc.fundoPorFrame }
   doc.frames.forEach((f, i) => {
     const valor = doc.fundoPorFrame[f.frameId]
     if (valor === undefined) return
-    if (recalcula) {
-      if (ehPadraoDaAntiga(valor)) fundoPorFrame[f.frameId] = fundoPadraoDaFamilia(nova, f.tipo, i, doc.frames.length)
+    const padraoAntigo = fundoPadraoDaFamilia(atual, f.tipo, i, doc.frames.length)
+    const padraoNovo = fundoPadraoDaFamilia(nova, f.tipo, i, doc.frames.length)
+    // Fundo que ainda é o padrão da antiga vira o padrão da nova.
+    if (valor === padraoAntigo) {
+      fundoPorFrame[f.frameId] = padraoNovo
       return
     }
+    // Fora do padrão POSICIONAL, a cor chapada ainda pode ser a paleta da
+    // antiga (documento montado por outro caminho): claro vira claro,
+    // escuro vira escuro. O que não é nem um nem outro foi pintado à mão
+    // e continua onde o usuário o pôs.
     fundoPorFrame[f.frameId] = valor === de.fundoClaro ? para.fundoClaro : valor === de.fundoEscuro ? para.fundoEscuro : valor
   })
 
@@ -373,5 +831,24 @@ export function aplicarFamilia(doc: Documento, nova: FamiliaVisual): Documento {
       ? { ...doc.cta, fundo: para.cta.fundo, cor: para.cta.cor }
       : doc.cta
 
-  return { ...doc, familia: nova, cores, gradiente, fundoPorFrame, cta }
+  // O conjunto de CAMPOS também é da identidade: o cartão de perfil desenha
+  // título e corpo, a casa desenha o conjunto do tipo (capa com subtítulo,
+  // CTA com botão). Sem reconciliar, trocar de identidade deixava o
+  // parágrafo num campo que a nova não desenha — presente no documento,
+  // invisível na tela, sem erro nenhum. A migração é simétrica: voltar à
+  // identidade anterior devolve o texto ao campo de origem.
+  // A caixa de destaque entra na mesma conta: ela é opcional e só UMA
+  // família a desenha, então trocar de identidade pode ter de tirá-la (ou
+  // devolvê-la) mesmo quando o cartão de perfil não muda.
+  const desenho = desenhoDaIdentidade(para.traco)
+  const mesmoConjunto =
+    de.traco.cartaoPerfil === para.traco.cartaoPerfil &&
+    de.traco.cartaoThread === para.traco.cartaoThread &&
+    de.traco.cartaoTweet === para.traco.cartaoTweet &&
+    de.traco.caixaDeDestaque === para.traco.caixaDeDestaque
+  const frames = mesmoConjunto
+    ? doc.frames
+    : doc.frames.map((f) => ({ ...f, ...reconciliarCampos(f, camposDaIdentidade(para.traco, f.tipo), desenho) }))
+
+  return { ...doc, familia: nova, cores, gradiente, fundoPorFrame, cta, frames }
 }

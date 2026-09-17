@@ -1,11 +1,5 @@
 import { describe, it, expect } from "vitest"
-import {
-  aplicarEstruturadorNoBlueprint,
-  DECISAO_MAX_CHARS,
-  decisaoCompletaParaCurador,
-  estruturaParaPosicoes,
-  projetarNosSlots,
-} from "./estruturador-consume"
+import { aplicarEstruturadorNoBlueprint, DECISAO_MAX_CHARS, decisaoCompletaParaCurador, estruturaParaPosicoes, projetarNosSlots, recorteDaDecisao } from "./estruturador-consume"
 import { clampStructure } from "../architect/outline-sections"
 import type { EstruturadorOutput } from "./estruturador-prompt"
 
@@ -84,8 +78,10 @@ describe("decisaoCompletaParaCurador", () => {
     const r = decisaoCompletaParaCurador(o)
     const volta = JSON.parse(r) as typeof o
     expect(volta).toEqual(o)
-    // Legível para o modelo: JSON indentado, não uma linha só.
-    expect(r).toContain("\n  \"estrutura\": [")
+    // Compacto (14/09): o JSON viaja nas duas chamadas do Curador e a
+    // indentação era ~20% dos até 24k chars — o modelo lê igual.
+    expect(r).not.toContain("\n  \"estrutura\": [")
+    expect(r).toContain('"estrutura":[')
     expect(r).toContain("troca a categoria pela rotina noturna")
     expect(r).toContain("competiria com a grade")
   })
@@ -334,5 +330,42 @@ describe("projetarNosSlots (09/09)", () => {
     const r = projetarNosSlots(papeis, [{ kind: "variant" }, { kind: "variant" }])
     expect(r.itens).toEqual(papeis)
     expect(r.descartados).toEqual([])
+  })
+})
+
+describe("recorteDaDecisao", () => {
+  const decisao = JSON.stringify({
+    fio_narrativo: "o arco do welcome",
+    estrutura: [
+      { section: "hero", papel: "abre", adaptacao: "sem cupom", porque: "é o 1º toque", requisitos: { dispositivo: "hero_pergunta" } },
+      { section: "body", papel: "sustenta" },
+    ],
+  })
+
+  it("recorta papel, requisitos e fio do MESMO JSON que vai inteiro no prefixo", () => {
+    const r = recorteDaDecisao(decisao)
+    expect(r.fio).toBe("o arco do welcome")
+    expect(r.posicoes[0].papel).toBe("abre — Adaptação: sem cupom — Por quê: é o 1º toque")
+    expect(JSON.parse(r.posicoes[0].requisitos)).toEqual({ dispositivo: "hero_pergunta" })
+  })
+
+  it("posição sem adaptação nem porquê fica só com o papel", () => {
+    expect(recorteDaDecisao(decisao).posicoes[1]).toEqual({ papel: "sustenta", requisitos: "" })
+  })
+
+  it("os requisitos vão SERIALIZADOS, não em prosa", () => {
+    // Descrevê-los em texto abriria espaço para a cauda e o filtro duro
+    // (`requisitosDaDecisao`, o mesmo JSON) discordarem.
+    const r = recorteDaDecisao(decisao)
+    expect(() => JSON.parse(r.posicoes[0].requisitos)).not.toThrow()
+  })
+
+  it("fail-open: JSON ilegível devolve vazio em vez de lançar", () => {
+    expect(recorteDaDecisao("não é json")).toEqual({ posicoes: [], fio: "" })
+    expect(recorteDaDecisao(null)).toEqual({ posicoes: [], fio: "" })
+  })
+
+  it("sem `estrutura`, o fio sobrevive", () => {
+    expect(recorteDaDecisao(JSON.stringify({ fio_narrativo: "x" }))).toEqual({ posicoes: [], fio: "x" })
   })
 })

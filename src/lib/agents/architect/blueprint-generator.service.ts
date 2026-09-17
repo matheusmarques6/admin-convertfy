@@ -7,6 +7,7 @@
  * LLM falhar ou retornar JSON inválido — nunca derruba o onboarding.
  */
 
+import { REGRAS_PENDENTES } from "@/lib/agents/shared/validadores/tipos"
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 import type { CopySpecField, EmailOutlineTemplate } from "@/types/email-generation"
@@ -33,6 +34,7 @@ import {
   type SegmentOrigin,
 } from "../shared/prompt-provenance"
 import { loadEffectiveBlueprint } from "./blueprint-loader"
+import type { DecisaoDoEmail } from "../shared/decisao-do-email"
 import {
   buildDeterministicBlueprint,
   collectSchemaAnchorIssues,
@@ -44,6 +46,10 @@ import {
 import type { AssemblySlot } from "./component-assembler.service"
 import type { RequisitosDaPosicao } from "../estruturador/estruturador-prompt"
 import { aplicarEstruturadorNoBlueprint } from "../estruturador/estruturador-consume"
+import { bloqueia, loadContratoModes, roda, type ContratoMode } from "../shared/contrato-mode"
+import { validarBlueprint } from "../shared/validadores/blueprint"
+import { avaliarClaims, type ViolacaoDeClaim } from "../shared/validadores/claims"
+import type { Violacao } from "../shared/validadores/tipos"
 import { doctrinePromptSegment, withDoctrine } from "../shared/doctrine-packets"
 
 /**
@@ -51,6 +57,47 @@ import { doctrinePromptSegment, withDoctrine } from "../shared/doctrine-packets"
  * `desconhecido` cobre blueprint gerado por rota que não informa (regen
  * manual antiga) — nunca é usado para afirmar que rodou.
  */
+/** Telemetria do validador do blueprint (14/09) — chave `_contrato` da run. */
+interface ContratoDoBlueprint {
+  modo: ContratoMode
+  decisao_presente: boolean
+  violacoes: Violacao[]
+  omitidos: Array<{ block_index: number; key: string; motivo: string }>
+  regra_pendente: string[]
+}
+
+/**
+ * Validador do blueprint × decisão, nas duas rotas, DEPOIS de
+ * `aplicarEstruturadorNoBlueprint` (que só omite por requisito da posição).
+ * Aqui a decisão inteira vale: sem incentivo, campo de oferta é omitido
+ * por código em `on`; em `shadow` só acusa. Sem decisão, `modo: off`.
+ */
+async function aplicarContratoNoBlueprint<
+  B extends { purpose?: string; variant_id?: string | null; fields?: Array<{ key: string; nature?: string; type?: string; omitir?: boolean; omitir_motivo?: string }> },
+  T extends { blocks: B[] },
+>(input: GenerateBlueprintInput, blueprint: T): Promise<{ blueprint: T; _contrato: ContratoDoBlueprint }> {
+  const decisao = input.decisao ?? null
+  const modo: ContratoMode = decisao ? (await loadContratoModes(input.storeId)).estrutural : "off"
+  if (!decisao || !roda(modo)) {
+    return { blueprint, _contrato: { modo, decisao_presente: decisao != null, violacoes: [], omitidos: [], regra_pendente: [...REGRAS_PENDENTES] } }
+  }
+  const r = validarBlueprint(decisao, blueprint.blocks, { corrigir: bloqueia(modo) })
+  if (r.violacoes.length > 0) {
+    log.warn("blueprint.contrato_violado", {
+      storeId: input.storeId,
+      flowType: input.flowType,
+      emailNumber: input.emailNumber,
+      modo,
+      violacoes: r.violacoes.map((v) => `${v.block_index}:${v.tipo}`),
+      omitidos: r.omitidos.length,
+    })
+  }
+  return {
+    blueprint: { ...blueprint, blocks: r.blocks },
+    _contrato: { modo, decisao_presente: true, violacoes: r.violacoes, omitidos: r.omitidos, regra_pendente: r.regra_pendente },
+  }
+}
+
 export type EstruturadorStatus =
   | "consumido"
   | "desligado"
@@ -319,6 +366,8 @@ export interface GenerateBlueprintInput {
    * estrutura adaptativa não rodou (e por quê).
    */
   estruturadorStatus?: EstruturadorStatus | null
+  /** O contrato de decisão (14/09) — persistido em `store_email_blueprints.decisao`. */
+  decisao?: DecisaoDoEmail | null
 }
 
 export interface GenerateBlueprintResult {
@@ -332,24 +381,54 @@ export interface GenerateBlueprintResult {
 // Fallback usado apenas se email_agent_configs não tiver row ativa para
 // agent_type='subject' (a migration 20261022 semeia a versão canônica).
 const DEFAULT_SUBJECT_MODEL = "claude-haiku-4-5-20251001"
-const DEFAULT_SUBJECT_SYSTEM = `Você escreve a direção editorial de UM email de e-commerce.
+export const DEFAULT_SUBJECT_SYSTEM = `Você escreve a direção editorial de UM email de e-commerce a partir da DECISÃO já tomada para ele — não a partir do outline genérico do flow.
+
 Gere:
-- subject_hint: sugestão de linha de assunto (≤55 caracteres, no idioma/tom da loja, sem emoji forçado).
-- messaging: 2-3 frases de direção editorial do email (o ângulo/argumento central que a copy deve seguir), adaptadas à loja.
+- subject_hint: linha de assunto (≤55 caracteres, no idioma/tom da loja, sem emoji forçado) que sirva ao ALVO deste toque (a objeção que ele ataca ou a promessa que ele paga) e ao FIO narrativo.
+- messaging: 2-3 frases de direção editorial (o ângulo/argumento central que a copy deve seguir), coerentes com o fio e com o que a decisão permite afirmar.
+
+Regras que não se negociam:
+- INCENTIVO: se a decisão diz "sem incentivo neste toque", NENHUMA promessa de desconto, cupom, código, oferta ou prazo — nem no assunto, nem no messaging. Se há incentivo, use SÓ o código e o valor informados, sem inventar condição nova.
+- PROIBIDO NESTE TOQUE é lista fechada: o que está lá não entra, nem parafraseado.
+- INSUMOS PERMITIDOS são os únicos fatos que podem ser afirmados sobre a loja. Fora deles, não afirme nada verificável.
+- Sem urgência artificial ("só hoje", "últimas horas") a menos que a decisão a peça.
+- <violacao_anterior>, quando vier preenchida, é o que o código recusou na sua última resposta para este email: corrija exatamente aquilo.
+
 Responda APENAS JSON: {"subject_hint":"...","messaging":"..."}.`
-const DEFAULT_SUBJECT_USER = `LOJA: {{brand_name}} — NICHO: {{nicho}} — TOM DE VOZ: {{tom_voz}}
+export const DEFAULT_SUBJECT_USER = `LOJA: {{brand_name}} — NICHO: {{nicho}} — TOM DE VOZ: {{tom_voz}}
 PERSONA: {{persona}}
 FLOW: {{flow_type}} — EMAIL #{{email_number}}
+
+<decisao_do_email>
+ALVO DO TOQUE: {{alvo_resumo}}
+FIO NARRATIVO: {{fio_narrativo}}
+INCENTIVO: {{incentivo}}
+INSUMOS PERMITIDOS:
+{{insumos_permitidos}}
+PROIBIDO NESTE TOQUE:
+{{proibido}}
+</decisao_do_email>
+
+<outline_do_flow>
 OBJETIVO: {{outline_objective}}
 DIRETRIZ: {{outline_guidance}}
 TONS: {{tones}}
+</outline_do_flow>
+
 ORIENTAÇÕES DE COPY DOS BLOCOS: {{copy_guidance_resumo}}
 TOP PRODUTOS: {{top_products}}
 
+<violacao_anterior>
+{{violacao_anterior}}
+</violacao_anterior>
+
 Gere o JSON agora.`
 
+/** O que vai nas vars da decisão quando o Estruturador não rodou (modo legado). */
+const DECISAO_AUSENTE = "(sem decisão do e-mail nesta geração — siga o outline do flow)"
+
 // Proveniência (plano telemetria 26/08): origem de cada var dos prompts.
-const SUBJECT_ORIGINS: Record<string, SegmentOrigin> = {
+export const SUBJECT_ORIGINS: Record<string, SegmentOrigin> = {
   brand_name: { cls: "loja", rotulo: "Dados da loja — client_stores" },
   nicho: { cls: "loja", rotulo: "Dados da loja — client_stores" },
   tom_voz: { cls: "loja", rotulo: "Dados da loja — client_stores" },
@@ -361,6 +440,13 @@ const SUBJECT_ORIGINS: Record<string, SegmentOrigin> = {
   tones: { cls: "curadoria", rotulo: "Outline global — email_outline_templates" },
   copy_guidance_resumo: { cls: "biblioteca", rotulo: "Orientações de copy das variantes casadas" },
   top_products: { cls: "loja", rotulo: "Produtos da loja — store_products" },
+  // 14/09: a decisão do e-mail (Seletor + Estruturador + incentivo do outline).
+  alvo_resumo: { cls: "upstream", rotulo: "Alvo do toque — decisão do e-mail (Seletor)" },
+  fio_narrativo: { cls: "upstream", rotulo: "Fio narrativo — decisão do e-mail (Estruturador)" },
+  incentivo: { cls: "upstream", rotulo: "Incentivo do toque — decisão do e-mail (outline + loja)" },
+  insumos_permitidos: { cls: "upstream", rotulo: "Insumos permitidos — decisão do e-mail (Seletor)" },
+  proibido: { cls: "upstream", rotulo: "Proibido neste toque — decisão do e-mail (Seletor)" },
+  violacao_anterior: { cls: "sistema", rotulo: "Claim recusado na tentativa anterior — validadores/claims.ts (código)" },
 }
 
 const BLUEPRINT_ORIGINS: Record<string, SegmentOrigin> = {
@@ -386,6 +472,15 @@ interface SubjectHintResult {
   messaging: string | null
 }
 
+/** Corta na última palavra inteira que cabe em `max` (sem reticências). */
+function cortarEm(texto: string, max: number): string {
+  const t = texto.replace(/\s+/g, " ").trim()
+  if (t.length <= max) return t
+  const corte = t.slice(0, max)
+  const i = corte.lastIndexOf(" ")
+  return (i > max * 0.5 ? corte.slice(0, i) : corte).replace(/[\s,;:.\-–—]+$/, "")
+}
+
 /**
  * Chamada barata (Haiku, ~400 tokens) que substitui a única contribuição
  * criativa de nível-email do antigo Blueprint LLM. Falha → null (o caller
@@ -406,6 +501,8 @@ async function generateSubjectHint(input: {
   outline: EmailOutlineTemplate | null
   copyGuidanceResumo: string
   topProductNames: string[]
+  /** A decisão do e-mail (14/09). Null = modo legado, só o outline. */
+  decisao: DecisaoDoEmail | null
 }): Promise<SubjectHintResult | null> {
   const cfgRow = await loadActiveAgentConfig("subject")
   const config: AgentInvokeConfig = cfgRow
@@ -429,7 +526,24 @@ async function generateSubjectHint(input: {
         user_template: DEFAULT_SUBJECT_USER,
       }
 
-  const vars: Record<string, string> = {
+  const d = input.decisao
+  const alvoResumo = d?.alvo
+    ? [
+        d.alvo.objecao ? `objeção: ${d.alvo.objecao}` : null,
+        d.alvo.aliviador ? `aliviador pedido: ${d.alvo.aliviador}` : null,
+        d.alvo.profundidade ? `profundidade de prova: ${d.alvo.profundidade}` : null,
+        d.alvo.trabalhos_fixos.length ? `trabalhos fixos: ${d.alvo.trabalhos_fixos.join(", ")}` : null,
+      ].filter(Boolean).join(" · ")
+    : d
+      ? "(sem alvo do Seletor — diagnóstico do Estruturador)"
+      : DECISAO_AUSENTE
+  const incentivoTexto = d
+    ? d.incentivo.existe
+      ? `EXISTE — código ${d.incentivo.codigo ?? "(não cadastrado)"}${d.incentivo.valor ? ` · valor ${d.incentivo.valor}` : ""} (origem ${d.incentivo.origem})`
+      : "SEM INCENTIVO NESTE TOQUE — nenhuma promessa de desconto, cupom, código, oferta ou prazo"
+    : DECISAO_AUSENTE
+  const lista = (xs: readonly string[]) => (xs.length ? xs.map((x) => `- ${x}`).join("\n") : "(nenhum)")
+  const baseVars: Record<string, string> = {
     brand_name: input.brandName,
     nicho: input.nicho,
     tom_voz: input.tomVoz,
@@ -441,7 +555,14 @@ async function generateSubjectHint(input: {
     tones: input.outline?.tone_hint ?? "",
     copy_guidance_resumo: input.copyGuidanceResumo,
     top_products: input.topProductNames.join(", "),
+    alvo_resumo: alvoResumo,
+    fio_narrativo: d ? d.fio_narrativo ?? "(sem fio narrativo)" : DECISAO_AUSENTE,
+    incentivo: incentivoTexto,
+    insumos_permitidos: d ? lista(d.insumos_permitidos) : DECISAO_AUSENTE,
+    proibido: d ? lista(d.proibido) : DECISAO_AUSENTE,
+    violacao_anterior: "(primeira tentativa)",
   }
+  let vars: Record<string, string> = baseVars
 
   // Mantém o prompt aprovado editável intacto e acrescenta apenas a nota
   // versionada de assunto (nunca o corpus inteiro do vault).
@@ -500,16 +621,56 @@ async function generateSubjectHint(input: {
   })
 
   try {
-    const res = await invokeAgent(effectiveConfig, vars)
-    const json = JSON.parse(extractJson(res.raw)) as Record<string, unknown>
-    const subjectHint =
-      typeof json.subject_hint === "string" && json.subject_hint.trim()
-        ? json.subject_hint.trim()
-        : null
-    const messaging =
-      typeof json.messaging === "string" && json.messaging.trim()
-        ? json.messaging.trim()
-        : null
+    // Régua de claims (14/09): com decisão, o assunto e o messaging passam
+    // SEMPRE por `avaliarClaims` (independe do gate textual — o assunto é a
+    // linha mais lida do e-mail). Claim `high` → 1 retentativa com a
+    // violação no prompt; 2ª → fallback determinístico (papel da 1ª posição
+    // e o fio narrativo), nunca a oferta inventada.
+    let subjectHint: string | null = null
+    let messaging: string | null = null
+    let violacoes: ViolacaoDeClaim[] = []
+    let tentativas = 0
+    let fallback: "determinístico" | null = null
+    let rawFinal = ""
+    let tokensIn = 0
+    let tokensOut = 0
+    let costUsd = 0
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      tentativas = attempt
+      const res = await invokeAgent(effectiveConfig, vars)
+      rawFinal = res.raw
+      tokensIn += res.tokensInput
+      tokensOut += res.tokensOutput
+      costUsd += res.costUsd
+      const json = JSON.parse(extractJson(res.raw)) as Record<string, unknown>
+      subjectHint =
+        typeof json.subject_hint === "string" && json.subject_hint.trim()
+          ? json.subject_hint.trim()
+          : null
+      messaging =
+        typeof json.messaging === "string" && json.messaging.trim()
+          ? json.messaging.trim()
+          : null
+      if (!d) break
+      violacoes = avaliarClaims([subjectHint ?? "", messaging ?? ""].join("\n"), d.incentivo, d.proibido)
+      const duras = violacoes.filter((v) => v.severidade === "high")
+      if (duras.length === 0) break
+      log.warn("subject.claim_recusado", {
+        storeId: input.storeId, flowType: input.flowType, emailNumber: input.emailNumber,
+        attempt, violacoes: duras.map((v) => `${v.tipo}: ${v.trecho}`),
+      })
+      if (attempt === 2) {
+        fallback = "determinístico"
+        const papel = (d.posicoes[0]?.papel ?? "").trim()
+        subjectHint = papel ? cortarEm(papel, 55) : null
+        messaging = d.fio_narrativo
+        break
+      }
+      vars = {
+        ...baseVars,
+        violacao_anterior: duras.map((v) => `- "${v.trecho}" — ${v.esperado} (${v.tipo})`).join("\n"),
+      }
+    }
     await finishGenerationRun(runId, {
       storeId: input.storeId,
       triggeredBy: input.triggeredBy,
@@ -524,23 +685,32 @@ async function generateSubjectHint(input: {
       renderedPrompt,
       promptSegments,
       inputSummary,
-      rawOutput: res.raw.slice(0, 2000),
+      rawOutput: rawFinal.slice(0, 2000),
       parsedOutput: {
         has_subject: subjectHint !== null,
         has_messaging: messaging !== null,
         // Os TEXTOS, não só as flags: é o que a aba Saída do Estúdio mostra.
         subject_hint: subjectHint,
         messaging,
+        // Régua de claims (14/09): o que foi recusado e se o assunto saiu do
+        // modelo ou do fallback por código.
+        _contrato: {
+          decisao_presente: d != null,
+          tentativas,
+          violacoes,
+          fallback,
+        },
       },
-      tokensInput: res.tokensInput,
-      tokensOutput: res.tokensOutput,
+      tokensInput: tokensIn,
+      tokensOutput: tokensOut,
       costCents: resolveCostCents({
         model: config.model,
-        tokensInput: res.tokensInput,
-        tokensOutput: res.tokensOutput,
-        costUsd: res.costUsd,
+        tokensInput: tokensIn,
+        tokensOutput: tokensOut,
+        costUsd,
       }),
       durationMs: Date.now() - t0,
+      retryCount: tentativas - 1,
     })
     return { subject_hint: subjectHint, messaging }
   } catch (err) {
@@ -750,8 +920,25 @@ async function generateDeterministicBlueprint(
     })
   }
 
-  // Única contribuição criativa restante: subject + messaging adaptados à
-  // loja. Falha → mantém os fallbacks determinísticos (guidance do outline).
+  // Fase 3 (Estruturador 'on'): o papel decidido por posição vira a 1ª linha
+  // do purpose (a diretiva da variante vira "Forma") e o fio persiste.
+  const consumiuEstruturador =
+    (input.papeisPorPosicao?.length ?? 0) > 0 || !!input.fioNarrativo
+  if (consumiuEstruturador) {
+    blueprint = aplicarEstruturadorNoBlueprint(
+      blueprint,
+      input.papeisPorPosicao ?? [],
+      input.fioNarrativo ?? "",
+      input.requisitosPorPosicao ?? null,
+    )
+  }
+  const contratoA = await aplicarContratoNoBlueprint(input, blueprint)
+  blueprint = contratoA.blueprint
+
+  // Única contribuição criativa restante: subject + messaging. Desde 14/09
+  // lê a DECISÃO do e-mail (alvo, fio, incentivo, proibições) e roda DEPOIS
+  // de o Estruturador ser aplicado — só escreve subject_hint/messaging, o
+  // purpose e o fio ficam. Falha → fallbacks determinísticos do outline.
   const subj = await generateSubjectHint({
     storeId: input.storeId,
     batchId: input.batchId,
@@ -767,25 +954,11 @@ async function generateDeterministicBlueprint(
     outline: input.outline,
     copyGuidanceResumo: copyGuidanceResumo(match),
     topProductNames: input.topProductNames,
+    decisao: input.decisao ?? null,
   })
   if (subj) {
     blueprint.subject_hint = subj.subject_hint
     if (subj.messaging) blueprint.messaging = subj.messaging
-  }
-
-  // Fase 3 (Estruturador 'on'): o papel decidido por posição vira a 1ª linha
-  // do purpose (a diretiva da variante vira "Forma") e o fio persiste.
-  // Depois do subject de propósito — o messaging do mini-LLM não pode
-  // apagar a decisão do Estruturador.
-  const consumiuEstruturador =
-    (input.papeisPorPosicao?.length ?? 0) > 0 || !!input.fioNarrativo
-  if (consumiuEstruturador) {
-    blueprint = aplicarEstruturadorNoBlueprint(
-      blueprint,
-      input.papeisPorPosicao ?? [],
-      input.fioNarrativo ?? "",
-      input.requisitosPorPosicao ?? null,
-    )
   }
 
   await upsertStoreBlueprint(input, blueprint, "ai", "deterministic")
@@ -829,6 +1002,7 @@ async function generateDeterministicBlueprint(
       // erro de CADASTRO da biblioteca, não do run. Lista vazia = alinhado.
       schema_anchor_issues: anchorIssues,
       schema_anchor_issue_count: anchorIssues.length,
+      _contrato: contratoA._contrato,
     },
     costCents: 0,
     durationMs: Date.now() - t0,
@@ -1017,6 +1191,8 @@ async function generateLlmBlueprint(
       input.requisitosPorPosicao ?? null,
     )
   }
+  const contratoB = await aplicarContratoNoBlueprint(input, blueprint)
+  blueprint = contratoB.blueprint
 
   // Mesma auditoria da rota A — o empacotador é o mesmo, o contrato também.
   const anchorIssues = collectSchemaAnchorIssues(null)
@@ -1081,6 +1257,7 @@ async function generateLlmBlueprint(
       // Campos de schema sem {{UPPER(key)}} no HTML da variante (ver rota A).
       schema_anchor_issues: anchorIssues,
       schema_anchor_issue_count: anchorIssues.length,
+      _contrato: contratoB._contrato,
     },
     tokensInput,
     tokensOutput,
@@ -1109,25 +1286,32 @@ async function upsertStoreBlueprint(
     subject_hint: blueprint.subject_hint,
     blocks: blueprint.blocks,
     fio_narrativo: blueprint.fio_narrativo ?? null,
+    // 14/09 (migration 20261145): o contrato de decisão viaja com o blueprint.
+    decisao: input.decisao ?? null,
     source,
     model,
     updated_at: new Date().toISOString(),
   }
-  let { error } = await admin
-    .from("store_email_blueprints")
-    .upsert(row, { onConflict: "store_id,flow_type,email_number" })
-  // Migration 20261083 ainda não aplicada → retry sem a coluna (padrão da
-  // casa: a geração nunca quebra por schema atrasado; o fio só não persiste).
-  if (error && (error.code === "42703" || error.code === "PGRST204")) {
-    log.warn("blueprint.fio_narrativo_column_missing", {
-      storeId: input.storeId,
-      error: error.message,
-    })
-    const { fio_narrativo: _omitido, ...semFio } = row
+  const upsert = (r: Record<string, unknown>) =>
+    admin.from("store_email_blueprints").upsert(r, { onConflict: "store_id,flow_type,email_number" })
+  let { error } = await upsert(row)
+  // Migrations aplicadas à mão escorregam: coluna ausente → retry sem ela e
+  // log NOMEADO (a geração nunca quebra por schema atrasado; o campo só não
+  // persiste). Primeiro `decisao` (20261145), depois `fio_narrativo` (20261083).
+  const colunaAusente = (e: { code?: string } | null) => !!e && (e.code === "42703" || e.code === "PGRST204")
+  let linha: Record<string, unknown> = row
+  if (colunaAusente(error)) {
+    log.warn("blueprint.decisao_column_missing", { storeId: input.storeId, error: error?.message })
+    const { decisao: _semDecisao, ...semDecisao } = linha
+    void _semDecisao
+    linha = semDecisao
+    ;({ error } = await upsert(linha))
+  }
+  if (colunaAusente(error)) {
+    log.warn("blueprint.fio_narrativo_column_missing", { storeId: input.storeId, error: error?.message })
+    const { fio_narrativo: _omitido, ...semFio } = linha
     void _omitido
-    ;({ error } = await admin
-      .from("store_email_blueprints")
-      .upsert(semFio, { onConflict: "store_id,flow_type,email_number" }))
+    ;({ error } = await upsert(semFio))
   }
   if (error) {
     log.error("blueprint.upsert_failed", {

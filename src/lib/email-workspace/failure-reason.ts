@@ -15,7 +15,14 @@ const FAILURE_REASON_LABELS: Record<string, string> = {
   superseded_by_redo: "Substituido por novo batch",
   superseded: "Substituido por geracao mais nova",
   timeout_phase2: "Timeout na fase de render (HTML/imagem)",
-  copy_timeout: "Timeout na geracao da copy",
+  // Decisão de 14/09: sem copy do n8n o e-mail NÃO é gerado. O watchdog
+  // marca isto quando o callback não chega no prazo (WATCHDOG_COPY_TIMEOUT_MIN).
+  copy_timeout: "O n8n nao devolveu a copy no prazo — nada foi gerado",
+  // O callback chegou, mas sem texto (nenhum bloco gravado ou zero chars).
+  copy_vazia: "O n8n devolveu a copy vazia — nada foi gerado",
+  // O callback chegou no vocabulário errado: nenhuma chave casa com o
+  // schema da variante, então nenhum campo teria endereço no HTML.
+  copy_fora_do_contrato: "A copy do n8n nao casa com o schema dos blocos — nada foi gerado",
   copy_invalid_output: "Copy gerada nao validou no schema",
   rendering_failed: "Falha ao renderizar HTML/imagem",
   html_failed: "Falha ao gerar o HTML",
@@ -28,6 +35,25 @@ const FAILURE_REASON_LABELS: Record<string, string> = {
   // variante, e ninguém percebia.
   merge_sem_contrato: "Bloco com copy e sem contrato — a copy nao tem onde entrar",
   qa_failed: "QA reprovou (issues criticas)",
+  // Passo 11: a decisão pediu uma posição que a biblioteca não cobre (o
+  // dispositivo pedido está no slot_map e na run `assembler`). Não é falha
+  // de agente — é lacuna de curadoria, e a proposta já foi ao vault.
+  lacuna_biblioteca: "A biblioteca nao tem anatomia para uma posicao decidida (ver dispositivo pedido)",
+  // Dispatch: nenhum bloco com variante montada.
+  sem_secao_montada: "Nenhuma secao montada — regerar as references ou curar as variantes",
+  // Lint de envio (B2): o id da primeira regra bloqueante vai no reason.
+  lint_css_var_em_uso: "Lint: var(--x) no HTML final (Gmail/Outlook ignoram)",
+  lint_img_sem_src: "Lint: imagem sem src (icone de imagem quebrada no Outlook)",
+  lint_anchor_sem_href: "Lint: link sem destino util",
+  lint_texto_de_example: "Lint: texto de exemplo da biblioteca visivel",
+  lint_placeholder_colchete: "Lint: placeholder entre colchetes visivel",
+  lint_contraste_botao_container: "Lint: label do botao ilegivel sobre o fundo (< 4.5:1)",
+  lint_largura_container: "Lint: container fora de 600px",
+  // Execução manual (Estúdio): parou no nó pedido e a pausa foi encerrada —
+  // pelo operador ou pelo prazo. O HTML do estágio fica gravado, então um
+  // disparo novo retoma de onde parou.
+  execucao_manual_cancelada: "Execucao manual cancelada — a geracao parou no no pedido",
+  execucao_manual_expirada: "Execucao manual pausada foi abandonada — o e-mail voltou ao watchdog",
   qa_timeout: "Timeout no QA",
   max_attempts_exceeded: "Numero maximo de tentativas excedido",
   brand_incomplete: "Loja sem identidade visual completa (cores e/ou logo)",

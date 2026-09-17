@@ -55,6 +55,7 @@ interface EmailRow {
   ready_at: string | null
   failed_at: string | null
   failure_reason: string | null
+  render_previews?: unknown
   updated_at: string
   flow: {
     id: string
@@ -85,7 +86,7 @@ interface LatestRunRow {
 }
 
 const EMAIL_SELECT = `id, number, name, status, generation_batch_id, ready_at,
-  failed_at, failure_reason, updated_at,
+  failed_at, failure_reason, render_previews, updated_at,
   flow:email_flows!inner(id, flow_type, store_id,
     store:client_stores!inner(id, store_name))`
 
@@ -223,6 +224,7 @@ export async function fetchAgentExecutions(
       email_status: e.status,
       bucket: bucketOfEmail(e.status),
       failure_reason: e.failure_reason,
+      render_previews: (e.render_previews as AgentExecution["render_previews"]) ?? null,
       updated_at: e.updated_at,
       ready_at: e.ready_at,
       failed_at: e.failed_at,

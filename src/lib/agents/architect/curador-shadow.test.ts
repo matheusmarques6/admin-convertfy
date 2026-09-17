@@ -1,3 +1,4 @@
+import { CACHE_PREFIX_MARKER } from "./llm-invoke"
 import { readFileSync } from "node:fs"
 
 import { describe, it, expect } from "vitest"
@@ -22,6 +23,11 @@ import {
   parseValidatedShortlist,
   renderFinalistNotes,
   restrictRankingToShortlist,
+  CAUDA_SHORTLIST_USER,
+  CAUDA_ESCOLHA_USER,
+  planejarShortlist,
+  mesclarShortlist,
+  elegiveisDaGeracao,
 } from "./curador-shadow"
 import { RespostaVaziaError } from "../resposta-vazia"
 import { resumirContrato } from "../shared/field-roles"
@@ -398,7 +404,50 @@ describe("rank1ByBlock + blocos da fase 1", () => {
     const extras = new Map([["v1", { slug: "hero-3-cupom-de-captacao" }]])
     const bloco = renderUsageCounts(counts, extras)
     expect(bloco).toContain("hero-3-cupom-de-captacao: 3×")
-    expect(bloco).toContain("MENOS usada")
+    expect(bloco).toContain("a menos usada vence em empate total")
+  })
+
+  // A causa dos três dispositivos com 100% de concentração (15/09): a lista
+  // era montada SÓ a partir das escolhas, então a variante nunca escolhida
+  // não aparecia — e é ela que o desempate manda escolher.
+  it("a elegível nunca escolhida aparece com 0× e vem PRIMEIRO", () => {
+    const counts = new Map([["f1", 89]])
+    const extras = new Map([
+      ["f1", { slug: "footer-1-menu-outline" }],
+      ["f2", { slug: "footer-2-menu-solido" }],
+      ["f4", { slug: "footer-4-dark-mega-menu" }],
+    ])
+    const bloco = renderUsageCounts(counts, extras, ["f1", "f2", "f4"])
+    expect(bloco).toContain("footer-2-menu-solido: 0×")
+    expect(bloco).toContain("footer-4-dark-mega-menu: 0×")
+    const linhas = bloco.split("\n").filter((l) => l.startsWith("- "))
+    expect(linhas[linhas.length - 1]).toContain("footer-1-menu-outline: 89×")
+  })
+
+  it("o corte de 60 linhas tira as MAIS usadas, não as menos", () => {
+    // Cortar pelo fim removeria exatamente as linhas que o desempate usa.
+    const counts = new Map(Array.from({ length: 80 }, (_, i) => [`v${i}`, i + 1] as const))
+    const bloco = renderUsageCounts(counts, undefined, ["novinha"])
+    expect(bloco).toContain("novinha: 0×")
+    expect(bloco).not.toContain("v79: 80×")
+    expect(bloco.split("\n").filter((l) => l.startsWith("- "))).toHaveLength(60)
+  })
+
+  it("sem elegíveis o bloco volta a ser só o histórico", () => {
+    const bloco = renderUsageCounts(new Map([["v1", 2]]), undefined, [])
+    const linhas = bloco.split("\n").filter((l) => l.startsWith("- "))
+    expect(linhas).toEqual(["- v1: 2×"])
+  })
+
+  it("elegiveisDaGeracao achata as posições e descarta o vazio", () => {
+    const e = (ids: string[], zerou = false) => ({ ids, zerou, bloqueadasPelaJanela: [], janelaAfrouxada: false })
+    expect(elegiveisDaGeracao(new Map([[0, e(["a", "b"])], [1, e(["b", "c"])]]))).toEqual(new Set(["a", "b", "c"]))
+    expect(elegiveisDaGeracao(new Map())).toBeUndefined()
+    expect(elegiveisDaGeracao(null)).toBeUndefined()
+    // Chamador antigo sem o mapa: o bloco não deve inventar `0×`.
+    expect(elegiveisDaGeracao(new Map([[0, e([])]]))).toBeUndefined()
+    // Fail-open entra igual: a variante É escolhível, o que muda é a leitura.
+    expect(elegiveisDaGeracao(new Map([[0, e(["a"], true)]]))).toEqual(new Set(["a"]))
   })
 
   it("o system carrega protocolo, papéis e zero-elegíveis", () => {
@@ -426,8 +475,9 @@ describe("rank1ByBlock + blocos da fase 1", () => {
     )
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).not.toContain("PODE adaptar")
     expect(DEFAULT_CHOOSER_VAULT_SYSTEM).not.toContain("Decida a estrutura")
-    // Seção sem candidata continua na peça — a lacuna vira sinal, não corte.
-    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("NÃO AUTORIZA remover")
+    // Seção sem candidata SOME da peça (14/09) — o prompt diz isso em vez
+    // de prometer um fallback que não existe; a lacuna nomeada é o sinal.
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("a posição SOME da peça")
   })
 
   // 07/09: o eixo `momento` foi APOSENTADO. Fora da hero, nenhuma variante
@@ -449,9 +499,34 @@ describe("rank1ByBlock + blocos da fase 1", () => {
   // modelo obedece o vault — foi o que aconteceu em 07/09.
   it("os dois prompts declaram a precedência sobre o passo 5", () => {
     for (const prompt of [DEFAULT_CHOOSER_VAULT_SYSTEM, DEFAULT_CHOOSER_SYSTEM]) {
-      expect(prompt).toContain("APOSENTADO")
+      expect(prompt).toContain("este prompt tem precedência")
       expect(prompt).toContain("passo 5")
     }
+  })
+
+  // 14/09: o prompt contradizia os guards. Dizia "REPETIR … É PERMITIDO"
+  // enquanto `podeRepetir()` devolve false para toda seção (10/09), e o
+  // passo 4 dizia "cai no template global" três parágrafos depois de a
+  // shortlist dizer "não cai" — `assembleDocument` não tem fallback por
+  // bloco. Decidir sob premissa falsa custou a posição de products no batch
+  // 6249aef2. Prompt também não carrega histórico ("APOSENTADO (07/09)"):
+  // é spec, não changelog.
+  describe("coerência do prompt com os guards (14/09)", () => {
+    it("nenhum dos dois prompts afirma o que o código desfaz", () => {
+      for (const prompt of [DEFAULT_CHOOSER_VAULT_SYSTEM, DEFAULT_CHOOSER_SYSTEM, CAUDA_SHORTLIST_USER]) {
+        expect(prompt).not.toContain("É PERMITIDO")
+        // "não cai no template global" (shortlist) é a frase certa; a errada
+        // era "o sistema cai no template global" (escolha, passo 4).
+        expect(prompt).not.toMatch(/(?<!não )cai no template global/)
+        expect(prompt).not.toContain("APOSENTADO")
+        expect(prompt).not.toContain("SUPERADO")
+      }
+    })
+    it("a escolha diz que repetir é proibido e que a posição vazia some da peça", () => {
+      expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("NÃO PODE OCUPAR DUAS POSIÇÕES")
+      expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("a posição SOME da peça")
+      expect(DEFAULT_CHOOSER_VAULT_SYSTEM).not.toMatch(/passos 3-6|passo 7|passo 9/)
+    })
   })
 
   // 02/09: o owner fixou o texto do system. A emenda ao protocolo e a
@@ -590,13 +665,29 @@ describe("o teto da shortlist (10/09)", () => {
   // (`max_tokens: maxTokens`) e não há função pura para exercitar.
   it("a chamada da shortlist não carrega teto literal nenhum", () => {
     const fonte = readFileSync(new URL("./curador-shadow.ts", import.meta.url), "utf-8")
-    const chamada = fonte.slice(
-      fonte.indexOf("const shortlistCall"),
-      fonte.indexOf("const shortlist = parseValidatedShortlist"),
-    )
+    const inicio = fonte.indexOf("const shortlistCall")
+    const fim = fonte.indexOf("shortlistLlm = parseValidatedShortlist")
+    // Âncoras que existem: `indexOf` = -1 faria o `slice` ler até o fim do
+    // arquivo e o teste passar por acaso.
+    expect(inicio).toBeGreaterThan(0)
+    expect(fim).toBeGreaterThan(inicio)
+    const chamada = fonte.slice(inicio, fim)
     expect(chamada).toContain("max_tokens: maxTokens")
     expect(chamada).not.toMatch(/Math\.min\s*\(\s*maxTokens/)
     expect(chamada).not.toMatch(/max_tokens:\s*\d/)
+  })
+
+  // 14/09: o cache da Anthropic é hierárquico (system antes de messages).
+  // Com um system próprio na shortlist, o prefixo do user nunca acertava
+  // entre as duas chamadas — 55k tokens pagos duas vezes por run.
+  it("a shortlist NÃO troca o system: as duas chamadas compartilham o prefixo inteiro", () => {
+    const fonte = readFileSync(new URL("./curador-shadow.ts", import.meta.url), "utf-8")
+    const inicio = fonte.indexOf("const shortlistCall")
+    const fim = fonte.indexOf("shortlistLlm = parseValidatedShortlist")
+    const chamada = fonte.slice(inicio, fim)
+    expect(chamada).not.toContain("system_prompt:")
+    expect(chamada).toContain("CAUDA_SHORTLIST_USER")
+    expect(fonte).not.toContain("DEFAULT_CURADOR_SHORTLIST_SYSTEM")
   })
 
   it("naEtapa nomeia a chamada que falhou e preserva o erro original", async () => {
@@ -772,5 +863,261 @@ describe("eliminadas por requisito (09/09)", () => {
     expect(DEFAULT_CHOOSER_VAULT_USER).toContain("<eliminadas_por_requisito>")
     expect(DEFAULT_CHOOSER_VAULT_USER).toContain("{{eliminadas_requisito}}")
     expect(DEFAULT_CHOOSER_USER).toContain("{{eliminadas_requisito}}")
+  })
+})
+
+
+// 14/09: prefixo estável. Os blocos do user vão do menos ao mais mutável,
+// separados por marca de cache: global+flow → loja → e-mail → cauda. Uma
+// var que trocasse de bloco sem a marca zeraria a leitura dos seguintes.
+describe("user do Curador do vault — ordem dos blocos e marcas de cache (14/09)", () => {
+  const tpl = DEFAULT_CHOOSER_VAULT_USER
+  const pos = (tag: string) => {
+    const i = tpl.indexOf(tag)
+    expect(i, tag).toBeGreaterThanOrEqual(0)
+    return i
+  }
+  it("exatamente três marcas (o teto: 4 breakpoints por request, um é do system)", () => {
+    expect(tpl.split(CACHE_PREFIX_MARKER).length - 1).toBe(3)
+  })
+  it("global+flow < 1ª marca < loja < 2ª marca < e-mail < 3ª marca", () => {
+    const marcas: number[] = []
+    for (let i = tpl.indexOf(CACHE_PREFIX_MARKER); i >= 0; i = tpl.indexOf(CACHE_PREFIX_MARKER, i + 1)) marcas.push(i)
+    expect(marcas).toHaveLength(3)
+    const [m1, m2, m3] = marcas
+    for (const tag of ["<indice_do_vault>", "<intencao_do_flow>", "<aprendizados>", "<estruturas_de_referencia>"]) {
+      expect(pos(tag), tag).toBeLessThan(m1)
+    }
+    for (const tag of ["<store>", "<perfil_marca>", "<objecoes>", "<vocabulario>", "<top_products>"]) {
+      expect(pos(tag), tag).toBeGreaterThan(m1)
+      expect(pos(tag), tag).toBeLessThan(m2)
+    }
+    for (const tag of [
+      "<outline>", "<intencao_do_email>", "<orientacao_do_coo>", "<revisao_humana>", "<alvo>", "<memoria>",
+      "<notas_de_secao>", "<lacunas_da_biblioteca>", "<decisao_do_estruturador>", "<eliminadas_por_requisito>", "<estrutura_do_email>",
+    ]) {
+      expect(pos(tag), tag).toBeGreaterThan(m2)
+      expect(pos(tag), tag).toBeLessThan(m3)
+    }
+    // A cauda vem DEPOIS da última marca — nas duas chamadas.
+    expect(CAUDA_SHORTLIST_USER).toContain("<posicoes_da_shortlist>")
+    expect(CAUDA_ESCOLHA_USER).toContain("<notas_das_finalistas>")
+    expect(CAUDA_SHORTLIST_USER).not.toContain(CACHE_PREFIX_MARKER)
+    expect(CAUDA_ESCOLHA_USER).not.toContain(CACHE_PREFIX_MARKER)
+  })
+  it("todas as vars antigas continuam no template — nada saiu, só mudou de lugar", () => {
+    for (const v of [
+      "{{brand_name}}", "{{nicho}}", "{{outline_objective}}", "{{outline_guidance}}", "{{outline_tone_hint}}",
+      "{{intencao_flow}}", "{{intencao_email}}", "{{outline_restricoes}}", "{{estruturas_ref}}", "{{secoes_notas}}",
+      "{{lacunas_biblioteca}}", "{{aprendizados}}", "{{orientacao_coo}}", "{{revisao_humana}}", "{{briefing_marca}}",
+      "{{alvo}}", "{{objecoes}}", "{{vocabulario}}", "{{top_products}}", "{{memoria}}", "{{indice_vault}}",
+      "{{estruturador_decisao}}", "{{eliminadas_requisito}}", "{{blocks_json}}",
+    ]) {
+      expect(tpl, v).toContain(v)
+    }
+  })
+})
+
+// 14/09: no batch 6249aef2 todas as seções chegaram à shortlist com ≤ 3
+// candidatas elegíveis e a chamada leu 101k chars para devolver a mesma
+// lista. E a eliminação por contrato era só recomendação no prompt: o
+// catálogo chegava inteiro e uma eliminada podia virar finalista.
+describe("shortlist por código quando não há o que rankear (14/09)", () => {
+  const sections = ["hero", "body", "reviews", "products", "footer"]
+  // `elegiveisPorPosicao` devolve `{ids, zerou}` desde 16/09 — `zerou:false`
+  // é a seleção de verdade; o caso do fail-open tem teste próprio abaixo.
+  const eleg = (m: Record<number, string[]>, zerou: number[] = []) =>
+    new Map(
+      Object.entries(m).map(([i, ids]) => [
+        Number(i),
+        { ids, zerou: zerou.includes(Number(i)), bloqueadasPelaJanela: [], janelaAfrouxada: false },
+      ]),
+    )
+  const batch = eleg({ 0: ["h1", "h2", "h3"], 1: ["b1", "b2"], 2: ["r1", "r2", "r3"], 3: ["p1"], 4: ["f1", "f2", "f3"] })
+  it("o cenário do batch: zero chamadas, shortlist inteira por código", () => {
+    const plano = planejarShortlist({ sections, elegiveisPorPosicao: batch })
+    expect(plano.chamar).toBe(false)
+    expect(plano.puladas).toEqual([0, 1, 2, 3, 4])
+    const { shortlist, fonte } = mesclarShortlist({ plano, llm: null, sections })
+    expect(fonte).toBe("codigo")
+    expect(shortlist.byBlock.get(3)?.map((c) => c.variant_id)).toEqual(["p1"])
+    expect(shortlist.byBlock.get(0)).toHaveLength(3)
+    expect(shortlist.emptyBlocks).toEqual([])
+    expect(shortlist.malformed).toBe(false)
+  })
+  it("posição com zero elegíveis fica vazia por código, sem chamar o modelo", () => {
+    const plano = planejarShortlist({ sections: ["hero", "body"], elegiveisPorPosicao: eleg({ 0: ["h1"], 1: [] }) })
+    expect(plano.chamar).toBe(false)
+    const { shortlist } = mesclarShortlist({ plano, llm: null, sections: ["hero", "body"] })
+    expect(shortlist.emptyBlocks).toEqual([1])
+  })
+  it("uma seção com 6 elegíveis chama o modelo só para ela; as outras vêm do código e o resultado é intersectado", () => {
+    const elegiveis = eleg({ 0: ["h1", "h2"], 1: ["b1", "b2", "b3", "b4", "b5", "b6"] })
+    const plano = planejarShortlist({ sections: ["hero", "body"], elegiveisPorPosicao: elegiveis })
+    expect(plano.chamar).toBe(true)
+    expect(plano.puladas).toEqual([0])
+    expect(plano.obrigatorias).toEqual([1])
+    const typeIndex = new Map([["b1", "body"], ["b9", "body"], ["h1", "hero"]])
+    // O modelo mencionou só a posição obrigatória — não é malformed.
+    const llm = parseValidatedShortlist({
+      raw: JSON.stringify([{ block_index: 1, escolhas: [{ variant_id: "b9" }, { variant_id: "b1" }] }]),
+      sections: ["hero", "body"], typeIndex, posicoesObrigatorias: plano.obrigatorias,
+    })
+    expect(llm.malformed).toBe(false)
+    const { shortlist, fonte, intersecaoVazia } = mesclarShortlist({ plano, llm, sections: ["hero", "body"] })
+    expect(fonte).toBe("mista")
+    expect(shortlist.byBlock.get(0)?.map((c) => c.variant_id)).toEqual(["h1", "h2"])
+    // b9 não é elegível (eliminada por contrato): sai da lista de finalistas.
+    expect(shortlist.byBlock.get(1)?.map((c) => c.variant_id)).toEqual(["b1"])
+    expect(intersecaoVazia).toEqual([])
+  })
+  it("modelo que só aponta eliminadas cai nas três primeiras elegíveis, registrado", () => {
+    // 6 elegíveis: acima do limiar de 5, senão a posição nem chega ao modelo.
+    const elegiveis = eleg({ 0: ["b1", "b2", "b3", "b4", "b5", "b6"] })
+    const plano = planejarShortlist({ sections: ["body"], elegiveisPorPosicao: elegiveis })
+    const typeIndex = new Map([["b9", "body"], ["b1", "body"]])
+    const llm = parseValidatedShortlist({ raw: JSON.stringify([{ block_index: 0, escolhas: [{ variant_id: "b9" }] }]), sections: ["body"], typeIndex })
+    const { shortlist, intersecaoVazia, fonte } = mesclarShortlist({ plano, llm, sections: ["body"] })
+    expect(fonte).toBe("llm")
+    expect(intersecaoVazia).toEqual([0])
+    expect(shortlist.byBlock.get(0)?.map((c) => c.variant_id)).toEqual(["b1", "b2", "b3"])
+  })
+  // 14/09 (passo 3): a run de 14/09 chegou com {4,2,4,3,2,2} e pagou a
+  // shortlist para escolher 3 de 4 em duas posições. Até 5 elegíveis,
+  // TODAS viram finalistas e a escolha lê as notas de todas.
+  it("até 5 elegíveis a posição é resolvida por código com todas as candidatas; 6 chama o modelo", () => {
+    const medido = eleg({ 0: ["h1", "h2", "h3", "h4"], 1: ["b1", "b2"], 2: ["c1", "c2", "c3", "c4"], 3: ["r1", "r2", "r3"], 4: ["p1", "p2"], 5: ["f1", "f2"] })
+    const plano = planejarShortlist({ sections: ["hero", "body", "body", "reviews", "products", "footer"], elegiveisPorPosicao: medido })
+    expect(plano.limiar).toBe(5)
+    expect(plano.chamar).toBe(false)
+    const { shortlist, fonte } = mesclarShortlist({ plano, llm: null, sections: ["hero", "body", "body", "reviews", "products", "footer"] })
+    expect(fonte).toBe("codigo")
+    expect(shortlist.byBlock.get(0)?.map((c) => c.variant_id)).toEqual(["h1", "h2", "h3", "h4"])
+
+    const cinco = planejarShortlist({ sections: ["body"], elegiveisPorPosicao: eleg({ 0: ["a", "b", "c", "d", "e"] }) })
+    expect(cinco.chamar).toBe(false)
+    expect(cinco.porCodigo.get(0)).toHaveLength(5)
+    const seis = planejarShortlist({ sections: ["body"], elegiveisPorPosicao: eleg({ 0: ["a", "b", "c", "d", "e", "f"] }) })
+    expect(seis.chamar).toBe(true)
+    // O limiar nunca desce abaixo de SHORTLIST_TOP_N, mesmo pedido.
+    expect(planejarShortlist({ sections: ["body"], elegiveisPorPosicao: eleg({ 0: ["a", "b", "c"] }), limiar: 1 }).chamar).toBe(false)
+  })
+  it("sem elegíveis informadas, ou forçando, tudo vai ao modelo (comportamento anterior)", () => {
+    expect(planejarShortlist({ sections }).chamar).toBe(true)
+    expect(planejarShortlist({ sections }).obrigatorias).toEqual([0, 1, 2, 3, 4])
+    const forcado = planejarShortlist({ sections, elegiveisPorPosicao: batch, forcarChamada: true })
+    expect(forcado.chamar).toBe(true)
+    expect(forcado.puladas).toEqual([])
+  })
+})
+
+// ── Generalidade medida (15/09) ─────────────────────────────────────────
+//
+// `proibicao_violada` só dispara contra variante que DECLAROU algo, então a
+// que não declara nada nunca aparecia no medidor — e é ela que vinha sendo
+// escolhida. Estes dois tipos são a contrapartida; MEDEM, não eliminam.
+describe("measureProtocolViolations · generalidade", () => {
+  const extra = (slug: string, over: Partial<CatalogVaultExtra> = {}): CatalogVaultExtra => ({
+    slug,
+    objecao: [],
+    registro: [],
+    registro_vetado: [],
+    paleta: [],
+    papel_na_peca: [],
+    peso: null,
+    convivencia: [],
+    itens: null,
+    aliviador: [],
+    profundidade: null,
+    ...over,
+  })
+
+  const base = {
+    sectionByBlock: new Map([[0, "body"]]),
+    alvo: { aliviador_pedido: "prova_de_terceiro", proibicoes: [] as string[] },
+  }
+
+  it("acusa quando a escolhida não realiza o aliviador pedido e outra finalista realizava", () => {
+    const v = measureProtocolViolations({
+      ...base,
+      rank1ByBlock: new Map([[0, "generica"]]),
+      extras: new Map([
+        ["generica", extra("body-generica")],
+        ["especifica", extra("body-com-prova", { aliviador: ["prova_de_terceiro"] })],
+      ]),
+      finalistasPorBloco: new Map([[0, ["generica", "especifica"]]]),
+    })
+    const g = v.find((x) => x.tipo === "generica_sobre_especifica")
+    expect(g?.variant_id).toBe("generica")
+    expect(g?.detalhe).toContain("body-com-prova")
+  })
+
+  it("não acusa quando a escolhida É a que realiza", () => {
+    const v = measureProtocolViolations({
+      ...base,
+      rank1ByBlock: new Map([[0, "especifica"]]),
+      extras: new Map([
+        ["generica", extra("body-generica")],
+        ["especifica", extra("body-com-prova", { aliviador: ["prova_de_terceiro"] })],
+      ]),
+      finalistasPorBloco: new Map([[0, ["generica", "especifica"]]]),
+    })
+    expect(v.filter((x) => x.tipo === "generica_sobre_especifica")).toEqual([])
+  })
+
+  it("posição com UMA finalista nunca é acusada: não houve escolha", () => {
+    // Cobrar aqui seria cobrar do Curador o que é lacuna da biblioteca.
+    const v = measureProtocolViolations({
+      ...base,
+      rank1ByBlock: new Map([[0, "generica"]]),
+      extras: new Map([["generica", extra("body-generica")]]),
+      finalistasPorBloco: new Map([[0, ["generica"]]]),
+    })
+    expect(v.filter((x) => x.tipo === "generica_sobre_especifica" || x.tipo === "sem_eixos")).toEqual([])
+  })
+
+  it("sem_eixos: escolheu a que não se compromete havendo quem declare", () => {
+    const v = measureProtocolViolations({
+      ...base,
+      alvo: null,
+      rank1ByBlock: new Map([[0, "muda"]]),
+      extras: new Map([
+        ["muda", extra("body-sem-nota")],
+        ["falante", extra("body-com-eixos", { registro: ["premium-editorial"], paleta: ["claro"] })],
+      ]),
+      finalistasPorBloco: new Map([[0, ["muda", "falante"]]]),
+    })
+    expect(v.find((x) => x.tipo === "sem_eixos")?.detalhe).toContain("body-com-eixos")
+  })
+
+  it("todas mudas: não há o que acusar", () => {
+    const v = measureProtocolViolations({
+      ...base,
+      alvo: null,
+      rank1ByBlock: new Map([[0, "a"]]),
+      extras: new Map([["a", extra("a")], ["b", extra("b")]]),
+      finalistasPorBloco: new Map([[0, ["a", "b"]]]),
+    })
+    expect(v.filter((x) => x.tipo === "sem_eixos")).toEqual([])
+  })
+
+  it("sem finalistasPorBloco (chamador antigo) nada de generalidade é medido", () => {
+    const v = measureProtocolViolations({
+      ...base,
+      rank1ByBlock: new Map([[0, "generica"]]),
+      extras: new Map([["generica", extra("body-generica")]]),
+    })
+    expect(v.filter((x) => x.tipo === "generica_sobre_especifica" || x.tipo === "sem_eixos")).toEqual([])
+  })
+})
+
+// A regra de `registro_vetado` era servida como DADO e nunca como regra: a
+// definição morava no passo 5 do protocolo, que `semMomento` remove.
+describe("o system do Curador declara o que fazer com o que serve", () => {
+  it("registro vetado elimina, e (não declara) não é vantagem", () => {
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("registro vetado` ELIMINA")
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("overlap ZERO")
+    // Sem anular o passo 3, que existe contra posição vazia.
+    expect(DEFAULT_CHOOSER_VAULT_SYSTEM).toContain("ÚNICA sobrevivente")
   })
 })

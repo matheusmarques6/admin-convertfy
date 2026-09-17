@@ -9,6 +9,7 @@ import {
   renderCapacidade,
   renderEliminadasPorRequisito,
   resumirContrato,
+  elegiveisPorPosicao,
 } from "./field-roles"
 
 // Schemas REAIS da biblioteca (09/09) — só as chaves importam aqui.
@@ -197,5 +198,239 @@ describe("eliminarPorRequisitos + render + índice (09/09)", () => {
   it("sem requisito nenhum → ausência declarada", () => {
     expect(eliminarPorRequisitos(["hero"], [], catalogo)).toEqual([])
     expect(renderEliminadasPorRequisito([])).toContain("nenhuma")
+  })
+})
+
+// 14/09: `n_itens: null` (anatomia sem família numerada) contava como
+// "qualquer quantidade" no mínimo — products-4, de 1 item, escapou do
+// mínimo de 2 e foi o MODELO quem a recusou. O resgate já tratava null como
+// 1; agora os dois concordam. E a eliminação passou a produzir a lista de
+// ELEGÍVEIS por posição, que é o que a shortlist e o resgate consomem.
+describe("n_itens null conta como 1 item; elegíveis por posição (14/09)", () => {
+  const P9 = { variant_id: "p9", contrato: resumirContrato(PRODUTOS_9) }
+  const P4 = { variant_id: "p4", contrato: resumirContrato(PRODUTOS_4) }
+  const H3 = { variant_id: "h3", contrato: resumirContrato(HERO_3) }
+  const cat = [
+    { section: "Products", variantes: [P9, P4] },
+    { section: "hero", variantes: [H3] },
+  ]
+  it("sem família numerada, o mínimo de 2 elimina", () => {
+    expect(conflitoDeContrato(P4.contrato, { n_itens: { min: 2 } })).toContain("no mínimo 2")
+    expect(conflitoDeContrato(P4.contrato, { n_itens: { min: 1 } })).toBeNull()
+    expect(conflitoDeContrato(P4.contrato, { n_itens: { max: 3 } })).toBeNull()
+  })
+  it("elegíveis = seção menos eliminadas; seção normalizada; posição sem seção fica fora do mapa", () => {
+    const e = elegiveisPorPosicao(["hero", "products", "reviews"], [null, { n_itens: { min: 2 } }, null], cat)
+    expect(e.get(0)).toEqual({ ids: ["h3"], zerou: false, bloqueadasPelaJanela: [], janelaAfrouxada: false })
+    expect(e.get(1)).toEqual({ ids: ["p9"], zerou: false, bloqueadasPelaJanela: [], janelaAfrouxada: false })
+    expect(e.has(2)).toBe(false)
+  })
+  // 16/09: a lista do fail-open é o pool cru, e sem `zerou` ela é
+  // indistinguível de uma seleção real — quem a lê conta como candidatas
+  // variantes que o contrato reprova, e a lacuna de biblioteca some.
+  it("fail-open: requisito que zera a seção mantém todas elegíveis, e DIZ que zerou", () => {
+    const e = elegiveisPorPosicao(["products"], [{ n_itens: { min: 2, max: 3 }, preco: true }], cat)
+    expect(e.get(0)).toEqual({ ids: ["p9", "p4"], zerou: true, bloqueadasPelaJanela: [], janelaAfrouxada: false })
+  })
+  // As duas liam o catálogo por chaves diferentes: `elegiveisPorPosicao`
+  // normalizava e `eliminarPorRequisitos` não. Com caixa/espaço diferentes,
+  // a primeira achava a seção e a segunda devolvia [] — o prompt dizia
+  // "nenhuma eliminada" sobre a mesma posição que a régua filtrou.
+  it("as duas leituras do catálogo normalizam a seção do MESMO jeito", () => {
+    const sujo = [{ section: " PRODUCTS ", variantes: cat[0].variantes }]
+    const req = [{ n_itens: { min: 2 } }]
+    expect(elegiveisPorPosicao(["products"], req, sujo).get(0)?.ids).toEqual(["p9"])
+    const elim = eliminarPorRequisitos(["products"], req, sujo)
+    expect(elim).toHaveLength(1)
+    expect(elim[0].eliminadas.map((x) => x.variant_id)).toEqual(["p4"])
+  })
+})
+
+// ── Cena × direção da variante (15/09, Innova Bay · Welcome 1) ───────────
+//
+// A hero-3 diz "Nenhuma mão, nenhuma pessoa"; o Estruturador pediu "mão
+// adulta encaixando o plug". As duas iam ao MESMO prompt de imagem e o
+// modelo fazia o híbrido. O conflito é decidido aqui, onde a variante
+// ainda pode ser trocada.
+describe("conflitoDeContrato — cena decidida × direção fotográfica (15/09)", () => {
+  const CENA = "produto real plugado numa tomada de parede, luz natural, mão adulta encaixando o plug"
+  const semGente = { ...resumirContrato(HERO_3), direcao: { rascunho: false, proibe_pessoa: true } }
+  const livre = { ...resumirContrato(HERO_9), direcao: { rascunho: false, proibe_pessoa: false } }
+  const rascunho = { ...resumirContrato(HERO_9), direcao: { rascunho: true, proibe_pessoa: false } }
+  it("direção que veta pessoa colide com cena que exige mão", () => {
+    expect(conflitoDeContrato(semGente, { imagem: CENA })).toMatch(/proíbe pessoa\/mão/)
+    expect(conflitoDeContrato(livre, { imagem: CENA })).toBeNull()
+  })
+  it("rascunho, direção não lida ou cena sem gente: nunca colide", () => {
+    expect(conflitoDeContrato(rascunho, { imagem: CENA })).toBeNull()
+    expect(conflitoDeContrato(resumirContrato(HERO_3), { imagem: CENA })).toBeNull()
+    expect(conflitoDeContrato(semGente, { imagem: "produto na tomada, luz natural" })).toBeNull()
+    expect(conflitoDeContrato(semGente, { imagem: null })).toBeNull()
+  })
+  it("entra no filtro por posição: a hero sem gente sai quando há alternativa; fail-open sem ela", () => {
+    const r = filtrarPorRequisitos(
+      [{ variant_id: "h3", contrato: semGente }, { variant_id: "h9", contrato: livre }],
+      { imagem: CENA },
+    )
+    expect(r.elegiveis.map((v) => v.variant_id)).toEqual(["h9"])
+    expect(filtrarPorRequisitos([{ variant_id: "h3", contrato: semGente }], { imagem: CENA }).zerou).toBe(true)
+  })
+})
+
+describe("capacidadePorSecao — com imagem gerada (15/09)", () => {
+  const lib = [
+    { block_type: "hero", output_schema: HERO_3, dispositivo: "hero_oferta_cupom" },
+    { block_type: "hero", output_schema: HERO_9, dispositivo: "hero_apresentacao" },
+    { block_type: "body", output_schema: BODY_4, dispositivo: "body_comparacao" },
+    { block_type: "body", output_schema: campos("section_title section_copy cta_label"), dispositivo: "body_tese" },
+    { block_type: "body", output_schema: campos("glass_title glass_subtitle glass_cta_label glass_composition_image:image"), dispositivo: "body_tese" },
+  ]
+  it("conta por seção e por dispositivo", () => {
+    const cap = capacidadePorSecao(lib)
+    expect(cap.hero.com_imagem).toBe(2)
+    expect(cap.hero.com_imagem_por_dispositivo).toEqual({ hero_oferta_cupom: 1, hero_apresentacao: 1 })
+    expect(cap.body.com_imagem).toBe(2)
+    expect(cap.body.com_imagem_por_dispositivo).toEqual({ body_comparacao: 1, body_tese: 1 })
+  })
+  it("o render diz onde a cena é obrigatória; seção sem imagem não fala disso", () => {
+    const txt = renderCapacidade(capacidadePorSecao([...lib, { block_type: "footer", output_schema: campos("legal") }]))
+    expect(txt).toContain("- hero: 2 variantes · com preço: 0 · com avaliação: 0 · com cupom: 1 · com CTA: 2 · com imagem gerada: 2 (decida \"imagem\" nessas)")
+    expect(txt.split("\n").find((l) => l.startsWith("- footer"))).not.toContain("imagem")
+  })
+})
+
+// ── Faixa de itens POR DISPOSITIVO (15/09) ─────────────────────────────
+//
+// A Innova reprovou porque `reviews_3plus` foi pedido com no máximo 2
+// itens: a faixa da SEÇÃO ia de 2 a 4 (por causa das variantes de
+// `reviews_com_credencial`), então nada acusou, e o filtro eliminou as sete
+// variantes de reviews. A faixa por forma é o dado que faltava nos dois
+// lados — no prompt, para o pedido não nascer; na auditoria, para não passar.
+describe("capacidadePorSecao — faixa de itens por dispositivo (15/09)", () => {
+  const tresItens = campos("review_1_body review_2_body review_3_body")
+  const quatroItens = campos("review_1_body review_2_body review_3_body review_4_body")
+  const doisItens = campos("review_1_body review_2_body")
+  const lib = [
+    { block_type: "reviews", output_schema: tresItens, dispositivo: "reviews_3plus" },
+    { block_type: "reviews", output_schema: quatroItens, dispositivo: "reviews_3plus" },
+    { block_type: "reviews", output_schema: doisItens, dispositivo: "reviews_com_credencial" },
+    // Sem grade nenhuma: fica FORA do mapa de faixas, não vira {0,0}.
+    { block_type: "reviews", output_schema: campos("reviews_headline reviews_cta_label"), dispositivo: "reviews_com_credencial" },
+  ]
+  it("a faixa da seção esconde o que a faixa da forma revela", () => {
+    const cap = capacidadePorSecao(lib)
+    expect(cap.reviews.itens).toEqual({ min: 2, max: 4 })
+    expect(cap.reviews.itens_por_dispositivo).toEqual({
+      reviews_3plus: { min: 3, max: 4 },
+      reviews_com_credencial: { min: 2, max: 2 },
+    })
+  })
+  it("variante sem dispositivo não entra no mapa por forma", () => {
+    const cap = capacidadePorSecao([{ block_type: "reviews", output_schema: tresItens }])
+    expect(cap.reviews.itens).toEqual({ min: 3, max: 3 })
+    expect(cap.reviews.itens_por_dispositivo).toEqual({})
+  })
+  it("o render cola a faixa no dispositivo — é o que o Estruturador lê antes de pedir", () => {
+    const txt = renderCapacidade(capacidadePorSecao(lib))
+    expect(txt).toContain("reviews_3plus (2, 3–4 itens)")
+    expect(txt).toContain("reviews_com_credencial (2, 2 itens)")
+  })
+  it("dispositivo sem grade sai sem faixa, e não como zero", () => {
+    const txt = renderCapacidade(
+      capacidadePorSecao([{ block_type: "hero", output_schema: campos("title"), dispositivo: "hero_pergunta" }]),
+    )
+    expect(txt).toContain("hero_pergunta (1)")
+    expect(txt).not.toContain("hero_pergunta (1, 0")
+  })
+})
+
+// ── A janela de repetição entre e-mails (Fase 3 do leque, 16/09) ────────
+
+describe("elegiveisPorPosicao com janela", () => {
+  const v = (id: string) => ({ variant_id: id, contrato: resumirContrato([]) })
+  const catalogo = [
+    { section: "body", variantes: [v("b1"), v("b2"), v("b3"), v("b4")] },
+    { section: "hero", variantes: [v("h1"), v("h2")] },
+  ]
+  const janela = (m: Record<string, string[]>) =>
+    new Map(Object.entries(m).map(([k, ids]) => [k, new Set(ids)]))
+
+  it("shadow (`aplicar: false`) NÃO muda os ids, e ainda assim mede", () => {
+    // Sem isto o shadow não mede nada — era o item 3.4 do plano.
+    const semJanela = elegiveisPorPosicao(["body"], [null], catalogo)
+    const shadow = elegiveisPorPosicao(["body"], [null], catalogo, {
+      bloqueadasPorSecao: janela({ body: ["b1", "b2"] }),
+      aplicar: false,
+    })
+    expect(shadow.get(0)!.ids).toEqual(semJanela.get(0)!.ids)
+    expect(shadow.get(0)!.bloqueadasPelaJanela).toEqual(["b1", "b2"])
+  })
+
+  it("ligada, tira as usadas nos últimos e-mails", () => {
+    const e = elegiveisPorPosicao(["body"], [null], catalogo, {
+      bloqueadasPorSecao: janela({ body: ["b1", "b2"] }),
+      aplicar: true,
+    })
+    expect(e.get(0)!.ids).toEqual(["b3", "b4"])
+    expect(e.get(0)!.janelaAfrouxada).toBe(false)
+  })
+
+  it("AFROUXA por escassez, não por zero: 2 posições `body` e 4 variantes com 3 bloqueadas", () => {
+    // A régua de zero não dispararia (sobra 1), as duas posições receberiam
+    // a MESMA variante e a segunda cairia no dedupe sem alternativa.
+    const e = elegiveisPorPosicao(["body", "body"], [null, null], catalogo, {
+      bloqueadasPorSecao: janela({ body: ["b1", "b2", "b3"] }),
+      aplicar: true,
+    })
+    expect(e.get(0)!.ids).toEqual(["b1", "b2", "b3", "b4"])
+    expect(e.get(0)!.janelaAfrouxada).toBe(true)
+    // O que a janela teria tirado continua registrado — é a medição.
+    expect(e.get(0)!.bloqueadasPelaJanela).toEqual(["b1", "b2", "b3"])
+  })
+
+  it("com UMA posição a mesma janela NÃO afrouxa — o piso é o número de posições", () => {
+    const e = elegiveisPorPosicao(["body"], [null], catalogo, {
+      bloqueadasPorSecao: janela({ body: ["b1", "b2", "b3"] }),
+      aplicar: true,
+    })
+    expect(e.get(0)!.ids).toEqual(["b4"])
+    expect(e.get(0)!.janelaAfrouxada).toBe(false)
+  })
+
+  it("janela que bloqueia TUDO afrouxa em vez de esvaziar", () => {
+    const e = elegiveisPorPosicao(["hero"], [null], catalogo, {
+      bloqueadasPorSecao: janela({ hero: ["h1", "h2"] }),
+      aplicar: true,
+    })
+    expect(e.get(0)!.ids).toEqual(["h1", "h2"])
+    expect(e.get(0)!.janelaAfrouxada).toBe(true)
+  })
+
+  it("a janela entra ANTES do filtro por requisito, que é fail-open no conjunto", () => {
+    // Depois dele, a janela poderia zerar a lista e o fail-open a
+    // devolveria inteira — a janela seria anulada sem nada dizer.
+    const comCupom = [
+      { section: "hero", variantes: [
+        { variant_id: "h1", contrato: resumirContrato([{ key: "coupon_code", type: "text_short", example: "X" }]) },
+        { variant_id: "h2", contrato: resumirContrato([]) },
+      ] },
+    ]
+    const e = elegiveisPorPosicao(["hero"], [{ cupom: false }], comCupom, {
+      bloqueadasPorSecao: janela({ hero: ["h2"] }),
+      aplicar: true,
+    })
+    // h2 sai pela janela; h1 sai pelo requisito → fail-open do requisito
+    // devolve o que a JANELA deixou, não o catálogo inteiro.
+    expect(e.get(0)!.ids).toEqual(["h1"])
+    expect(e.get(0)!.zerou).toBe(true)
+  })
+
+  it("seção sem histórico passa intacta", () => {
+    const e = elegiveisPorPosicao(["hero"], [null], catalogo, {
+      bloqueadasPorSecao: janela({ body: ["b1"] }),
+      aplicar: true,
+    })
+    expect(e.get(0)!.ids).toEqual(["h1", "h2"])
+    expect(e.get(0)!.bloqueadasPelaJanela).toEqual([])
   })
 })

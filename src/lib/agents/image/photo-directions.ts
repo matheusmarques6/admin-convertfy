@@ -84,6 +84,59 @@ function palavras(t: string): number {
   return (t.match(/[A-Za-zÀ-ÿ]{3,}/g) ?? []).length
 }
 
+/**
+ * Conectivo pendurado no FIM da oração ("…na altura de.", "…cortar de largura,
+ * de cada lado, para chegar ao."): sem o que vinha depois, a oração não diz
+ * nada. Só o fim: "de," no meio da frase fica, pela decisão de 03/09 —
+ * "Círculo da foto de, centralizado horizontalmente" continua indo.
+ */
+const CONECTIVO_PENDURADO =
+  /\b(?:de|do|da|dos|das|em|no|na|nos|nas|com|para|por|até|ate|entre|sobre|sob|ou|e|a)\s*[.;:]?\s*$/i
+
+/**
+ * Cai a ORAÇÃO que a remoção de medida deixou sem sentido, não a linha
+ * inteira (15/09). A linha "Proporção 2:3 — slot de 598 × 949px, ativo
+ * final 1196 × 1898px (2x). JPG q80 ou WebP, < 300 KB, full-bleed. Gerar em
+ * 2:3 na altura de 1898px…" virava "Proporção 2:3 — slot de, ativo final.
+ * ou, full-bleed. Gerar em 2:3 na altura de e cortar de largura, de cada
+ * lado, para chegar ao ativo final." — 16 palavras, acima do teto da
+ * ficha, e ia ao modelo assim. Cada oração é julgada sozinha: apagou
+ * medida E (conectivo pendurado, ou vocabulário de ficha com poucas
+ * palavras, ou quase nada sobrando) → sai. Oração sem medida fica intacta.
+ */
+function limparOracoes(linha: string): { texto: string; apagouMedida: boolean } {
+  const oracoes = linha.split(/(?<=[.!?])\s+(?=[A-ZÀ-Ý0-9"“(])/)
+  if (oracoes.length <= 1) {
+    let t = linha
+    let apagou = false
+    for (const re of MEDIDAS) {
+      const antes = t
+      t = t.replace(re, "")
+      if (t !== antes) apagou = true
+    }
+    return { texto: limparRestos(t), apagouMedida: apagou }
+  }
+  const mantidas: string[] = []
+  let apagouAlguma = false
+  for (const o of oracoes) {
+    let t = o
+    let apagou = false
+    for (const re of MEDIDAS) {
+      const antes = t
+      t = t.replace(re, "")
+      if (t !== antes) apagou = true
+    }
+    t = limparRestos(t)
+    if (apagou) {
+      apagouAlguma = true
+      const ficha = FICHA_DE_ARQUIVO.test(t) && palavras(t) <= 12
+      if (!t || palavras(t) < 3 || ficha || CONECTIVO_PENDURADO.test(t)) continue
+    }
+    if (t) mantidas.push(t)
+  }
+  return { texto: limparRestos(mantidas.join(" ")), apagouMedida: apagouAlguma }
+}
+
 /** Limpa os restos que a remoção de medida deixa: "( )", " ,", " ." e espaço duplo. */
 function limparRestos(t: string): string {
   return t
@@ -127,13 +180,9 @@ export function sanitizePhotoDirection(texto: string): DirecaoSanitizada {
       tabelas++
       continue
     }
-    let apagouMedida = false
-    for (const re of MEDIDAS) {
-      const antes = linha
-      linha = linha.replace(re, "")
-      if (linha !== antes) apagouMedida = true
-    }
-    linha = limparRestos(linha)
+    const oracoes = limparOracoes(linha)
+    linha = oracoes.texto
+    const apagouMedida = oracoes.apagouMedida
     // Sem medida a linha era só ficha ("Ativo final … (2x)", "Slot — 272 ×
     // 212px", "Exportar em PNG.") → cai. Regra com uma cota dentro
     // ("…terço superior (0–480px) tem que estar fora de foco…") → fica.

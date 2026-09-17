@@ -75,6 +75,8 @@ export interface AgentExecution {
   email_status: string
   bucket: ExecutionBucket
   failure_reason: string | null
+  /** Prints do HTML final (B2): `{desktop, mobile, captured_at}`; null sem print. */
+  render_previews: { desktop: string | null; mobile: string | null; captured_at: string } | null
   updated_at: string
   ready_at: string | null
   failed_at: string | null

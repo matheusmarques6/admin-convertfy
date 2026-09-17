@@ -260,6 +260,44 @@ describe("invokeOpenRouter", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
+  it("modelo Anthropic: system vai em bloco com cache_control — a cadeia de formatação nunca tinha cacheado", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(200, {
+        choices: [{ message: { content: "hi" } }],
+        usage: {
+          prompt_tokens: 3,
+          completion_tokens: 4,
+          prompt_tokens_details: { cached_tokens: 2, cache_creation_input_tokens: 1 },
+        },
+      }),
+    )
+    vi.stubGlobal("fetch", fetchMock)
+    const out = await invokeOpenRouter({ ...baseInput, cacheUserPrefix: true })
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string)
+    expect(body.messages[0].content).toEqual([
+      { type: "text", text: "sys", cache_control: { type: "ephemeral" } },
+    ])
+    expect(body.messages[1].content).toEqual([
+      { type: "text", text: "user", cache_control: { type: "ephemeral" } },
+    ])
+    expect(out.cachedTokens).toBe(2)
+    expect(out.cacheWriteTokens).toBe(1)
+  })
+
+  it("modelo fora da Anthropic: system e user como string, sem cache_control", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(200, {
+        choices: [{ message: { content: "hi" } }],
+        usage: { prompt_tokens: 3, completion_tokens: 4 },
+      }),
+    )
+    vi.stubGlobal("fetch", fetchMock)
+    await invokeOpenRouter({ ...baseInput, model: "moonshotai/kimi-k3", cacheUserPrefix: true })
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string)
+    expect(body.messages[0].content).toBe("sys")
+    expect(body.messages[1].content).toBe("user")
+  })
+
   it("body vazio na 1ª, sucesso na 2ª → 2 fetches, recupera", async () => {
     const fetchMock = vi
       .fn()

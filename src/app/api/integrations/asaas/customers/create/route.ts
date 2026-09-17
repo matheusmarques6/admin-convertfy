@@ -6,6 +6,7 @@ import { createAsaasService } from "@/lib/integrations/asaas"
 import { decryptCredentialsJson } from "@/lib/crypto"
 import { logger } from "@/lib/logger"
 import { stripBrazilCountryCode } from "@/lib/utils/phone"
+import { documentoBRValido } from "@/lib/clients/pagador"
 
 const log = logger.child("IntegrationsAsaasCustomersCreate")
 
@@ -39,6 +40,16 @@ export async function POST(request: Request) {
 
     if (!body.cpfCnpj) {
       throw new AppError("CPF/CNPJ é obrigatório", 400)
+    }
+
+    // A régua vive no servidor também: documento torto chegava ao provedor e
+    // voltava como erro obscuro depois do save. Empresa no exterior não tem
+    // CPF/CNPJ e não é cadastrada aqui — a cobrança dela é por fora.
+    if (!documentoBRValido(body.cpfCnpj)) {
+      throw new AppError(
+        "CPF/CNPJ inválido. O Asaas exige documento brasileiro; para empresa no exterior, use o tipo de pagador 'Empresa no exterior' e registre o pagamento por fora.",
+        400,
+      )
     }
 
     if (!body.email && !body.phone && !body.mobilePhone) {

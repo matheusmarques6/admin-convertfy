@@ -193,3 +193,51 @@ describe("tradução das cores do cadastro para as da marca", () => {
     expect(vars.IMAGE_SLOTS).toContain("NÃO da paleta desta marca")
   })
 })
+
+// ── 15/09: as outras cenas do e-mail e a direção em rascunho ──────────────
+//
+// Innova Bay · Welcome 1 (batch b6c478d3): hero e body saíram com o mesmo
+// produto na mesma parede. Cada run de imagem era independente; e a
+// direção da body-8 era "Pendente da referência… aguardando o PNG", servida
+// ao modelo como fonte principal.
+describe("OUTRAS_CENAS e PHOTO_DIRECTION_RASCUNHO (15/09)", () => {
+  const base = { brand: null, briefing: null, topProducts: [], storeRaw: {}, blockPurpose: "x" }
+  const blueprint = {
+    blocks: [
+      { type: "hero", variant_id: "v-1", purpose: "p1", requisitos: { imagem: "produto plugado na tomada, mão adulta encaixando o plug" } },
+      { type: "body", variant_id: "v-2", purpose: "p2", requisitos: { imagem: null } },
+      { type: "body", variant_id: "v-3", purpose: "p3", requisitos: { imagem: "close do LED aceso no produto instalado" } },
+      { type: "footer", variant_id: "v-4", purpose: "p4" },
+    ],
+  } as never
+  it("cada posição recebe as cenas das OUTRAS, numeradas; a própria fica fora; sem cena não entra", () => {
+    const body = buildImagePromptVars({ ...base, blueprint, blockPosition: 2 })
+    expect(body.INTENCAO_VISUAL).toBe("")
+    expect(body.OUTRAS_CENAS).toBe(
+      "- position 1 (hero): produto plugado na tomada, mão adulta encaixando o plug\n- position 3 (body): close do LED aceso no produto instalado",
+    )
+    const hero = buildImagePromptVars({ ...base, blueprint, blockPosition: 1 })
+    expect(hero.OUTRAS_CENAS).toBe("- position 3 (body): close do LED aceso no produto instalado")
+    expect(hero.OUTRAS_CENAS).not.toContain("mão adulta")
+  })
+  it("sem blueprint ou sem nenhuma outra cena, a var fica vazia (o template omite o bloco)", () => {
+    expect(buildImagePromptVars({ ...base }).OUTRAS_CENAS).toBe("")
+    const so = { blocks: [{ type: "hero", variant_id: "v-1", purpose: "p1", requisitos: { imagem: "x" } }] } as never
+    expect(buildImagePromptVars({ ...base, blueprint: so, blockPosition: 1 }).OUTRAS_CENAS).toBe("")
+  })
+  it("direção em rascunho vira AUSENTE: PHOTO_DIRECTION vazia, flag de ausência ligada e a telemetria diz que era rascunho", () => {
+    const vars = buildImagePromptVars({
+      ...base,
+      blueprint,
+      blockPosition: 2,
+      photoDirectionByVariant: { "v-2": "Pendente da referência. O que dá para fixar pelo código: a faixa inferior fica atrás de um botão preto. Aguardando o PNG." },
+    })
+    expect(vars.PHOTO_DIRECTION).toBe("")
+    expect(vars.PHOTO_DIRECTION_AUSENTE).toBe("true")
+    expect(vars.PHOTO_DIRECTION_RASCUNHO).toBe("true")
+    const ok = buildImagePromptVars({ ...base, blueprint, blockPosition: 1, photoDirectionByVariant: { "v-1": "Flat-lay em ângulo alto." } })
+    expect(ok.PHOTO_DIRECTION).toBe("Flat-lay em ângulo alto.")
+    expect(ok.PHOTO_DIRECTION_AUSENTE).toBe("")
+    expect(ok.PHOTO_DIRECTION_RASCUNHO).toBe("")
+  })
+})

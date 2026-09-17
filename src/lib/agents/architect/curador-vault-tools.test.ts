@@ -73,7 +73,7 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: () => ({}),
 }))
 
-import { listarPasta, lerNota, loadFinalistNotes } from "./curador-vault-tools"
+import { extratoParaDecisao, loadFinalistNotes, aplicarOrcamentoDaCauda, carregarNotasDasFinalistas, CAUDA_MAX_CHARS } from "./curador-vault-tools"
 
 const nota = (
   file_path: string,
@@ -96,48 +96,11 @@ beforeEach(() => {
   ]
 })
 
-// Incidente 07/09: as ferramentas filtravam is_active da NOTA e nunca da
-// VARIANTE. O Curador leu a nota da offer-4, escolheu o bloco — que está
-// desativado e fora do catálogo servido — e a escolha morreu em
-// invalid_ids, deixando a posição vazia.
-describe("ferramentas do vault — variante desativada não é servida", () => {
-  it("listar_pasta omite a nota da variante desativada", async () => {
-    const saida = await listarPasta("componentes/variantes/offer")
-    expect(saida).toContain("offer-3-lembrete-de-cupom.md")
-    expect(saida).not.toContain("offer-4-manifesto-antes-do-cupom.md")
-  })
-
-  it("ler_nota recusa a variante desativada dizendo o motivo", async () => {
-    const saida = await lerNota("componentes/variantes/offer/offer-4-manifesto-antes-do-cupom.md")
-    expect(saida).toContain("desativada")
-    expect(saida).not.toContain("corpo de")
-  })
-
-  it("variante ativa continua servida inteira", async () => {
-    const saida = await lerNota("componentes/variantes/offer/offer-3-lembrete-de-cupom.md")
-    expect(saida).toContain("corpo de componentes/variantes/offer/offer-3")
-  })
-
-  it("nota que não é de variante nunca é filtrada", async () => {
-    // Seção, eixo, requisito, lacuna: não têm variant_id e não são escolhíveis.
-    h.variantesInativas = []
-    const saida = await lerNota("componentes/secoes/offer.md")
-    expect(saida).toContain("corpo de componentes/secoes/offer.md")
-  })
-
-  it("erro na checagem serve demais em vez de calar o vault", async () => {
-    h.erroNaChecagem = true
-    const saida = await listarPasta("componentes/variantes/offer")
-    // Esconder as 36 boas para proteger contra 4 seria pior: o parser ainda
-    // recusa o id inválido no fim da linha.
-    expect(saida).toContain("offer-4-manifesto-antes-do-cupom.md")
-  })
-
-  it("pasta sem nota devolve texto, não erro", async () => {
-    const saida = await listarPasta("componentes/inexistente")
-    expect(saida).toContain("nenhuma nota sincronizada")
-  })
-})
+// As ferramentas de consulta sob demanda (`listar_pasta`, `ler_nota`,
+// `buscar_doutrina`) foram REMOVIDAS em 16/09: existiram de 02/09 a 16/09 e
+// nunca tiveram importador de produção — só estes testes. O caminho vivo é
+// `loadFinalistNotes`, por código, que já filtra `is_active` da variante na
+// própria consulta (era o que o incidente da offer-4 exigia das ferramentas).
 
 describe("notas das finalistas em lote", () => {
   it("deduplica ids e distingue nota aberta de ausente", async () => {
@@ -145,5 +108,224 @@ describe("notas das finalistas em lote", () => {
     expect(result).toHaveLength(2)
     expect(result[0]).toMatchObject({ variant_id: "id-offer-3", status: "opened" })
     expect(result[1]).toEqual({ variant_id: "sem-nota", status: "missing", file_path: null, body: null })
+  })
+
+  // A propriedade "adicionar variante custa pouco" (15/09). Abaixo do
+  // limiar de shortlist TODAS as elegíveis viram finalistas, então sem teto
+  // um grupo de 5 servia 32.620 chars por posição — na CAUDA, que paga
+  // preço cheio em toda geração.
+  it("o orçamento da cauda corta as PIORES colocadas, nunca a primeira", async () => {
+    const grande = "x".repeat(2_900)
+    h.notas = Array.from({ length: 12 }, (_, i) =>
+      nota(`componentes/variantes/body/b${i}.md`, { variant_id: `v${i}`, body_md: grande }),
+    )
+    const ids = Array.from({ length: 12 }, (_, i) => `v${i}`)
+    const result = await loadFinalistNotes(ids)
+    expect(result[0].status).toBe("opened")
+    const cortadas = result.filter((r) => r.status === "sem_orcamento")
+    expect(cortadas.length).toBeGreaterThan(0)
+    // Quem foi cortada é a do FIM da lista, que é a pior do ranking.
+    expect(cortadas.map((r) => r.variant_id)).toEqual(
+      ids.slice(ids.length - cortadas.length),
+    )
+    const servido = result.reduce((acc, r) => acc + (r.body?.length ?? 0), 0)
+    expect(servido).toBeLessThanOrEqual(18_000)
+  })
+
+  it("cortada por orçamento NÃO é o mesmo que sem nota: o caminho fica", async () => {
+    // Ela segue escolhível pela linha do catálogo, que carrega eixos e
+    // forma — dizer "sem nota sincronizada" mandaria corrigir o vault.
+    h.notas = Array.from({ length: 8 }, (_, i) =>
+      nota(`componentes/variantes/body/b${i}.md`, { variant_id: `v${i}`, body_md: "x".repeat(2_900) }),
+    )
+    const result = await loadFinalistNotes(Array.from({ length: 8 }, (_, i) => `v${i}`))
+    const cortada = result.find((r) => r.status === "sem_orcamento")!
+    expect(cortada.file_path).toContain(".md")
+    expect(cortada.body).toBeNull()
+  })
+
+  it("uma finalista sozinha SEMPRE cabe: o teto por nota a corta antes", async () => {
+    // Não existe posição em que a única finalista chegue ao modelo sem
+    // nota — isso seria o teto de custo criando a lacuna que ele deveria
+    // evitar.
+    h.notas = [nota("componentes/variantes/body/b0.md", { variant_id: "v0", body_md: "x".repeat(30_000) })]
+    const [r] = await loadFinalistNotes(["v0"])
+    expect(r.status).toBe("opened")
+    expect(r.body).toContain("nota truncada")
+    expect(r.body!.length).toBeLessThan(3_100)
+  })
+})
+
+// ── O orçamento como peça separada (16/09, preparação do leque) ─────────
+//
+// Medido nas 11 runs com telemetria de notas (11–15/09): 10 a 15 finalistas
+// por e-mail, 59.794 a 84.908 chars de nota pedidos. Com o teto do e-mail
+// INTEIRO, esses 18.000 chars são repartidos na ordem — as primeiras
+// posições levam tudo e as últimas ficam sem nota nenhuma. No leque o
+// mesmo número passa a valer por POSIÇÃO, e é essa separação que estes
+// testes travam.
+
+describe("aplicarOrcamentoDaCauda", () => {
+  const nota3k = (id: string) => ({
+    variant_id: id,
+    status: "opened" as const,
+    file_path: `componentes/variantes/body/${id}.md`,
+    body: "x".repeat(2_900),
+  })
+
+  it("é PURA: não muta o que recebe", () => {
+    const entrada = [nota3k("v0"), nota3k("v1")]
+    const antes = JSON.stringify(entrada)
+    aplicarOrcamentoDaCauda(entrada, 1_000)
+    expect(JSON.stringify(entrada)).toBe(antes)
+  })
+
+  it("o mesmo teto reparte entre 12 notas e cabe para 3 — é o que o leque compra", () => {
+    // A chamada única serve as 12 de um e-mail e corta a cauda; a chamada
+    // por posição serve as 3 daquela posição e não corta nenhuma.
+    const doEmail = aplicarOrcamentoDaCauda(Array.from({ length: 12 }, (_, i) => nota3k(`v${i}`)))
+    expect(doEmail.filter((n) => n.status === "sem_orcamento").length).toBeGreaterThan(0)
+
+    const daPosicao = aplicarOrcamentoDaCauda([nota3k("v9"), nota3k("v10"), nota3k("v11")])
+    expect(daPosicao.every((n) => n.status === "opened")).toBe(true)
+    // As três últimas do e-mail são justamente as que ficavam sem nota.
+    expect(doEmail.slice(-3).every((n) => n.status === "sem_orcamento")).toBe(true)
+  })
+
+  it("nota que não cabe NÃO libera a vaga para uma menor depois dela", () => {
+    // Servir a 3ª porque ela é curta e negar a 2ª inverteria o ranking em
+    // silêncio.
+    const entrada = [
+      { variant_id: "a", status: "opened" as const, file_path: "a.md", body: "x".repeat(600) },
+      { variant_id: "b", status: "opened" as const, file_path: "b.md", body: "x".repeat(600) },
+      { variant_id: "c", status: "opened" as const, file_path: "c.md", body: "x".repeat(10) },
+    ]
+    const out = aplicarOrcamentoDaCauda(entrada, 700)
+    expect(out.map((n) => n.status)).toEqual(["opened", "sem_orcamento", "sem_orcamento"])
+  })
+
+  it("não mexe em missing nem em database_error", () => {
+    const out = aplicarOrcamentoDaCauda(
+      [
+        { variant_id: "a", status: "missing", file_path: null, body: null },
+        { variant_id: "b", status: "database_error", file_path: null, body: null, error: "boom" },
+      ],
+      0,
+    )
+    expect(out.map((n) => n.status)).toEqual(["missing", "database_error"])
+  })
+})
+
+describe("carregarNotasDasFinalistas", () => {
+  it("corta por nota e NÃO aplica o orçamento da cauda", async () => {
+    // Quem reparte é `aplicarOrcamentoDaCauda`, porque no leque o eixo é a
+    // posição. Se a consulta cortasse, o leque leria o banco uma vez e
+    // receberia a cauda já repartida pelo e-mail inteiro.
+    h.notas = Array.from({ length: 12 }, (_, i) =>
+      nota(`componentes/variantes/body/b${i}.md`, { variant_id: `v${i}`, body_md: "x".repeat(2_900) }),
+    )
+    const cru = await carregarNotasDasFinalistas(Array.from({ length: 12 }, (_, i) => `v${i}`))
+    expect(cru.every((n) => n.status === "opened")).toBe(true)
+    const total = cru.reduce((acc, n) => acc + (n.body?.length ?? 0), 0)
+    expect(total).toBeGreaterThan(CAUDA_MAX_CHARS)
+  })
+})
+
+// ── O extrato da nota (15/09) ───────────────────────────────────────────
+//
+// Medido nas 40 notas ativas: 6.524 chars em média, sete seções, e 67% do
+// texto (design system 2.218 · direção fotográfica 1.349 · orientações de
+// copy 796) serve a OUTROS agentes e já está no banco. Essa parte fica na
+// CAUDA do prompt, depois do último marcador de cache, e é paga inteira em
+// toda geração.
+describe("extratoParaDecisao", () => {
+  const nota = `---
+status: aprovada
+variant_id: abc
+objecao: [preco-valor]
+---
+
+# Hero 3 — cupom de captação
+
+## Descrição curta
+Hero com cupom em destaque.
+
+## Descrição detalhada
+Dois parágrafos sobre a peça.
+
+## Quando usar
+Quando a loja abre com incentivo.
+
+## Quando não usar
+Quando não há cupom ativo.
+
+## Design system
+Tipografia condensada, 48px, tracking -2%. Duas colunas no desktop.
+
+## Direção fotográfica
+Flat-lay de kit, luz dura, nenhuma mão.
+
+## Orientações de copy para a IA
+Headline em até 6 palavras.
+`
+
+  it("mantém frontmatter, título e as quatro seções de decisão", () => {
+    const e = extratoParaDecisao(nota)
+    expect(e).toContain("objecao: [preco-valor]")
+    expect(e).toContain("# Hero 3 — cupom de captação")
+    expect(e).toContain("## Descrição curta")
+    expect(e).toContain("## Descrição detalhada")
+    expect(e).toContain("## Quando usar")
+    expect(e).toContain("## Quando não usar")
+  })
+
+  it("descarta o que é de outro agente — e já está no banco", () => {
+    const e = extratoParaDecisao(nota)
+    expect(e).not.toContain("Design system")
+    expect(e).not.toContain("Direção fotográfica")
+    expect(e).not.toContain("Orientações de copy")
+    expect(e).not.toContain("Flat-lay")
+    expect(e.length).toBeLessThan(nota.length)
+  })
+
+  it("corta ~2/3 numa nota com as proporções REAIS das 40 do vault", () => {
+    // Médias medidas em 15/09, por seção: design system 2.218 · direção
+    // fotográfica 1.349 · descrição detalhada 969 · orientações de copy 796
+    // · quando não usar 469 · quando usar 396 · descrição curta 288.
+    const enche = (n: number) => "x".repeat(n)
+    const real = [
+      "---\nstatus: aprovada\n---",
+      "# Peça",
+      `## Descrição curta\n${enche(288)}`,
+      `## Descrição detalhada\n${enche(969)}`,
+      `## Quando usar\n${enche(396)}`,
+      `## Quando não usar\n${enche(469)}`,
+      `## Design system\n${enche(2218)}`,
+      `## Direção fotográfica\n${enche(1349)}`,
+      `## Orientações de copy para a IA\n${enche(796)}`,
+    ].join("\n\n")
+    const e = extratoParaDecisao(real)
+    const reducao = 1 - e.length / real.length
+    expect(reducao).toBeGreaterThan(0.6)
+    expect(reducao).toBeLessThan(0.75)
+  })
+
+  it("fail-open: nota em formato desconhecido volta inteira", () => {
+    // Formato novo no vault não pode virar finalista sem nota nenhuma.
+    const outra = "# Peça X\n\nTexto corrido, sem seções."
+    expect(extratoParaDecisao(outra)).toBe(outra)
+  })
+
+  it("nota vazia continua vazia", () => {
+    expect(extratoParaDecisao("")).toBe("")
+    expect(extratoParaDecisao("   ")).toBe("")
+  })
+
+  it("aceita os títulos sem acento", () => {
+    const semAcento = "## Descricao curta\nTexto.\n\n## Quando nao usar\nNunca.\n\n## Design system\nX."
+    const e = extratoParaDecisao(semAcento)
+    expect(e).toContain("Descricao curta")
+    expect(e).toContain("Quando nao usar")
+    expect(e).not.toContain("Design system")
   })
 })

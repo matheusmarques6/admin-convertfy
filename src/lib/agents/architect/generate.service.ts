@@ -8,6 +8,8 @@
  */
 
 import { createAdminClient } from "@/lib/supabase/server"
+import type { BrandColor } from "@/types/email-workspace"
+import { tokensDaLoja } from "../html/apply-identity-tokens"
 import { logger } from "@/lib/logger"
 import type { EmailOutlineTemplate } from "@/types/email-generation"
 
@@ -31,8 +33,8 @@ import { reconcileEmailStructure } from "@/lib/services/reconcile-blocks.service
 import { resolveStructure, clampStructure } from "./outline-sections"
 import { generateStoreBlueprint } from "./blueprint-generator.service"
 import { runEstruturador } from "../estruturador/estruturador.service"
-import { contextoDaExecucao } from "../execucao/execution.service"
-import { gateFor } from "../execucao/overrides"
+import { contextoDaExecucao, pausarExecucao } from "../execucao/execution.service"
+import { deveParar, gateFor } from "../execucao/overrides"
 import { ALVO_AUSENTE_CURADOR, alvoParaMedicao, renderAlvo } from "../objecoes/alvo-render"
 import { loadObjectionTarget } from "../objecoes/seletor.service"
 import type { AlvoDoEmail } from "../objecoes/vocabulario"
@@ -45,12 +47,15 @@ import {
   type PosicaoEstruturada,
 } from "../estruturador/estruturador-consume"
 import type { EstruturadorOutput } from "../estruturador/estruturador-prompt"
+import { marcarEmailFalhoNaFase1 } from "./fase1-failure"
 import {
   assembleStoreReference,
   type ReferenceSource,
 } from "./component-assembler.service"
 import type { EstruturadorStatus } from "./blueprint-generator.service"
 import { loadRevisoesAplicaveis } from "../shared/load-revisoes"
+import { montarDecisao, type DecisaoDoEmail } from "../shared/decisao-do-email"
+import { resolverIncentivoDoEmail } from "../objecoes/incentivo-da-loja.service"
 
 const log = logger.child("ArchitectGenerate")
 
@@ -99,7 +104,7 @@ export async function isArchitectConfigured(): Promise<boolean> {
 
 export async function generateBlueprintAndReference(
   input: GenerateArchitectInput,
-): Promise<{ referenceSource: ReferenceSource }> {
+): Promise<{ referenceSource: ReferenceSource; pausada?: boolean }> {
   const admin = createAdminClient()
 
   // Email "somente texto" (email_blueprints.text_only): NUNCA gera arquitetura
@@ -135,12 +140,53 @@ export async function generateBlueprintAndReference(
   const emailId = emailRow?.id ?? null
   const flowId = emailRow?.flow_id ?? null
 
+  // Incentivo do TOQUE (14/09): outline + idioma da loja + override do bloco
+  // `coupon`. Entra na decisão do e-mail e, adiante, no Estruturador.
+  const incentivo = await resolverIncentivoDoEmail({
+    storeId: input.storeId,
+    flowType: input.flowType,
+    emailNumber: input.emailNumber,
+    emailId,
+  })
+
   // ── Overrides desta execução (migration 20261129) ──────────────────
   //
   // Sem execução manual viva o contexto é `producao` e todo gate abaixo é
   // neutro: ligar a feature não muda o caminho de produção.
   const execucao = await contextoDaExecucao(emailId, input.batchId)
   const gate = (node: string) => gateFor(node, execucao.overrides, execucao.mode)
+
+  /**
+   * A execução para DEPOIS deste nó?
+   *
+   * `deveParar` existia, era validado por `validarOverrides` e gravado pela
+   * rota manual — e tinha UM call site em todo o repositório, no
+   * `phase2-runner`. Pedir `stop_after: "assembler_chooser"` passava na
+   * validação e a fase 1 seguia até Montador → Blueprint → Subject e, em
+   * `full_pipeline`, disparava a copy ao n8n: o botão "Rodar só este nó"
+   * existia, o operador clicava, e nada acontecia — sem erro e sem aviso.
+   *
+   * `paused`, não `success`, pela mesma razão da fase 2: execução parada de
+   * propósito não pode ser varrida como geração travada. Aqui não há
+   * estágio de HTML para o watchdog tocar — o e-mail nem saiu de `draft` —,
+   * então parar é barato: o que ficou gravado (reference, decisão) é
+   * exatamente o que o pin da próxima rodada reusa.
+   *
+   * É o que torna a bancada possível: com o Estruturador pinado, "parar
+   * depois do Curador" custa o Curador sozinho em vez de uma geração.
+   */
+  const pararAqui = async (node: string): Promise<boolean> => {
+    if (!deveParar(node, execucao.overrides, execucao.mode)) return false
+    if (execucao.executionId) await pausarExecucao(execucao.executionId, node)
+    log.info("architect.pausada_no_no", {
+      storeId: input.storeId,
+      flowType: input.flowType,
+      emailNumber: input.emailNumber,
+      emailId,
+      node,
+    })
+    return true
+  }
 
   // Fase 1 PINADA = "a referência gravada serve".
   //
@@ -342,7 +388,7 @@ export async function generateBlueprintAndReference(
     // novo a cada geração, então trocar de fonte não invalida a arquitetura.
     admin
       .from("store_brand_identity")
-      .select("font_heading, font_body, font_heading_weight, font_body_weight")
+      .select("font_heading, font_body, font_heading_weight, font_body_weight, colors_primary, colors_secondary")
       .eq("store_id", input.storeId)
       .order("version", { ascending: false })
       .limit(1)
@@ -373,6 +419,8 @@ export async function generateBlueprintAndReference(
     font_heading_weight?: string | null
     font_body_weight?: string | null
     font_body?: string | null
+    colors_primary?: BrandColor[] | null
+    colors_secondary?: BrandColor[] | null
   } | null
   const intents = (intentsRes.data ?? []) as Array<{
     slug: string
@@ -476,8 +524,19 @@ export async function generateBlueprintAndReference(
   // estrutura é a do outline e a marca precisa dizer isso.
   let estruturadorStatus: EstruturadorStatus =
     estruturadorMode === "on" ? "falhou" : "desligado"
+  // Pinado NÃO é desativado, e tratar os dois como um só foi um defeito
+  // silencioso: `gateFor` devolve `disabled: true` para ambos, então pinar o
+  // Estruturador — que declara "a decisão gravada vale" — caía no ramo de
+  // baixo e a estrutura vinha do OUTLINE. A bancada ("Rodar só o Curador")
+  // mediria o Curador sobre uma entrada que a produção nunca usa.
+  //
+  // Quem reusa é `runEstruturador`, pelo MESMO caminho da janela apertada
+  // (`decidirPelaJanela`), que já grava a run como `skipped: reuso`.
+  const gateEstruturador = gate("estruturador")
+  const estruturadorPinado = gateEstruturador.pinned === true
   const estruturadorDesligado =
-    estruturadorMode === "off" || gate("estruturador").disabled
+    estruturadorMode === "off" || (gateEstruturador.disabled && !estruturadorPinado)
+  let estruturadorIncoerente: string | null = null
   if (estruturadorDesligado) {
     // Run 'skipped' em vez de silêncio. O Estruturador é passo do pipeline
     // nas telas (mapa e aba Teste): sem run nenhuma, a linha dele fica
@@ -522,8 +581,18 @@ export async function generateBlueprintAndReference(
         topProducts,
         revisoes,
         alvo,
+        // Decisão de incentivo do toque (14/09): a auditoria confere
+        // `requisitos.cupom` contra ela.
+        incentivo,
+        pinado: estruturadorPinado,
       })
-      if (estruturadorMode === "on") {
+      if (r.status === "falhou" && r.motivo === "incoerente") {
+        // Auditoria dos requisitos reprovou nas duas tentativas com o gate
+        // `on`. Seguir com o outline aqui montaria a peça sobre a decisão
+        // que o código acabou de recusar — e o e-mail sairia igual ao do
+        // batch 6249aef2. O throw sai do try/catch abaixo de propósito.
+        estruturadorIncoerente = r.detalhe ?? "requisitos incoerentes"
+      } else if (estruturadorMode === "on") {
         if (r.status === "ok" && r.output && r.output.text_only) {
           // text_only decidido pelo agente ainda não tem caminho de consumo
           // (o pipeline text_only é flag GLOBAL de email_blueprints) — v1
@@ -557,6 +626,22 @@ export async function generateBlueprintAndReference(
       })
     }
   }
+  if (estruturadorIncoerente) {
+    // Nomeado para a fila de dispatch (que conta tentativas e cai para o
+    // template global só depois de esgotá-las) e para a aba Teste.
+    throw new Error(`estruturador_incoerente: ${estruturadorIncoerente}`)
+  }
+
+  // Parar depois do Estruturador. A decisão dele já está gravada na run, que
+  // é o artefato que o pin da rodada seguinte reusa — é o ponto de bancada
+  // para "mexi no prompt do Estruturador e quero ver o que ele decide", sem
+  // pagar Curador, Blueprint e Subject atrás.
+  //
+  // `"none"` porque nada foi montado: dizer "store" faria o guard de reuso
+  // da próxima geração achar que existe referência desta rodada.
+  if (await pararAqui("estruturador")) {
+    return { referenceSource: "none", pausada: true }
+  }
 
   // Passo 1 — Montador: gera o HTML seguindo a estrutura decidida pelo
   // Estruturador (modo 'on' com run válida) ou, senão, a estrutura geral do
@@ -572,6 +657,11 @@ export async function generateBlueprintAndReference(
       sequencia: posicoes.map((p) => p.section),
     })
   }
+  // A DECISÃO do e-mail (14/09): alvo + estrutura com requisitos + incentivo,
+  // montada UMA vez e servida a Curador, blueprint (persistida em
+  // `store_email_blueprints.decisao`), n8n, formatação e QA. Nasce só
+  // quando o Estruturador foi consumido; sem ele não há decisão a validar.
+  let decisao: DecisaoDoEmail | null = null
   let structure: Array<{ section: string; label: string; intencao?: string | null }> =
     posicoes ?? structureBase
   if (maxBlocksPerEmail != null && structure.length > maxBlocksPerEmail) {
@@ -589,12 +679,32 @@ export async function generateBlueprintAndReference(
     // clampada, sem desalinhamento de índice com o blueprint.
     if (posicoes) posicoes = structure as PosicaoEstruturada[]
   }
+  if (estruturadorOutput && posicoes) {
+    // Depois do clamp, de propósito: as posições da decisão têm de ser as
+    // que viraram estrutura, senão o validador compara índice com índice
+    // errado.
+    decisao = montarDecisao({
+      alvo,
+      estruturador: {
+        ...estruturadorOutput,
+        estrutura: posicoes.map((pos) => ({
+          section: pos.section,
+          papel: pos.papel,
+          porque: pos.porque,
+          referencia: "",
+          requisitos: pos.requisitos ?? undefined,
+        })),
+      },
+      incentivo,
+    })
+  }
   const {
     html,
     source,
     slots,
     papeisPorPosicao: papeisDoCurador,
     fioNarrativo: fioDoCurador,
+    lacuna,
   } = await assembleStoreReference({
     storeId: input.storeId,
     flowType: input.flowType,
@@ -652,6 +762,9 @@ export async function generateBlueprintAndReference(
     fontHeadingWeight: brand?.font_heading_weight ?? null,
     fontBodyWeight: brand?.font_body_weight ?? null,
     fontBody: brand?.font_body ?? null,
+    // B5: os tokens de identidade resolvem no encaixe as variantes escritas
+    // com {{COR_*}}/{{FONTE_*}} — a mesma derivação de papéis da fase 2.
+    tokens: tokensDaLoja(brand),
     // Contrato editorial do vault + decisão do Estruturador — critérios de
     // escolha do Curador. A decisão só desce quando foi CONSUMIDA (modo on):
     // em shadow o pipeline não pode ser influenciado por ela.
@@ -662,7 +775,57 @@ export async function generateBlueprintAndReference(
       estruturadorOutput && posicoes
         ? decisaoCompletaParaCurador(estruturadorOutput)
         : null,
+    decisao,
   })
+
+  // Passo 11 — lacuna de biblioteca FATAL: a decisão pediu uma posição
+  // (hero, ou 2+) que a biblioteca não cobre e o resgate não pôde
+  // preencher sem contrariar a decisão. O e-mail é marcado `failed` AQUI,
+  // com o dispositivo pedido na run `assembler`, e NÃO segue para o
+  // blueprint nem para o n8n — antes ia com o template global e morria
+  // em `hero_failed` três minutos e três agentes depois.
+  if (lacuna?.fatal) {
+    const posicoes = lacuna.posicoes.map(
+      (p) => `${p.block_index}:${p.section}:${p.dispositivo_pedido ?? "-"}:${p.motivo}`,
+    )
+    // Relógio não é lacuna de biblioteca (16/09, `causaDaLacuna`). A
+    // chamada daquela posição não aconteceu: não há veredito sobre a
+    // biblioteca, as posições já decididas estão gravadas na run e a
+    // próxima passada retoma dali. Marcar `failed` aqui enterraria uma
+    // peça a uma retomada de distância, e o rótulo mandaria a curadoria
+    // cadastrar bloco que já existe.
+    if (lacuna.causa === "relogio") {
+      log.warn("architect.lacuna_por_relogio", {
+        storeId: input.storeId,
+        flowType: input.flowType,
+        emailNumber: input.emailNumber,
+        emailId,
+        posicoes,
+      })
+      return { referenceSource: "retomavel" }
+    }
+    log.warn("architect.lacuna_biblioteca", {
+      storeId: input.storeId,
+      flowType: input.flowType,
+      emailNumber: input.emailNumber,
+      emailId,
+      posicoes,
+    })
+    if (emailId) {
+      await marcarEmailFalhoNaFase1(admin, emailId, "lacuna_biblioteca", {
+        posicoes: lacuna.posicoes.map((p) => ({ section: p.section, dispositivo: p.dispositivo_pedido, motivo: p.motivo })),
+      })
+    }
+    return { referenceSource: "lacuna" }
+  }
+
+  // Parar DEPOIS do Curador: a referência já está persistida (ou descartada
+  // com o motivo), e o Blueprint, o Subject e o dispatch de copy não
+  // acontecem. `source` sai como está — dizer "lacuna" ou inventar um
+  // desfecho aqui faria a fila settlar o e-mail por um motivo que não é o
+  // verdadeiro.
+  if (await pararAqui("assembler_chooser")) return { referenceSource: source, pausada: true }
+  if (await pararAqui("assembler")) return { referenceSource: source, pausada: true }
 
   // A INTENÇÃO humana de cada posição (Arquitetura) vem PRIMEIRO no purpose
   // do blueprint; o papel do agente (Curador do vault) entra embaixo como
@@ -761,7 +924,15 @@ export async function generateBlueprintAndReference(
     intencoesHumanas: intencoesPorPosicao.filter(Boolean).length,
     fioNarrativo: estruturadorOutput?.fio_narrativo ?? fioDoCurador ?? null,
     estruturadorStatus,
+    decisao,
   })
+
+  // Parar depois do Blueprint. O Subject roda DENTRO de
+  // `generateStoreBlueprint`, então os dois nós param no mesmo ponto — e é
+  // aqui, antes do reconcile, porque reescrever os `email_blocks` é o que
+  // deixaria o e-mail com a estrutura nova e sem copy nenhuma.
+  if (await pararAqui("blueprint")) return { referenceSource: source, pausada: true }
+  if (await pararAqui("subject")) return { referenceSource: source, pausada: true }
 
   // Passo 3 — Propaga a estrutura recém-gerada para os `email_blocks`.
   // Só quando o Blueprint foi REALMENTE gerado pelo LLM (source='ai' →

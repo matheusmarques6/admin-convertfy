@@ -47,3 +47,34 @@ export function checarInvariantesDeTipografia(
   }
   return { ok: true, violacao: null }
 }
+
+/** Teto de aumento de fonte em relação ao original da variante (Passo 14). */
+export const FATOR_MAX_AUMENTO = 1.25
+
+export interface FaixaDeFonteResult {
+  ok: boolean
+  /** Itens (índice do inventário) que saíram da faixa, com o de/para. */
+  fora: Array<{ index: number; de: number; para: number; motivo: "reduzida" | "acima_do_teto" }>
+}
+
+/**
+ * Nenhum texto pode ficar MENOR que a variante o entregou, nem mais de
+ * 1,25× maior — sem teto absoluto, porque o tamanho da biblioteca é
+ * decisão de quem a desenhou (Passo 14). Compara item a item, pelo índice
+ * do inventário (a contagem é invariante — `checarInvariantesDeTipografia`
+ * já garante). Item sem tamanho declarado num dos lados fica de fora.
+ */
+export function checarReducaoDeFonte(antes: string, depois: string): FaixaDeFonteResult {
+  const a = extractTypographyInventory(antes)
+  const d = extractTypographyInventory(depois)
+  const fora: FaixaDeFonteResult["fora"] = []
+  const n = Math.min(a.length, d.length)
+  for (let i = 0; i < n; i++) {
+    const de = a[i].sizePx
+    const para = d[i].sizePx
+    if (de == null || para == null || de <= 0) continue
+    if (para < de) fora.push({ index: a[i].index, de, para, motivo: "reduzida" })
+    else if (para > de * FATOR_MAX_AUMENTO + 0.01) fora.push({ index: a[i].index, de, para, motivo: "acima_do_teto" })
+  }
+  return { ok: fora.length === 0, fora }
+}

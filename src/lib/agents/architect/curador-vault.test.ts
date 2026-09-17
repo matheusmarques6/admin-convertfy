@@ -496,3 +496,48 @@ describe("semMomento", () => {
     expect(b).toContain("Eliminar por capacidade")
   })
 })
+
+// 16/09 (leque): cada posição recebe só a lacuna da SEÇÃO dela. A armadilha
+// é a inferência: `secaoDaLacuna` deduz a seção do slug comparando com uma
+// lista de seções conhecidas — recortar essa lista para uma faria a nota de
+// `body` virar lacuna GERAL e ser servida em TODAS as posições, que é o
+// oposto de fatiar.
+describe("buildLacunasBlock por posição", () => {
+  const lac = (slug: string, corpo = "corpo da lacuna") =>
+    ({ slug, body_md: corpo, frontmatter: {}, grupo: null, kind: "lacuna", file_path: `componentes/lacunas/${slug}.md` }) as never
+  const k = {
+    lacunas: [lac("lacuna-hero-sem-cupom"), lac("lacuna-body-garantias"), lac("lacuna-geral-tom")],
+  } as never as Parameters<typeof buildLacunasBlock>[0]
+  const secoes = ["hero", "body", "footer"]
+
+  it("sem seção da posição, serve as seções do e-mail (comportamento de antes)", () => {
+    const b = buildLacunasBlock(k, secoes)
+    expect(b).toContain("lacuna-hero-sem-cupom")
+    expect(b).toContain("lacuna-body-garantias")
+  })
+
+  it("com a seção da posição, só a dela — e a GERAL continua entrando", () => {
+    const b = buildLacunasBlock(k, secoes, "hero")
+    expect(b).toContain("lacuna-hero-sem-cupom")
+    expect(b).not.toContain("lacuna-body-garantias")
+    // Lacuna sem seção vale para qualquer posição.
+    expect(b).toContain("lacuna-geral-tom")
+  })
+
+  it("a inferência ainda usa as seções do E-MAIL, não a da posição", () => {
+    // Se `secoesDoEmail` fosse recortado junto, `lacuna-body-garantias`
+    // deixaria de ser reconhecida como de `body` e entraria aqui como geral.
+    const b = buildLacunasBlock(k, secoes, "hero")
+    expect(b).not.toContain("Lacuna geral · lacuna-body-garantias")
+  })
+
+  it("posição sem lacuna diz qual seção, não a frase genérica", () => {
+    expect(buildLacunasBlock(k, secoes, "footer")).toContain("lacuna-geral-tom")
+    const semGeral = { lacunas: [lac("lacuna-hero-sem-cupom")] } as never as Parameters<typeof buildLacunasBlock>[0]
+    expect(buildLacunasBlock(semGeral, secoes, "footer")).toBe("(nenhuma lacuna registrada para footer)")
+  })
+
+  it("a seção da posição é normalizada", () => {
+    expect(buildLacunasBlock(k, secoes, " HERO ")).toContain("lacuna-hero-sem-cupom")
+  })
+})

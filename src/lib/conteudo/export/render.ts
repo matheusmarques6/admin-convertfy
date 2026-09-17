@@ -23,6 +23,8 @@ const FONTES: Array<{ family: string; weight: string; url: string; range?: strin
   { family: "Instrument Serif", weight: "400", style: "italic", url: "/fonts/instrument-serif-italic-latin-ext.woff2", range: "U+0100-02BA, U+1E00-1EFF" },
   { family: "Caveat", weight: "600", url: "/fonts/caveat-600-latin.woff2" },
   { family: "Caveat", weight: "600", url: "/fonts/caveat-600-latin-ext.woff2", range: "U+0100-02BA, U+1E00-1EFF" },
+  // Família Post (print de tweet): os três pesos que o formato usa — 400 no
+  // @handle e no corpo, 600 no botão, 700 no nome e na linha de destaque.
 ]
 
 let cssFontesPromise: Promise<string> | null = null

@@ -8,6 +8,7 @@ import {
   type BlocoComContrato,
   type MotivoDeAlvo,
   apararNoLimite,
+  parComparativoDe,
   ehColunaComparativa,
   removerTravessao,
   temParComparativo,
@@ -524,7 +525,7 @@ describe("aceitarReescrita — a tradução que ninguém pediu", () => {
 // ── Item de lista ausente (02/09, body-4 coluna "Others") ───────────────
 import { irmaosDeLista } from "./copy-fit"
 
-describe("motivo ausente", () => {
+describe("item ausente NÃO vira alvo (Passo 13)", () => {
   const LISTA: BlocoComContrato = {
     id: "b-body4",
     position: 2,
@@ -554,48 +555,17 @@ describe("motivo ausente", () => {
     expect(irmaosDeLista("closing_copy", LISTA.fields ?? [], LISTA.content)).toEqual([])
   })
 
-  it("item vazio de lista com ≥2 irmãos vira alvo `ausente` com os irmãos; campo solto vazio não", () => {
-    const alvos = alvosDeEncurtamento([LISTA], { idiomaDaLoja: "en" })
-    expect(alvos.map((a) => a.key)).toEqual(["column_b_item_6"])
-    expect(alvos[0]).toMatchObject({
-      id: "2.column_b_item_6",
-      texto: "",
-      max: 48,
-      motivos: ["ausente"],
-      idioma_esperado: "en",
-      orientacao: "ponto negativo dos concorrentes",
-    })
-    expect(alvos[0].irmaos).toHaveLength(3)
-    // a tela de estouros não muda: ausente não é estouro
+  // O caso do batch 6249aef2: o dispatch OMITIU `column_b_item_6` e o
+  // encurtador o criou. Campo vazio sai do e-mail pelo merge; o relatório
+  // registra, o alvo não existe.
+  it("item vazio de lista NÃO vira alvo — fica registrado em itens_ausentes", () => {
+    const rel = { itens_ausentes: [], par_comparativo: [], comparativa_sem_llm: [], travessao_por_codigo: [] }
+    const alvos = alvosDeEncurtamento([LISTA], { idiomaDaLoja: "en", relatorio: rel })
+    expect(alvos).toEqual([])
+    expect(rel.itens_ausentes).toEqual(["2.column_b_item_6"])
     expect(resumoDeEstouros([LISTA])).toEqual([])
   })
 
-  it("lista com só um irmão preenchido NÃO cria alvo (sem material)", () => {
-    const pouca: BlocoComContrato = {
-      ...LISTA,
-      content: { column_b_item_1: "Limited or no return window" },
-    }
-    expect(alvosDeEncurtamento([pouca])).toEqual([])
-  })
-
-  it("guard: item criado que repete um irmão é recusado; um novo é aceito", () => {
-    const limites = {
-      max: 48,
-      motivos: ["ausente"] as MotivoDeAlvo[],
-      idiomaEsperado: "en",
-      irmaos: ["Limited or no return window", "Generic ratings with no context"],
-    }
-    expect(aceitarReescrita("", "generic ratings with no context.", limites)).toEqual({
-      ok: false,
-      motivo: "igual_a_irmao",
-    })
-    expect(aceitarReescrita("", "", limites)).toEqual({ ok: false, motivo: "vazio" })
-    expect(aceitarReescrita("", "Hidden fees at checkout", limites)).toEqual({ ok: true })
-    expect(aceitarReescrita("", "x".repeat(60), limites)).toEqual({
-      ok: false,
-      motivo: "ainda_acima_do_limite",
-    })
-  })
 })
 
 describe("copy_fit por código (09/09): travessão, aparo, coluna comparativa, par comparativo", () => {
@@ -605,11 +575,20 @@ describe("copy_fit por código (09/09): travessão, aparo, coluna comparativa, p
     expect(removerTravessao("— Comece agora").texto).toBe("Comece agora")
     expect(removerTravessao("Compatível com OBD-II e e-mail")).toEqual({ texto: "Compatível com OBD-II e e-mail", removidos: 0 })
   })
-  it("apararNoLimite: só excesso pequeno, na fronteira de palavra, sem reticências", () => {
-    expect(apararNoLimite("I'm 54, 38-inch waist, and these are the first boxers that stay put all day long.", 80)).toBe("I'm 54, 38-inch waist, and these are the first boxers that stay put all day.")
+  // Passo 13: o corte é na FRASE, não na palavra — "cortou column_a_item_3
+  // no meio" com um ponto colado no fim parecia frase e não era.
+  it("apararNoLimite: só excesso pequeno, na fronteira de FRASE; sem fronteira devolve null", () => {
+    expect(apararNoLimite("Stay put all day. Made for the body you have now, not the one you had.", 64)).toBe("Stay put all day.")
+    expect(apararNoLimite("I'm 54, 38-inch waist, and these are the first boxers that stay put all day long.", 80)).toBeNull()
     expect(apararNoLimite("curto", 80)).toBeNull()
     expect(apararNoLimite("a".repeat(120), 80)).toBeNull()
-    expect(apararNoLimite("uma frase com trinta e poucos chars", 32)).toBe("uma frase com trinta e poucos")
+    expect(apararNoLimite("uma frase com trinta e poucos chars", 32)).toBeNull()
+    expect(apararNoLimite("Cabe? Sim! E sobra um pouco de texto aqui.", 38)).toBe("Cabe? Sim!")
+  })
+  it("parComparativoDe: a célula do outro lado da mesma linha", () => {
+    const fields = [{ key: "column_a_item_2" }, { key: "column_b_item_2" }, { key: "column_a_item_3" }]
+    expect(parComparativoDe("column_b_item_2", fields, { column_a_item_2: "High rise, stays put" })).toBe("High rise, stays put")
+    expect(parComparativoDe("column_a_item_3", fields, {})).toBeNull()
   })
   it("par comparativo e coluna comparativa", () => {
     const fields = [{ key: "column_a_item_6" }, { key: "column_b_item_6" }, { key: "column_a_title" }, { key: "closing_copy" }]
@@ -621,7 +600,7 @@ describe("copy_fit por código (09/09): travessão, aparo, coluna comparativa, p
   it("alvosDeEncurtamento: item ausente com par NÃO é alvo; coluna comparativa vira so_codigo; travessão que cabe vira proposta", () => {
     const f = (key: string, max = 60) => ({ key, label: key, type: "text_short", max_len: max, min_len: null, required: false, example: "", guidance: "", source: "schema" }) as BlueprintBlockField
     const fields = [f("column_a_item_1"), f("column_a_item_2"), f("column_a_item_3"), f("column_b_item_1"), f("column_b_item_2"), f("column_b_item_3"), f("closing_copy", 40)]
-    const rel = { par_comparativo: [], comparativa_sem_llm: [], travessao_por_codigo: [] }
+    const rel = { itens_ausentes: [], par_comparativo: [], comparativa_sem_llm: [], travessao_por_codigo: [] }
     const alvos = alvosDeEncurtamento(
       [{ id: "b1", position: 2, block_type: "body", fields, content: {
         column_a_item_1: "High rise, stays in place all day long and more", column_a_item_2: "b", column_a_item_3: "c",
@@ -633,6 +612,7 @@ describe("copy_fit por código (09/09): travessão, aparo, coluna comparativa, p
     expect(rel.par_comparativo).toEqual(["2.column_b_item_3"])
     expect(alvos.find((a) => a.key === "column_b_item_3")).toBeUndefined()
     expect(alvos.find((a) => a.key === "column_b_item_1")?.so_codigo).toBe(true)
+    expect(alvos.find((a) => a.key === "column_b_item_1")?.par).toBe("High rise, stays in place all day long and more")
     expect(rel.comparativa_sem_llm).toContain("2.column_b_item_1")
     const closing = alvos.find((a) => a.key === "closing_copy")!
     expect(closing.proposta_por_codigo).toBe("Feito no Brasil, cada peça é única")
@@ -673,10 +653,10 @@ describe("socorroPorCodigo", () => {
   })
 
   it("traço e tamanho juntos: tira o traço e apara o que sobra", () => {
-    const texto = "These stay put — the waistband holds the line all day long here"
+    const texto = "These stay put. The waistband holds — the line all day long here"
     const r = socorroPorCodigo(alvo({ texto, motivos: ["travessao", "max_len"], tracos: 1, max: 56 }))
     expect(r?.via).toBe("aparado_por_codigo")
-    expect(r!.texto.length).toBeLessThanOrEqual(56)
+    expect(r!.texto).toBe("These stay put.")
     expect(r!.texto).not.toMatch(/—/)
   })
 
@@ -692,9 +672,7 @@ describe("socorroPorCodigo", () => {
     expect(socorroPorCodigo(alvo({ texto: "Feito para o corpo que você tem.", max: 60 }))).toBeNull()
   })
 
-  it("alvo AUSENTE não é inventado", () => {
-    // Só o modelo cria o item de lista que o gerador pulou; sem ele a
-    // linha sai do e-mail pelo merge, que é o desfecho correto.
-    expect(socorroPorCodigo(alvo({ texto: "", motivos: ["ausente"], max: 40 }))).toBeNull()
+  it("campo vazio nunca é inventado", () => {
+    expect(socorroPorCodigo(alvo({ texto: "", motivos: ["max_len"], max: 40 }))).toBeNull()
   })
 })

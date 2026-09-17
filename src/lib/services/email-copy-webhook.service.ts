@@ -39,8 +39,9 @@ import type {
 } from "@/types/email-generation"
 import type { BlueprintFieldV2 } from "@/lib/agents/architect/deterministic-blueprint.builder"
 import { buildBlockCopySchema } from "@/lib/email-workspace/block-copy-schema"
-import { incentivoDoCatalogo } from "@/lib/agents/objecoes/incentivo"
-import { condicionarOutline, couponCodeEfetivo } from "@/lib/email-workspace/outline-condicional"
+import { dedupeProibicoes } from "@/lib/agents/shared/decisao-do-email"
+import { SEM_INCENTIVO, incentivoDoOutline, type DecisaoDeIncentivo } from "@/lib/agents/objecoes/incentivo"
+import { condicionarOutline } from "@/lib/email-workspace/outline-condicional"
 import { logGenerationRun } from "@/lib/agents/callbacks/telemetry.callback"
 import type { InputSummaryItem } from "@/lib/agents/shared/prompt-provenance"
 import {
@@ -254,6 +255,8 @@ interface EmailRow {
   name: string | null
   status: string
   generation_batch_id: string | null
+  /** Passo 11: `lacuna_biblioteca` tira o e-mail do dispatch. */
+  failure_reason?: string | null
 }
 
 interface BlockRow {
@@ -328,6 +331,33 @@ interface OutlineRow {
   suggested_blocks: string[] | null
   tone_hint: string | null
   coupon_code: string | null
+  /** Código por idioma (`{"en":"WELCOME10"}`) — migration 20261144; ausente até ela rodar. */
+  coupon_codes?: Record<string, unknown> | null
+  coupon_value?: string | null
+}
+
+const OUTLINE_COLUNAS_BASE = "flow_type, email_number, objective, guidance, suggested_blocks, tone_hint, coupon_code"
+const OUTLINE_COLUNAS = `${OUTLINE_COLUNAS_BASE}, coupon_codes, coupon_value`
+
+/**
+ * Outlines dos flows deste dispatch. As colunas de tradução do cupom vieram
+ * na migration 20261144, aplicada à mão: sem elas o select cai para as
+ * colunas base e registra `email_copy.outline.sem_traducao` — o código sai
+ * em pt-BR com `traducao_faltante: true` na decisão, nunca em silêncio.
+ */
+async function selectOutlineTemplates(
+  admin: SupabaseClient,
+  flowTypes: string[],
+): Promise<{ data: OutlineRow[] | null; error: { message: string } | null }> {
+  const consulta = (colunas: string) =>
+    admin.from("email_outline_templates").select(colunas).in("flow_type", flowTypes).eq("is_active", true)
+  const r1 = await consulta(OUTLINE_COLUNAS)
+  if (!r1.error) return { data: (r1.data as unknown as OutlineRow[] | null) ?? null, error: null }
+  const code = (r1.error as { code?: string }).code ?? ""
+  if (code !== "42703" && code !== "PGRST204") return { data: null, error: r1.error }
+  log.warn("email_copy.outline.sem_traducao", { hint: "aplicar a migration 20261144 (coupon_codes/coupon_value)" })
+  const r2 = await consulta(OUTLINE_COLUNAS_BASE)
+  return { data: (r2.data as unknown as OutlineRow[] | null) ?? null, error: r2.error }
 }
 
 interface TopProductRow {
@@ -512,7 +542,7 @@ export async function dispatchEmailCopyWebhook(
   // ── Buscar emails + blocks + blueprints + references em paralelo
   let emailsQuery = admin
     .from("email_flow_emails")
-    .select("id, flow_id, number, name, status, generation_batch_id")
+    .select("id, flow_id, number, name, status, generation_batch_id, failure_reason")
     .in("flow_id", flowIds)
     .order("number", { ascending: true })
 
@@ -542,11 +572,7 @@ export async function dispatchEmailCopyWebhook(
         .eq("is_active", true)
         .order("created_at", { ascending: false }),
       loadTextOnlyBlueprints(admin, flowTypes),
-      admin
-        .from("email_outline_templates")
-        .select("flow_type, email_number, objective, guidance, suggested_blocks, tone_hint, coupon_code")
-        .in("flow_type", flowTypes)
-        .eq("is_active", true),
+      selectOutlineTemplates(admin, flowTypes),
     ])
 
   if (emailsRes.error) {
@@ -572,7 +598,7 @@ export async function dispatchEmailCopyWebhook(
       log.info("email_copy.webhook.autoseed", { storeId, seeded })
       let retryQuery = admin
         .from("email_flow_emails")
-        .select("id, flow_id, number, name, status, generation_batch_id")
+        .select("id, flow_id, number, name, status, generation_batch_id, failure_reason")
         .in("flow_id", flowIds)
         .order("number", { ascending: true })
       if (options.onlyDrafts) {
@@ -588,6 +614,15 @@ export async function dispatchEmailCopyWebhook(
       }
       emails = (retryRes.data ?? []) as EmailRow[]
     }
+  }
+
+  // Passo 11: e-mail reprovado na fase 1 por lacuna de biblioteca não vai ao
+  // n8n — com `onlyDrafts: false` (regenerar pipeline) ele entraria com o
+  // template global e morreria em `hero_failed` depois de gastar copy.
+  const lacunas = emails.filter((e) => e.status === "failed" && e.failure_reason === "lacuna_biblioteca")
+  if (lacunas.length > 0) {
+    log.warn("email_copy.emails_com_lacuna_de_biblioteca", { storeId, ids: lacunas.map((e) => e.id) })
+    emails = emails.filter((e) => !lacunas.includes(e))
   }
 
   if (emails.length === 0) {
@@ -980,34 +1015,38 @@ export async function dispatchEmailCopyWebhook(
     currency: storeCurrency,
   })
 
-  // ── Cupom padrão do email (Estrutura geral) ──────────────────────────
-  // Grava o código de cupom (único, global) do outline no bloco `coupon`
-  // quando ainda está VAZIO (respeita código já preenchido — manual ou por
-  // loja). A variação por idioma/loja é feita depois, na etapa por-loja.
+  // ── Cupom do e-mail: decisão de incentivo do TOQUE (14/09) ─────────────
+  // `existe` vem do catálogo de outlines (o flow decide se o toque tem
+  // cupom), o código sai traduzido para o idioma da loja (`coupon_codes`)
+  // ou do override gravado no bloco `coupon` — que agora TAMBÉM alimenta o
+  // payload (antes só evitava a escrita e o n8n não o recebia). O
+  // Catalogador não opina mais: era o `existe: null` dele que zerava o cupom
+  // de um toque que TEM cupom (Hero Boxers, batch 6249aef2).
   // Determinístico e best-effort: falhas são logadas, não bloqueiam o dispatch.
-  // Decisão de incentivo da LOJA (Catalogador) vence o cupom genérico do
-  // outline (09/09): `existe:false` → nenhum código é gravado nem enviado;
-  // `existe:true` com código → o da loja; desconhecido → o do outline.
-  const decisaoIncentivo = incentivoDoCatalogo(
-    (storeRes.data as { objection_catalog?: unknown } | null)?.objection_catalog,
-  )
+  const incentivoByEmailId = new Map<string, DecisaoDeIncentivo>()
   const couponCodeByEmailId = new Map<string, string>()
   const couponUpdates: Array<{ id: string; content: Record<string, unknown> }> = []
   for (const e of emails) {
     const flow = flowsById.get(e.flow_id)
     if (!flow) continue
-    const outline = outlineByKey.get(`${flow.flow_type}:${e.number}`)
-    const code = (couponCodeEfetivo(outline?.coupon_code, decisaoIncentivo) ?? "").trim()
-    if (!code) continue
-    couponCodeByEmailId.set(e.id, code)
-    for (const b of blocksByEmail.get(e.id) ?? []) {
-      if (b.block_type !== "coupon") continue
-      const content = (b.content ?? {}) as Record<string, unknown>
-      const existing = typeof content.code === "string" ? content.code.trim() : ""
-      if (existing) continue
-      const nextContent = { ...content, code }
-      b.content = nextContent // reflete no payload montado adiante
-      couponUpdates.push({ id: b.id, content: nextContent })
+    const outline = outlineByKey.get(`${flow.flow_type}:${e.number}`) ?? null
+    const blocoCupom = (blocksByEmail.get(e.id) ?? []).find((b) => b.block_type === "coupon") ?? null
+    const contentCupom = (blocoCupom?.content ?? {}) as Record<string, unknown>
+    const override = typeof contentCupom.code === "string" ? contentCupom.code.trim() : ""
+    const decisao = incentivoDoOutline(outline, resolvedLang.code, override || null)
+    incentivoByEmailId.set(e.id, decisao)
+    if (decisao.traducao_faltante) {
+      log.warn("email_copy.webhook.cupom_sem_traducao", {
+        storeId, emailId: e.id, flowType: flow.flow_type, emailNumber: e.number, idioma: resolvedLang.code, codigo: decisao.codigo,
+      })
+    }
+    if (!decisao.existe || !decisao.codigo) continue
+    couponCodeByEmailId.set(e.id, decisao.codigo)
+    // Grava no bloco só quando ele está vazio (override já preenchido fica).
+    if (blocoCupom && !override) {
+      const nextContent = { ...contentCupom, code: decisao.codigo }
+      blocoCupom.content = nextContent // reflete no payload montado adiante
+      couponUpdates.push({ id: blocoCupom.id, content: nextContent })
     }
   }
   if (couponUpdates.length > 0) {
@@ -1072,6 +1111,8 @@ export async function dispatchEmailCopyWebhook(
     variant_name: string | null
     motivo: "sem_campo_de_copy" | "sem_variante" | "descartado_na_montagem"
   }> = []
+  // Passo 13: exemplos removidos pela régua de claims, para a run.
+  const exemplosRemovidos: Array<{ email_number: number; position: number; type: string; campo: string; exemplo: string; motivo: string }> = []
   const camposOmitidos: Array<{
     email_number: number
     position: number
@@ -1094,6 +1135,8 @@ export async function dispatchEmailCopyWebhook(
 
   const payload = {
     event: "email_copy.requested" as const,
+    // Passo 13: versão do contrato do payload (docs/email-copy-payload-v2.md).
+    payload_version: "v3.2",
     timestamp: new Date().toISOString(),
     trigger_source: options.triggerSource,
     // Chave aditiva: contexto livre do operador (teste). null fora do teste.
@@ -1270,12 +1313,24 @@ export async function dispatchEmailCopyWebhook(
           // `incentivo.existe:false` = nunca escrever oferta/cupom/percentual.
           // `insumos_permitidos` vem do alvo do Seletor quando existir.
           decisao: {
-            incentivo: decisaoIncentivo,
+            incentivo: incentivoByEmailId.get(e.id) ?? { ...SEM_INCENTIVO },
             insumos_permitidos: alvoByKey.get(key)?.insumos_permitidos ?? [],
+            // Passo 13: as proibições no nível do e-mail, UMA vez e sem os
+            // pares PT/EN da mesma regra. `alvo.proibido_neste_toque` segue
+            // (o flow atual lê dali) — duplicata transitória até o Bruno
+            // migrar o n8n para `decisao`.
+            proibido: dedupeProibicoes(alvoByKey.get(key)?.proibido_neste_toque ?? []),
           },
           estrutura_geral: (() => {
-            // O outline é por FLOW; a decisão de incentivo é por LOJA e vence.
-            const o = condicionarOutline(outline, decisaoIncentivo)
+            // Passo 13: com DECISÃO (alvo do Seletor) a estrutura geral do
+            // outline NÃO viaja — são duas vozes para a mesma peça, e o n8n
+            // obedecia à do outline ("entregue o cupom") por cima da
+            // decisão. Somente-texto continua com o outline: é a única
+            // estrutura que ele tem.
+            if (alvoByKey.has(key) && !textOnly) return null
+            // O outline é por FLOW; a decisão de incentivo é por TOQUE (já
+            // com o código traduzido/override) e vence o pt-BR do template.
+            const o = condicionarOutline(outline, incentivoByEmailId.get(e.id) ?? { ...SEM_INCENTIVO })
             return o
               ? {
                   objective: o.objective,
@@ -1423,7 +1478,20 @@ export async function dispatchEmailCopyWebhook(
                   // 09/09: papel e requisitos como campos próprios do schema.
                   papel: resolved?.papel ?? null,
                   requisitos: resolved?.requisitos ?? null,
+                  // Passo 13: o exemplo que promete o que a decisão nega sai
+                  // do payload e vira `directive` — o n8n obedece ao exemplo.
+                  incentivo: (() => {
+                    const inc = incentivoByEmailId.get(e.id)
+                    return inc ? { existe: inc.existe, codigo: inc.codigo, valor: inc.valor } : null
+                  })(),
+                  proibido: alvoByKey.get(key)?.proibido_neste_toque ?? [],
                 }),
+                // Passo 13: o que a arbitragem tirou DESTE bloco, nomeado no
+                // próprio bloco — antes só a telemetria sabia.
+                campos_omitidos: allFields.filter((fld) => fld.omitir === true).map((fld) => fld.key),
+              }
+              for (const ex of bloco.schema.exemplos_removidos ?? []) {
+                exemplosRemovidos.push({ email_number: e.number, position: b.position, type: b.block_type, ...ex })
               }
               // Bloco sem NENHUM campo de copy sai do payload. Não é
               // economia de bytes: mandar um bloco vazio junto de um
@@ -1773,10 +1841,21 @@ export async function dispatchEmailCopyWebhook(
         : {}),
       // 09/09: decisão de incentivo aplicada e campos tirados do contrato
       // pela arbitragem papel × forma.
-      decisao_incentivo: decisaoIncentivo,
+      decisao_incentivo: Object.fromEntries(
+        Array.from(incentivoByEmailId, ([id, d]) => [
+          id,
+          { existe: d.existe, codigo: d.codigo, origem: d.origem, traducao_faltante: d.traducao_faltante },
+        ]),
+      ),
       ...(camposOmitidos.length > 0
         ? { campos_omitidos: camposOmitidos.slice(0, 60) }
         : {}),
+      // Passo 13: exemplos que prometiam o que a decisão nega e saíram do
+      // payload (viraram `directive`).
+      ...(exemplosRemovidos.length > 0
+        ? { exemplos_removidos: exemplosRemovidos.slice(0, 60) }
+        : {}),
+      payload_version: "v3.2",
       // Emails que não foram gerados por não sobrar seção nenhuma (MC-2).
       // Ficam marcados `failed` com `failure_reason='sem_secao_montada'`.
       ...(emailsSemSecao.length > 0
@@ -1810,10 +1889,23 @@ export async function dispatchEmailCopyWebhook(
         // mesmo se o callback falhar/atrasar, o estado intermediario nao
         // mostre html/imagem velha no preview.
         html: null,
+        // Sem estes três a geração anterior sobrevivia no modo Editar
+        // (`html_marked` de 11/09 abria como se fosse a peça de hoje) e o
+        // resume da cadeia lia um estágio de outra geração.
+        html_marked: null,
+        html_pre_refiner: null,
+        html_pipeline_stage: null,
+        render_previews: null,
         qa_issues: [],
         failure_reason: null,
         rendering_started_at: null,
         qa_started_at: null,
+        // Relógio do watchdog (14/09): sem `copy_started_at` o caminho da
+        // fila e o da aba Teste ficavam fora do prazo de copy — o callback
+        // perdido deixava o e-mail em `in_progress` para sempre. Agora o
+        // Front 2 conta daqui e marca `failed: copy_timeout`.
+        copy_started_at: new Date().toISOString(),
+        copy_ready_at: null,
         // Geração NOVA zera o cap de re-dispatch do watchdog. Sem isto, um
         // email cujo contador esgotou (3 POSTs de fase 2 falhos) numa geração
         // ANTERIOR ficava preso em copy_ready PRA SEMPRE na seguinte: o

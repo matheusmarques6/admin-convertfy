@@ -48,6 +48,11 @@ import {
 } from "./email-typography-panel"
 import { buildQaBlockViews } from "@/lib/agents/html/qa-views"
 import { renderEmailHtml } from "@/lib/email-workspace/render-html"
+import {
+  previewState,
+  previewEditavel as previewAceitaEdicao,
+  type PreviewState,
+} from "@/lib/email-workspace/preview-state"
 import { emailExportBasename } from "@/lib/email-workspace/export-naming"
 import { blockCopyFields } from "@/lib/email-workspace/block-copy-fields"
 import {
@@ -133,7 +138,8 @@ export function EmailDetailView({
   )
 
   const email = data?.data?.email ?? data?.email
-  const blocks = email?.blocks ?? []
+  const emailBlocks = email?.blocks
+  const blocks = useMemo(() => emailBlocks ?? [], [emailBlocks])
   const qaItems = email?.qa_items ?? []
 
   const [viewMode, setViewMode] = useState<"render" | "copy" | "html" | "ref">(
@@ -590,6 +596,24 @@ export function EmailDetailView({
    * roda as MESMAS funções puras que a rota vai rodar, na mesma ordem, e só
    * então anota: o que se vê é o que se grava.
    */
+  /**
+   * O que há para mostrar (14/09): HTML gerado, legado sem geração, ou um
+   * ESTADO — aguardando o n8n, renderizando, falha nomeada. Com geração e
+   * sem `html` NUNCA se desenha pelo renderizador de blocos: foi assim que
+   * um e-mail sem copy apareceu como "só a hero, imagem no lugar errado".
+   */
+  const estadoDoPreview = useMemo<PreviewState | null>(
+    () => (email ? previewState(email) : null),
+    [email],
+  )
+  /** HTML gerado ou legado; vazio quando o que se mostra é um estado. */
+  const htmlGerado = useMemo(() => {
+    if (!email || !estadoDoPreview) return ""
+    if (estadoDoPreview.kind === "html") return estadoDoPreview.html
+    if (estadoDoPreview.kind === "legado") return renderEmailHtml(email, blocks)
+    return ""
+  }, [email, blocks, estadoDoPreview])
+
   const htmlDoPreview = useMemo(() => {
     if (!email) return ""
     if (editandoTipografia && docTipografia) {
@@ -604,8 +628,8 @@ export function EmailDetailView({
     if (previewEditavel && email.html_marked) {
       return annotateRegionsForEditing(email.html_marked)
     }
-    return email.html || renderEmailHtml(email, blocks)
-  }, [email, blocks, previewEditavel, editandoTipografia, docTipografia, tipoDraft])
+    return htmlGerado
+  }, [email, htmlGerado, previewEditavel, editandoTipografia, docTipografia, tipoDraft])
 
   /**
    * Grava o rascunho de tipografia. Manda o `esperado` de cada op: entre a
@@ -1008,10 +1032,13 @@ export function EmailDetailView({
           </div>
           <button
             onClick={editing ? sairDaEdicao : entrarNaEdicao}
+            disabled={!editing && !!estadoDoPreview && !previewAceitaEdicao(estadoDoPreview)}
             title={
               editing
                 ? "Sair do modo de edição (descarta o que não foi salvo)"
-                : "Editar a estrutura: reordenar e remover blocos"
+                : estadoDoPreview && !previewAceitaEdicao(estadoDoPreview)
+                  ? "Sem HTML gerado não há o que editar — aguarde a geração terminar ou regere o e-mail"
+                  : "Editar a estrutura: reordenar e remover blocos"
             }
             style={{
               height: 28,
@@ -1149,7 +1176,10 @@ export function EmailDetailView({
           className="flex-1 min-h-0 overflow-y-auto"
           style={{ background: "var(--crm-gray-50)" }}
         >
-          {viewMode === "render" && (
+          {viewMode === "render" && estadoDoPreview && !previewAceitaEdicao(estadoDoPreview) && (
+            <EmailEstadoPanel estado={estadoDoPreview} />
+          )}
+          {viewMode === "render" && (!estadoDoPreview || previewAceitaEdicao(estadoDoPreview)) && (
             <EmailRenderPreview
               email={email}
               html={htmlDoPreview}
@@ -1190,7 +1220,7 @@ export function EmailDetailView({
               email={email}
               flowId={flow.id}
               exportBasename={emailExportBasename(flow, email)}
-              html={email.html || renderEmailHtml(email, blocks)}
+              html={htmlGerado}
               onCopyAll={(html) => copyToClipboard(html, "HTML completo")}
             />
           )}
@@ -1198,7 +1228,7 @@ export function EmailDetailView({
             <EmailRefView
               item={refItem}
               loading={!generatedData}
-              finalHtml={email.html || renderEmailHtml(email, blocks)}
+              finalHtml={htmlGerado}
               htmlAgentHtml={email.html_pre_refiner ?? null}
               onCopyAll={(html) => copyToClipboard(html, "HTML de referência")}
             />
@@ -2642,6 +2672,71 @@ function RenderFooter({ content }: { content: Record<string, unknown> }) {
           {copyright}
         </div>
       )}
+    </div>
+  )
+}
+
+// ─── Estado no lugar do preview (14/09) ───────────────────
+// Com geração e sem HTML, a tela diz o que está acontecendo em vez de
+// desenhar blocos velhos pelo renderizador legado.
+function EmailEstadoPanel({ estado }: { estado: PreviewState }) {
+  const fmtHora = (iso: string | null) => {
+    if (!iso) return null
+    const d = new Date(iso)
+    if (Number.isNaN(d.getTime())) return null
+    return d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
+  }
+  let titulo = ""
+  let detalhe = ""
+  let tom: "neutro" | "erro" = "neutro"
+  switch (estado.kind) {
+    case "aguardando_copy": {
+      const desde = fmtHora(estado.desde)
+      titulo = "Aguardando a copy do n8n"
+      detalhe = desde
+        ? `Copy despachada em ${desde}. Sem resposta em 15 minutos a geração é marcada como falha — sem copy do n8n o e-mail não é gerado.`
+        : "Copy despachada. Sem resposta em 15 minutos a geração é marcada como falha — sem copy do n8n o e-mail não é gerado."
+      break
+    }
+    case "renderizando":
+      titulo = "Renderizando o e-mail"
+      detalhe = `Copy gravada; imagem, HTML e QA em andamento (${estado.status}). O preview aparece quando a peça estiver pronta.`
+      break
+    case "falhou":
+      tom = "erro"
+      titulo = "A geração falhou"
+      detalhe = estado.codigo && estado.codigo !== estado.motivo ? `${estado.motivo} (${estado.codigo})` : estado.motivo
+      break
+    case "sem_html":
+      titulo = "Este e-mail não tem HTML gerado"
+      detalhe = `Status ${estado.status}. Veja a copy dos blocos na aba Copy.`
+      break
+    default:
+      return null
+  }
+  return (
+    <div style={{ padding: "48px 32px", maxWidth: 640, margin: "0 auto" }}>
+      <div
+        role="status"
+        style={{
+          background: "var(--crm-gray-0)",
+          border: `1px solid ${tom === "erro" ? "var(--crm-neg, #b91c1c)" : "var(--crm-border)"}`,
+          borderRadius: 6,
+          padding: "20px 24px",
+        }}
+      >
+        <div
+          style={{
+            fontSize: 14,
+            fontWeight: 600,
+            color: tom === "erro" ? "var(--crm-neg, #b91c1c)" : "var(--crm-gray-900)",
+            marginBottom: 6,
+          }}
+        >
+          {titulo}
+        </div>
+        <div style={{ fontSize: 12, color: "var(--crm-gray-600)", lineHeight: 1.5 }}>{detalhe}</div>
+      </div>
     </div>
   )
 }

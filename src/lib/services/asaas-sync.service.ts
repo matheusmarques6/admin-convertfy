@@ -31,6 +31,7 @@ import {
   statusDeAssinatura,
   type ClienteAsaas,
 } from "@/lib/services/asaas-clientes-match"
+import { documentoDoCliente } from "@/lib/clients/pagador"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("AsaasSync")
@@ -301,7 +302,10 @@ export async function vincularClientesDoAsaas(
       (locais ?? []).map((c) => ({
         id: c.id as string,
         email: c.email as string | null,
-        cpf_cnpj: c.cpf_cnpj as string | null,
+        // O documento de 26 dos 56 cadastros mora só em `custom_fields` (a
+        // tela de criação nunca escreveu na coluna): lendo só a coluna, eles
+        // nunca casavam por documento — apenas por email, quando havia.
+        cpf_cnpj: documentoDoCliente(c).valor || null,
         asaas_customer_id:
           (c.custom_fields as Record<string, string> | null)?.asaas_customer_id ?? null,
       })),

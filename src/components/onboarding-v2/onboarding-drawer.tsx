@@ -31,6 +31,7 @@ import {
   ChevronRight,
 } from "lucide-react"
 import { useToast } from "@/lib/hooks/use-toast"
+import { AdvanceDialog } from "@/components/onboarding-v2/advance-dialog"
 import { ROUTES } from "@/lib/routes"
 import type {
   OnboardingPipelineItem,
@@ -229,6 +230,8 @@ function humanizeEvent(ev: ActivityEvent): string {
   if (t === "onboarding.briefing_confirmed")
     return "confirmou o briefing"
   if (t === "onboarding.whatsapp_sent") return "enviou WhatsApp pro cliente"
+  if (t === "onboarding.whatsapp_failed")
+    return "tentou avisar o cliente e a mensagem não saiu"
   if (t === "onboarding.task_completed") return "concluiu uma tarefa"
   if (t.startsWith("onboarding.")) return t.replace("onboarding.", "")
   return t
@@ -252,6 +255,7 @@ export function OnboardingDrawer({
     fetcher,
   )
   const [advancing, setAdvancing] = useState(false)
+  const [advanceOpen, setAdvanceOpen] = useState(false)
   const toast = useToast()
 
   useEffect(() => {
@@ -314,14 +318,15 @@ export function OnboardingDrawer({
     [onb, currentColumn],
   )
 
-  async function handleAdvance() {
+  /** `sendWhatsApp` vem do interruptor do dialogo — nunca de codigo. */
+  async function handleAdvance(sendWhatsApp: boolean) {
     if (!onb) return
     setAdvancing(true)
     try {
       const res = await fetch(`/api/onboardings/${onb.id}/advance`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: "{}",
+        body: JSON.stringify(sendWhatsApp ? { send_whatsapp: true } : {}),
       })
       const j = await res.json().catch(() => ({}))
       if (!res.ok) {
@@ -336,11 +341,17 @@ export function OnboardingDrawer({
         })
         return
       }
-      toast.toast({ title: "Avançou pra próxima etapa" })
+      toast.toast({
+        title: "Avançou pra próxima etapa",
+        description: sendWhatsApp
+          ? "A mensagem foi enviada ao cliente."
+          : "Nenhuma mensagem foi enviada ao cliente.",
+      })
       mutate()
       onMutate?.()
     } finally {
       setAdvancing(false)
+      setAdvanceOpen(false)
     }
   }
 
@@ -449,7 +460,7 @@ export function OnboardingDrawer({
               onEdit={() => {
                 window.location.href = ROUTES.ADMIN.ONBOARDING_V2.DETAIL(onb.id)
               }}
-              onAdvance={handleAdvance}
+              onAdvance={() => setAdvanceOpen(true)}
               advancing={advancing}
               nextColumnName={nextColumn?.name ?? null}
               isFinal={!nextColumn}
@@ -630,6 +641,15 @@ export function OnboardingDrawer({
           </>
         )}
       </div>
+
+      {advanceOpen && onboardingId && (
+        <AdvanceDialog
+          onboardingId={onboardingId}
+          onClose={() => setAdvanceOpen(false)}
+          onConfirm={(sendWhatsApp) => handleAdvance(sendWhatsApp)}
+          submitting={advancing}
+        />
+      )}
 
       <style jsx>{`
         @keyframes cf-slidein {

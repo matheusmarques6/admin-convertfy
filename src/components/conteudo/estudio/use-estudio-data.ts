@@ -9,6 +9,7 @@
 import { useCallback } from "react"
 import useSWR from "swr"
 import {
+  atualizarMeuTemplate,
   criarDocumento,
   criarMeuTemplate,
   criarReferenciaUpload,
@@ -74,7 +75,7 @@ export function usePerfis() {
 export function useMeusTemplates() {
   const { data, mutate } = useSWR("conteudo:meus-templates", getMeusTemplates, SWR_OPTS)
   const criar = useCallback(
-    async (t: { nome: string; templateId: string; estrutura: MeuTemplate["estrutura"]; fidelidade?: number | null; usos?: number }) => {
+    async (t: { nome: string; templateId: string; familia?: MeuTemplate["familia"]; estrutura: MeuTemplate["estrutura"]; fidelidade?: number | null; usos?: number }) => {
       const novo = await criarMeuTemplate(t)
       await mutate((lista) => [novo, ...(lista ?? [])], { revalidate: false })
       return novo
@@ -88,6 +89,14 @@ export function useMeusTemplates() {
     },
     [mutate],
   )
+  const atualizar = useCallback(
+    async (id: string, t: { nome?: string; templateId?: string; familia?: MeuTemplate["familia"]; estrutura?: MeuTemplate["estrutura"]; fidelidade?: number | null }) => {
+      const novo = await atualizarMeuTemplate(id, t)
+      await mutate((lista) => (lista ?? []).map((x) => (x.id === id ? novo : x)), { revalidate: false })
+      return novo
+    },
+    [mutate],
+  )
   const excluir = useCallback(
     async (id: string) => {
       await excluirMeuTemplate(id)
@@ -95,7 +104,7 @@ export function useMeusTemplates() {
     },
     [mutate],
   )
-  return { meus: data ?? [], criar, usar, excluir }
+  return { meus: data ?? [], criar, usar, atualizar, excluir }
 }
 
 export function useBrandKits() {

@@ -9,14 +9,22 @@
  * reprovou, porque o QA está desligado e os render-checks olham forma
  * (unsubscribe, href="#"), não conteúdo.
  *
- * Quatro checks:
+ * Os checks (nasceram quatro; a lista cresceu com os incidentes):
  *  - `oferta_sem_incentivo` (high): oferta/cupom no texto quando a decisão
  *    da loja diz que NÃO há incentivo. Só roda com a decisão conhecida.
  *  - `placeholder_colchetes` (high): `[WELCOME-CODE]`, `[First Name]` —
  *    token que ninguém vai resolver (merge tag de ESP é `{{ }}`/`*| |*`).
+ *  - `codigo_inventado` (high): código promocional que não é o confirmado.
  *  - `texto_de_exemplo` (medium): texto visível que `pareceExemplo`
  *    reconhece como recheio de mockup da biblioteca (`ICON 1`, `Link Here`).
+ *  - `label_generico` (high) e `link_sem_endereco` (high): rótulo e href
+ *    de exemplo da variante que chegaram ao cliente (11/09).
  *  - `paragrafo_repetido` (medium): o mesmo texto (≥ 60 chars) duas vezes.
+ *  - `posicao_sem_variante` (high, Passo 15): a decisão pediu uma posição
+ *    e a biblioteca não tinha variante — o e-mail saiu com uma seção a
+ *    menos (vem do `slot_map`, Passo 11).
+ *  - `traducao_faltante` (medium, Passo 15): o cupom saiu em pt-BR numa
+ *    loja de outro idioma (flag gravada pelo Passo 4).
  */
 
 import type { QaIssue } from "@/types/email-generation"
@@ -31,13 +39,25 @@ export interface ContentCheckOptions {
   incentivoExiste?: boolean | null
   /** Código confirmado literalmente no catálogo. */
   incentivoCodigo?: string | null
+  /**
+   * Posições decididas que ficaram sem variante (Passo 11): entradas do
+   * `slot_map` com `variant_id: null`, com o motivo e o dispositivo pedido.
+   */
+  posicoesSemVariante?: ReadonlyArray<{
+    block_index: number
+    section: string
+    dispositivo_pedido?: string | null
+    motivo?: string | null
+  }> | null
+  /** `decisao.incentivo.traducao_faltante` — cupom sem tradução no idioma da loja. */
+  traducaoFaltante?: boolean | null
 }
 
 const OFERTA_RE =
   /\b\d{1,3}\s?%\s?(?:off|de desconto|discount)\b|\buse (?:the )?code\b|\bc[oó]digo\s*:|\bcupom\b|\bcoupon\b|\bpromo code\b/i
-const PLACEHOLDER_RE = /\[[A-Za-z][A-Za-z0-9 _-]{2,}\]/g
+export const PLACEHOLDER_RE = /\[[A-Za-z][A-Za-z0-9 _-]{2,}\]/g
 /** Merge tags e tokens que NÃO são placeholder órfão. */
-const TOKEN_OK_RE = /^\[(?:unsubscribe(?:_link)?|preferences|view_in_browser|web_version)\]$/i
+export const TOKEN_OK_RE = /^\[(?:unsubscribe(?:_link)?|preferences|view_in_browser|web_version)\]$/i
 const REPETICAO_MIN_CHARS = 60
 const CODIGO_RE = /\b(?:use (?:the )?code|c[oó]digo|cupom|coupon(?: code)?)\s*[:\-]?\s*([A-Z0-9][A-Z0-9_-]{2,})\b/gi
 const LABEL_GENERICO_RE = /^(?:link here|click here|button|cta|learn more|saiba mais)$/i
@@ -55,7 +75,7 @@ const HREF_RE = /href\s*=\s*["']([^"']*)["']/gi
  * aconteceu com os TRÊS CTAs do hero em 11/09 — a seção mais importante do
  * e-mail, sem um link que funcione.
  */
-function enderecoUtil(href: string): boolean {
+export function enderecoUtil(href: string): boolean {
   const h = href.trim()
   if (!h) return false
   // Merge tag do ESP, em qualquer dialeto: {{x}}, *|X|*, %%x%%, [token].
@@ -195,6 +215,44 @@ export function computeContentChecks(html: string, opts: ContentCheckOptions = {
       disposition: "blocking",
       message: `Parágrafo repetido no e-mail: ${repetidos.slice(0, 2).map((t) => `"${t.slice(0, 60)}…"`).join(", ")}.`,
       location: "html",
+    })
+  }
+
+  // 5. Posição decidida sem variante (Passo 15). Uma issue por lacuna: a
+  // seção que falta é o que a curadoria precisa ler, e `location` carrega
+  // a posição porque a lacuna não tem `block_id` — o bloco não existe.
+  for (const p of opts.posicoesSemVariante ?? []) {
+    const dispositivo = p.dispositivo_pedido ? ` (${p.dispositivo_pedido})` : ""
+    const motivo =
+      p.motivo === "todas_descartadas"
+        ? "só havia variante de dispositivo que a decisão descartou"
+        : p.motivo === "resgate_recusado"
+          ? "a menos incompatível violava a decisão"
+          : // Passo 19: o único motivo que nomeia o cadastro que falta — a
+            // seção existe, a FORMA pedida não. É o que a curadoria lê.
+            p.motivo === "dispositivo_indisponivel"
+            ? `a seção não tem variante que realize ${p.dispositivo_pedido ?? "o dispositivo pedido"}`
+            : "nenhuma variante elegível na biblioteca"
+    issues.push({
+      type: "posicao_sem_variante",
+      severity: "high",
+      disposition: "blocking",
+      message: `A posição ${p.block_index} (${p.section}${dispositivo}) ficou sem variante — ${motivo}. O e-mail saiu sem essa seção.`,
+      location: `block:${p.block_index}:${p.section}`,
+      no_responsavel: "biblioteca",
+    })
+  }
+
+  // 6. Cupom sem tradução (Passo 15): o código saiu no idioma padrão.
+  if (opts.traducaoFaltante === true) {
+    issues.push({
+      type: "traducao_faltante",
+      severity: "medium",
+      disposition: "warning",
+      message:
+        "O cupom deste toque não tem tradução no idioma da loja e saiu em pt-BR (`email_outline_templates.coupon_codes`). Cadastre a tradução ou confirme o código na plataforma.",
+      location: "html",
+      no_responsavel: "loja",
     })
   }
 

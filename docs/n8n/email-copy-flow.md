@@ -110,3 +110,34 @@ O flow original tinha 2 dependências de Google que devem ser removidas:
 - ❌ "Create a document" / "Update a document" (Google Docs) — substituir pelo HTTP Request POST para `callback.url`
 
 Tudo o que estava nos Google Docs agora viaja em JSON no webhook — escalável, versionável e independente do Drive.
+
+## O que o flow precisa ler a partir do payload v3.2 (14/09)
+
+> **15/09 — prompts e variáveis prontos para colar**: `docs/n8n/email-copy-prompt-v3.2.md`
+> (tabela de variáveis, patch do SEPARADOR, nó CONTEXTO DA COPY, system/user do
+> FAZEDOR e do GERADOR, parser, MONTADOR com eco de `dispatch_batch_id` e
+> `copy_prompt_version`). Os três Code nodes foram executados contra o payload
+> real de 14/09 com `$()` mockado; o callback resultante passa no Zod da rota.
+
+
+Contrato completo em `docs/email-copy-payload-v2.md` (§v3.2). Mudanças no
+prompt de copy do n8n (Bruno):
+
+1. **`schema.campos[key].directive`** — quando presente, VENCE `exemplo`
+   (que vem `null`). Escrever o campo pela directive, nunca inventar oferta.
+2. **`blocks[].campos_omitidos`** — não gerar essas chaves; não inferi-las
+   do `purpose`.
+3. **`emails[].decisao.proibido`** — lista única do que a copy não pode
+   afirmar (substitui a leitura de `alvo.proibido_neste_toque`).
+4. **`emails[].decisao.incentivo`** — `existe:false` = zero oferta, cupom,
+   percentual ou código em qualquer campo e no assunto.
+5. **`estrutura_geral` pode vir `null`** — com decisão, a estrutura é a
+   dos `blocks[]`; não cair em fallback de "outline vazio".
+6. **Callback**: incluir `"copy_prompt_version": "<COPY_PROMPT_VERSION>"`
+   no POST de retorno. Sem ele a run `copy` marca
+   `copy_prompt_version_ausente`.
+
+Depois de atualizar, exportar o JSON do workflow para
+`docs/n8n/email-copy.workflow.json` no mesmo commit em que o payload for
+consumido — é o que permite um teste abrir o nó de copy e conferir que o
+system prompt menciona `directive` e `campos_omitidos`.

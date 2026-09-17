@@ -2556,6 +2556,19 @@ por código a partir do HTML canônico) se estende às demais seções.
 
 ## O schema é a base (migration 20261064, jul/2026)
 
+> **SUPERADO EM PARTE (20/08).** A regra abaixo vale hoje só para campos
+> `url` e `image`. Para COPY, a biblioteca nunca adotou `{{TAG}}`: o endereço
+> é a **frase do `example`**, casada por `assignTextAnchors`
+> (`html/copy-merge.ts:1-5`, `html/anchor-match.ts`). Os nomes citados nesta
+> seção também mudaram: `auditSchemaTags`/`schema-tag-coherence.ts` viraram
+> `auditSchemaAnchors`+`auditImageAnchors`+`auditOrphanText` em
+> `email-workspace/schema-example-coherence.ts`; `variantHasPlaceholders`
+> virou `variantIsFillable`; `validateTaggedHtml` e a camada
+> `html_tagged`/`tagging_status` foram REMOVIDAS. Quem cadastra variante deve
+> seguir `docs/email-generation/guia-de-cadastro-de-variante.md` — cadastrar
+> pela regra antiga faz o campo nunca ancorar, em silêncio. O texto abaixo
+> fica como histórico do problema que ele resolveu.
+
 Regra única, sem exceção: **o endereço de um campo no HTML é
 `{{MAIÚSCULA_DA_KEY}}`**. `hero_headline` mora em `{{HERO_HEADLINE}}` e em
 mais lugar nenhum — não existe apelido, tradução por `copyKey` do
@@ -6046,6 +6059,2250 @@ reel. Sem a frase, "—" se lê como "este reel não trouxe ninguém", que é o
 contrário do que acontece. Fica em aberto
 `ig_reels_video_view_total_time` (também aceito, 4.637.596 ms na peça
 medida) — tempo TOTAL assistido, que hoje não coletamos.
+
+## O contrato de decisão do e-mail — semana 1 do plano de set/2026 (14/09)
+
+Batch 6249aef2 (Hero Boxers · Welcome 1, 11/09): 3 de 6 posições contrárias
+à decisão do Estruturador, US$ 8,20, reprovado só no QA. As causas eram de
+FRONTEIRA entre agentes, não de um agente errando. Plano e execução em
+`docs/email-generation/{plano-evolucao,execucao-plano}-pipeline-set2026.md`.
+
+**O incentivo é decisão do FLOW, não do Catalogador** (`objecoes/incentivo.ts`,
+puro): `email_outline_templates.coupon_code` diz se o toque entrega cupom;
+`coupon_codes[idioma]` (migration 20261144, grade na tela de outlines) é a
+tradução, DADO humano; o bloco `coupon` do e-mail sobrescreve por loja.
+`existe` é sempre booleano — "não se sabe" deixou de existir, porque foi o
+`null` do Catalogador que zerou o cupom de um toque que tem cupom.
+`resolverIncentivoDoEmail` (I/O) é a única porta; Seletor, `intent-contract`,
+webhook do n8n e fase 2 leem dela. Sem tradução, sai o pt-BR com
+`traducao_faltante: true` (aviso, não bloqueio).
+
+**`DecisaoDoEmail`** (`shared/decisao-do-email.ts`, migration 20261145):
+alvo + incentivo + insumos + proibições deduplicadas entre idiomas + posições
+com `requisitos` + descartes + fio, montada UMA vez no `generate.service` e
+persistida em `store_email_blueprints.decisao`. É o que os validadores
+comparam. Três gates em `email_generation_settings` (`contrato-mode.ts`,
+mesmo desenho do `color_plano_mode`): `auditoria_estruturador` (on),
+`contrato_estrutural` (on), `contrato_textual` (shadow).
+
+**Auditoria do Estruturador** (`estruturador/auditoria-requisitos.ts`, puro):
+confere os `requisitos` contra o que ELE recebeu — incentivo, capacidade da
+biblioteca, seções — e contra o que a normalização descartou. `cupom: "false"`
+(string) virava `null` em silêncio e o filtro deixava passar a variante com
+cupom exatamente no toque em que o agente tentou negá-lo: agora é descarte
+REGISTRADO e dura. Em `on`, dura = retentativa com `<auditoria_anterior>`;
+esgotada, `estruturador_incoerente` e a geração PARA — seguir com o outline
+montaria a peça sobre a decisão que o código acabou de recusar.
+
+**A eliminação virou filtro** (`elegiveisPorPosicao`): a shortlist do Curador
+é a interseção com as elegíveis e nem chama o modelo com ≤ 3 por posição
+(`shortlist_fonte: codigo`); o resgate só puxa de elegíveis. O prompt do
+Curador parou de contradizer os guards ("cai no template global" — não cai;
+"repetir É PERMITIDO" — não é em hero/products); um teste reprova as frases.
+
+**Validadores** (`shared/validadores/`, puros): `escolhas` (requisito ×
+contrato da variante; `cupom_sem_incentivo` mesmo com `cupom: null`;
+variante repetida em hero/products), `resgate` (anatomia é `high`, redação —
+preço, avaliação — é `medium`: a copy compensa), `blueprint` (campo de
+oferta OMITIDO por código numa peça sem incentivo — `arbitrarCampos` só
+alcançava `cupom: false` explícito), `claims` (oferta com âncora na mesma
+janela em pt/en/pl/da: "10% off" é oferta, "10% mais leve" é atributo),
+`copy` (callback do n8n, sobre a copy GRAVADA) e `html-final` (por view de
+bloco, vira `QaIssue` `contrato_*`). Em `on` a escolha que viola é TROCADA
+por código pela próxima finalista limpa — não se repete o Curador, porque
+a shortlist já é a interseção e ele devolveria a mesma escolha. `_contrato`
+é chave obrigatória nas runs `assembler` e `blueprint` (contrato de
+telemetria); `dispositivo` fica em `regra_pendente` até B3.
+
+**Subject lê a decisão** (migration 20261146 troca o prompt do banco — ele
+VENCE o in-code, e um teste garante que os dois são o mesmo texto): alvo,
+fio, incentivo, insumos e proibições como `upstream`; a saída passa SEMPRE
+pela régua de claims; 2ª violação → fallback determinístico (papel da 1ª
+posição em 55 chars + fio), nunca a oferta inventada.
+
+**Modelos (14/09)**: 13 agentes de `~anthropic/claude-fable-latest` para
+`anthropic/claude-sonnet-4.6`; Seletor, Estruturador e `assembler_chooser`
+seguem em Fable (os três que DECIDEM). `max_tokens` intocado. Receita na
+seção 14/09 de `TROCAR_modelo_agentes.sql`.
+
+**Cupons traduzidos (14/09)**: os 24 outlines ativos com cupom ganharam
+`coupon_codes` nos 14 idiomas além do pt-BR (tradução LITERAL, ASCII, sem
+acento — ja/zh/ko usam o inglês) e `coupon_value` derivado do sufixo
+(`10%`/`12%`/`14%`/`15%`; ESPECIAL fica NULL). Tabela e SQL rodado em
+`supabase/migrations/DADOS_20260914_coupon_codes_traducao.sql`. O código do
+outline é o DEFAULT por idioma; a loja sobrescreve pelo bloco `coupon` do
+e-mail, e o cupom precisa existir na plataforma dela.
+
+**Pendência declarada**: o reenvio ao n8n em `contrato_textual = on` fica
+para depois da leitura em shadow (`DIAGNOSTICO_contrato_textual.sql`).
+
+## Trilha B — gate, lint, dispositivo, tokens, gerador, painel (14/09, migrations 20261147-51)
+
+Seis itens depois da semana 1 do contrato de decisão. Plano em
+`.claude/plans` (sessão) e execução em
+`docs/email-generation/execucao-plano-pipeline-set2026.md` § "Executado —
+Trilha B". O que não pode regredir:
+
+- **B1 · gate de prontidão** (`lib/stores/prontidao.ts`, puro): a loja só
+  entra na fila com pesquisa (5 pilares), produtos, paleta com hex, logo e
+  fontes; avisos (paleta com dois "principal", política sem página, selos
+  vazios, cupom sem tradução, identidade não confirmada) seguem e viram run
+  `gate` `success`. Corta no TOPO do `enqueueDispatchJob` (antes do dedup) e
+  nas rotas manuais (422 `store_not_ready`; `override_motivo` ≥ 10 chars →
+  run `gate_override`). `gate_mode` no banco (`off|shadow|on`), env
+  `EMAIL_GATE_MODE` vence. O gate lê a ÚLTIMA identidade, não só a
+  confirmada — senão a loja fica bloqueada por um clique esquecido.
+- **B2 · lint de envio** (`html/lint-envio.ts` + `html/pos-processador.ts`,
+  puros): roda DEPOIS do strip de marcadores e ANTES do QA; 7 regras
+  bloqueiam (var(--x), img sem src, href morto, texto de example,
+  placeholder [x], contraste, container fora de 600), 8 avisos com auto-fix
+  (styles fundidos, vars resolvidas, comentários fora, MSO = anchor, img
+  vazia removida, alt, ano, line-height ≥ font-size). `lint_mode`
+  (`off|shadow|enforce`, default enforce) no banco; enforce + bloqueante →
+  `failed: lint_<id>` SEM chamar o QA. Prints 600/375 (`render_previews`)
+  pelo serviço de PNG da casa, fail-open, só com ≥ 25 s de orçamento;
+  `next.config.mjs` inclui o Chromium nas rotas que chegam ao runner.
+  **O par MSO só sincroniza dentro da janela** (`<![endif]`, `</tr>` ou o
+  próximo `<!--[if mso]>`): fora dela o botão do Outlook virava o label
+  do bloco vizinho. A régua de largura julga o CONTAINER do documento, não a
+  calha 100%.
+- **B6 · conformidade** (RPC `email_decisao_vs_entrega(uuid[])` +
+  `shared/conformidade.ts`, puro): por posição, pedido × curador ×
+  blueprint × montado × entregue, com o nó responsável na PRIMEIRA
+  fronteira que divergiu. `escolhas[].block_index` do Curador é índice da
+  ESTRUTURA — colapsa sobre `blocks_skipped`, senão a posição resgatada
+  aparece como escolha do Curador. Run sem `_contrato` (anterior ao Passo 8)
+  é validada RETROATIVAMENTE pelo mesmo `violacoesDaEscolha`.
+- **B3 · dispositivo** (`shared/dispositivos.ts`): 22 valores FECHADOS —
+  o código não inventa o 23º ("varredura numerada" é pergunta ao dono do
+  vocabulário). `conflitoDeContrato` elimina por dispositivo ANTES de cupom/
+  cta/itens; variante com `dispositivo` NULL nunca conflita (fail-open) e é
+  a auditoria (`dispositivo_sem_variante`) que denuncia. O backfill das 44
+  (`DADOS_20260914_backfill_dispositivo.sql`) foi APLICADO como proposta
+  reversível; NOT NULL fica para depois da revisão. Lacunas reveladas (zero
+  ativas): `products_grade_preco`, `reviews_2`, `body_faq`, `body_passos`,
+  `hero_apresentacao`.
+- **B5 · tokens de identidade** (`html/identity-tokens.ts`, puro): 11
+  tokens resolvidos no `fitFragment` — a MESMA fronteira do
+  `neutralizeGutterPadding`, pelo MESMO motivo: montagem e enxerto precisam
+  ver o mesmo fragmento. Token sem valor cai no padrão e é REPORTADO
+  (`sem_valor`), nunca fica cru (`{{COR_FUNDO}}` num style viraria
+  `background-color:;` no strip). `color_format` é pulado (`skipped:
+  tokens_de_identidade`) quando todos os blocos são tokenizados; misto → o
+  agente só vê os legados (`blocosExcluidos`) e o `recolor` global que
+  alcançar bloco tokenizado é DESFEITO por marcador (`preservarBlocos`).
+  Paleta = **uma principal, N secundárias** (`lib/stores/papeis-de-cor.ts`,
+  decisão do dono em 14/09): o papel por cor (`fundo|texto|destaque|
+  superficie`) foi DESCARTADO como cadastro — zero das 10 lojas o usavam, e
+  quem decide onde cada cor entra é o agente Cores & Botões. `normalizarPaleta`
+  carimba `principal` na primeira primária e desce o excedente para as
+  secundárias sem papel; roda no PATCH (que não recusa mais nada) e na
+  abertura do editor. O aviso `paleta_dois_principais` saiu da prontidão.
+  A derivação por luminância (`color-roles.ts`) cobre fundo/texto/botão
+  como antes. Tokenização de variantes existentes
+  (`identity-tokenize.ts`, heurística) é DIFF para revisão com prévia nas
+  paletas de prova; nada aplicado em produção ainda. `fallbackChainFor`/
+  `pesoNumerico` moram em `html/font-fallback.ts` (ciclo de import).
+- **B4 · gerador de anatomias** (`gerador-anatomia/`): saída em DOIS blocos
+  cercados (```json + ```html — HTML escapado em JSON é onde o modelo erra);
+  `validar-anatomia.ts` (puro) reprova pelo lint, largura, tokens (zero hex/
+  font-family literal), cobertura example↔HTML pelo casador da PRODUÇÃO
+  (`auditVariantCoverage`, só campos de texto; url/image pelo `{{TAG}}`) e
+  contrato do dispositivo (`contratoDoDispositivo`, mesma régua do Curador).
+  Grava `is_active=false, source='gerada'`, `anatomia_slug` único,
+  `geracao_meta` com prévias. Run gravada na loja de REFERÊNCIA (`store_id`
+  é NOT NULL nas runs). Rodada inicial de 12 pendente: exige sessão e chaves.
+- **Telemetria**: agente novo entra no CHECK de `email_generation_runs`
+  (20261147 tem gate/gate_override/lint_envio/gerador_anatomia) E no de
+  `email_agent_configs` (20261151) E em `AGENT_VISUAL`/`PIPELINE_AGENT_ORDER`/
+  grafo do estúdio — `agent-check-sync.test.ts` reprova o que faltar.
+
+## Semana 2 — a falha nomeada vira e-mail certo (14/09, migration 20261153)
+
+Passos 11, 13, 14, 15 e 16 do plano de set/2026, depois da Trilha B.
+Execução em `docs/email-generation/execucao-plano-pipeline-set2026.md`
+§ "Executado — Semana 2"; leitura pós-deploy em
+`supabase/migrations/DIAGNOSTICO_semana2.sql`. O que não pode regredir:
+
+- **Resgate respeita a decisão** (`resgate-de-posicao.ts`): variante cujo
+  DISPOSITIVO (coluna B3) está em `decisao.descartes` custa `Infinity`;
+  descarte que nomeia o dispositivo que a própria posição pede é IGNORADO
+  (a decisão de referência pede `body_garantias` e o lista nos descartes);
+  variante sem dispositivo nunca é eliminada; `preco` custa 40 (anatomia,
+  não redação — "o preço entra pela copy" era falso). Sem candidata finita
+  o resgate devolve `null`. Hero vazia ou 2+ lacunas = FATAL:
+  `ReferenceSource` `"lacuna"` (settled na fila), o `generate.service`
+  marca `failed: lacuna_biblioteca` pela fase 1 (`fase1-failure.ts` — o
+  primeiro escritor de `failure_reason` antes da fase 2), o dispatch pula
+  o e-mail. A lacuna vira proposta no vault na PRIMEIRA ocorrência
+  (`MINIMO_POR_TIPO`), chaveada por flow + dispositivo. Decisão do dono:
+  ligado direto, sem gate — welcome-1 da Hero Boxers reprova até
+  `products_grade_preco` existir na biblioteca.
+- **QA recebe a decisão** (`qa-responsavel.ts`): `QaIssue.no_responsavel`
+  (seletor | estruturador | curador | copy | imagem | formatacao |
+  biblioteca | loja | sistema) atribuído UMA vez sobre a lista final —
+  `Record<QaIssueType,…>` obriga dono para tipo novo. `claim_nao_coberto`
+  que casa com `insumos_permitidos` (2+ palavras) ou produto da tabela
+  viva é descartada por código (`claims_filtrados` na run). Vars
+  `decisao_json`/`slot_map_json`; checks `posicao_sem_variante` (high,
+  biblioteca) e `traducao_faltante` (medium, loja).
+- **Cores & Botões decide com o contrato** (`cta-inventario.ts`): o botão
+  de cada bloco vem do `output_schema` (`buildBlockContracts`), a
+  heurística `extrairCtas` é verificação — divergência vai à run
+  (`cta_inventario_divergente`). `adicionar` só quando o contrato NÃO tem
+  CTA e a decisão não o nega. **A cor do botão é do código**
+  (`cor-do-botao.ts`): só papéis da paleta, AA 4,5:1 no par, 3:1 contra a
+  faixa REAL (a decidida no mesmo plano); ajuste registrado. A pesquisa
+  saiu do prompt. Na 2ª falha, `aplicarPaletaPorCodigo` (cor saturada →
+  papel; fundo estranho → fundo da loja) em vez de deixar o HTML velho.
+  `line-height ≥ 1,1×` também para `normal`/unitless e título sem
+  entrelinha (14 correções no HTML de 11/09, não 3);
+  `checarReducaoDeFonte` — sem teto absoluto, nunca abaixo da variante,
+  no máximo 1,25×. `texto_diff` da hero na run.
+- **Payload do n8n com uma voz** (v3.2): `exemplo` que promete o que a
+  decisão nega sai (`avaliarClaims`) e vira `directive`;
+  `decisao.proibido` deduplicado; `estrutura_geral: null` com alvo;
+  `blocks[].campos_omitidos`; callback lê `copy_prompt_version` (ausente
+  = aviso na run `copy`). **Sem reenvio ao n8n** (Passo 17).
+  `copy_fit`: `apararNoLimite` só em fronteira de FRASE (senão `null` → o
+  modelo); a via `ausente` foi REMOVIDA (campo vazio sai pelo merge);
+  coluna comparativa que não cabe vai ao modelo com `par` e a instrução
+  de manter o lado.
+- **Cupom e políticas**: `ShopifyService.graphql` +
+  `cupomExisteNaPlataforma` (`discountNodes`; sem token = NOTA
+  `cupom_nao_conferido` na run `qa`, nunca issue — nasce INERTE: zero
+  lojas com token). `client_stores.politicas` (troca/frete lidos das
+  páginas públicas, com URL) é coluna SEPARADA da ficha — captura
+  automática não ganha o selo `verificado`; ficha > políticas. Captura
+  antes do Catalogador em `pesquisa-completa` (teto 20s, fail-open),
+  botão "Ler políticas" na aba Pesquisa, insumo do Seletor com a URL,
+  `<politicas_publicas>` no Catalogador, fonte para o gate. `baixarPagina`
+  saiu do conector Internet para `lib/ai/web/baixar-pagina.ts` — a régua
+  de SSRF é a parte que não pode divergir.
+
+## Sem copy do n8n, o e-mail dá ERRO — nunca é gerado (14/09)
+
+Geração 879fe6e4 (Hero Boxers · Welcome 1, aba Teste): fase 1 inteira
+correta, copy despachada às 18:54:59 UTC, **nenhum callback em mais de
+uma hora**, status `in_progress`, `html = NULL`. A tela mostrou "só a
+hero, com a imagem no lugar errado" — não era um e-mail gerado: o preview
+caía em `email.html || renderEmailHtml(email, blocks)`, o renderizador
+LEGADO por tipo de bloco, que não conhece `body`/`reviews` e desenha a
+hero com a imagem da geração ANTERIOR gravada em `email_blocks.content`.
+Decisão do dono: **"se tiver sem copy, ou seja sem uma resposta do n8n, o
+e-mail não deve ser gerado, deve dar erro."** Três lugares faziam o
+contrário:
+
+1. **Ninguém vigiava o `in_progress`.** O dispatch
+   (`dispatchEmailCopyWebhook`) gravava `in_progress` SEM `copy_started_at`;
+   o Front 2 do watchdog só olhava `copy_generating` (o status do
+   `startOnboarding` legado). O caminho da fila e o da aba Teste ficavam
+   fora — callback perdido = e-mail preso para sempre, sem `failure_reason`.
+   Agora o dispatch carimba `copy_started_at` (e zera `html_marked`,
+   `html_pre_refiner`, `html_pipeline_stage`, `render_previews`,
+   `copy_ready_at` — senão o modo Editar abria a peça de 11/09 como se
+   fosse a de hoje) e o Front 2 (`failCopySemCallback`) cobre
+   `copy_generating` E `in_progress` por `copy_started_at`, mais uma
+   consulta de legado por `updated_at` para o que já estava preso sem
+   carimbo. Desfecho: `failed: copy_timeout` + run `copy` error
+   (`n8n_sem_callback`) + notificação. **Sem cap de `attempts`**: regerar é
+   gesto humano.
+2. **O remédio do watchdog GERAVA copy sem o n8n.** `recoverStuckCopy`
+   claimava para `copy_generating_recovery` e rodava
+   `runCopyChainInProcess` (LangChain in-process). REMOVIDO junto com
+   `copy-chain-fallback.service.ts`; o status sobrevive no tipo só para
+   linhas antigas.
+3. **Callback com copy vazia virava `copy_ready`.** A rota marca
+   `copy_ready` ANTES de gravar os blocos e, com zero bloco gravado, zero
+   caractere ou contrato 100% ignorado (`taxaContrato === 0` com pelo menos
+   um bloco COM schema), só fazia `log.error` — a fase 2 renderizava
+   placeholder e quem reprovava era o QA, no fim, depois de gastar a fase 2
+   inteira. Agora vira `failed: copy_vazia` / `copy_fora_do_contrato` ali,
+   com run `copy` error e resposta `{ok:false, motivo}` (200: o n8n não
+   deve reenviar). Bloco SEM schema não conta para a taxa — já é
+   `merge_sem_contrato`.
+
+**Preview honesto** (`lib/email-workspace/preview-state.ts`, puro, 5
+testes): `renderEmailHtml` só para e-mail SEM `generation_batch_id` (flows
+legados). Com geração e sem `html`, a ficha mostra um ESTADO —
+"Aguardando a copy do n8n desde HH:MM", "Renderizando", ou a falha
+traduzida — e o botão Editar fica desabilitado com o motivo.
+
+**Achado paralelo — a régua era mais dura que o pipeline**: a posição 2
+(`body_garantias`) ficou vazia porque `conflitoDeContrato` reprovava
+body-3 por "tem CTA e a decisão nega CTA", enquanto `arbitrarCampos` já
+OMITE o campo de CTA nesse caso. CTA negado deixou de ser conflito de
+anatomia (não elimina, não substitui, não veta no gerador); o validador
+de escolhas registra `medium` e o resgate segue cobrando 5 de custo.
+Cupom negado continua `high` — o example do cupom fica no HTML.
+
+**Pendente (do usuário)**: por que o n8n não respondeu — execuções do
+workflow de copy por volta de 18:55 UTC de 14/09 e o log da Vercel em
+`/api/webhooks/n8n/email-copy` (4xx = payload rejeitado; ausência = o n8n
+nunca chamou). Hipótese: o flow não lê o payload v3.2 (`estrutura_geral:
+null`, `directive`, `campos_omitidos`).
+
+## Prefixo estável de verdade, shortlist por excesso, vault por toque (14/09)
+
+Depois da auditoria abaixo, o levantamento do código e da doc da
+Anthropic derrubou quatro premissas da análise de custo:
+
+1. **System diferente anula o cache do user.** O cache é hierárquico
+   (tools → system → messages); a shortlist tinha system próprio, então o
+   breakpoint do user nunca acertava entre as duas chamadas do Curador.
+   Agora as duas usam `DEFAULT_CHOOSER_VAULT_SYSTEM` e o que muda vai na
+   CAUDA do user (`CAUDA_SHORTLIST_USER` / `CAUDA_ESCOLHA_USER`), depois da
+   última marca.
+2. **A cadeia de formatação nunca cacheou** — `openrouter-invoke.ts:callOnce`
+   mandava o system como string crua. A régua vive em
+   `shared/cache-de-prompt.ts` (`modeloComCacheDePrompt`, `blocosDeCache`:
+   N marcas → N+1 blocos, `cache_control` em todos menos o último, vazio
+   fundido, teto de 3 marcas no user porque o request aceita 4 e o system
+   ocupa 1; `semMarcadores` — a proveniência remove a marca antes de
+   segmentar). Todo step grava `parsed_output.cache`.
+3. **Quatro e-mails em paralelo escrevem o cache quatro vezes** (125%).
+   `shared/gate-de-prefixo.ts` em `invokeAgent`: o primeiro de um prefixo
+   (modelo + system + 1º bloco do user) passa; os demais esperam
+   `CACHE_STAGGER_MS` (15 s) ou o primeiro resolver. Escalonar a fila não
+   serviria: o Curador de cada e-mail começa quando o Estruturador dele
+   termina.
+4. **Prefill está MORTO na família 4.6+** ("returns a 400 error on Claude
+   Sonnet 4.6 and later"). `aceitaPrefill` → `false` para Sonnet/Opus 4.6+,
+   Sonnet/Opus 5, Fable e Mythos; `prefill_usado` era 0 em 30 dias.
+
+Ordem dos blocos do user, do menos ao mais mutável, com marca entre eles:
+Curador `[índice do vault, intenção do flow, aprendizados, estruturas de
+referência] [store, perfil, objeções, vocabulário, produtos] [outline,
+intenção do e-mail, COO, revisão, alvo, memória, notas de seção, lacunas,
+decisão, eliminadas, sequência] [cauda]` — `memoria`, `notas_de_secao` e
+`lacunas` são POR E-MAIL (recorte por `liveSections`, escolhas do e-mail
+N-1), não da loja. Estruturador `[perfil + seções disponíveis] [resto]`;
+Seletor `[loja + catálogo + oferta] [resto]` (o `email_number` saiu do
+bloco da loja). `ref: "catalogo_enxuto"` no segmento do catálogo — com
+`"catalogo"` o resolver comparava com o JSON integral e saía `stale`.
+
+**Shortlist só com excesso de verdade**: `limiarSemChamada()` = 5 (env
+`CURADOR_SHORTLIST_MAX_SEM_CHAMADA`, nunca abaixo de `SHORTLIST_TOP_N`).
+A run de 14/09 tinha {4,2,4,3,2,2} elegíveis e pagou US$ 0,97 para
+escolher 3 de 4 em duas posições — o custo é a SAÍDA (7,7k tokens a US$
+50/M), não a entrada. Até 5, todas viram finalistas e a escolha lê as
+notas completas de todas. Telemetria: `shortlist_limiar`,
+`finalistas_por_posicao`, `tokens_cache_escrita` em
+`consumo_por_chamada` (a retomada também passa pelo `medir`).
+
+**Vault por toque** (`lib/vault/toque.ts`, puro): `emails: [N]` nas
+estruturas (já existia, obrigatório) e `serve_a: [welcome-1]` ou
+`[todos]` nos aprendizados (vocabulário do diagnóstico do vault; o parser
+reprova fora do formato). Global fica no SYSTEM do Estruturador (cacheado
+entre os 4 irmãos); o do toque vai no user em `<material_do_toque>` (e
+`<aprendizados_do_toque>` no Curador); o de outro toque não é servido.
+**Fail-open**: nenhuma referência global nem do toque → serve todas e
+marca `vault_por_toque: fail_open_sem_referencia` (senão `loadMaterial`
+devolveria `null` e o Estruturador seria pulado). Kill-switch
+`VAULT_POR_TOQUE=off`. Telemetria `refs_descartadas_por_toque` e
+`aprendizados_descartados_por_toque`; seletor "O que o toque recebe" na
+aba Conhecimento, pela MESMA régua. Até o time escrever `serve_a:` nas
+notas, todo aprendizado é global — o efeito imediato são as estruturas
+com `emails: [2,3,4]` saindo do welcome-1.
+
+JSON compacto onde é gerado por código (decisão do Estruturador,
+`format-context`, `build-vars`, `qa.chain`); `catalog-builder.json` fica,
+pelo sha8 das runs antigas. Leitura pós-deploy:
+`DIAGNOSTICO_cache_por_chamada.sql`.
+
+## O lint reprovou a peça por quatro achados de FRONTEIRA (14/09)
+
+Batch ddb2d125 (Hero Boxers · Welcome 1, 22:50 UTC): `lint_anchor_sem_href`
+×4, `texto_de_example` ×8, `largura_container` ×1 e o aviso do botão que só
+o Outlook vê. Nenhum era o agente errando — cada um vivia entre duas regras
+que não se conheciam. Consertado no lugar (sem regerar) e na raiz:
+
+- **Ícone social sem destino.** `attr-token-vocabulary.ts` deixa
+  `URL_FACEBOOK`/`URL_INSTAGRAM`… sem href DE PROPÓSITO (a loja não tem
+  redes cadastradas — `client_stores` não tem coluna para isso — e apontar a
+  home no lugar do Instagram seria mentira). O lint de envio (B2), mais novo,
+  bloqueia `<a>` sem href. Os dois estão certos e o e-mail não saía. Agora o
+  pós-processador (passo 9, `icones_sem_destino_removidos`) tira a âncora
+  COM o ícone quando ela só embrulha um `<img>`; `<a>` com texto e sem
+  destino continua bloqueando — inventar o destino de um botão é conteúdo.
+- **`v:roundrect` órfão.** O merge apaga o `<a>` do CTA negado pela decisão
+  e o gêmeo `<!--[if mso]>` fica: o Outlook mostrava "DIGITAL GIFT CARD"
+  numa marca de cuecas. Passo 10 (`mso_orfao_removido`) tira o bloco MSO e
+  o ramo não-Outlook vazio ao lado.
+- **598px.** A montagem (`fitFragment`) só neutralizava a calha; a largura
+  era normalizada apenas no salvar e na varredura — que nunca rodou: **14
+  variantes ativas em 598**. `enforceEmailWidth` passou a rodar no
+  `fitFragment` (a MESMA fronteira do `neutralizeGutterPadding`, pelo mesmo
+  motivo), e as 18 variantes foram normalizadas no banco
+  (`DADOS_20260914_biblioteca_lint_598_rodape.sql`). `enforceEmailWidth` é
+  régua de BLOCO: no documento final ela transformaria a calha 100% do
+  e-mail em 600 e mudaria o fundo — por isso o pós-processador NÃO a chama.
+- **"Verified Buyer" era copy, não example.** O example do campo
+  `review_N_credential` é "Verified Buyer 1"; a regex de `pareceExemplo`
+  sem o dígito casava a copy real do n8n. Agora exige o dígito (antes ou
+  depois). Os "Link Here" ×6 do rodapé eram example de verdade: footer 1
+  ganhou seis campos `footer_link_N_label` no schema (a copy passa a
+  escrevê-los) com exemplos reais.
+
+**Retomar sem regerar**: `html` corrigido por SQL posicional (substr/||,
+guarda e conferência por md5), status `rendering` + `html_pipeline_stage =
+'image'` + `rendering_started_at` 16 min atrás + uma run `lint_envio` nova
+(o watchdog Front 5 só retoma batch com atividade em 25 min e
+`rendering_started_at` entre 15 e 25 min). Custa typography + cores + lint
++ QA, não a fase 1 nem as imagens.
+
+## Cache de prompt de verdade nos agentes que decidem (14/09)
+
+Auditoria do batch 879fe6e4 (`docs`: artifact "Auditoria de custo ·
+Estruturador e Curador"): o Curador em `~anthropic/claude-fable-latest`
+pagou **153k tokens de entrada em duas chamadas com o MESMO prefixo de
+58k** (US$ 2,45 a run, US$ 10/M in · US$ 50/M out). Duas causas no
+invoke: (1) a régua do `cache_control` era `^anthropic/` e o slug com
+TIL — o dos três agentes que decidem — nunca casava, então nenhum
+`cache_control` saía; (2) mesmo casando, só o SYSTEM era marcado, e o
+user do Curador tem ~100k chars. `modeloComCacheDePrompt` aceita o til;
+`AgentInvokeConfig.cache_user_prefix` marca o user como prefixo
+cacheável e `CACHE_PREFIX_MARKER` separa o prefixo (shortlist) do que
+muda (as notas das finalistas, na escolha). Só agente de DUAS chamadas
+liga o prefixo do user: escrever no cache custa 25% a mais e agente de
+uma chamada não teria leitor. `cachedTokens` volta do OpenRouter
+(`prompt_tokens_details.cached_tokens`) e vai para
+`consumo_por_chamada.tokens_cache` — sem esse número "cache ligado" era
+suposição, e foi assim de CM-3 até 14/09. TTL padrão (5 min): as duas
+chamadas ficam a ~2 min uma da outra.
+
+**Recusado pelo dono em 14/09** (não refazer): tirar do Curador o que
+ele não cita (aprendizados, índice do Obsidian, intenção do flow — "a
+estrutura vai ficar repetitiva"), reusar a decisão do Estruturador
+quando nada mudou, e teto de raciocínio ou troca de modelo.
+
+## Os sete alertas de Configurações eram três causas (set/2026, migration 20261154)
+
+Sete warnings do `edge_logs` num único carregamento de `/admin/settings`.
+O ×4 do avatar é a topologia do layout — `Sidebar` (com `SidebarUser`),
+`SidebarMobileDrawer` (que monta a Sidebar de novo) e `MobileTopBar`, mais o
+avatar da própria seção Conta. Mesma multiplicação por montagem do
+`useUnifiedNotifications`.
+
+**1. O avatar apontava para um arquivo apagado.** O único perfil com foto
+tinha `avatar_url` em `<uid>/avatar.png` e o bucket `avatars` guardava UM
+objeto: `<uid>/avatar.jpg`. Storage público responde **400** para objeto
+ausente. Ninguém viu porque o `AvatarImage` do Radix cai nas iniciais. A
+causa é a ORDEM da rota de upload: ela removia as outras extensões **antes**
+de subir o arquivo novo e antes de o banco saber dele, então qualquer falha
+entre os três passos deixava o ponteiro no vazio. Agora é **upload → update
+→ limpeza**: arquivo velho sobrando é lixo tolerável, ponteiro para o vazio
+não é. Junto saiu o cruzamento com o PORTAL, que usava o **mesmo bucket e o
+mesmo caminho** e grava em `client_portal_users.avatar_url` — um upload lá
+invalidava a URL de `profiles` sem que nenhuma das rotas soubesse. O portal
+passou a escrever em `<uid>/portal/avatar.<ext>`; o subdiretório vem **depois
+do id** porque a policy de Storage exige
+`(storage.foldername(name))[1] = auth.uid()` — prefixo `portal/` na frente
+quebraria o upload. Caminhos e limpeza moram em `avatar-validation.ts`.
+
+**2. `company_settings` não existia.** A seção "Dados da empresa" lia e
+escrevia numa tabela que nenhuma migration criava. A leitura dava 404 com o
+erro engolido (o `catch` nem dispara: o supabase-js devolve o erro em `error`
+em vez de lançar, e o código nem o desestruturava), então o formulário
+aparecia **vazio como se ninguém o tivesse preenchido**; o Salvar falhava
+sempre. Medido antes de criar: `company_name` já existia em dois lugares
+(`organizations.name` e a key/value `settings`) e os outros sete campos em
+nenhum — `clients.cpf_cnpj`/`clients.address` são dos CLIENTES,
+`store_brand_identity.logo_*` e `store_onboarding_data.logo_url` são das
+lojas deles. **UNIQUE em `org_id`** é o que torna o upsert idempotente: o
+código fazia `onConflict: "id"` com um payload **sem `id`** — conflito que
+nunca acontece, linha nova a cada clique. A tabela nasce FECHADA
+(`TO authenticated` + `is_org_member()` nos quatro comandos), provada nos
+três papéis: anon 0, membro 1, portal 0. A tela saiu do acesso direto para
+`/api/settings/company`, que resolve o `org_id` no SERVIDOR — a
+`is_org_member()` não confere QUAL org, então org no payload seria a única
+brecha do desenho.
+
+**3. O 406 do `tutorial_pages` era ruído — e a suspeita de que não era não
+se sustentou.** `ignoreDuplicates` devolve ZERO linhas quando a página já
+existe (a nossa é de 13/05/2026) e `.maybeSingle()` num POST manda
+`Accept: application/vnd.pgrst.object+json` (só no GET usa
+`application/json`), então o PostgREST responde 406. Parecia derrubar o
+bootstrap pelo `if (tutErr) throw`; **medido com o cliente real, não
+derruba**: logo depois de montar o erro o postgrest-js faz
+`if (error && isMaybeSingle && error.details?.includes("0 rows")) error = null`
+e devolve `{data: null, error: null, status: 200}`. O que sobrava era log
+sujo e uma dependência de **match por substring** no texto de erro de um
+servidor que não é nosso — mude "0 rows" e o mesmo caso vira `throw` na
+criação de onboarding. Sem `maybeSingle`, o POST volta 201 com `[]`.
+
+**Regra derivada, comum às três**: erro que o cliente ABSORVE continua sendo
+erro no fio, e é no fio que ele é visível antes de doer. As três causas
+estavam nos logs há meses, cada uma com a UI degradando bem o bastante para
+ninguém reclamar.
+
+
+## Duas fotos iguais no mesmo e-mail: a cena que ninguém decidiu (15/09, migration 20261155)
+
+Innova Bay · Welcome 1 (batch b6c478d3): hero e "Works or just an ad?"
+saíram com o MESMO produto na MESMA parede. Não era uma imagem para os
+dois — são dois slots, duas runs independentes. Medido run a run:
+
+- **Hero**: o Estruturador decidiu "mão adulta encaixando o plug" e a
+  variante (`hero section 3`, flat-lay de kit) diz "nenhuma mão, nenhuma
+  pessoa". As duas iam ao MESMO prompt; o modelo fez o híbrido.
+- **Body 2** (`body 8 - cards vidro`): `requisitos.imagem: null` (ninguém
+  decidiu a cena), a direção cadastrada era RASCUNHO ("Pendente da
+  referência… aguardando o PNG") servida como "YOUR MAIN SOURCE", e o
+  Curador leu "cards de vidro" como cards de TEXTO (a composição
+  fotográfica de 600×850 não aparecia na linha do catálogo). Sem cena e
+  sem direção sobrou o insumo do hero: produto âncora + cenário genérico.
+- Nenhuma run de imagem sabia o que a anterior mostrou.
+
+O que mudou, na fronteira certa:
+
+1. **Cena obrigatória onde há foto gerada** (`auditoria-requisitos.ts`,
+   regra `imagem_sem_cena`): `<secoes_disponiveis>` passa a dizer "com
+   imagem gerada: N" (`CapacidadeDaSecao.com_imagem[_por_dispositivo]`);
+   posição sem `imagem` é DURA quando toda variante da forma tem foto,
+   aviso quando só parte. O prompt do Estruturador pede uma frase concreta
+   por posição e OUTRO momento da história em cada uma.
+2. **`OUTRAS_CENAS` / `CFY_OTHER_FRAMES`** (`prompt-vars-builder.ts` +
+   template in-code + migration no template do banco): as cenas decididas
+   das outras posições vão ao prompt de imagem com a ordem "não repita".
+   Vazio quando nenhuma outra posição tem cena — template idêntico ao de
+   antes. Origem `upstream`, custo zero (vem do blueprint).
+3. **Cena × direção decide no Curador** (`image/direcao-fotografica.ts`,
+   puro, 8 testes; `conflitoDeContrato` lê `RequisitosDuros.imagem` contra
+   `ContratoResumo.direcao`): direção que veta pessoa/mão elimina a
+   variante quando a cena exige gente. Régua estreita (só termos de
+   gente — "sem sombra dura" não é proibição de pessoa); direção ausente
+   ou rascunho NUNCA colide (fail-open). A linha do catálogo enxuto
+   declara `imagem: N slot(s) de imagem gerada · direção EM RASCUNHO /
+   veta pessoa/mão / sem direção`.
+4. **Rascunho conta como ausente**: `ehDirecaoEmRascunho` no builder →
+   `PHOTO_DIRECTION` vazia + `PHOTO_DIRECTION_AUSENTE` (o bloco "no
+   direction was written" do template assume) + `PHOTO_DIRECTION_RASCUNHO`
+   na telemetria. O editor da variante avisa. Era a ÚNICA variante ativa
+   nesse estado; a direção da body 8 continua por escrever (dado).
+5. **Medida apagada sem frase quebrada** (`sanitizePhotoDirection`): a
+   ORAÇÃO é julgada sozinha — ficha de arquivo, quase nada sobrando ou
+   conectivo pendurado no FIM sai; a vizinha fica. "de," no meio continua
+   (decisão de 03/09). A linha real da hero-3 ("slot de, ativo final. ou,
+   full-bleed…") cai inteira.
+
+**Limite declarado**: o conflito cena × direção só cobre pessoa/mão. Outros
+eixos (estúdio × ambiente real, produto único × kit) seguem indo ao prompt
+com a precedência "a cena vence" — sem dado de que o modelo os confunde.
+
+---
+
+## O catálogo sem ofuscamento: o que a linha diz e o que o desempate lê (15/09)
+
+Pedido: que a variante específica não seja ofuscada pela genérica que serve
+ao mesmo lugar, que acrescentar variante custe pouco, e que as tags
+expressem a peculiaridade de cada peça. Medido em 45 dias de escolhas reais
+(`assembler_chooser`, 37 variantes ativas) antes de escrever código:
+
+| dispositivo | placar | concentração |
+|---|---|---|
+| `footer_nav` | 89 · 0 · 0 | **100%** |
+| `offer_sem_cupom` | 19 · 0 | **100%** |
+| `hero_lineup` | 5 · 0 | **100%** |
+| `hero_oferta_cupom` | 43 · 9 · 8 · 4 · 0 | 67% |
+| `reviews_com_credencial` | 36 · 34 · 10 | 45% (saudável) |
+
+**8 de 37 variantes ativas nunca foram escolhidas.** Duas hipóteses CAÍRAM
+na medição e ficam registradas: "a com menos campos ganha" (0-6 campos:
+média 6,9 escolhas; 13-18: 19,6 — é o oposto) e "o primeiro da lista ganha"
+(falha em 3 de 11 dispositivos). A concentração é total exatamente onde o
+ranking por eixos chega ao EMPATE; onde a `objecao` separa, é saudável.
+
+**A causa dos três 100% é o desempate lendo um ranking de popularidade.**
+`renderUsageCounts` montava a lista A PARTIR das escolhas: quem nunca foi
+escolhido não estava no mapa e **não aparecia** — era ausência, não `0×`. A
+lista saía em ordem DECRESCENTE sob a legenda "a MENOS usada vence em empate
+total": instrução impossível de cumprir, porque a menos usada era a
+invisível. Realimentação positiva pura. Agora ela recebe as ELEGÍVEIS da
+geração (`elegiveisDaGeracao`), completa com `0×`, ordena ASCENDENTE e o
+corte de 60 linhas tira as MAIS usadas — cortar pelo fim removeria as linhas
+que a régua usa. Isto não muda régua nenhuma: faz existir o dado que a régua
+já pedia. O mesmo desempate entrou no resgate (`menosIncompativel`), onde
+`b.copy - a.copy` premiava, por escrito, "a anatomia mais rica"; a contagem
+de campos caiu para último critério (a troca NÃO é para "menos campos", que
+seria o viés oposto inventado).
+
+**A peculiaridade já estava no schema.** `papelDoCampo` reconhecia `prazo`,
+`preco_antigo` e `nome` do depoente, e `resumirContrato` contava `copy` e
+`imagens` — nada chegava ao prompt. Publicá-los (`forma:` e `grades:` na
+linha) torna **10 dos 11** dispositivos 100% distinguíveis, incluindo os três
+de concentração total: `hero_lineup` tinha UMA tupla de eixos para duas
+variantes e vira `copy=3 img=1` × `copy=5 img=2 logo ctas=2`;
+`offer_sem_cupom` vira `3 campos` × `11 campos · 1 imagem · prazo`. Custo:
+~25 chars por variante, no bloco CACHEADO, zero trabalho de curadoria, nunca
+desatualiza. `n_ctas` conta o BOTÃO, não o campo (`cta_1_label` +
+`cta_1_url` é um só), e o logo é medido antes do `continue` que pula imagens
+— ele quase sempre É uma imagem.
+
+**O vazio ficou visível** (`campoDeclarado`): `objeção: (não declara)` nos
+três eixos de topo. `campo()` omitia, e o modelo não distinguia "não se
+compromete com nada" de "não se aplica aqui" — a que declarava saía
+carregando o que declarou, a outra saía curta e limpa. Só esses três:
+`registro vetado: (não declara)` seria ruído, porque não vetar nada é o
+normal.
+
+**`registro_vetado` deixou de ser órfão.** Era impresso no catálogo e a
+regra que o governava morava no passo 5 do protocolo do vault, que
+`semMomento` apaga antes de servir — dado sem regra é o erro que
+`curador-vault.ts:421` diz ter aprendido a não cometer. A regra voltou ao
+system, junto com "(não declara) não é vantagem: overlap ZERO não empata com
+quem declara", e com a ressalva que preserva o passo 3 (se a que não declara
+for a ÚNICA sobrevivente, ela continua sendo escolhida).
+
+**A contrapartida de `proibicao_violada`**: ela só dispara contra variante
+que DECLAROU algo (`proibicaoBateNaVariante` lê `exige_medicao`/`aliviador`),
+então a de eixos vazios era **matematicamente incapaz** de aparecer no
+medidor — e era justamente a escolhida. `generica_sobre_especifica` (rank-1
+que não realiza o aliviador pedido havendo finalista que realiza) e
+`sem_eixos` só MEDEM, e só em posição com 2+ finalistas: cobrar onde havia
+uma candidata seria cobrar do Curador o que é lacuna da biblioteca.
+
+**67% da cauda era material de outro agente.** Medido nas 40 notas ativas:
+6.524 chars em média, sete seções — design system 2.218, direção fotográfica
+1.349 e orientações de copy 796 servem a OUTROS agentes e **já estão no
+banco**, nas colunas `design_system`, `photo_direction` e `copy_guidance`.
+Iam cruas para o Curador, sem `semMomento` nem `semExige`, contrariando o
+system que manda ignorar esses campos. `extratoParaDecisao` (puro) mantém
+frontmatter + as quatro seções de decisão; nota em formato desconhecido volta
+INTEIRA (fail-open — formato novo no vault não pode virar finalista sem
+nota). `NOTA_MAX_CHARS` 12.000 → 3.000 e `CAUDA_MAX_CHARS` de 18.000
+consumido na ORDEM do ranking: quem fica sem nota é a pior colocada, com
+status `sem_orcamento` (≠ `missing`: a variante segue escolhível pela linha
+do catálogo). **Uma finalista sozinha sempre cabe** — o teto por nota a corta
+antes, e um teto de custo não pode criar a lacuna que ele existe para evitar.
+
+**O teto do catálogo mudou de eixo.** Os 15.000 chars no TOTAL eram um
+comentário e um teste sobre fixture sintético (302 chars/linha): a produção
+passou dele em 15/09 — **16.255 chars, 37 variantes, 439 por linha** — e nada
+mediu, avisou ou cortou. Pior, um teto no total é incompatível com uma
+biblioteca que cresce: ele proíbe cadastrar. A medida é
+`charsPorVariante` + `linhasLongas` (`LIMITE_CHARS_POR_VARIANTE` = 600), que
+é o custo MARGINAL — o que precisa ficar barato —, e ela vai à run
+(`catalogo_chars_por_variante`).
+
+**Duplicata virou worklist, não regra.** As duas de `hero_lineup` descrevem
+literalmente a mesma peça; escolher sempre a mesma entre duas iguais está
+CERTO e nada denunciava. `duplicatasPorDispositivo` reusa
+`similaridadeDeDescricao` entre IRMÃS do mesmo dispositivo
+(`LIMIAR_DE_DUPLICATA` = 0,65 — mais alto que o 0,5 de `divergentes`, porque
+lá servir a descrição a mais é inofensivo e aqui o aviso acusa o time),
+aparece na aba Conhecimento e na run. Variante sem dispositivo fica fora: sem
+a classificação não se sabe se as duas disputam a mesma posição.
+
+Acompanhamento: `supabase/migrations/DIAGNOSTICO_ofuscamento.sql` — as
+MESMAS queries da medição, com o retrato de 15/09 no cabeçalho.
+
+## O dispositivo pedido é filtro, não preço (Passo 19, 15/09)
+
+O resgate cobrava **150** por dispositivo errado — caro, e finito. Finito é
+o defeito: `filtrarPorRequisitos` é fail-open no CONJUNTO (zerou a seção,
+devolve todas), então posição que pedia `body_garantias` numa seção sem
+nenhuma chegava ao resgate com o pool inteiro, e a "menos incompatível" era
+uma `body_comparacao` — outra FORMA entregue ao cliente no lugar da
+decidida. O fail-open está certo para REDAÇÃO (preço, avaliação: a copy
+compensa) e para não esvaziar a shortlist do Curador; está errado para a
+forma, que é o que a posição É.
+
+`doDispositivoPedido` (`resgate-de-posicao.ts`, puro) tira do pool quem
+realiza dispositivo CONHECIDO e diferente ANTES de pontuar; pool vazio
+devolve `null` e a posição cai com o motivo `dispositivo_indisponivel` — o
+único dos quatro que nomeia o cadastro que falta ("a seção não tem variante
+que realize `body_garantias`"). O preço de 150 saiu: duas regras para a
+mesma coisa e a finita venceria em silêncio. O caminho da ESCOLHA já estava
+coberto (`violacoesDaEscolha` → `conflitoDeContrato` →
+`conflitoDeDispositivo`, `high`); faltava o do resgate, e agora os dois
+usam a MESMA comparação — um `===` local divergiria em caixa e acento, que
+é o engano por apelido que este repo já pagou.
+
+**Variante sem dispositivo cadastrado NÃO é eliminada**, e o número é o
+motivo: **8 das 17 variantes ativas de `hero` têm a coluna NULL** (o
+backfill da B3 subiu como proposta reversível, o NOT NULL não existe). O
+filtro literal do plano (`c.dispositivo === pedido`) apagaria 47% da hero,
+e hero vazia é FATAL desde o Passo 11 — falta de CADASTRO viraria falha de
+geração. **As 8 foram classificadas horas depois e hoje a biblioteca tem
+ZERO ativas sem dispositivo** (ver a seção seguinte); a guarda fica porque o
+NOT NULL continua não existindo e a próxima variante nasce NULL de novo — o
+que a torna barata é o preço de 75 em `custoDeIncompatibilidade`, que impede
+a não classificada de vencer quem acerta no desempate por menor uso.
+
+**Medido antes de subir** (30 dias de runs do Estruturador): 250 posições
+sem dispositivo pedido (no-op) e 29 com — todas existentes na biblioteca,
+na própria seção. Nenhuma posição do histórico teria caído: é guarda, não
+mudança de comportamento no tráfego de hoje.
+
+Telemetria SEPARADA na run `assembler`: `fora_do_dispositivo` (candidatas de
+outra forma) e `dispositivo_indisponivel` (posições que caíram) ao lado de
+`recusados_por_dispositivo` — descarte da decisão é acerto do filtro, "não
+existe a forma" é lacuna de biblioteca, e as duas pedem ações opostas da
+curadoria. A proposta do vault já era chaveada por `dispositivo_pedido`.
+
+## Oito heroes sem etiqueta (15/09)
+
+Entraram 8 hero sections novas, todas ativas, **sem dispositivo e sem nota**
+— as outras 37 da biblioteca tinham as duas coisas. O cadastro estava bom
+(passam no `variantIsFillable`, HTML em 600px, schema casando), e é
+justamente por isso que o defeito era invisível.
+
+**Seis das oito são o e-mail INTEIRO**, não uma abertura: as descrições
+abrem com "E-mail inteiro de…" (contador, oferta, cupom, corpo, botão numa
+peça só). Cadastradas como `hero`, elas vão para a posição 1 e as posições
+2–6 continuam sendo montadas embaixo — dois e-mails empilhados, com dois
+cupons. O eixo que diria isso é `papel_na_peca: peca-inteira` e mora na NOTA
+do vault; sem nota o Curador não sabe, sem dispositivo o código não filtra.
+Só a 17 e a 18 são hero de verdade.
+
+**Três regras certas que, juntas, premiavam quem não tem etiqueta:**
+
+1. `conflitoDeDispositivo` é fail-open — variante sem dispositivo nunca é
+   eliminada e concorre em TODA posição da seção.
+2. `capacidadePorSecao` só conta as classificadas — o Estruturador nunca
+   consegue pedi-la. Ela **custa e não compete**.
+3. `custoDeIncompatibilidade` não cobrava nada dela, então ela EMPATAVA em 0
+   com quem acerta o dispositivo, e aí decidia o desempate por **menor uso**
+   instalado no mesmo dia. Medido: numa posição que pede `hero_pergunta`, a
+   `hero section 9` (25 escolhas em 45 dias) perdia para a `hero section 13`
+   (e-mail inteiro de Black Friday, 0 escolhas). **Correção: +75.** É o par
+   do filtro do Passo 19 (seção acima), não uma segunda regra para a mesma
+   coisa: dispositivo ERRADO sai do pool antes de pontuar, dispositivo
+   AUSENTE fica — de propósito, senão falta de cadastro viraria falha de
+   geração — e paga. Finito, nunca `Infinity`: não saber continua não sendo
+   violar.
+
+**Classificação aplicada** (15/09): `hero_oferta_cupom` para 11, 12, 13, 14 e
+15; `hero_apresentacao` para 16, 17 e 18 — que deixou de ser dispositivo sem
+variante ativa. Pool de hero: 10 · 3 · 2 · 2. Só `hero_oferta_cupom` passa do
+limiar de 5 e liga a chamada de shortlist; separar as seis peças inteiras do
+pool de hero a zeraria (decisão pendente do dono).
+
+**Custo**: a linha do catálogo é cacheada (~US$ 0,001 por chamada com as 8) —
+é a propriedade "acrescentar variante custa pouco" funcionando. O custo real
+é a chamada de shortlist que passa a existir: ~US$ 0,10 por e-mail, **1–3%**
+dos US$ 3,10–8,20 de uma peça.
+
+**O que ficou visível**: `CompactCatalog.naoClassificadas` sobe na telemetria
+do `assembler_chooser` e aparece na aba Conhecimento; `duplicatasPorDispositivo`
+passou a comparar também as **não classificadas da mesma seção** (era onde as
+8 estavam, e duas delas — 13 e 15 — descrevem a mesma decisão de uso); e o
+editor avisa ao ter variante ativa sem dispositivo. O teste que afirmava
+"variante sem dispositivo fica fora" foi corrigido: era ele que mantinha o
+detector cego.
+
+**Hand-off para o vault** (`ficha-do-vault.ts`, puro, 12 testes): o agente do
+Obsidian não enxerga o admin, e `variant_id`, nome exato e schema moram só de
+cá — errados, a nota é ignorada **em silêncio**. A ficha é gerada do banco
+(botão "Ficha para o vault" no editor; as 8 em
+`docs/email-generation/handoff-heroes-15-09.md`) e deriva a forma da MESMA
+`resumirContrato` que monta a linha do catálogo, senão a ficha descreveria uma
+peça e o ranking mediria outra.
+
+## O pedido que se contradiz sozinho, e a pausa sem fim (15/09)
+
+Duas revisões da geração de hoje, as duas medidas no banco antes de
+escrever código.
+
+### `reviews_3plus` com no máximo 2 itens
+
+Batch das 15:49 (Innova, welcome 1): a peça rodou inteira, custou **US$
+4,26** e reprovou no QA em `posicao_sem_variante [high/**biblioteca**]`.
+A biblioteca estava CERTA. O Estruturador pediu, na posição 3,
+`dispositivo: reviews_3plus` **com `n_itens: {min:2, max:2}`** — "três ou
+mais" limitado a dois. Medido: as 3 variantes ativas de `reviews_3plus`
+entregam 3 itens; a única de `reviews_com_credencial` entrega 2. O filtro
+eliminou as **sete** variantes de reviews (`zerou: true`), o fail-open
+devolveu todas, o resgate pegou uma e o validador a recusou
+(`resgate_recusado`) — posição vazia, peça reprovada, e a curadoria
+cobrada por uma lacuna que não existe.
+
+**A auditoria do Estruturador rodou (`modo: on`) e devolveu `ok: true`.**
+A régua de `n_itens` olhava a faixa da **seção**, que ia de 2 a 3 por
+causa da variante de credencial: `2 < 2` é falso, nada acusou. O pedido se
+contradiz na combinação FORMA × GRADE, e ninguém olhava para as duas
+juntas.
+
+`CapacidadeDaSecao.itens_por_dispositivo` passa a levar a faixa POR FORMA,
+e ela entra nos dois lados: no `<secoes_disponiveis>` colada ao
+dispositivo (`reviews_3plus (3, 3 itens)`), para o pedido impossível não
+nascer; e na regra dura `n_itens_fora_do_dispositivo`, para não passar. A
+régua é o DADO, não o vocabulário — "nenhuma variante ativa desta forma
+cabe na faixa pedida" —, então ela não depende de alguém ler o nome do
+dispositivo. Forma sem grade cadastrada fica FORA do mapa: "sem grade" não
+é faixa, e inventar `{0,0}` reprovaria quem só quer o bloco. A régua da
+seção FICA, e um teste garante que ela sozinha não pegaria este caso.
+
+### A pausa manual não tinha fim
+
+A execução manual `8658d1a8` estava `paused` no nó `color_format` desde
+10/09 — **cinco dias** — e com ela o e-mail `758f05de` seguia `rendering`
+no banco e "rodando" na tela. `emailsComExecucaoPausada` protege o e-mail
+de TODOS os fronts do watchdog, e o desenho está certo (parar no nó X e
+sair para almoçar não pode devolver `failed:timeout_phase2`); o que
+faltava era o outro lado dele. Pior: `uniq_ege_manual_viva` cobre
+`running` E `paused`, então o e-mail ficava **trancado** — todo disparo
+manual novo tomava 409, para sempre.
+
+`pausa.ts` (puro, 13 testes) tria por idade: **12 h** cobrem um dia de
+trabalho e não atravessam a noite, que é onde "pausado" vira "esquecido".
+A idade sai de `updated_at` (o instante da pausa, pelo trigger com
+`clock_timestamp()`). **Carimbo ilegível conta como VIVA** — expirar no
+escuro derrubaria a proteção justamente onde ela não pôde ser medida. A
+expiração roda dentro de `emailsComExecucaoPausada`, no watchdog: a pausa
+vencida é fechada e o e-mail volta aos fronts na MESMA rodada, sem front
+novo nem cron novo.
+
+Fechada a pausa, o e-mail sai do limbo com o motivo verdadeiro
+(`liberarEmailDaExecucao` → `execucao_manual_cancelada` /
+`execucao_manual_expirada`). Sem isso o **Front 5 o RETOMARIA** dentro de
+25 min — cancelar viraria "continue" — e o Front 3 lhe daria
+`timeout_phase2`, que não foi o que aconteceu. O `html` fica INTACTO: é
+ele que permite ao disparo seguinte retomar com `start_from`. Execução
+`running` fica de fora (pode haver runner em voo, e ele escreve o
+desfecho).
+
+### O QA julgava dois documentos ao mesmo tempo
+
+Os dois e-mails de hoje trazem `links_quebrados [medium]` — e a varredura
+dos `href` do HTML entregue devolve **15 links para `https://innovabay.site`
+e um `[unsubscribe_link]`** (merge tag válida): zero links quebrados. O QA
+escreveu "footer social media CTAs use placeholder values instead of real
+URLs" sobre ícones sociais que **não existem no e-mail**: o passo 9 do
+pós-processador (`icones_sem_destino_removidos`) já os tinha apagado.
+
+A causa é de ORDEM. O QA recebe `{{html}}` (o documento final) e
+`block_views_json`, e as views eram extraídas no fim do `image_format` —
+**três agentes antes** (typography, color_format, background_fit) e antes
+do pós-processador inteiro. Ele julgava uma mistura de dois documentos. Com
+`qa_mode = enforce`, uma issue `high` nessas condições **reprova peça boa**;
+e o erro simétrico é pior — o que esses passos INTRODUZEM ficaria invisível
+na view, que é exatamente o que a arquitetura de views existe para ele ler.
+
+O strip dos marcadores desceu: `posProcessar` roda sobre o documento COM
+marcadores (ele os preserva por construção, `ehMarcadorInterno`), as views
+saem daí, e só então o `stripCfyBlockMarkers` produz o `finalHtml`. As views
+da cadeia viram RESERVA — num resume pós-strip não há marcador para
+recortar. O lint continua medindo o documento final, sem andaime.
+
+Provado nos dois sentidos: com a ordem antiga o teste falha com
+`expected [ 'URL_FACEBOOK' ] to not include 'URL_FACEBOOK'` (o falso
+positivo reproduzido), com a nova passa. A invariante que ele trava é
+simples: **todo `href` que a view mostra existe no documento que o cliente
+recebe**, e o `html` que o QA julga é byte a byte o que fica gravado.
+
+**Limite declarado na perna B do Front 2**: ela exige
+`generation_batch_id` porque `in_progress` também é status LEGACY do Epic
+8/9, e varrer sem batch inventaria falha em e-mail que nunca foi gerado. O
+preço é um zumbi conhecido (um, parado desde 28/08) que pede decisão
+humana, não varredura.
+
+## Auditoria de 15/09: conversão íntegra, base cega em cinco notas
+
+Varredura das filas: `crm_webhook_events` 839 `done` (último às 23:30),
+`crm_conversion_events` 29 `sent`, `email_dispatch_jobs` e `ai_chat_jobs`
+fechados — **zero presos, zero falhas**. O `LeadQualificado` voltou a sair
+(11/09, depois da correção do 42P10) e os dois cadastros de hoje
+responderam "R$0 - R$99.000": legitimamente não qualificam.
+
+**A fragilidade que sobrou é de CADASTRO.** A regra do qualificado é
+digitada à mão e o campo é um `select` com opções próprias: renomear uma
+opção no editor deixa a condição apontando para um texto que nenhum lead
+pode responder, e o evento para de sair sem nada acusar — mesma família do
+defeito de 05/08, agora pela porta do cadastro. O diagnóstico da tela já
+roda a avaliação real contra os cadastros recentes, mas isso só responde
+depois que alguém se cadastrou, e não distingue "a regra está certa e
+ninguém se encaixou" de "a regra aponta para o vazio".
+
+`regra-vs-opcoes.ts` (puro, 17 testes) responde antes e sem tráfego. A
+comparação é a MESMA do envio (`normalizeForCompare`) — comparar byte a
+byte acusaria o que lá casa, mandando consertar o que funciona. Só julga
+campo com lista fechada e operador de igualdade (`contains` é fragmento de
+propósito, `gt/lt` comparam número), e campo que sumiu do formulário NÃO
+vira aviso daqui: quem cobra isso é o teste contra os cadastros, e o aviso
+novo fica ao lado dele, não no lugar. Verificado contra produção: os três
+valores da regra existem entre as quatro opções — zero alarme falso.
+
+**A base de conhecimento estava cega em cinco notas.** 256 aprovadas, 251
+com vetor, e as 5 sem são exatamente as cinco MAIORES (12,0k a 43,4k
+chars), paradas desde 09/09. Dois defeitos somados, e os dois fazem a mesma
+nota falhar em toda rodada:
+
+1. `MAX_INPUT_CHARS = 24_000` dizia cortar "com folga" para os 8.192 tokens
+   do modelo — a régua de ~4 chars/token é do INGLÊS; em português
+   acentuado o `cl100k_base` gasta perto de 3, e 24k ficam colados no
+   limite. Agora **16.000**.
+2. O lote era **fixo em 32 itens** e o limite do endpoint é por CHAMADA:
+   32 notas de 16k são 512k chars num POST. O lote inteiro era recusado,
+   inclusive as pequenas que viajavam com as grandes.
+   `lotesPorOrcamento` agrupa por orçamento de caracteres; item maior que o
+   orçamento vai SOZINHO, nunca descartado.
+3. Lote recusado dava `break` em tudo — e como o conjunto de pendentes não
+   muda entre rodadas, aquelas notas nunca entravam. Agora o lote falho é
+   reprocessado **item a item**: as boas entram, só a recusada fica
+   pendente com causa e tamanho no log. Nenhum item passando sozinho =
+   provedor fora do ar, e aí sim para.
+
+## Só envelhece quem pode ser renovado (16/09)
+
+Medido: 55 linhas de `store_revenue_summary` no rótulo 30d, **54
+sincronizadas minutos antes e UMA de 02/09** — Cronos Alemã,
+`sync_status: 'ok'`, 8.567,63 EUR, e nenhuma credencial de plataforma de
+e-mail (a chave foi removida depois daquela data).
+
+A lista que o refresh percorre é filtrada por credencial
+(`ANY_EMAIL_PLATFORM_FILTER`); a que media a idade do cache **não era**.
+A loja ficava fora de toda passada de sync e continuava ancorando o
+`oldestFetchedAt`: idade de 13 dias contra um teto de 1 hora, `isStale`
+verdadeiro PARA SEMPRE. O banner "cache desatualizado" nunca apagava, o
+`needsSync` disparava a sincronização automática em toda abertura da
+tela, ela segurava o lock, e o clique em "Sincronizar agora" voltava
+`alreadyRunning`. É a segunda metade do "clico em sincronizar e ele não
+sincroniza" — a primeira (uma passada não cobria a carteira) foi
+corrigida antes e está de pé; o que faltava era a linha que está **fora**
+da carteira.
+
+`lib/dashboard/frescor.ts` (puro, 11 testes): linha que nenhuma passada
+alcança não fica velha, fica **órfã** — outra coisa, com outra ação
+(reconectar a chave ou desativar a loja). O que a desqualifica como
+âncora não é a idade, é não ter como ser renovada, então a órfã recente
+também sai da conta; ela só vira AVISO passada a mesma hora do
+`ADMIN_STALENESS_MS`, senão chave removida há dez minutos seria alarme
+falso. Sem carimbo de coleta é declarado como tal, nunca vira idade
+inventada. Erro ao ler a lista de lojas trata todas como renováveis —
+erro de query não pode inventar carteira órfã.
+
+**O valor dela continua nos cards**, de propósito: descartá-lo derrubaria
+o faturamento total em ~R$ 53 mil sem explicação na tela, que é pior que
+contar um número antigo e DIZER que ele é antigo. Daí o bloco próprio no
+dashboard, separado do "não sincronizam" — o último sync destas deu
+certo; o que falta é chave para haver um próximo. Efeito medido na âncora
+do 30d: de 02/09 19:29 para 15/09 21:45. De quebra a contagem de lojas
+saiu do `count: 'exact'` em caminho quente — a mesma consulta traz os
+ids, que é o conjunto que o frescor precisa.
+
+**Fuso das lojas, auditado e declarado**: das 64 ativas, 10 estão sem
+`timezone` — e são exatamente as 10 **sem credencial nenhuma** (nem
+e-mail, nem Shopify). As 54 com credencial têm fuso, procedência do fuso
+e procedência da moeda **em 100%**: a cura automática do sync (set/2026)
+funcionou. Não há defeito de código aqui, e não há fonte de onde puxar:
+é pendência de dado, sem consumidor — para essas lojas nenhuma janela de
+plataforma é montada.
+
+## Central de Campanhas: 16 ciclos, zero sugestões (16/09)
+
+Medido antes de escrever código: **16 ciclos, NENHUMA sugestão**. Quinze
+presos em `generating` para sempre; o único com desfecho (#11, 10/08)
+fechou por saldo da conta, causa já superada. E `campaign_ai_runs` sem
+uma linha `kind='suggestions'` desde 10/08 — o gerador, que é o produto,
+nunca chega a ser chamado. Três causas empilhadas, nenhuma visível.
+
+**1. A captura de tendências roda em SÉRIE, sem relógio**, num cron de
+`maxDuration = 300`: 81 s de média por cluster (máximo 199 s) × 7 países
+= ~568 s. A função morre no meio toda semana, por construção, e quem é
+morto pelo runtime não roda `catch` nem `finally` — daí o ciclo
+`generating` e o lock com `finished_at` ANTERIOR ao `started_at`.
+Tendência é enriquecimento; sugestão é o entregável, e é ela que tem de
+caber: `orcamentoDaCaptura` (`lib/campaign-central/ciclo-saude.ts`, puro,
+18 testes) reserva o tempo da geração, e `cabeMaisUmCluster` só começa o
+que TERMINA dentro do orçamento — a conta é sobre terminar, porque quem
+estoura mata a função inteira. O que não coube entra na FRENTE na semana
+seguinte (`ordemDaCaptura`: quem esperou mais vai primeiro, nunca
+capturado no topo), que é a lição do backfill de avatar — com ordem fixa
+e lote menor que a fila, a cauda nunca é alcançada. A duração típica do
+próximo cluster é o pior caso já visto NESTA execução, com piso na média
+medida.
+
+**2. O teto de 4.096 tokens corta a resposta.** As 20 runs
+`invalid_output` desde 17/08 têm `tokens_output` = 4.096 cravado e
+`raw_output` terminando no meio de uma palavra. `retry-teto` — o módulo
+da casa, escrito para o Seletor e o Estruturador, descido ao `copy_fit`
+em 15/09 — é a **terceira ocorrência da mesma família** e nunca tinha
+chegado aqui. Para ele funcionar, `finish_reason`/`stop_reason` passou a
+ser propagado: o provedor já mandava e o código **lia no tipo e
+descartava**, então a causa chegava ao banco como "JSON parse falhou em
+todos os candidatos", que descreve o sintoma e esconde o motivo. Foi o
+que fez este diagnóstico custar um mês.
+
+**3. Ciclo preso não era varrido por ninguém.** A varredura
+(`ciclosInterrompidos`, teto de 15 min) roda no início do ciclo novo —
+único ponto que sempre executa — e é fail-open. Sem carimbo de criação o
+ciclo NÃO é fechado: afirmar que morreu sem poder medir a idade é
+inventar desfecho, e o engano apagaria o "gerando" de uma execução viva.
+
+De quebra, a run passou a gravar o modelo REALMENTE chamado — gravava a
+constante `TRENDS_MODEL` enquanto a chamada usava `cfg.model`, então com
+a config em `moonshotai/kimi-k3` toda a telemetria dizia
+`claude-sonnet-4-6`. É a armadilha do `onMeta.modelUsed`: comparar
+modelos vira ficção quando a run registra o pedido em vez do servido.
+
+Dado corrigido em produção: teto das trends 4096 → **8192**, 13 ciclos
+pendurados fechados com motivo declarado, 2 locks mortos liberados.
+Medição e acompanhamento em
+`supabase/migrations/DIAGNOSTICO_central_de_campanhas.sql`.
+
+## Os rounds de RLS fecharam as tabelas; as RPCs ficaram abertas (16/09)
+
+Medido: **78 funções `SECURITY DEFINER` no schema `public` executáveis
+por `anon`** — a chave pública que vai no JS do browser. `SECURITY
+DEFINER` roda como o dono, então a RLS não protege nada do que a função
+faz por dentro, e o PostgREST expõe toda função de `public` em
+`/rest/v1/rpc/<nome>`. Sem sessão nenhuma dava para `rate_limit_clear`
+(anular o rate limit do login/reset), `acquire_cron_lock('sync_reports',
+86400, …)` (travar a sincronização por um dia), `upsert_custom_range_cache`
+(**falsificar a receita do dashboard**), `audit_cleanup(0)` (apagar a
+trilha de auditoria), `audit_password_reset` (injetar evento falso) e
+`search_agent_chunks` (ler o conteúdo indexado dos agentes).
+
+**Fechar é seguro porque nenhuma rota chama RPC com a chave `anon`** —
+levantado no código, não suposto: as 51 RPCs do app usam
+`createAdminClient` (service role) ou o cliente de servidor com sessão;
+os dois únicos arquivos que chamam `.rpc` com o cliente do BROWSER são
+`notification.service.ts` (`unread_notifications_count`, que exige
+login) e `rate-limit.service.ts`, que é **código morto** — só
+reexportado por `lib/services/index.ts`, sem consumidor, porque o rate
+limit em uso é `lib/rate-limit.ts`. Todas as rotas públicas
+(`/api/public/*`, `/api/tracking/*`) usam `createAdminClient`, inclusive
+o `increment_form_views` do formulário.
+
+**A forma do REVOKE é a parte que erra em silêncio**: função nasce com
+`EXECUTE` para **PUBLIC** e `anon` herda dali, então `REVOKE … FROM
+anon` sozinho não tira nada. A revogação é de PUBLIC — e por isso
+`authenticated` e `service_role` recebem o grant explícito ANTES, senão
+tirar PUBLIC derrubaria também quem está logado (o sino de notificações,
+por exemplo). Aplicado e verificado: `anon` de 78 para **0**,
+`authenticated` em 78 (ninguém logado perdeu acesso), `service_role` em
+102. As INVOKER voláteis do app foram fechadas junto; as 8 que seguem
+abertas são de extensão (pgvector, pg_trgm), que o Supabase gerencia e
+cujos índices dependem delas.
+
+SQL idempotente, com a lista de exceções (hoje VAZIA, e isso foi medido)
+e o rollback, em `supabase/migrations/APPLY_MANUALLY_fechar_rpc_anon.sql`.
+
+**`function_search_path_mutable` foi medido e DISPENSADO**: 45 das 102
+não fixam `search_path`, mas sequestrar a resolução de nomes exige CRIAR
+objeto num schema à frente na busca — e `anon`, `authenticated`,
+`service_role` e `authenticator` têm CREATE negado em `public` **e** no
+banco. Com o vetor fechado, alterar 45 funções de produção é risco puro
+(função que dependa de `extensions` ou `auth` passa a não resolver, em
+runtime). Se algum papel ganhar CREATE, a conta inverte — e aí o valor é
+`public, extensions, pg_temp`, não só `public`.
+
+## A coalescência parou de duplicar, mas não consolidou (16/09, migration 20261156)
+
+`upsert_onboarding_stuck_notifications` (do incidente das 17.611 não
+lidas) faz UPDATE primeiro e INSERT só quando nada foi tocado — está
+correta e PARA de criar duplicatas. O que ela nunca fez foi consolidar as
+que já existiam: o UPDATE alcança TODAS as cópias do par, devolve
+`ROW_COUNT = 3`, e as três são renovadas com `created_at = now()` a cada
+rodada do cron. **Nunca envelhecem e nunca somem.**
+
+Medido: 905 não lidas para **307 pares** (usuário × onboarding), com 297
+pares tendo cópias gravadas no MESMO instante ao microssegundo — a
+assinatura de linha legada renovada em bloco, não de uma notificação por
+dia. O retorno da função também mentia: somava 3 onde tocou um par só.
+
+Índice único PARCIAL pelos DOIS lados — só a não lida disputa a
+unicidade (a lida é histórico e pode repetir) e a chave do JSONB é
+literal, que é o que permite ao índice ser usado. A função passa a TRATAR
+o 23505 em vez de só tentar evitá-lo: adotar o que passou primeiro é o
+padrão desde a 20261119 e a 20261132, e **checar antes sem tratar o
+conflito depois é exatamente o padrão que duplica**. Aplicado: 905 → 307.
+
+Fica declarado o que NÃO foi mexido: `onboarding_column_change` (374) e
+`onboarding_briefing_ready` (295) são notificações de EVENTO, não de
+estado — repetição ali é legítima, e coalescê-las esconderia evento. O
+que falta nesses dois é política de retenção, que é decisão de produto.
+
+## Dois crons rodavam há meses sem gravar uma linha (16/09)
+
+Varredura dos 43 crons contra o que cada um deixa no banco. Dois estavam
+mudos, pela MESMA causa de fundo: **zero devolvido com `success: true` se
+lê como "não havia o que fazer"**.
+
+**`crm-snapshot` nunca gravou NADA.** `crm_org_snapshots`,
+`crm_pipeline_snapshots` e `crm_lead_funnel_snapshots` com ZERO linhas,
+as três, desde sempre: `computeAllOrgSnapshots` selecionava as
+organizações com `.eq("type", "agency")` e a ÚNICA organização deste
+banco é `type: 'internal'`. O laço percorria lista vazia e o cron
+respondia 200 todo dia às 06:20. O custo ficava escondido em três telas —
+`/admin/crm/reports` é "snapshot-first" e lia tabela vazia como se não
+houvesse histórico, os deltas do painel de CS ficavam `null` "porque
+ainda não há snapshot", e `dashboard/sales` comparava o valor aberto de
+hoje com um passado que nunca existiu. O rótulo era suposição sobre um
+modelo de negócio que nunca existiu aqui; quem decide se a org rende
+snapshot é ter pipeline e carteira, e `snapshotOrg` já mede isso. Os três
+upserts também passavam sem conferir erro — o PostgREST devolve a falha
+em `error`, não como exceção, e o código nem a desestruturava.
+
+**`store-daily-metrics` tinha TRÊS linhas em meses.** O cron rodava e
+agregava quase nada porque `fetchCampaigns` filtrava
+`.eq("period_label", "90d")` — o rótulo mais RARO da tabela: medido,
+`90d` tem 73 linhas com a mais nova de 05/09, contra 2.061 em `30d` com
+423 dos últimos dez dias, num universo de 8.356 campanhas com `send_time`
+em 51 lojas. A justificativa ("evitar contar a mesma campanha em várias
+janelas") estava certa na intenção e errada na âncora: quem deduplica é
+`dedupCampaigns`, por (store_id, campaign_id), dentro do `aggregateByDay`
+— o filtro era redundante e amarrava o cron ao rótulo vazio. O gráfico de
+receita atribuída caía sempre no fallback por campanhas.
+
+A leitura passou a cobrir todos os rótulos e a ser **paginada** (a mesma
+campanha em várias janelas passa fácil do teto de 1.000 do PostgREST, que
+corta sem avisar) com ordem TOTAL, senão `.range()` repete e pula linhas.
+A dedupe que torna isso seguro ganhou teste dedicado — a mesma campanha
+em três rótulos conta uma vez, e vence o sync mais recente.
+
+**Os dois passaram a DIZER quando não escrevem**: `avaliarSnapshot`
+(`lib/crm/snapshot-saude.ts`, puro, 6 testes) reprova rodada sem
+organização ou sem linha gravada, e o de métricas separa "ontem ninguém
+enviou campanha" (zero legítimo) de "havia campanha e nada foi gravado"
+(500). Cron que falha tem de aparecer como falha no painel da plataforma
+— foi a ausência desse sinal que deixou os dois parados por meses.
+
+Recuperação: o snapshot do CRM começa a série no dia seguinte ao deploy
+(snapshot é do dia, não há passado a recuperar); o histórico de métricas
+por loja volta com `GET /api/cron/store-daily-metrics?backfill=120`, que
+usa a mesma leitura corrigida.
+
+**O resto da varredura está saudável, e o que está zerado tem motivo
+declarado**: `commemorative_dates` (280 linhas, cron anual),
+`google-calendar-sync` (reuniões atualizadas na hora), `crm-ads-sync`,
+`crm-health-compute`, `exchange-rate-snapshot`, `convertia-saldo` e
+`vault-sync` todos com escrita recente. `ai_eval_cases`/`ai_eval_runs` e
+`client_briefings` em zero é falta de USO, não gatilho quebrado — como já
+estava registrado. `store_feedback_calls` recebeu linha em 15/09, o que
+confirma a ponte reunião→carteira da migration 20261129 funcionando.
+
+## Template do Estúdio: o caminho mais rápido não existia (16/09)
+
+Medido antes de escrever código: **0 templates do time**, 3 documentos, 1
+referência, 0 brand kits, 0 agendamentos. Não era desinteresse — era que
+**só existia UM caminho para cadastrar template**: "a partir de
+inspiração", que pede subir os slides como IMAGEM e paga uma chamada de
+VISÃO (até 12 imagens em base64) para um modelo adivinhar a sequência.
+Quem acabou de montar um carrossel bom no próprio Estúdio tinha de
+exportar a peça em PNG e subir de volta para o modelo ler o que o editor
+já conhece campo a campo.
+
+A conversão inversa já existia nos dois sentidos (`documentoDeEstrutura`,
+`estruturaDaReferencia`); **documento → estrutura** era a que faltava. Pior:
+`editor-page.tsx` já tinha a função `salvarTemplate` INTEIRA, e ela só era
+passada ao editor quando `?modo=template` estava na URL — isto é, apenas
+na revisão de um template que acabou de nascer da inspiração. O botão
+existia e estava atrás justamente do caminho caro.
+
+**`estrutura-do-documento.ts`** (puro, 13 testes) é a régua, com três
+regras que erram em silêncio se ficarem na UI:
+
+1. **Slide oculto não entra.** `oculto` é o que o operador tirou da peça;
+   trazê-lo pelo template devolveria, na criação seguinte, o slide que ele
+   acabou de esconder. A conversão à mão do `editor-page` levava todos.
+2. **Só é "com foto" o slot que o renderer DESENHA.** `dado` e `cta` não
+   chamam `imgSlot` (`TIPOS_COM_SLOT`), então `slotImagem` ali é promessa
+   que nenhuma peça cumpre. `documentoDeEstrutura` gravava `slotsImagem:
+   1` sem checar, a checkbox "foto" da revisão era oferecida nos 7 tipos e
+   `analisar_inspiracao` marca foto em slide de número porque VIU uma arte
+   — o operador via "foto" na estrutura e nada no slide. `normalizarEstrutura`
+   roda na leitura da inspiração e na troca manual de tipo; a checkbox fica
+   desabilitada com o motivo.
+3. **O nome do template descreve a FORMA, não a pauta.** O nome do
+   carrossel é a headline; como template ele reaparece na hora de escolher
+   a sequência, onde a headline de outra peça não ajuda. Vem preenchido e
+   EDITÁVEL — renomear sozinho seria adivinhar a intenção.
+
+Junto veio uma correção de comportamento declarada: a capa ganhava slot
+SEMPRE (`e.slotImagem || e.tipo === "capa"`), então desmarcar a foto da
+capa não tinha efeito. Agora o default só vale quando a estrutura **não se
+pronuncia** (`e.slotImagem ?? e.tipo === "capa"`) — estrutura sem o campo
+continua com foto na capa, zero regressão.
+
+**Nome repetido não vira duplicata silenciosa**: `templateComMesmoNome`
+(comparação sem acento/caixa) faz o botão virar "Atualizar o existente", e
+o PATCH da rota passou a aceitar `estrutura`/`templateId`/`fidelidade`.
+`fidelidade: null` ali APAGA o número de propósito — ela é a confiança da
+LEITURA de uma inspiração, e a forma que veio de um carrossel do Estúdio
+não foi lida por ninguém. Dois templates de mesmo nome são
+indistinguíveis na prateleira; quem quer os dois muda o nome, que é
+exatamente o que os distingue.
+
+Entradas: menu do card na biblioteca e botão na barra do editor (fora do
+`modoTemplate`, que mantém o fluxo de revisão). **Zero chamadas de IA,
+zero upload.**
+
+**Ficou de fora, com o motivo**: template a partir dos 10 carrosséis
+publicados no Instagram (exige leitura por visão — mesmo custo do caminho
+que este atalho existe para evitar) e UNIQUE em
+`conteudo_meus_templates(org, nome)` — o dedupe é do cliente e a tabela
+tem 0 linhas; vira corrida real só com uso simultâneo.
+
+**A outra lacuna do módulo é DADO, não código**: dos 89 posts
+sincronizados, **0 têm pilar, molde ou palavra-chave**. Mix de pilar e
+desempenho por molde mostram a ausência corretamente (`montarPilarMix`
+informa quantos ficaram fora), mas o painel só passa a responder depois
+que alguém classificar — e `PATCH /api/conteudo/posts` já classifica a
+seleção da tabela em lote, com os filtros "Sem pilar"/"Sem molde".
+
+## Estúdio — família "Post": o print de tweet, medido do print (16/09)
+
+Pedido: templates **idênticos** à referência (quatro prints de tweet), com
+fonte, dimensão, espaçamento e corpo copiados, e editáveis. Virou a
+família visual `post` + o molde `molde-post`; medidas, tabela de/para e
+limites declarados em `docs/conteudo/formatos/post-print-de-tweet.md`.
+
+**A régua é a conversão, não o olho**: a referência tem 1170 px de
+largura e o canvas tem 1080, então toda medida de `formato-post.ts` é
+`doPrint(medida) = medida × 0,923`, gravada já convertida — quem mexer
+compara com a coluna do print na tabela do módulo, sem refazer a conta.
+
+**O formato é um LAYOUT, não uma paleta**, e por isso entrou como flag no
+traço (`TracoFamilia.cartaoPerfil`) em vez de tipo de frame novo: ligada,
+o renderer desenha o MESMO cartão para todo tipo (avatar + nome com selo
++ `@handle` + texto) e **suprime rodapé de marca, contador e filete** — a
+peça imita uma captura de tela, e enfeite da casa denuncia que não é uma.
+Nome, handle, foto e selo saem do **brand kit** (o canal Instagram
+conectado): trocar de perfil reescreve os quatro slides sem digitar nada.
+
+**Três poses, e a pose vem da IMAGEM** (`posePost`): gancho (a capa, com
+a frase 22% maior e o dobro de respiro — é o slide que para o dedo),
+com print (cabeçalho maior no topo, captura até quase a borda) e só texto
+(centro ÓPTICO, 3% acima do geométrico; centralizar no meio exato deixa o
+bloco afundado, e é onde os três slides de texto da referência estão).
+
+**Limite próprio** (`LIMITES_POST`): o texto ocupa a peça inteira e o
+slide de "por que funciona" tem 232 caracteres. Com o limite do TIPO
+(`corpo: 180`) o auto-fit encolheria a fonte e a peça deixaria de ser
+idêntica **sem nada avisar** — daí `limiteDe(tipo, campo, cartaoPerfil)`,
+com teste fixando `fitFactor(232, …) === 1`, e o aviso de "corpo longo"
+do editor lendo a mesma régua.
+
+**Poppins 400/600/700** entrou self-hosted (OFL) no CSS **e** na lista da
+exportação — sem os dois o PNG sai com a sans do sistema e a peça
+exportada não é a que está na tela. É uma aproximação declarada: a
+referência é uma captura, não um arquivo.
+
+**Verificado renderizando** (`renderToStaticMarkup` + Chromium contra a
+referência), que é o que pegou os três defeitos invisíveis a teste: o
+**gradiente sutil** que sobrava no fundo da capa (`novoDocumento` grava
+`"gradiente"` antes de a família ser aplicada, e `aplicarFamilia` trocava
+cor por cor — agora recalcula ao entrar ou sair do cartão), o selo em
+círculo liso (a forma em lóbulos é o que o olho lê como verificado) e o
+gancho pequeno demais. Fidelidade medida: a linha longa saiu em **79,6%**
+da largura contra **79,0%** na referência, com a mesma quebra.
+
+**`Template.familia`**: o molde declara a identidade que PRESSUPÕE e o
+diálogo troca o seletor ao escolhê-lo — "Print de post" montado na paleta
+azul da casa vira outra coisa. Continua editável ao lado; o molde e a
+família seguem independentes por desenho.
+
+De passagem, `MOLDE_KEYS` virou lista ÚNICA em `types.ts`: três telas
+repetiam o array à mão, então acrescentar um molde acertava o tipo e
+deixava os filtros do dashboard para trás, em silêncio.
+
+### O segundo desenho: "Post largo" (16/09)
+
+A segunda referência é o mesmo GÊNERO com outro desenho, e a diferença é
+grande demais para ser ajuste da primeira: margem lateral 88 → **72** (o
+texto ocupa quase a largura toda), entrelinha 1,28 → **1,37**, avatar
+colado ao nome (35 → **18**), halo claro em volta da foto, a imagem
+acompanhando a margem do texto em vez de recuada, e uma **colagem de duas
+fotos** no lugar da captura única. Virou a família `post-largo` + o molde
+`molde-historia`; as medidas convivem em `TABELAS`, e `medidasPost(pose,
+tipo, estilo)` escolhe — sem estilo declarado continua o desenhado, então
+nenhuma peça antiga muda.
+
+**A fonte é Inter, não a original.** A referência foi capturada num
+Windows (a stack do app cai em Segoe UI); Inter é a grotesca livre mais
+próxima em proporção, já é self-hosted, e a exportação precisa de fonte
+DETERMINÍSTICA — fonte de sistema faria o PNG mudar de máquina para
+máquina.
+
+**`DocFrame.imagens.slot2`** (aditivo): só o formato que declara
+`gapGaleria > 0` desenha a segunda foto; nas outras identidades ela fica
+**guardada sem aparecer** — trocar de identidade não pode apagar o que
+alguém enviou. O painel Mídia ganhou o alternador 1ª|2ª (que troca o
+destino de upload, banco e IA) e o `ImageFloat` passou a operar na foto
+SELECIONADA (`imgSel.slot`): ajustar sempre a primeira deixaria a segunda
+sem enquadramento, e foto sem enquadrar sai errada no export sem nada
+avisar.
+
+**Verificado renderizando**: as quebras de linha saíram IDÊNTICAS às da
+referência nos dois slides longos — é a prova mais forte de que fonte,
+corpo e margem batem. Posições medidas: avatar 6,7%–17,0% (ref
+7,5%–18,1%), texto começando em 22,5% (ref 21,2%), colagem de 58,5% a
+94,5% da altura (ref 57,8%–94,7%). O único ajuste que o render pediu foi a
+subida óptica: 1,5% deixava o bloco alto; medida nos cinco slides, é
+**0,8%** (contra 3% no desenhado). E, revisando o primeiro formato com uma
+imagem clara no slot, apareceu que a captura parava a 2,1% da borda
+inferior contra ~1,2% da referência — daí `rodape` separado do `topo`: é o
+quase-corte que faz o slide parecer um print, não um card com moldura.
+
+## Estúdio — a prévia do template e a identidade Neon (16/09, migration 20261157)
+
+**A prateleira de templates mostrava a peça errada.** Os três construtores
+de prévia (`template-card`, "Meus templates" na home e no diálogo) montavam
+o documento com `novoDocumento`/`documentoDeEstrutura`, que nascem na
+família PADRÃO, e nenhum chamava `aplicarFamilia` — enquanto escolher o
+molde APLICA a identidade que ele pressupõe (`Template.familia` +
+`setFamilia`). O "Print de post" (preto, cartão de perfil, sem contador)
+aparecia como slide azul da casa e o clique entregava outra coisa. Não
+quebrava teste: os dois documentos são válidos, só de identidades
+diferentes. Regra em `previa-de-template.ts` (puro, 11 testes) com a cascata
+declarada — **o que foi GRAVADO com o template > o que o molde base
+pressupõe > a padrão**. Derivar do molde não basta: a identidade é escolha
+da PEÇA, e dois templates do mesmo molde base podem ter capas opostas, daí
+`MeuTemplate.familia` persistido (degrada com retry sem a coluna nos três
+verbos). A legenda do card pousa no campo que a capa DESENHA (`subtitulo`
+nas famílias da casa, `corpo` no cartão de perfil — escrever no errado fazia
+a descrição sumir em silêncio) e a prévia da home recebe o brand kit, senão
+o cartão de perfil sai com avatar vazio.
+
+**A fonte de quem simula um post é a da PLATAFORMA.** O X usa Chirp
+(proprietária, não embarcável) e declara a pilha `Segoe UI, Roboto,
+Helvetica, Arial`; os apps nativos entregam SF Pro/Roboto — todas grotescas.
+Inter é o substituto livre apontado nas comparações, já é self-hosted e
+mantém a exportação determinística (fonte de sistema faria o PNG mudar de
+máquina para máquina). **Poppins saiu**: é geométrica (Futura), com `a` de
+um andar só e bojo circular — nenhuma interface social usa isso no corpo do
+post, e é esse detalhe que faz a peça ler como card de Canva. As duas
+famílias de print passam a usar a mesma pilha, o que é o certo: elas simulam
+a MESMA interface, e o que as separa é a métrica. Os arquivos, os
+`@font-face` e as entradas da exportação foram removidos juntos.
+
+**Identidade `neon`** — **SUPERADA em 16/09** pela `manchete` (seção "a
+identidade Manchete corrige a que foi feita de descrição", no fim deste
+arquivo): com os cinco slides da referência em mãos, ela errava em seis
+eixos e o `brilhoImagem` foi REMOVIDO do código. O que está abaixo é o
+registro do que foi construído da descrição — bloco preto com
+título condensado em caixa alta alternando azul elétrico e branco (pelo
+`**palavra**` que já existia), foto recortada com brilho, **um** slide claro
+de respiro no meio (`respiroClaro` — não é a alternância do Alternado) e
+caixa sólida no fecho (`cta: "bloco"`). `ritmoDeFundos` passou a valer para
+toda família cujo fundo é função da POSIÇÃO, senão inserir um slide deixava
+o respiro preso ao anterior. Renderizando apareceram: título BRANCO
+invisível no slide claro (`cores.hook` é a tinta sobre o claro — mesmo
+defeito que a Alternado pagou) e a capa sangrando a foto com véu, que mata o
+brilho; e o teste pegou o terceiro — `aplicarFamilia` não REMOVIA a cor que
+só a família anterior declara, então o `apoio` cinza da Neon sobrevivia à
+troca e ia pintar o corpo dos slides claros da casa. **Limite declarado: as
+medidas da Neon vêm da DESCRIÇÃO do formato, não do arquivo da referência** —
+ao contrário das duas famílias de print, que têm tabela de/para medida pixel
+a pixel.
+
+## O relógio da fase 1 no cron: três comentários que eram falsos (16/09)
+
+Fase 0 do plano do leque do Curador — seis defeitos de produção que valem
+por si. Medidos em `email_generation_runs` antes de qualquer linha de
+código; as queries estão em `DIAGNOSTICO_fase1_relogio.sql`.
+
+**A conta que dimensionava o tick (`45s + 240s ≤ maxDuration 300s`) era
+falsa.** A fase 1 de UM e-mail leva **363s de mediana, 681s no p90, 1213s no
+máximo** (43 e-mails, 14 dias) — e não é retomável no meio. O cron sobrevivia
+morrendo: a função era morta aos 300s, o lease expirava, outro tick reclamava
+o job e o e-mail **recomeçava pagando o Curador de novo**. `maxDuration` foi
+para **800** (o teto da Vercel, o mesmo das rotas de fase 2), com
+`CRON_MAX_DURATION_S` no serviço e um teste que lê o arquivo da rota e
+compara — o Next exige literal, então os dois números só ficam juntos por
+verificação.
+
+**`comOrcamentoDeFase1` nunca era aberto no dispatch**: `restanteDoOrcamento()`
+devolvia `null` e TODO o guard de `fase1-orcamento.ts` era código morto
+justamente em produção (o módulo só rodava na aba Teste e em três rotas do
+Catalogador). `JANELA_DO_TICK_MS`, `TICK_BUDGET_MS` e `LEASE_MS` agora derivam
+do `maxDuration` — o lease pelo motivo certo: **um tick não pode segurar o
+job por mais tempo do que a função dele vive**, e amarrá-lo à latência de um
+agente é o que o fazia envelhecer a cada troca de modelo.
+
+**`CUSTO_TIPICO_MS` × teto de tokens.** As duas perguntas são diferentes: o
+teto é o RELÓGIO (o provedor reserva `prompt + max_tokens` em voo), o medido
+é "vale a pena começar". `cabeNaJanela` usava o teto e era pessimista por 3×
+— o Curador tem teto de 32.000 tokens (371s pela conta) e escreve ~12.000
+(210s). Estimar pelo teto **e** reservar para o Curador é pedir duas vezes o
+mesmo tempo: foi assim que o Estruturador parou de rodar em 11/09.
+`RESERVA_POS_ESTRUTURADOR_MS` subiu 150 → **400s** (o Curador medido está em
+336s no p90, não nos 97s de n=3 que o comentário citava) e só fecha porque o
+custo do Estruturador virou medido (270s). Um teste reprova quem
+"simplificar" de volta para `relogioParaTeto`. **Trocar o modelo de um
+agente da fase 1 obriga a remedir.**
+
+**Abrir o orçamento criou um caminho de falha novo, e ele foi fechado
+junto**: `invokeAgent` LANÇA "sem orçamento" quando a janela acaba, e o laço
+do pré-passo do Seletor não tem `try` por e-mail — o throw abortaria o
+pré-passo inteiro e os e-mails seguintes iriam para a fase 1 **sem alvo, em
+silêncio**. A guarda agora vem antes da chamada e o resultado traz
+`semOrcamento`, que **não é `skipped`**: eles não foram dispensados, foram
+adiados, e o próximo tick reusa o que já saiu (`catalog_sha8`) e continua.
+
+**A ordem dos e-mails do job não vinha de lugar nenhum.** O enqueue lia
+`email_flow_emails` sem `.order()`; **três jobs** têm o welcome gravado como
+`2,5,8,6,4,1,3,7` — a mesma permutação nos três, porque era a ordem
+determinística do PostgREST. Ela é decisão, não apresentação: o pré-passo do
+Seletor roda em sequência e welcome-2 recebe o `ja_atacadas` de welcome-1.
+`ordemDosEmails` é a fonte única — o enqueue ordena o que grava e o tick
+reordena o que lê, porque o array desordenado mora no JSONB dos jobs antigos
+e nenhuma migration o alcança.
+
+**`logCuradorChoice` era `void`** — em serverless a promise solta morre no
+congelamento (a armadilha dos eventos de conversão da Meta), e a tabela que
+deveria registrar toda escolha registrava as que dessem sorte. Agora é
+`await`, **depois** da persistência e só quando `source === "code"`: escolha
+de montagem recusada (lacuna fatal ou cobertura insuficiente) não virou
+e-mail nenhum, e gravá-la faria a janela de repetição tratar como entrega o
+que foi descartado. Heartbeat passou a ser por e-mail dentro do lote — não é
+o que impede a reclamação, é o que mantém o progresso visível num lote de 11
+minutos.
+
+**Honestidade sobre o risco**: a corrida de lease é **latente, não
+observada** (dos 25 e-mails que pagaram o Curador duas vezes no mesmo batch,
+a maioria é retry `error` → `success`), e o caminho do cron tem **1 job em 30
+dias** — tudo vem passando pela aba Teste, que já tinha janela. Os defeitos
+eram reais; nenhum estava queimando dinheiro esta semana.
+
+
+## A via B falava a identidade da casa em toda peça (16/09)
+
+Depois das três famílias novas, o prompt de imagem por slide
+(`prompt-slide.ts`) continuava descrevendo a anatomia do azul da casa —
+a única parte já sensível à família eram as FONTES. Achados, todos por
+LER a saída do módulo, não por teste:
+
+- **Contradição direta na Post**: o texto base abre com "fotografia real ou
+  3D fotorrealista" e a direção da família diz "não é fotografia, é uma
+  captura de tela"; a cena por papel pedia "objeto, ambiente ou gesto" e a
+  mesma direção proíbe os dois; e a linha `- Fundo:` da casa mandava uma
+  SEGUNDA cor de fundo depois de a anatomia já ter declarado o preto. Três
+  pares de instruções opostas no mesmo prompt — o modelo obedece a uma ao
+  acaso. `ESTILO_SUBSTITUI` e `CENA_DA_FAMILIA` declaram quem substitui a
+  base em vez de somar a ela; o `- Fundo:` sai no cartão de perfil.
+- **`**palavra**` ia CRU para o modelo** — é notação nossa (o renderer a
+  pinta na cor de destaque) e o modelo escreveria os asteriscos dentro da
+  imagem. Agora a copy vai limpa e o realce vira instrução de cor
+  (`notaDeDestaque`). Vale para as três famílias que usam o realce.
+- **O fundo do prompt divergia do renderer**: frame sem entrada em
+  `fundoPorFrame` virava "gradiente" no prompt e `SLIDE.fundoClaro` na
+  peça. O prompt descrevia um fundo que a peça não teria.
+- **A anatomia do cartão de perfil** (avatar, nome com selo, `@handle`,
+  texto, captura, pílula do CTA) sai das MEDIDAS de `formato-post.ts`, e o
+  prompt declara explicitamente que NÃO há rodapé de marca nem contador —
+  pedi-los faria o modelo desenhar o que denuncia que não é uma captura.
+- Véu, raio do card, régua sob o título, forma do CTA (pílula · botão ·
+  **caixa**) e a foto como BLOCO onde ela acende passaram a vir do traço.
+
+**E o caminho "a partir de inspiração" criava na família errada**: a prévia
+ao lado já mostrava a identidade escolhida e o `criar` não chamava
+`comFamilia` — o mesmo defeito da prateleira de templates, no outro botão.
+
+## "Rodar só este nó" deixou de ser botão inerte (16/09)
+
+Dois defeitos na execução manual, nenhum dos dois dando erro.
+
+**`stop_after` era declarado, validado, gravado — e nunca consultado na fase
+1.** `deveParar` tinha UM call site em todo o repositório
+(`phase2-runner`). Pedir `stop_after: "assembler_chooser"` criava a
+execução, passava em `validarOverrides` e a fase 1 seguia até Montador →
+Blueprint → Subject e, em `full_pipeline`, disparava a copy ao n8n. O
+operador clicava e nada acontecia. Agora são cinco pontos em
+`generate.service` (estruturador, assembler_chooser, assembler, blueprint,
+subject), todos pelo helper `pararAqui`, que pausa a execução
+(`stopped_at_node`) e devolve `pausada: true`;
+`test-generation.service` propaga como `status: "paused"` e **bloqueia os
+dois caminhos de gasto** — o dispatch de copy (com `rollbackClaim()` antes)
+e o `triggerPhase2`. Parar sem bloquear os dois deixaria a bancada custando
+a peça inteira.
+
+**A lista é verificada, não afirmada**: `NOS_QUE_PARAM` declara quem tem
+ponto de parada e um teste lê os dois arquivos e compara com os call sites
+reais — mais um que garante que `deveParar` só é consultado de dentro do
+`pararAqui`, senão a lista voltaria a ser comentário (o modo de falha que
+ela fecha). `validarOverrides` RECUSA `stop_after` em nó real sem ponto de
+parada: recusar é melhor que esconder o botão, porque quem pedir por `curl`
+recebe a mesma resposta. A tela lê a MESMA régua (`podeRodarSoEsteNo`) e
+mostra **o que o nó custou nesta execução** — medido, não estimado: custo
+por nó varia com a loja e com a biblioteca, e uma tabela fixa envelheceria
+em silêncio.
+
+**O pin do Estruturador prometia uma coisa e entregava outra.** `gateFor`
+devolve `disabled: true` também para o pinado, e o `generate.service` lia só
+`.disabled` — pinar, que declara "a decisão gravada vale", caía no ramo de
+desativado e a estrutura vinha do OUTLINE. `pinado` agora é separado de
+`desligado` e desce até `decidirPelaJanela`, que já sabia reusar a decisão
+vigente quando a janela aperta — o pin usa o MESMO caminho e a run já é
+gravada como reuso. Pedido de quem está na tela vence a conta de tempo,
+inclusive sem janela aberta (a bancada roda fora do cron), e
+`verificarPins` exige decisão vigente: pin sem artefato é tão fatal quanto
+desativar sem pin.
+
+**Para que serve**: `overridesSoEsteNo("assembler_chooser")` custa o Curador
+sozinho (~US$ 1,6) em vez dos US$ 3,89–5,16 de uma geração, repetível no
+mesmo e-mail, sem imagem, sem copy, sem n8n e sem fase 2.
+
+**Fora de `NOS_QUE_PARAM`, com o motivo**: `seletor` roda no pré-passo, fora
+do `generate.service`; `copy_dispatch`/`copy` são assíncronos via n8n
+("parar depois da copy" é não rodar a fase 2, que `stop_after` num nó da
+fase 2 já faz); `image`, `copy_merge`, `background_fit`, `lint_envio`, `qa`
+e `qavision` estão na fase 2 sem ponto de parada escrito — acrescentar é uma
+linha em cada arquivo.
+
+---
+
+## Estúdio — prateleira enxuta e slide emprestado de outro molde (set/2026)
+
+Relato com print da galeria: *"tire os templates antigos que estão tudo igual
+e péssimos"*. Eram cinco — Turbo, Benchmark, Lista prática, MEC e Bastidor —,
+**sequências diferentes desenhadas todas na identidade azul da casa**: cinco
+cartões iguais em que a escolha não mudava a peça. Medido antes de apagar:
+**zero documentos e zero templates do time no banco**, então a retirada não
+alcança dado nenhum. Ficam os três que DECLARAM identidade (`Template.familia`):
+Print de post, História em posts e Tese em manchete.
+
+**O vocabulário de CLASSIFICAÇÃO não foi mexido.** `MoldeKey` (Turbo, MEC,
+Benchmark, Lista, Bastidor, Post, Manchete) é o que classifica post PUBLICADO no
+dashboard — outro eixo. `montarMoldes` derivava as linhas de `ST_TEMPLATES`:
+aposentar um molde apagaria da tabela os posts classificados com ele, em
+silêncio, com o post intacto no banco. Agora a lista vem de `MOLDE_KEYS`, nome
+e descrição saem do molde quando ele existe, e a chave sem molde vivo aparece
+como "aposentado" enquanto tiver post.
+
+**Id de molde escrito à mão é o modo de falha desta parte.** `getTemplate`
+cai no primeiro da prateleira sem erro: a peça nasce com outra sequência e
+outra identidade, calada. Por isso o caminho da IA passou a derivar de
+`etapaFunil` (`templatePorFunil`), os defaults viraram `TEMPLATE_PADRAO_ID`, a
+lista de moldes nos prompts de leitura de inspiração é gerada de `ST_TEMPLATES`
+e um teste confere `PROMPTS_PRONTOS[].tpl` contra a prateleira. Etapa sem molde
+não desenha cabeçalho órfão na galeria.
+
+**Os campos de marca passaram a se chamar pelo que a IDENTIDADE desenha**
+(`rotulos-de-marca.ts`, puro, 10 testes): no cartão de perfil `brandName` é o
+**@ (arroba)** e `brandName2` é o **nome exibido** — com "brand-name" na tela
+ninguém achava onde editar a arroba, que foi o pedido literal. `handleComArroba`
+põe o @ que falta e **uma arroba sozinha esvazia o campo** (senão sobra um "@"
+preso no slide). O `copyright` sai da lista nas famílias de print: elas não têm
+rodapé, e campo que não aparece é lido como editor quebrado. O selo verificado
+diz ONDE aparece e fica desabilitado na Manchete, que não desenha assinatura no
+slide.
+
+**Slide emprestado de outro molde** (`slide-de-outro-template.ts`, puro, 15
+testes) — o gesto que faltava entre "Adicionar" (branco) e "Trocar" (tipo e
+variação). Duas ações, e a diferença é o que acontece com a COPY: `importarSlide`
+INSERE um passo com texto-guia (molde é forma, não conteúdo) e
+`aplicarSlideNoFrame` troca o FORMATO do slide atual **preservando o que o
+operador escreveu** — é o "usar outro formato de capa". Regras: `frameId` novo
+(`fundoPorFrame`, `estilos` e imagens são chaveados por ele, e os moldes usam
+`f1`, `f2`…); o fundo sai de `ritmoDeFundos` do DESTINO (importar da Manchete não
+traz o preto); slot só onde o tipo desenha foto; a variação volta ao padrão
+(ela endereçava o desenho do molde anterior); a imagem FICA quando o formato
+novo não tem slot. Na tela: "Adicionar" virou menu com miniaturas REAIS do
+documento de destino, e "Trocar" ganhou "Formato de outro molde" — aberto
+também para o CTA, com o seletor de tipo fechado em capa e CTA.
+
+**O conjunto de campos é da IDENTIDADE, não do molde** (`campos-da-identidade.ts`,
+puro, 10 testes). Achado RENDERIZANDO: aplicar a capa da Manchete (`titulo` +
+`subtitulo`) num carrossel Post **apagou o parágrafo da tela** — o renderer do
+cartão de perfil desenha `titulo` e `corpo` e mais nada. `camposPost` já
+declarava isso e **nada consumia**. Agora `camposDaIdentidade` decide e
+`reconciliarCampos` MIGRA o texto do campo que sai para o que fica, de forma
+simétrica (ir e voltar devolve o parágrafo ao campo de origem). Ligado em
+`trocarTipoFrame`, nas duas ações de empréstimo e em **`aplicarFamilia`** — que
+até aqui trocava a identidade e deixava o subtítulo da capa no documento,
+invisível na tela, sem erro nenhum.
+
+**A capa da Neon SEM foto encolhia e se centralizava** — com `flex: 1` no
+bloco vazio ela virava um retângulo tracejado oco com a frase espremida no
+rodapé, e é assim que ela aparecia na prateleira, onde nenhum molde tem
+foto. **Esse ramo saiu do código em 16/09** junto com o `brilhoImagem` que o
+guardava: a capa da Manchete sangra a foto com véu, como as da casa.
+
+*A fonte do print continua sendo Inter* à frente da pilha que o próprio X
+declara (`Segoe UI, Roboto, Helvetica, Arial`): Chirp é proprietária e não
+pode ser embarcada, e a exportação precisa de fonte determinística.
+
+*Verificado renderizando* (`renderToStaticMarkup` + Chromium) os três cartões
+da prateleira e os dois sentidos do empréstimo (capa da Manchete num Post,
+"Por que funciona" do Post numa Manchete). Foi o render que pegou a perda de
+copy acima — nenhum teste quebrava.
+
+---
+
+## Estúdio — a identidade "Manchete" corrige a que foi feita de descrição (set/2026)
+
+A família `neon` tinha sido construída a partir da DESCRIÇÃO escrita de uma
+referência que não estava em mãos, com o limite declarado no fim do próprio
+documento ("as medidas NÃO foram tiradas da referência"). Com os cinco
+slides na mesa (o carrossel "DATAS SAZONAIS foram criadas para você vender
+mais" / Black Friday), ela errava em **seis eixos**, e não por pouco: dizia
+peça toda PRETA com foto ACESA; a real é toda BRANCA com dois escuros (capa
+e slide do problema), foto sem brilho nenhum, preto e branco PUROS, título
+preto/branco com o azul só em realce pontual, régua apenas no fecho, e a
+marca reduzida ao ÍCONE no topo. Virou `manchete` + molde `molde-manchete`
+("Tese em manchete"); de/para completo em
+`docs/conteudo/formatos/manchete.md`.
+
+**Substituir em vez de somar uma sexta família foi decisão de DADO**: o
+banco tem zero documentos e zero templates do time, então renomear a chave,
+o molde e o `MoldeKey` não alcança nenhuma linha. As medidas moram em
+`formato-manchete.ts` e a procedência delas é declarada no topo do módulo —
+**lidas da referência renderizada**, um degrau acima da `neon` (só descrição)
+e um abaixo dos prints de tweet (tabela pixel a pixel do arquivo).
+
+**A escada do título é o que dá o tom de manchete**: cada linha um passo
+menor (`ESCADA = [1, 0.66, 0.56, 0.5]`, aplicada em `em` para o auto-fit
+continuar escalando a escada inteira). Dois limites declarados, os dois
+LIDOS e não inventados: ela **vale só no fundo escuro** (os dois slides
+pretos a têm, os três brancos trazem o título todo do mesmo corpo — é a
+diferença entre o modo "manchete" e o modo "artigo" dentro da mesma peça) e
+é sempre **decrescente** (o slide do problema põe a frase entre aspas no
+meio, MAIOR que as vizinhas; reproduzir isso exigiria marcar a linha
+protagonista, campo que ninguém pediu). A quebra é a do TEXTO (`\n`), nunca
+a automática — quebra automática não tem como receber corpo diferente.
+
+**`respiroEscuro` é o inverso do `respiroClaro`**: a peça é CLARA e o preto
+é o corte, na capa e no slide do meio (`Math.floor(total / 2)`). Sem saber o
+total, só a capa escurece — inventar a posição do corte o poria no slide
+errado, e corte no lugar errado é pior que nenhum; peça com menos de 4
+slides não tem o segundo escuro.
+
+**A caixa de destaque é campo novo com gate DUPLO**: o tipo de frame
+(`DESENHA.destaque` — fora da capa e do fecho, onde competiria com o próprio
+título) **e** a família (`camposOpcionaisDaPeca` só o oferece onde
+`traco.caixaDeDestaque`). Campo que a identidade não desenha é campo
+fantasma: o operador escreve e nada aparece, sem erro nenhum.
+
+**O campo `destaque` tinha uma segunda porta para virar fantasma**:
+`preservarCamposOpcionais` julga pelo TIPO do frame, então trocar da
+Manchete para qualquer outra identidade levava a caixa junto — no
+documento, invisível na tela, sem erro nenhum, que é exatamente o que o
+gate do painel fecha. `reconciliarCampos` passou a receber
+`DesenhoDaIdentidade` (sem valor padrão: chamada nova é obrigada a
+decidir), tira o campo e **guarda o texto**; quem volta à Manchete recebe a
+caixa de volta escrita. Apagar seria perder copy na troca de identidade.
+
+**`brilhoImagem` foi REMOVIDO, não zerado.** Era o traço mais visível da
+`neon` (90 px de `box-shadow` na cor de destaque) e a referência o
+desmentiu; com as seis famílias em 0 ele virava código morto com um ramo de
+capa INTEIRO atrás (`capa && brilhoImagem > 0`) que ninguém alcança, mais
+três ramos no prompt da via B e o helper `brilhoCor`. Traço que nenhuma
+família liga, com layout próprio por trás, é convite a alguém ligá-lo e
+receber uma capa que nunca foi desenhada na tela.
+
+**O arnês de render mentiu a sessão inteira, em silêncio.** Ele substituía
+`url(/fonts/` e o `conteudo-slides.css` escreve `url("/fonts/...")` **com
+aspas**: **Barlow Condensed nunca carregou em render nenhum** — todas as
+verificações visuais anteriores (Post, Post largo, prateleira, empréstimo)
+rodaram no fallback Inter sem nada avisar, e são justamente as identidades
+que existem para COPIAR a fonte. Corrigido para `/url\(("|')?\/fonts\//`. A
+lição operacional é a mesma do `EMAIL_QA_ENABLED` e da chave em branco do
+Serper: fallback não avisa, e "a fonte está no CSS" nunca é prova de que ela
+carregou — quem responde é o render, olhando.
+
+---
+
+## O leque do Curador: uma chamada por posição (16/09, migration 20261158)
+
+O Curador decide TODAS as posições numa chamada só e é o 2º maior gasto do
+pipeline (US$ 33,54 em 53 runs em setembro). O leque quebra isso: uma
+chamada por posição, em série, prefixo cacheado e cauda fatiada pela seção.
+**Nasce DESLIGADO** (`curador_leque_mode`, enum `off|on`); execução em
+`docs/email-generation/execucao-plano-pipeline-set2026.md`, acompanhamento
+em `DIAGNOSTICO_leque_do_curador.sql`.
+
+**A conta ficou CONTRA ele, e mesmo assim entrou.** A projeção original
+(−27%) é anterior ao catálogo enxuto e ao cache de prompt (14–15/09).
+Refeita sobre a run `29c3f906`: entrada 38.370 (×1,0) + escrita de cache
+56.906 (×1,25) + saída 11.933 (×5) = **US$ 1,69**. O leque paga o mesmo
+prefixo de 57k **6 vezes** em vez de 1 → ~+23% de entrada. Decisão do dono:
+terminar o leque (o ganho buscado é de DECISÃO) e atacar o cache depois,
+quando houver 6 leitores em vez de 0. O veredito de ligar sai da bancada da
+Fase 1a — dois cliques em "Rodar só este nó", que custam o Curador sozinho.
+
+**Achado que a medição entregou**: `cache_user_prefix` é incondicional e a
+shortlist é pulada em ~2/3 das runs, então 56.906 tokens são escritos a
++25% **sem nenhum leitor** — US$ 0,14 por e-mail. É a primeira linha da
+fase do cache.
+
+**O que não pode regredir:**
+
+- **O prompt do leque é DERIVADO do vivo** (`montarLequeUser`): remoção de
+  blocos nomeados + troca de duas frases. Escrever um segundo template faz
+  as versões divergirem no primeiro ajuste; tag ou frase ausente **LANÇA**,
+  e o leque desliga naquela geração (`leque_indisponivel`) — renomear
+  `<notas_de_secao>` serviria a nota de TODAS as seções em toda posição,
+  calado.
+- **`{{catalogo}}` sai do system.** Com ele lá, ou é o inteiro (e a fatia
+  não existe) ou o system muda por posição — e o cache é hierárquico, então
+  system diferente mata o cache do user inteiro.
+- **As regras de conjunto foram reescritas contra `<ja_decididas>`, não
+  apagadas.** Tirar o dado sem tirar a regra é o que `momento` e `exige` já
+  custaram aqui. Não existe `<ainda_por_decidir>`: a sequência já está em
+  `<estrutura_do_email>`, no prefixo, e duas listas da mesma coisa viram
+  contradição quando uma muda.
+- **`block_index` e `section` são do CÓDIGO.** O eco do modelo vira registro
+  (`eco_divergente`), nunca reendereçamento — aceitá-lo montaria a variante
+  da posição 2 na 4.
+- **`try` por POSIÇÃO.** No caminho de hoje qualquer erro devolve `null` e o
+  caller mata a geração; com N chamadas isso perderia as decisões já
+  tomadas. A posição que falha vira vazia e NÃO entra no `<ja_decididas>` da
+  seguinte.
+- **A reserva existe porque `SHADOW_TOP_N = 1`** — três mecanismos procuram
+  um rank 2 que nunca existe e só sabem apagar a posição.
+- **A saída costurada é o MESMO `CuradorVaultOutput`.** Um segundo formato
+  faria o leque precisar de um segundo caminho de conformidade, medição e
+  telemetria. O fio vem do Estruturador (`recorteDaDecisao`): nenhuma
+  chamada vê o e-mail inteiro.
+- **A shortlist NÃO roda no leque** — com a fatia, cada posição já vê só as
+  dela, e mantê-la custaria um segundo system na mesma run (ela precisa do
+  catálogo) e com isso o cache do prefixo.
+- **Sem `shadow` no gate.** Rodar o laço em paralelo pagaria o Curador duas
+  vezes por geração e gravaria uma segunda run que a RPC do Estúdio
+  (DISTINCT ON) esconderia. Valor no enum que nenhum código executa é a
+  armadilha que este repo já pagou três vezes.
+
+**A janela de 3 e-mails (roda em SHADOW)**: `loadEscolhasRecentesPorSecao`
+deduplica por `email_number` — a tabela é append-only com 3,2 linhas por
+e-mail, e "as últimas 3 por `created_at`" devolveria três regerações do
+mesmo. Ela entra **antes** do filtro por requisito (fail-open no conjunto, e
+depois dele a janela seria anulada em silêncio) e **afrouxa por ESCASSEZ,
+não por zero**: com 2 posições `body` e 4 variantes, bloquear 3 deixa as
+duas com a MESMA variante. `janelaAfrouxada` vira pauta `biblioteca_escassa`
+com chave FIXA por (flow, seção) — sem ela cada loja abriria um balde e o
+limiar de 3 nunca seria atingido.
+
+**Consertos que o leque expôs e valem sozinhos**: `restrictRankingToShortlist`
+mutava o argumento; `finalistTypeIndex` aceitava tipo `""` (e aí o marcador
+nasce `cfy:block:{i}:` e a hero some do localizador); **as 7 chaves do
+`TELEMETRY_CONTRACT` que o caminho do VAULT nunca gravou** (ele exige 9 e
+gravava 2 — os testes passavam porque exercitavam o Curador legado);
+`orcamento_esgotado` como 5º motivo de posição sem variante (chamada que não
+aconteceu NÃO é lacuna de biblioteca, e confundi-las manda a curadoria
+cadastrar bloco para resolver timeout); `ordenarCandidatas` extraída do
+`menosIncompativel`; `loadEstruturasDosOutrosEmails` limitado aos 3
+anteriores; e `aplicarOrcamentoDaCauda` passou a **parar na primeira nota
+que não cabe** — antes pulava e servia as menores, premiando nota CURTA em
+vez de nota bem colocada.
+
+## O leque continua até acabar: durabilidade, teto por posição e o rótulo certo (16/09)
+
+Três correções para o leque poder ser LIGADO. A primeira nasceu de uma
+proposta minha que estava errada: eu ia pôr um freio no laço (parar de
+chamar ao ficar sem janela). O dono apontou que isso é limitador — o desenho
+é uma chamada nova assim que a anterior termina, até acabar as posições. O
+laço já fazia isso; o que faltava era **durabilidade**.
+
+**Quem interrompe não é o laço, é o RUNTIME.** Quando o `maxDuration` acaba,
+o processo é morto sem `catch`, sem `finally` e sem resposta, e as posições
+já decididas morrem com ele — a invocação seguinte recomeçava do zero,
+pagando o Curador inteiro de novo (US$ 1,69–2,45 medidos em 14–15/09). É o
+mesmo defeito que o cron tinha antes da Fase 0. Agora
+`curador-leque-progresso.ts` grava cada decisão assim que ela fecha
+(`updateGenerationRun`, run em `running`) e a entrada do laço lê a run
+anterior do MESMO (email_id, batch_id) e retoma da primeira posição sem
+escolha gravada. "Continuar até acabar" passa a **atravessar** o limite do
+runtime em vez de esbarrar nele.
+
+A linha entre "já foi decidido" e "não chegou a acontecer" é o TIPO do erro,
+não a presença de `variant_id` (`precisaRechamar`): `sem_escolha`,
+`ids_fora_das_candidatas` e `repetida_sem_reserva` são veredictos — rechamar
+gasta de novo pelo mesmo resultado, e ainda com um `<ja_decididas>`
+diferente; só `chamada_falhou:` é refeito. A retomada **preserva o arco**: a
+posição reaproveitada entra em `<ja_decididas>` da seguinte como se tivesse
+acabado de ser tomada. Gravar é fail-open — falhar ao gravar não custa a
+decisão, que ainda vai no fechamento da run.
+
+**O risco de verdade não era o relógio, era CRÉDITO.** Cada chamada herdava
+o teto de 32.000 tokens para escrever ~2.000, e o OpenRouter reserva
+`prompt + max_tokens` em voo — a causa dos `402 in-flight` deste projeto
+(duas runs do Curador mortas assim em 08–09/09). `tetoDaPosicao` derruba
+isso para o piso já calibrado (8.192; **não** `teto/N`, porque o raciocínio
+não encolhe com a fatia — o piso nasceu do Sonnet gastando 8.327 tokens
+antes do JSON), e o relógio acompanha (~106 s em vez de 360 s). Junto,
+`cache_user_prefix` deixou de ser incondicional: só liga com um SEGUNDO
+leitor (`planoShortlist.chamar || usarLeque`) — com a shortlist pulada havia
+UMA chamada e 56.906 tokens eram escritos a +25% para ninguém ler, US$ 0,14
+por e-mail em ~2/3 das runs.
+
+**A guarda de entrada estava com o sinal invertido.** Ela desligava o leque
+quando a janela não cobria o custo do Curador inteiro (340 s) — e caía na
+chamada única, que precisa de MAIS tempo. Com o progresso gravado, janela
+curta deixou de ser motivo para não começar: o piso agora é o custo de UMA
+posição, e só não vale começar quando não cabe nem ela.
+
+**Timeout deixou de se chamar lacuna de biblioteca** (`causaDaLacuna`). As
+duas causas descartam a referência igual (peça com buraco não representa a
+decisão), e nada depois disso: `biblioteca` marca `failed:
+lacuna_biblioteca`, settla a fila e vira pauta de cadastro no vault;
+`relogio` devolve o `ReferenceSource` novo **`retomavel`**, que NÃO settla —
+o e-mail volta para `pending` e a passada seguinte retoma. **Uma posição por
+relógio basta para a causa ser `relogio`**: com a peça decidida pela metade,
+qualquer veredito sobre a biblioteca é sobre o que ainda não foi perguntado.
+O teste de exaustividade de `SETTLED_REFERENCE_SOURCES` obrigou a decisão
+explícita, como foi escrito para fazer.
+
+**A garantia "cada bloco sai com sua variante" já existia e foi medida**:
+posição sem escolha cai no resgate por código (`menosIncompativel` entre as
+elegíveis) e a biblioteca tem hoje **42 variantes ativas e 0 sem
+dispositivo** — o pool existe em toda seção do welcome (os docs ainda diziam
+"8 heroes sem dispositivo"; não é mais verdade). A hero é a posição 0, a
+primeira do laço, e a única cuja ausência é fatal sozinha.
+
+Acompanhamento: itens 8 e 9 de `DIAGNOSTICO_leque_do_curador.sql`. O gate
+segue em `off`; ligar é `update email_generation_settings set
+curador_leque_mode = 'on'` (sem UI, como `qa_mode` e `lint_mode`).
+
+---
+
+## Estúdio — família "Thread": o formato era a lacuna, não o construtor (set/2026)
+
+Pedido: copiar o "Template Twitter" do construtor da referência (quatro
+prints) **e** dizer o que a plataforma deles tem que a nossa não tem. A
+segunda metade foi conferida painel a painel e a resposta é **nada**:
+seletor de template, colar-e-aplicar (placeholder idêntico), campos globais
+com olhinhos, "Clique em um texto no slide para editar estilo" (mesma
+frase), slots de mídia numerados com "N de M slots", cores globais, fundo
+por slide, liga/desliga do CTA, 9:16|4:5 com a mesma explicação, histórico,
+grade de frames com menu ⋮, zoom, alta fidelidade e exportação PNG/JPG em
+ZIP — tudo já existia, e daqui ainda saem o banco de imagens da org, a
+geração pela ConvertIA, a colagem de duas fotos e o motor editorial. **A
+lacuna era o FORMATO**, e é ele que a família `thread` + o molde
+`molde-thread` entregam. De/para completo em
+`docs/conteudo/formatos/thread.md`.
+
+**Não é variação do print de tweet.** A `post` simula UM post; a `thread`
+simula peça EDITORIAL com cara de thread: cartão **branco**, barra de
+metadados no topo (`@handle` · marca · copyright), bloco de autoria, e um
+fio de parágrafos com foto no meio — `titulo` é o parágrafo ANTES da foto e
+`corpo` o de DEPOIS. O fecho é um slide **preto** com avatar, handle e a
+frase sozinha; `camposThread("cta")` devolve só `titulo`, porque `botao` ali
+seria campo fantasma (o cartão de perfil desenha botão no fecho, e herdar o
+conjunto dele era o defeito que `DesenhoDeCampos` — objeto, não booleano —
+fecha). `temBarraDeMetadados` tira a barra do fecho: repetir a marca no
+slide que existe para deixar uma frase sozinha é o contrário do formato.
+
+**As medidas saem do print, e a conta fica no código**: o cartão mede 459 px
+de tela para uma peça de 1080, ou seja `ESCALA_DO_PRINT = 0,425`, e `doTela()`
+converte. Procedência declarada — mesma classe das duas famílias de print,
+um degrau abaixo de ter o arquivo.
+
+**A fonte é decisão de procedência, não de gosto** (a pergunta do usuário:
+"está simulando um post, qual seria a fonte ideal?"). Chirp, do X, é
+proprietária e não pode ser embarcada; a própria aplicação declara a pilha
+`Segoe UI, Roboto, Helvetica, Arial` — todas **grotescas** —, e Inter é a
+grotesca livre mais próxima em proporção, já self-hosted, que mantém a
+exportação DETERMINÍSTICA. As três famílias de print usam a MESMA pilha:
+simulam a mesma interface, e o que as separa é a métrica. **Poppins saiu do
+repo** por isto: é geométrica (Futura), `a` de um andar e bojo circular —
+nenhuma interface social usa isso no corpo, e é esse detalhe que faz a peça
+ler como "montada num gerador". O **peso** também é medido:
+`THREAD_PESO_CORPO = 600`, porque na referência o fio é semibold e com 400 o
+cartão perde a ênfase que marca o argumento.
+
+**Duas listas escritas à mão descartavam a família nova em silêncio** — o
+padrão de falha desta parte do código, agora com teste em cada porta:
+
+1. `ehFamilia` era um `||` à mão; `thread` caía em `padrao` e a prateleira
+   mostrava a peça errada (foi `previa-de-template.test.ts` que pegou).
+   Agora deriva de `FAMILIAS`.
+2. `aplicarFamilia` decidia recalcular o fundo por uma LISTA de traços
+   (`alternaFundo`/`cartaoPerfil`/`respiroEscuro`) e `cartaoThread` ficou
+   fora: o fecho herdava o "gradiente" da casa e saía **branco com texto
+   branco** — invisível, sem erro nenhum. A decisão passou a ser pelo
+   RESULTADO (compara o padrão posicional antigo com o novo), o que vale
+   para toda identidade futura sem ninguém lembrar de editar a lista.
+3. `FAMILIA_OPCOES` — a terceira, e a de preço mais peculiar: a identidade
+   existia INTEIRA (tipo, mapa, molde) e a peça nascia certa ao escolher o
+   molde, mas ela **não podia ser escolhida** em Marca → Identidade visual
+   nem no diálogo de criação. Agora deriva de `FAMILIAS`, na ordem em que
+   elas são declaradas lá.
+
+**Limites próprios** (`LIMITES_THREAD`): o fio chega a quatro parágrafos na
+referência, e o limite do TIPO — desenhado para afirmação curta — encolheria
+a letra sem necessidade.
+
+**O chrome da interface não é a paleta da peça**: o selo verificado estava
+preso a `doc.cores.destaque` — trocar a cor global do documento o deixaria
+vermelho, e nenhuma rede faz isso; virou constante da família, como a `post`
+já fazia. E avatar sem foto passou a mostrar a INICIAL: círculo cinza chapado
+lê como imagem que não carregou, e era o que a PRATELEIRA exibia (é lá que
+nenhum molde tem avatar).
+
+*Verificado renderizando*: a capa quebra a linha IDÊNTICA à referência, o
+slide 2 casa com o terceiro print, e o fecho só ficou certo depois de
+`fechoTexto` 46 → 52, porque a quebra saía uma palavra depois — defeito que
+nenhum teste pegaria. As quatro capas da prateleira foram renderizadas
+juntas: cada molde aparece na identidade que ele dá, que era a queixa da
+thumb que "não condiz com a realidade".
+
+## Conteúdo — Raio-X e Espionagem: o número que diz de onde veio (set/2026)
+
+Duas telas copiadas de uma ferramenta que o time assinou, cada uma com o eixo
+de melhoria declarado. De/para completo em
+`docs/conteudo/raio-x-e-espionagem.md`.
+
+**A medição veio antes do código, e mudou o desenho**: 90 posts sincronizados
+e **0 classificados**, 0 brand kits, 0 templates do time, 2 documentos, e
+`conteudo_trends` em **0 linhas** — o radar "Em alta" nunca rodou porque
+**não existe cron para ele**. As duas telas foram desenhadas para funcionar
+NESSE estado: nenhuma exige classificação para mostrar número, e o que
+depende dela diz que depende.
+
+**Raio-X** (`raio-x/nota.ts`, puro). A referência mostra "48 de 100" e mais
+nada — não dá para saber o que entrou na conta, e um perfil cujos insights a
+Meta não entregou aparece como perfil RUIM. Três regras:
+
+1. **Componente não medido sai do DENOMINADOR**, nunca entra como zero —
+   penalizar o não medido é inventar defeito. A saída declara `medidos` de
+   `total` e a tela é obrigada a dizer isso.
+2. **Nada medido ⇒ `nota: null`**, jamais 0 (zero se lê como "péssimo"; a
+   verdade é "não dá para dizer").
+3. **Toda referência é DECLARADA e tem dono**: meta semanal do canal (dado
+   nosso), mediana publicada com a fonte nomeada, ou o teto que o próprio
+   perfil já provou. Alvo inventado não existe — e por isso o **mix de
+   formato**, que não tem referência honesta, ficou FORA da nota e vive no
+   diagnóstico.
+
+Constância 30 · Engajamento 25 · Retenção 25 · Conversão 20. A aritmética que
+os testes travam: `taxaMediaPorPost` é média POR POST (é a forma das medianas
+publicadas — somar o período e dividir por seguidores daria número
+incomparável com fonte nenhuma); `retencaoDoPeriodo` é **soma ÷ soma**, nunca
+média de razões; e o teto é a **mediana dos 3 melhores**, não o melhor
+sozinho — um post de alcance 40 com 2 sends rende 5% e viraria teto que
+ninguém alcança, o alarme falso que ensina a ignorar o alarme (`ALCANCE_MINIMO
+= 30` é o mesmo cuidado do outro lado). O diagnóstico tem 8 lacunas, cada uma
+com evidência, custo, saída e o botão que leva ao lugar certo; lacuna sem
+número medido não aparece.
+
+Medido contra produção (@convertfy.me, 30 dias, 781 seguidores, 6 posts):
+**72 (bom), 3 de 4 medidos** — Constância 47% (1,4 post/semana · meta 3),
+Engajamento 100% (3,29% por post · Socialinsider 0,48%), Retenção 74% (0,28%
+no período · os 3 melhores fazem 0,38%), Conversão NÃO MEDIDA. Os 3,29%
+foram conferidos post a post.
+
+**Espionagem** (`espionagem/analise.ts`, puro). A tela copiada ordena por
+"mais quentes" = curtidas + comentários: num perfil de 68 mil seguidores isso
+ranqueia o TAMANHO da conta, e o pior post de um perfil grande ganha do melhor
+de um pequeno. Padrão aqui é **destaque** — quantas vezes o post passou da
+MEDIANA do próprio perfil; abaixo de 5 posts não há destaque (com 3, "2,4× a
+mediana" é ruído) e a ordem cai para o absoluto em vez de ficar arbitrária em
+silêncio. **A fórmula é PARCIAL e a tela diz isso**: `business_discovery`
+entrega curtidas e comentários e mais nada, então a comparação com o nosso
+perfil roda na MESMA fórmula parcial dos dois lados — comparar a parcial dele
+com a nossa completa inflaria o nosso lado por construção. **"Usar este tema"
+leva o ASSUNTO, nunca a legenda**: levá-la traria a voz dele junto, que é a
+diferença entre pesquisar e copiar. Conta pessoal/privada devolve `#110` e a
+mensagem diz isso — "perfil inexistente" mandaria caçar erro de digitação que
+não existe. Cache de 6 h por handle em `crm_channels.config.conteudo.espionagem`.
+
+**Os dois defeitos que só o RENDER pegou**, nenhum quebrando teste: (a) a
+barra de "não medido" saía VAZIA, que se lê exatamente como zero — o oposto
+do que a regra 1 existe para dizer; `bg-[repeating-linear-gradient(...)]` como
+classe arbitrária do Tailwind **não é aplicada**, virou `style` inline. (b) O
+card exibia **"0,1×"** com a legenda "o seu perfil engaja 6,7× o deles" ao
+lado — número contra a própria legenda; `compararComONosso` passou a devolver
+`{ razao, vezes, quem, nota }`, com `vezes` sempre ≥ 1 na direção que a frase
+afirma, e tem teste de regressão. O render também entregou o "1 comentários".
+
+## Radar editorial: a tela pronta que nunca rodou (set/2026, migration 20261160)
+
+`conteudo_trends` com **ZERO linhas** em produção. Não era bug de escrita —
+era falta de gatilho: o painel "Em alta", o `gerarTrends`, a busca com fonte
+conferida e a rota existiam desde set/2026 com **um botão** como única
+entrada, e ninguém clicou. É a pior forma de defeito daqui: nada falha, a rota
+responde 200 quando chamada e não é chamada, e na tela o sintoma é "não há
+assunto em alta" — indistinguível de "rodou e não achou nada". Mapa completo
+em `docs/conteudo/radar-editorial.md`.
+
+**Cron diário** `/api/cron/conteudo-radar` (06:40 BRT), uma rodada por org
+**com canal de Instagram ativo** (rodar para toda org gastaria busca + modelo
+por dia para quem nunca abre o painel), fail-open por org. **Zero não é
+sucesso**: havendo org e nenhuma tendo rodado, responde 500 — cron mudo
+reportado como verde é como o `crm-snapshot` passou meses sem gravar linha.
+Org pulada por "rodou há pouco" não conta como falha.
+
+**O cron resolve o vazio e cria o problema oposto** — rodada que só acrescenta
+vira arquivo. `trends/validade.ts` (puro, 9 testes): (1) **"em alta" é a
+RODADA MAIS RECENTE, não uma janela de horas** — as linhas de uma rodada
+compartilham o `gerado_em`, então o grupo é exato, e o **92 de três dias atrás
+não fica acima do 88 de hoje** (decaimento por idade resolveria, mas a curva
+seria inventada); (2) **expira em 14 dias ARQUIVANDO, não apagando** (quem
+virou ideia mantém `trend_id`; os 14 dias são DECISÃO — duas voltas do ciclo
+semanal do pipeline, passadas elas manter o assunto é mostrar ao time o que
+ele já declinou); (3) **painel vazio depois de uma rodada NÃO é "nunca
+gerado"** — a idade da última rodada é lida INCLUSIVE das arquivadas
+(`ultimaRodada`), porque os dois estados pedem ações opostas. Data ilegível
+**não expira** (apagar o não medido é a mesma família do "zero por não medir")
+e o desempate final é por `id`, para a ordem ser estável entre renders.
+
+**Procedência é da LINHA, não do ambiente de quem lê**: o rodapé dizia se a
+busca está configurada AGORA, o que bastava com um botão (linha e leitura no
+mesmo minuto) e deixa de bastar com cron diário. `fonte = 'interno'` marca a
+rodada que aconteceu sem busca; na tela os dois caminhos sem link passam a se
+distinguir — **"fonte não conferida"** (a busca rodou e `verificarFontes`
+removeu o link inventado) × **"sem fato externo"** (não houve busca). A
+referência marca "TEMA SENSÍVEL · CONFIRA AS FONTES" em bloco; aqui a linha
+guarda a procedência e dá para ser preciso.
+
+**Três limites que só o cron tornou necessários**: `jaTem` com teto de 24
+(sem ele, duas semanas de rodadas mandariam ~80 títulos com "evite estes" e o
+modelo raspa o fundo do barril); `listarTrends` ordena por `gerado_em` e não
+por score, porque é essa ordem que decide quem sobrevive ao `limit 40` — um
+top-40 por score cortaria a rodada de hoje se ela viesse com notas baixas (a
+ordem da TELA é a do módulo puro); e `precisaRodar` recusa a segunda rodada do
+dia, senão retry da plataforma custa duas chamadas de modelo (`?forcar=1` fura).
+
+**O teste que fecha a classe**: `src/lib/crons-agendados.test.ts` — toda rota
+em `src/app/api/cron/*` tem de ter horário em `vercel.json`, e todo horário
+sob `/api/cron/` tem de apontar para rota existente. Cron que nunca dispara
+não falha, ele não acontece. As 42 rotas de hoje estão agendadas; o teste
+protege a próxima. (`sync-omnisend` aparece duas vezes de propósito — a
+duplicata é medida pelo caminho COM querystring.)
+
+**Não rodou ponta a ponta daqui**: o ambiente de desenvolvimento não tem
+`OPENROUTER_API_KEY` nem chave de busca. Verificados: o CHECK aplicado em
+produção, typecheck, suíte, build, e o painel renderizado nos três estados.
+
+## A base do Obsidian entra no Estúdio (set/2026)
+
+Medido antes de escrever: **256 notas aprovadas, 251 com vetor** — e o
+Estúdio escrevia carrossel com **~40 palavras** de contexto hardcoded
+(`contextoDaOrg`), sem consultar a base em ação nenhuma. A base cobre
+exatamente os assuntos dos carrosséis da casa: 14 notas de flows, 14 de
+deliverability, 12 de list-growth, 11 de copy, 11 de referências de e-mail,
+5 de estruturas da casa, com 644 a 1.906 palavras cada. O ativo mais forte é
+uma série de **16 notas de NÚMEROS** com valor verbatim, registro de origem e
+linha do bruto — enquanto o motor editorial marcava `[confirmar]` toda vez
+que não tinha número com fonte. Mapa em
+`docs/conteudo/base-do-obsidian-no-estudio.md`.
+
+`blocoConhecimento` é o terceiro bloco do `executarIA` e responde a outra
+pergunta: **conhecimento = o que afirmar** (mecanismo, limites, números),
+**referências = como escrever**, **fontes = que fato externo existe**. Usa
+`buscarConhecimento`, a MESMA busca do `conhecimento_buscar` e do
+`buscar_doutrina` — dois buscadores divergiriam e ninguém saberia por que o
+Estúdio "não acha" o que a ConvertIA acha. Fail-open: base indisponível não
+impede escrever carrossel.
+
+**As cinco regras** (`lib/conteudo/conhecimento.ts`, puro, 18 testes):
+
+1. **Procedência SEPARA o bloco em dois.** `Convertfy/*` e `Referencias/*` é
+   como A CASA faz (afirmável em primeira pessoa); `Advisors/Max/*` é curso
+   de terceiro. Trocar um pelo outro custa nos dois sentidos: "nós fazemos
+   assim" sobre curso alheio é apropriação, "o mercado diz" sobre a casa joga
+   fora a autoridade.
+2. **Número de doutrina é BENCHMARK, nunca resultado nosso** — "3x por semana
+   é o sweet spot" é o que o curso ensina, não o que a casa mediu; um slide
+   que troque publica case falso.
+3. **As três regras do corpus viajam com o número** (verbatim sem arredondar;
+   `outro-narrador` NÃO é citável como fala do Max; nada de média — "o piso é
+   3", nunca "cerca de 5"), e só quando uma tabela de número entra,
+   reconhecida pelo NOME do arquivo: servi-las sempre vira ruído que o modelo
+   aprende a pular.
+4. **O corte NUNCA come a ressalva.** As notas da casa abrem com o resumo e
+   FECHAM declarando o que não provam — a de welcome termina com "não a use
+   para afirmar que esta estrutura converte mais que outra". Cortar pelo
+   começo preserva o resumo e joga fora a ressalva, e a nota decapitada vira
+   material para afirmar o que ela proíbe. `ressalvaDaNota` entra no
+   orçamento ANTES do corpo. Linha de tabela partida ao meio também é barrada
+   (`semLinhaPartida`) — "| 7 |" é lido como dado incompleto, não como texto
+   faltando; apareceu ao LER o prompt montado com as notas reais.
+5. **Path de nota inventado é REMOVIDO, como link inventado.**
+   `verificarFontes` só confere o que começa com `http`, então servir a base
+   sem uma segunda régua abriria a porta que a primeira fecha — e por um
+   caminho pior, porque path interno parece mais confiável que link.
+   `conferirNotasCitadas` confere contra os paths servidos.
+
+**A busca por SIGNIFICADO é o que faz isto funcionar**, e foi medido: "carrinho
+abandonado recuperacao" devolve **0** notas na full-text e "cart abandon"
+devolve 3 (o corpus mistura PT e EN); três pautas naturais devolveram **0/3**,
+porque o `websearch_to_tsquery` é AND e uma pauta de dez palavras exige as dez
+na nota. Daí a consulta ir em **palavras-chave** (`consultaDaPauta`, a mesma
+extração da busca na web — 0/3 → 1/3, e o vetor perde pouco) e o
+`semanticaRodou: false` ser dito com força ("o que chegou é quase certamente
+uma fração do que a base tem; NÃO conclua que a casa não trata o assunto") —
+"pode estar incompleto" faria o modelo concluir o contrário.
+
+**A triagem foi AUTORIZADA a usar a base**, não só servida: o prompt dizia
+"só o que está no insumo ou nos resultados de busca", e servir o dado sem
+mudar a regra é o erro que este repo já pagou duas vezes. Agora ele ensina a
+citar o caminho EXATO da nota e avisa que caminho não servido é removido.
+
+Na tela, o painel da triagem mostra **Fontes consultadas** (web) e **Base da
+casa** (notas, com o rótulo `nossa doutrina` × `mercado`) separadas; zero
+notas é resultado legítimo e é dito. `contextoDaOrg` (pautas, trends, ideias)
+ganhou `assuntosDaBase` — o mapa de pastas com a contagem, para propor pauta
+que a casa consegue SUSTENTAR. Custo medido: 5.949 chars no caso real, teto
+de 3 notas / 9.000 chars; `pautas` usa teto menor (2 / 4.500).
+
+## Cliente que paga pela LLC, e as duas verdades sobre o documento (set/2026)
+
+Relatado com print: o campo **CPF/CNPJ** com `JFJA DIGITAL LLC 30 N GOULD ST
+STE R` dentro — razão social e endereço americano no campo do documento,
+porque não havia outro lugar — e o save recusado.
+
+Medido antes de desenhar (56 clientes): 29 com documento, **1 com
+`0000000000000000000000`** (a fuga: encher de zeros até o formulário deixar
+passar), 25 com `asaas_customer_id` e nenhum documento aqui, e **zero** usos
+do `skip_asaas` — o atalho do "000" que já existia na tela de criação com o
+comentário *"for international clients"*. A necessidade era conhecida e
+estava resolvida por gambiarra que ninguém descobriu.
+
+**Seletor "Quem paga"**: Brasil (CPF/CNPJ, comportamento de sempre) ou
+**empresa no exterior** (razão social obrigatória, Tax ID, país ISO,
+endereço em uma linha). A régua é `lib/clients/pagador.ts` (puro, 18 testes)
+e vale nas **três** portas que editam cliente — criar, editar e o painel de
+configurações, que **não validava nada** e é por onde os 22 zeros entraram.
+O JSX do bloco virou `components/clients/payer-fields.tsx`: duplicar o
+formulário entre duas telas é a mesma assimetria, na camada de cima.
+
+**O nome da LLC não pode morar em `cpf_cnpj`**: é por essa coluna que o Asaas
+casa cliente (`listCustomers({cpfCnpj})`) e cria cadastro — texto livre ali
+faz a busca comparar lixo e a criação mandar lixo ao provedor, que recusa
+depois do save como aviso amarelo. Afrouxar a validação resolveria o sintoma
+e quebraria a integração em silêncio. **O exterior não vai para o Asaas**
+(ele exige CPF/CNPJ) e a tela DIZ o caminho que já existe: pagamento por fora
+(`receiveInCash`). Vínculo existente **não é apagado** — quem migrou de BR
+para LLC continua ligado ao histórico de faturas. O dado mora em
+`custom_fields.pagador` (sem migration) e no modo BR a chave nem é gravada:
+quem paga pelo exterior é uma consulta de uma linha.
+
+**DV é aviso, não bloqueio**: bloquear criaria atrito retroativo (abrir
+cadastro antigo com documento torto para mexer em outro campo passaria a não
+salvar), e não deu para medir quantos DVs inválidos existem sem despejar CPF
+no log. A régua fica onde dá para afirmar — tamanho e sequência repetida, os
+dois medidos — e o DV aparece com o que significa: "o Asaas vai recusar".
+
+**O achado paralelo: duas verdades sobre o documento.** A tela de CRIAÇÃO
+gravava `cpf_cnpj` só em `custom_fields`; a de EDIÇÃO grava na coluna.
+Resultado medido: **26 dos 56 têm o documento só no JSONB** — invisível para
+o casamento de faturas, a exportação e o sync, que leem a coluna — e **6 têm
+dígitos DIFERENTES** nos dois lugares. `documentoDoCliente` é a leitura
+canônica (a coluna vence, o JSONB é fallback e some ao salvar — auto-cura
+cadastro a cadastro); divergência de dígitos vira aviso com os dois valores,
+porque escolher por código seria decidir quem é o cliente. Diferença só de
+pontuação (5 dos 11) não é conflito. Ligado na ficha, na exportação (a
+planilha saía vazia para metade da base), no casamento do sync e na criação.
+
+**A sincronização deixou de travar por um CPF torto**: `customers/update`
+mandava o documento como estivesse, o Asaas recusa a requisição INTEIRA, e
+nome/email/telefone deixavam de sincronizar por causa dele — em silêncio.
+Documento inválido agora é omitido (o provedor mantém o dele) com `log.warn`.
+
+**Não endurecido de propósito**: o onboarding público, onde quem preenche é o
+cliente final — bloquear o cadastro dele por documento torto o faz abandonar.
+Documentação: `docs/clients/pagador-no-exterior.md`.
+
+## O print de tweet contra a especificação do X (set/2026)
+
+Pedido: olhar o componente Tweet do **Spell UI** (`spell.sh/docs/tweet`) e
+ver o que dá para aproveitar. O domínio está bloqueado pelo proxy desta
+sessão; a busca respondeu o que importava — o componente deles é o
+**`react-tweet`** da Vercel, que replica o embed OFICIAL do X. O pacote foi
+baixado do npm e LIDO (`twitter-theme/theme.css`, `tweet-header`,
+`tweet-body`), em vez de responder de memória.
+
+**Boa parte já batia**: avatar ÷ corpo 2,43 contra 2,40; espaço avatar→nome
+÷ avatar 0,161 contra 0,167 no formato largo; nome e `@handle` no mesmo
+corpo com pesos 700/400; `pre-wrap`; e o selo `#1D9BF0` **exato**. As
+medidas NÃO foram trocadas: as nossas vieram do print da referência e o
+`react-tweet` descreve o *embed* (corpo 20px em 550px de largura), que é
+outro objeto — trocar uma referência medida por outra perderia o que o
+pedido original mandou copiar.
+
+**Duas cores estavam erradas**: o `@handle` era cinza NEUTRO (`#808080`) e o
+do X é azulado (`#8B98A5` escuro, `#536471` claro) — sobre fundo escuro o
+neutro lê como "desligado"; e o texto era branco puro, sendo `#F7F9F9`.
+
+**Quatro temas** (`TEMAS_DO_X`): `print` (o medido na referência, **o
+padrão** — zero regressão para a peça que já existe), `claro`, `dim`
+(`#15202B`) e `escuro` (`#000000`). Tema claro era impossível antes, e é o
+print mais comum. `aplicarTemaDoPost` segue a regra do `aplicarFamilia` (só
+troca o que ainda é padrão do tema anterior) e leva o **fundo de cada
+slide** junto — sem isso o texto claro do escuro ficaria sobre o branco do
+claro, invisível e sem erro nenhum, que é o defeito que o cartão de thread
+já pagou. Seletor em Marca → Identidade visual, só nas duas identidades que
+simulam a rede.
+
+**`@menção`, `#hashtag` e link saem em AZUL** (`entidades-do-x.ts`, puro, 13
+testes) — é o detalhe que mais denuncia um print falso. As regras são da lib
+**oficial** do Twitter (`twitter-text` 3.1.0), lida do pacote: menção precisa
+de fronteira à esquerda (senão `joao@convertfy.me` sai com `@convertfy` azul
+no meio de um e-mail), morre pelo que vem DEPOIS (`endMentionMatch`: `@`,
+letra acentuada, `://`), vai até **20** caracteres (15 é o limite de
+CADASTRO — foi onde meu palpite errou e a lib corrigiu), e hashtag só de
+dígitos é TEXTO (senão data e preço viram link). **Comparado com o oráculo
+oficial em 35 casos: 1 divergência**, a que está declarada (domínio solto,
+que o X linka e nós não — reconhecê-lo faria "comprou.Depois" virar link).
+
+**Métricas fabricadas ficaram de fora, de propósito.** O embed as mostra e
+um print real também, mas o carrossel é feito ANTES de o post existir:
+qualquer número ali seria inventado, e engajamento fabricado é conteúdo
+falso, não enfeite. Fora também o ícone do X no canto (é o botão do *embed*,
+não de uma captura) e a cashtag (`$` aparece em preço). O selo continua AZUL
+no tema escuro — o `react-tweet` o pinta de branco ali, mas isso é decisão do
+embed; no X e no print da referência ele é azul em qualquer tema.
+
+A via B (`prompt-slide.ts`) passou a ler o tema: descrever "fundo quase
+preto" numa peça no tema claro faria o modelo desenhar o oposto do que o
+renderer mostra. Documentação:
+`docs/conteudo/formatos/post-print-de-tweet.md`.
+
+## Estúdio — "Card do X": o cartão completo, com as informações editáveis (17/09)
+
+Pedido, depois de eu ter deixado as métricas de fora de propósito:
+*"faça ficar idêntico literalmente mesmo que algo não fique funcional pois
+vai virar png … para eu só editar img, texto e informações"*. Reafirmado o
+pedido, a decisão é do dono: entrou a identidade `tweet` + o molde
+`molde-tweet`, com moldura, logo do X no canto, linha de
+`hora · data · visualizações` e a barra de contadores. De/para completo em
+`docs/conteudo/formatos/card-do-x.md`.
+
+**As medidas são LIDAS do embed oficial** (`react-tweet`, o que o Spell UI
+usa por baixo), não medidas a olho: cartão de 550 px → 1000 px na base
+1080, e todo valor é `medida_do_embed × 1,818`, gravado já convertido.
+Conferido renderizando: cartão de 1000 px em x=40, texto de 36 px com
+entrelinha de 43,2 px, ícones de 32 px, selo de 33 px, logo de 43 px.
+
+**A peça é híbrida, e isso é declarado**: moldura, raio, logo e tipografia
+vêm do embed; a fileira de MÉTRICAS embaixo vem do aplicativo — o embed tem
+Curtir · Responder · Copiar link, que não tem número nenhum para editar.
+
+**Três regras que erram em silêncio.** (1) **Nenhum contador nasce
+preenchido** — cartão sem número é o que o X mostra num post recém-publicado,
+e número semeado por nós seria engajamento inventado impresso na peça; o
+exemplo fica no `placeholder`. (2) **Contador vazio FICA na barra**: tirá-lo
+mudaria o espaçamento dos outros e a barra deixaria de ser a do X justamente
+no slide sem número. (3) **Os cinco ícones saem em cinza e em contorno** —
+no X, preenchido e colorido quer dizer "eu interagi", não "tem muita
+curtida". A primeira versão pintava o coração de rosa ao ver um número, o
+que conflata as duas coisas; foi o RENDER que mostrou, porque os traçados de
+resposta e curtida vinham do embed (lá são botões, portanto preenchidos) e
+saíam como manchas sólidas ao lado de três ícones em contorno. Nenhum teste
+pega peso de ícone.
+
+**As informações moram FORA de `campos`/`textos`** (`DocFrame.tweet`):
+`Campo` é o conjunto de COPY — o que a IA escreve, o que `ST_LIMITES` limita
+e o que o auto-fit encolhe —, e contador não é copy. Painel próprio em
+Ajustes → Texto, por slide, com "Usar agora" (carimbo pt-BR) e "Usar em
+todos os slides" — o carrossel simula um fio, e digitar cinco números em
+cinco slides é o atrito que deixaria a barra vazia.
+
+`titulo` e `corpo` são o 1º e o 2º PARÁGRAFO, mesmo corpo e mesmo peso (o X
+não tem negrito no post); a divisão é a mesma do cartão de thread e é o que
+deixa a foto entrar no meio. **Não há `botao`** — o cartão do X não tem, e o
+fecho é o próprio texto. O limite é o da PLATAFORMA (280 divididos entre os
+dois), não o do tipo de slide.
+
+**Um campo fantasma pré-existente caiu junto**: `camposOpcionaisDaPeca`
+oferecia gancho e anotação nas identidades que simulam uma rede (`post`,
+`post-largo`, `thread`), onde o renderer tem UM desenho e não os desenha em
+lugar nenhum — o operador escrevia, o texto era gravado e nunca aparecia.
+`desenhaOpcionais` fecha os quatro, `reconciliarCampos` GUARDA o texto ao
+tirá-los da lista (quem volta à identidade que os desenha recebe de volta
+escrito), e `desenhoDaIdentidade(traco)` substituiu os três
+`{ caixaDeDestaque: tr.caixaDeDestaque }` escritos à mão — era a mesma
+lista-escrita-à-mão que `FAMILIA_OPCOES` e `ehFamilia` já pagaram.
+`aplicarFamilia` passou a comparar `cartaoTweet` no `mesmoConjunto`: sem
+isso, ir da casa para o X não reconciliaria os campos e o subtítulo da capa
+ficaria no documento, invisível. **Sem variantes de layout**
+(`variantesDoTipo` devolve `undefined`): o cartão cresce com o conteúdo e
+fica centrado, sempre.
 
 ---
 

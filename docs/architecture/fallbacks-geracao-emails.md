@@ -63,8 +63,8 @@
 | Callback duplicado (status ≥ `copy_ready`) | 200 `idempotent:true`, nenhuma ação | Não |
 | **`block_id` do callback não existe** | **Fallback por POSIÇÃO** (casa o bloco i com `position` i) | **SIM** (`email_blocks.content`) |
 | Blocos não casaram (id+posição) | Log `warn`, conta, **continua** | Não |
-| **Copy travada >15min (`copy_generating`)** | **Watchdog → `copy_generating_recovery` → `runCopyChainInProcess`** (LangChain in-process, `DEFAULT_COPY_SYSTEM_PROMPT`) | — |
-| In-process: parse/subject vazio/email não achado | `markFailed` → `status='failed'`, `reason='copy_fallback_failed'` | **SIM** |
+| **Copy sem callback >15min (`copy_generating` / `in_progress`)** | **Watchdog → `failed: copy_timeout`** + run `copy` error. Fallback in-process REMOVIDO em 14/09 — sem copy do n8n o e-mail não é gerado | **SIM** |
+| Callback com zero bloco gravado / zero chars / contrato 100% ignorado | `failed: copy_vazia` / `copy_fora_do_contrato`, fase 2 não dispara | **SIM** |
 
 ## 7. Imagem (`chains/image.chain.ts`, `image/mode-resolution.ts`, `product-image-guard.ts`)
 | Condição | Degrada para | Persiste? |
@@ -118,7 +118,7 @@
 ## 11. Watchdog (`cron/email-generation-watchdog`)
 | Detecção | Ação | Persiste? |
 |---|---|---|
-| `copy_generating` > 15min | claim → `copy_generating_recovery` → `runCopyChainInProcess` | — |
+| `copy_generating`/`in_progress` > 15min sem callback | `failed` (`copy_timeout`) + run `copy` error + notifica | **SIM** |
 | `copy_ready` parado > 3min | POST `/api/internal/run-phase2/[id]` (redispatch) | — |
 | Redispatch falha 3× | `failed` (`stale_copy_ready_exhausted`) + notifica | **SIM** |
 | `rendering/image_done/qa_running` > 10min | `failed` (`timeout_phase2`) + notifica | **SIM** |

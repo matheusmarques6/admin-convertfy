@@ -8,6 +8,7 @@ import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 import { normalizeSuggestedBlocks } from "@/lib/agents/shared/component-categories"
+import { couponCodesSchema, couponValueSchema } from "@/lib/email-workspace/coupon-codes-schema"
 
 const log = logger.child("EmailOutlines")
 
@@ -36,6 +37,9 @@ const postSchema = z.object({
     .transform(normalizeSuggestedBlocks),
   tone_hint: z.string().nullable().optional(),
   coupon_code: couponCodeSchema,
+  // Tradução por idioma e valor do desconto (14/09, migration 20261144).
+  coupon_codes: couponCodesSchema.optional(),
+  coupon_value: couponValueSchema.optional(),
   is_active: z.boolean().default(true),
 })
 

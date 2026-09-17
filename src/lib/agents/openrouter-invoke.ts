@@ -16,6 +16,12 @@
  * nomeados (com `retryable`), e damos 1 retry com backoff nas transitórias.
  */
 
+import {
+  modeloComCacheDePrompt,
+  semMarcadores,
+  systemContentComCache,
+  userContentComCache,
+} from "./shared/cache-de-prompt"
 import { logger } from "@/lib/logger"
 import {
   IN_FLIGHT_BASE_DELAY_MS,
@@ -165,6 +171,19 @@ export interface ParsedBody {
   finishReason?: string
   /** `usage.completion_tokens_details.reasoning_tokens`, quando o provider reporta. */
   reasoningTokens?: number
+  /**
+   * Tokens de entrada LIDOS do cache de prompt (14/09). É o único jeito de
+   * saber se o `cache_control` pegou: sem este número, "cache ligado" é
+   * suposição — como foi de CM-3 até 14/09, quando o slug com til
+   * (`~anthropic/…`) nunca casou a régua e ninguém viu.
+   */
+  cachedTokens?: number
+  /**
+   * Tokens de entrada ESCRITOS no cache (a 125%). Sem este número não dá
+   * para distinguir "o prefixo mudou e escreveu de novo" de "os quatro
+   * irmãos escreveram ao mesmo tempo" — os dois zeram o `cachedTokens`.
+   */
+  cacheWriteTokens?: number
 }
 
 type UsageBody = {
@@ -172,17 +191,35 @@ type UsageBody = {
   completion_tokens?: number
   cost?: number
   completion_tokens_details?: { reasoning_tokens?: number }
+  // OpenRouter: `cached_tokens` (formato OpenAI) e/ou os campos da Anthropic.
+  prompt_tokens_details?: {
+    cached_tokens?: number
+    cache_read_input_tokens?: number
+    cache_creation_input_tokens?: number
+    // Nome que o OpenRouter usa para a escrita em alguns provedores — o
+    // exato não está confirmado no repo; `parseOpenRouterBody` loga o
+    // objeto cru para a primeira semana dizer qual vem.
+    cache_write_tokens?: number
+  }
+  cache_creation_input_tokens?: number
+  cache_read_input_tokens?: number
 }
 
 /** Campos opcionais do ParsedBody — só entram quando existem no body. */
-function usageExtras(
+export function usageExtras(
   finishReason: string | undefined,
   usage: UsageBody | undefined,
-): Pick<ParsedBody, "finishReason" | "reasoningTokens"> {
+): Pick<ParsedBody, "finishReason" | "reasoningTokens" | "cachedTokens" | "cacheWriteTokens"> {
   const reasoning = usage?.completion_tokens_details?.reasoning_tokens
+  const det = usage?.prompt_tokens_details
+  const cached = det?.cached_tokens ?? det?.cache_read_input_tokens ?? usage?.cache_read_input_tokens
+  const escritos =
+    det?.cache_creation_input_tokens ?? det?.cache_write_tokens ?? usage?.cache_creation_input_tokens
   return {
     ...(typeof finishReason === "string" ? { finishReason } : {}),
     ...(typeof reasoning === "number" ? { reasoningTokens: reasoning } : {}),
+    ...(typeof cached === "number" ? { cachedTokens: cached } : {}),
+    ...(typeof escritos === "number" ? { cacheWriteTokens: escritos } : {}),
   }
 }
 
@@ -442,11 +479,19 @@ export interface OpenRouterInvokeInput {
    * Vazio/ausente → o corpo da request é byte a byte o de sempre.
    */
   images?: string[]
+  /**
+   * Marca o user como prefixo cacheável (blocos por `CACHE_PREFIX_MARKER`,
+   * ver `shared/cache-de-prompt.ts`). Só para modelos Anthropic; nos demais
+   * o marcador é removido e o user vai como string. Opt-in porque escrever
+   * no cache custa 25% a mais e só compensa com um leitor (os irmãos do
+   * mesmo lote, ou a segunda chamada do mesmo agente).
+   */
+  cacheUserPrefix?: boolean
 }
 
 /** Bloco de conteúdo multimodal aceito pelo OpenRouter. */
 type ContentPart =
-  | { type: "text"; text: string }
+  | { type: "text"; text: string; cache_control?: { type: "ephemeral" } }
   | { type: "image_url"; image_url: { url: string } }
 
 /**
@@ -459,15 +504,24 @@ type ContentPart =
 export function userContent(
   userMessage: string,
   images?: string[],
+  opts: { cache?: boolean } = {},
 ): string | ContentPart[] {
   const urls = (images ?? []).filter((u) => u && u.trim())
-  if (urls.length === 0) return userMessage
+  if (urls.length === 0) {
+    const c = userContentComCache(userMessage, { ativo: !!opts.cache })
+    return typeof c === "string" ? c : (c as ContentPart[])
+  }
+  // Com anexo o texto vai depois das imagens, em UM bloco: cortar em vários
+  // blocos com imagem no meio mudaria o formato que o qa-vision já usa.
+  const texto = semMarcadores(userMessage)
   return [
     ...urls.map((url) => ({
       type: "image_url" as const,
       image_url: { url },
     })),
-    { type: "text" as const, text: userMessage },
+    opts.cache
+      ? { type: "text" as const, text: texto, cache_control: { type: "ephemeral" as const } }
+      : { type: "text" as const, text: texto },
   ]
 }
 
@@ -492,6 +546,9 @@ export interface OpenRouterInvokeResult {
    */
   finishReason?: string
   reasoningTokens?: number
+  /** Tokens lidos / escritos no cache de prompt (ver `ParsedBody`). */
+  cachedTokens?: number
+  cacheWriteTokens?: number
 }
 
 export async function invokeOpenRouter(
@@ -527,9 +584,22 @@ async function callOnce(
     const body: Record<string, unknown> = {
       model: input.model,
       max_tokens: input.maxTokens,
+      // System em bloco com `cache_control` para modelos Anthropic: até
+      // 14/09 ia como string crua e a cadeia de formatação (hero, cores,
+      // tipografia, QA) NUNCA cacheou — a análise de custo dizia o oposto.
       messages: [
-        { role: "system", content: input.systemPrompt },
-        { role: "user", content: userContent(input.userMessage, input.images) },
+        {
+          role: "system",
+          content: systemContentComCache(input.systemPrompt, {
+            ativo: modeloComCacheDePrompt(input.model),
+          }),
+        },
+        {
+          role: "user",
+          content: userContent(input.userMessage, input.images, {
+            cache: !!input.cacheUserPrefix && modeloComCacheDePrompt(input.model),
+          }),
+        },
       ],
     }
     if (input.temperature != null) body.temperature = input.temperature
@@ -577,6 +647,8 @@ async function callOnce(
       ms,
       tokensIn: parsed.tokensInput,
       tokensOut: parsed.tokensOutput,
+      cachedTokens: parsed.cachedTokens ?? null,
+      cacheWriteTokens: parsed.cacheWriteTokens ?? null,
     })
     return parsed
   } catch (e) {

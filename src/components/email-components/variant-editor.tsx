@@ -13,7 +13,7 @@
 import { useMemo, useState, type ReactNode } from "react"
 
 import { classifyRenderedHtml } from "@/lib/agents/shared/rendered-classify"
-import { Check, ChevronDown, ChevronRight, Pencil } from "lucide-react"
+import { Check, ChevronDown, ChevronRight, Copy, Pencil } from "lucide-react"
 import type {
   ComponentOutputField,
 } from "@/types/email-generation"
@@ -23,6 +23,8 @@ import {
   DENSITY_LABELS_PT,
 } from "@/lib/agents/shared/component-dimensions"
 import { COMPONENT_CATEGORIES } from "@/lib/agents/shared/component-categories"
+import { DESCRICAO_DO_DISPOSITIVO, dispositivosDaSecao } from "@/lib/agents/shared/dispositivos"
+import { fichasDoLote } from "@/lib/email-workspace/ficha-do-vault"
 import { C, F, egInputStyle } from "@/components/email-generation/ui/eg-theme"
 import {
   EGBtn,
@@ -42,6 +44,7 @@ import {
   EMAIL_WIDTH,
   enforceEmailWidth,
 } from "@/lib/email-workspace/email-width"
+import { ehDirecaoEmRascunho } from "@/lib/agents/image/direcao-fotografica"
 
 /** Rascunho editável de variante (strings vazias no lugar de null). */
 export interface VariantDraft {
@@ -64,6 +67,9 @@ export interface VariantDraft {
   tones: string[]
   density: string // "" | minimal | balanced | rich
   product_slots: number
+  /** B3: dispositivo (vocabulário fechado da seção) e identidade da anatomia. */
+  dispositivo: string // "" | um de DISPOSITIVOS
+  anatomia_slug: string
   output_schema: ComponentOutputField[]
   slots: string // CSV (avançado)
   tags: string // CSV (avançado)
@@ -157,6 +163,97 @@ function RenderedStatusNote({
   )
 }
 
+/**
+ * Linha de ajuda sob um campo: o que ele faz e o que acontece se ficar
+ * vazio. Escrita em 15/09 porque o cadastro era adivinhado pelo
+ * placeholder — 28 das 37 variantes ativas estavam sem "quando NÃO usar" e
+ * nenhuma tela dizia o que isso custa. Régua completa em
+ * `docs/email-generation/guia-de-cadastro-de-variante.md`.
+ */
+function Ajuda({ children }: { children: ReactNode }) {
+  return (
+    <div
+      style={{
+        fontSize: 11.5,
+        color: C.g400,
+        fontFamily: F.sans,
+        marginTop: 6,
+        lineHeight: 1.5,
+      }}
+    >
+      {children}
+    </div>
+  )
+}
+
+/**
+ * "Ficha para o vault" (15/09) — o agente que escreve as notas no Obsidian
+ * não enxerga o admin, e é aqui que moram o `variant_id`, o nome exato e o
+ * schema. Errados na nota, ela é ignorada **em silêncio**: nada em log, nada
+ * em tela, e o Curador segue escolhendo a variante sem nenhum eixo.
+ *
+ * A ficha sai de `fichasDoLote`, que deriva a forma da MESMA `resumirContrato`
+ * que monta a linha do catálogo — as duas não podem divergir.
+ */
+function FichaDoVaultBotao({
+  draft,
+  selfId,
+}: {
+  draft: VariantDraft
+  selfId: string | null
+}) {
+  const [copiado, setCopiado] = useState(false)
+  const ficha = useMemo(
+    () =>
+      fichasDoLote(
+        [
+          {
+            id: selfId ?? "(salve a variante para ter o id)",
+            name: draft.name,
+            block_type: draft.block_type,
+            description: draft.description,
+            dispositivo: draft.dispositivo || null,
+            output_schema: draft.output_schema,
+          },
+        ],
+        new Date().toLocaleDateString("pt-BR"),
+      ),
+    [selfId, draft.name, draft.block_type, draft.description, draft.dispositivo, draft.output_schema],
+  )
+  return (
+    <div>
+      <EGBtn
+        variant="secondary"
+        disabled={!selfId}
+        title={
+          selfId
+            ? "Copia a ficha desta variante para colar no Obsidian"
+            : "Salve a variante primeiro: a ficha precisa do variant_id"
+        }
+        onClick={() => {
+          void navigator.clipboard?.writeText(ficha).then(
+            () => {
+              setCopiado(true)
+              setTimeout(() => setCopiado(false), 2200)
+            },
+            () => setCopiado(false),
+          )
+        }}
+        style={{ height: 30, padding: "0 12px", fontSize: 12 }}
+      >
+        <Copy size={13} />
+        {copiado ? "Copiada" : "Ficha para o vault"}
+      </EGBtn>
+      <Ajuda>
+        O que o agente do Obsidian precisa e não tem como descobrir: o
+        <code> variant_id</code>, o nome exato no banco, a forma derivada do
+        schema e os vocabulários fechados dos eixos. Sem isso, a nota é
+        ignorada sem nenhum aviso.
+      </Ajuda>
+    </div>
+  )
+}
+
 function Note({
   tone,
   children,
@@ -246,11 +343,17 @@ export function VariantEditor({
       >
         {/* Identificação */}
         <EGCard title="Identificação">
+          <Ajuda>
+            Régua completa de preenchimento em{" "}
+            <code>docs/email-generation/guia-de-cadastro-de-variante.md</code>;
+            a nota do vault em <code>nota-obsidian-como-cadastrar.md</code>.
+          </Ajuda>
           <div
             style={{
               display: "grid",
               gridTemplateColumns: "1fr 1fr",
               gap: 16,
+              marginTop: 14,
             }}
           >
             <div style={{ gridColumn: "1 / -1" }}>
@@ -300,6 +403,45 @@ export function VariantEditor({
                 options={DENSITY_OPTIONS}
               />
             </div>
+            <div>
+              <EGLabel>Dispositivo</EGLabel>
+              {/* B3: o PRIMEIRO filtro do Curador. Só os da seção escolhida —
+                  "hero_pergunta" numa body é descartado no pipeline. */}
+              <EGSelect
+                value={draft.dispositivo}
+                onChange={(v) => set({ dispositivo: v })}
+                options={[
+                  { value: "", label: "(não classificada — filtro fail-open)" },
+                  ...dispositivosDaSecao(draft.block_type).map((d) => ({ value: d, label: `${d} — ${DESCRICAO_DO_DISPOSITIVO[d]}` })),
+                ]}
+              />
+              <Ajuda>
+                É por este nome que o Estruturador pede a forma, e é o primeiro
+                filtro do Curador. Sem ele a variante nunca é eliminada por
+                requisito <em>e nunca é pedida</em> — fica invisível para a
+                decisão. Cada dispositivo obriga uma anatomia (quantos itens,
+                se tem preço, cupom ou credencial).
+              </Ajuda>
+              {draft.is_active && !draft.dispositivo && (
+                <div style={{ marginTop: 8 }}>
+                  <EGNotice tone="warn">
+                    Esta variante está ATIVA e sem dispositivo. Ela vai concorrer
+                    em toda posição de <b>{draft.block_type}</b> (o filtro é
+                    fail-open) e o Estruturador nunca vai conseguir pedi-la — e no
+                    resgate ela ganha o desempate por ter zero usos. Classifique
+                    antes de escrever a nota do vault.
+                  </EGNotice>
+                </div>
+              )}
+            </div>
+            <div>
+              <EGLabel>Slug da anatomia</EGLabel>
+              <EGInput
+                value={draft.anatomia_slug}
+                onChange={(v) => set({ anatomia_slug: v })}
+                placeholder="ex: welcome-hero-section-3 (slug do vault)"
+              />
+            </div>
             <div style={{ gridColumn: "1 / -1" }}>
               <EGLabel>Descrição curta</EGLabel>
               <EGInput
@@ -307,6 +449,13 @@ export function VariantEditor({
                 onChange={(v) => set({ description: v })}
                 placeholder="Ex: Bloco amarelo com código de cupom em destaque."
               />
+              <Ajuda>
+                A <strong>primeira frase</strong> vai para o índice que o Curador
+                lê ao escolher o bloco. Vazia, ele rankeia só pelo nome.
+              </Ajuda>
+            </div>
+            <div style={{ gridColumn: "1 / -1" }}>
+              <FichaDoVaultBotao draft={draft} selfId={selfId ?? null} />
             </div>
             <div style={{ gridColumn: "1 / -1" }}>
               <EGLabel>Descrição detalhada</EGLabel>
@@ -316,6 +465,10 @@ export function VariantEditor({
                 rows={3}
                 placeholder="Notas de implementação, quirks de Outlook, etc."
               />
+              <Ajuda>
+                Só o Curador lê, e só no catálogo completo. Não influencia
+                nenhum agente de formatação.
+              </Ajuda>
             </div>
           </div>
 
@@ -396,6 +549,10 @@ export function VariantEditor({
                 rows={2}
                 placeholder="Ex: Sempre que houver um código promocional para aplicar no checkout."
               />
+              <Ajuda>
+                Vai ao Curador no catálogo completo, junto do &quot;quando não
+                usar&quot;.
+              </Ajuda>
             </div>
             <div>
               <EGLabel>Quando NÃO usar</EGLabel>
@@ -405,6 +562,11 @@ export function VariantEditor({
                 rows={2}
                 placeholder="Ex: Emails calmos de boas-vindas sem oferta explícita."
               />
+              <Ajuda>
+                É o que faz o Curador <strong>descartar pelo motivo certo</strong>,
+                em vez de escolher por eliminação. Falta em 28 das 37 variantes
+                ativas.
+              </Ajuda>
             </div>
             <div>
               <EGLabel>Orientações de copy para a IA</EGLabel>
@@ -414,6 +576,12 @@ export function VariantEditor({
                 rows={2}
                 placeholder="Ex: Headline vende o desconto. Código em CAIXA ALTA sem espaços."
               />
+              <Ajuda>
+                Vira a <strong>diretriz do bloco</strong> no payload de copy — é
+                a única instrução que o fluxo do n8n lê hoje. Vazia, cai na
+                descrição curta; as duas vazias e o bloco sai sem instrução
+                nenhuma.
+              </Ajuda>
             </div>
             <div>
               <EGLabel>Design system</EGLabel>
@@ -472,6 +640,18 @@ export function VariantEditor({
                 que área deixar limpa para a copy. O que MOSTRAR continua
                 vindo do briefing do bloco.
               </div>
+              {draft.photo_direction.trim() &&
+                ehDirecaoEmRascunho(draft.photo_direction) && (
+                  <div style={{ marginTop: 10 }}>
+                    <EGNotice tone="warn">
+                      <strong>Direção fotográfica em rascunho.</strong> Texto
+                      que começa com &quot;Pendente&quot;/&quot;aguardando&quot;
+                      não vai ao agente de imagem: a variante gera como se não
+                      tivesse direção nenhuma (compõe só pelo slot). Escreva a
+                      direção ou desative a variante até lá.
+                    </EGNotice>
+                  </div>
+                )}
             </div>
             <div
               style={{

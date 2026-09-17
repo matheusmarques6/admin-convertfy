@@ -26,6 +26,15 @@ interface Envelope<T> {
   fontes?: Array<{ titulo: string; url: string }>
   busca_indisponivel?: string | null
   fontes_descartadas?: number
+  /** Notas da base da casa que entraram no pedido. */
+  conhecimento?: { notas: NotaConsultada[]; semantica: boolean; motivo: string | null }
+}
+
+/** Uma nota do Obsidian servida ao modelo — `path` é o que se confere. */
+export interface NotaConsultada {
+  path: string
+  titulo: string
+  procedencia: "casa" | "advisor" | "outra"
 }
 
 async function postEnvelope<T>(entrada: unknown, signal?: AbortSignal): Promise<Envelope<T>> {
@@ -69,6 +78,14 @@ export interface TriagemComFontes {
   buscaIndisponivel: string | null
   /** Citações que não batiam com o servido e foram removidas. */
   fontesDescartadas: number
+  /**
+   * Notas da base da casa que sustentaram a leitura. Vazio é resultado
+   * legítimo (a base pode não cobrir o assunto) e a tela diz isso — não é
+   * erro, e esconder faria parecer que a peça tem lastro que não tem.
+   */
+  notas: NotaConsultada[]
+  /** A busca por significado rodou nesta consulta. */
+  semantica: boolean
 }
 
 /**
@@ -86,5 +103,7 @@ export async function chamarTriagem(
     fontes: env.fontes ?? [],
     buscaIndisponivel: env.busca_indisponivel ?? null,
     fontesDescartadas: env.fontes_descartadas ?? 0,
+    notas: env.conhecimento?.notas ?? [],
+    semantica: env.conhecimento?.semantica ?? false,
   }
 }

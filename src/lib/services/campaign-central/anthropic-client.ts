@@ -58,6 +58,17 @@ export interface AnthropicCallResult {
   tokensOutput: number
   costCents: number
   durationMs: number
+  /**
+   * `finish_reason` (OpenRouter) ou `stop_reason` (Anthropic).
+   *
+   * O provedor já mandava — o código lia no tipo e DESCARTAVA. Sem ele,
+   * truncamento no teto chegava ao caller como "JSON parse falhou em
+   * todos os candidatos", que descreve o sintoma e esconde a causa: as
+   * 20 runs `invalid_output` de trends desde 17/08 têm `tokens_output`
+   * = 4.096 cravado, o teto exato da config. É a evidência que
+   * `classificarFalha` põe na frente de todas as outras.
+   */
+  finishReason: string | null
 }
 
 interface AnthropicMessageResponse {
@@ -141,7 +152,12 @@ async function callOpenRouterJson(params: {
   maxTokens: number
   temperature: number
   online?: boolean
-}): Promise<{ rawText: string; tokensIn: number; tokensOut: number }> {
+}): Promise<{
+  rawText: string
+  tokensIn: number
+  tokensOut: number
+  finishReason: string | null
+}> {
   const res = await fetch(OPENROUTER_URL, {
     method: "POST",
     headers: {
@@ -170,6 +186,7 @@ async function callOpenRouterJson(params: {
     rawText: (data.choices?.[0]?.message?.content ?? "").trim(),
     tokensIn: data.usage?.prompt_tokens ?? 0,
     tokensOut: data.usage?.completion_tokens ?? 0,
+    finishReason: data.choices?.[0]?.finish_reason ?? null,
   }
 }
 
@@ -197,7 +214,7 @@ export async function callAnthropicJson(params: {
       params.outputSchema,
     )}\n\nReturn ONLY a JSON object matching this schema. No markdown.`
     try {
-      const { rawText, tokensIn, tokensOut } = await callOpenRouterJson({
+      const { rawText, tokensIn, tokensOut, finishReason } = await callOpenRouterJson({
         model: params.model,
         system: systemWithSchema,
         user: params.user,
@@ -213,6 +230,7 @@ export async function callAnthropicJson(params: {
         tokensOutput: tokensOut,
         costCents: computeCostCents(params.model, tokensIn, tokensOut),
         durationMs: Date.now() - t0,
+        finishReason,
       }
     } catch (err) {
       log.warn("openrouter.json_failed", {
@@ -260,6 +278,7 @@ export async function callAnthropicJson(params: {
     tokensOutput,
     costCents: computeCostCents(params.model, tokensInput, tokensOutput),
     durationMs: Date.now() - t0,
+    finishReason: data.stop_reason ?? null,
   }
 }
 
@@ -282,7 +301,7 @@ export async function callAnthropicWithWebSearch(params: {
     // :online suffix do OpenRouter ativa web search (via Exa internamente).
     // maxSearches não é configurável aqui — usa default do OpenRouter (5).
     try {
-      const { rawText, tokensIn, tokensOut } = await callOpenRouterJson({
+      const { rawText, tokensIn, tokensOut, finishReason } = await callOpenRouterJson({
         model: params.model,
         system: params.system,
         user: params.user,
@@ -299,6 +318,7 @@ export async function callAnthropicWithWebSearch(params: {
         tokensOutput: tokensOut,
         costCents: computeCostCents(params.model, tokensIn, tokensOut),
         durationMs: Date.now() - t0,
+        finishReason,
       }
     } catch (err) {
       log.warn("openrouter.websearch_failed", {
@@ -371,5 +391,6 @@ export async function callAnthropicWithWebSearch(params: {
     tokensOutput: totalOut,
     costCents: computeCostCents(params.model, totalIn, totalOut),
     durationMs: Date.now() - t0,
+    finishReason: data.stop_reason ?? null,
   }
 }

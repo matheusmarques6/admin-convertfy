@@ -20,7 +20,7 @@ import { Check, ChevronDown, RefreshCw, Sparkles, Wand2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Icon } from "@/components/ui/icon"
 import { ETAPAS, GATILHOS, PADROES_HEADLINE, PARAMETROS, avaliarHeadline, etapaAtual, headlineEscolhida, indiceDaEtapa, papeisDosFrames, validarContratoCapa, type PapelFrame } from "@/lib/conteudo/editorial"
-import { chamarIA, chamarTriagem } from "@/lib/conteudo/ia/client"
+import { chamarIA, chamarTriagem, type NotaConsultada } from "@/lib/conteudo/ia/client"
 import { ST_LIMITES } from "@/lib/conteudo/limites"
 import type { Editorial, Espinha, EtapaFunil, HeadlineOpcao, RevisaoEditorial, Triagem, ViolacaoEditorial } from "@/lib/conteudo/types"
 import { CtBadge, CtLabel, TNUM, inputCls, selectCls, textareaCls } from "../ui"
@@ -132,6 +132,10 @@ export function EditorialMotor({ editorial, onChange, contexto, compacto, onApli
   // que produz `[confirmar]` no slide.
   const [buscar, setBuscar] = useState(true)
   const [busca, setBusca] = useState<{ fontes: Array<{ titulo: string; url: string }>; indisponivel: string | null; descartadas: number } | null>(null)
+  // A base da casa é a OUTRA fonte da triagem, e é ela que dá o mecanismo —
+  // a web dá o fato externo. Mostrar as duas separadas deixa o operador ver
+  // de onde cada evidência pode ter saído.
+  const [notas, setNotas] = useState<{ lista: NotaConsultada[]; semantica: boolean } | null>(null)
   const escolhida = headlineEscolhida(editorial)
   const papeis = useMemo(() => papeisDosFrames(contexto.frames), [contexto.frames])
   const papeisDoMeio = useMemo(() => papeis.map((p) => p.papel).filter((p) => p !== "headline" && p !== "cta") as PapelFrame[], [papeis])
@@ -162,6 +166,7 @@ export function EditorialMotor({ editorial, onChange, contexto, compacto, onApli
     try {
       const r = await chamarTriagem({ acao: "triagem", insumo: editorial.insumo, perfil: { ...contexto.perfil, voz: editorial.voz }, pilar: contexto.pilar, etapaFunil: contexto.etapaFunil, templateNome: contexto.templateNome, buscarNaWeb: buscar })
       setBusca({ fontes: r.fontes, indisponivel: r.buscaIndisponivel, descartadas: r.fontesDescartadas })
+      setNotas({ lista: r.notas, semantica: r.semantica })
       // Triagem nova invalida headlines e espinha (foram derivadas da anterior).
       onChange({ ...editorial, triagem: r.triagem, headlines: undefined, headlineEscolhida: null, espinha: undefined, revisao: undefined })
       setAberta("headline")
@@ -344,6 +349,27 @@ export function EditorialMotor({ editorial, onChange, contexto, compacto, onApli
                   <div className="mt-1.5 text-[10px] leading-relaxed text-[var(--ops-warn)]">
                     {busca.descartadas === 1 ? "1 link citado" : `${busca.descartadas} links citados`} não estava{busca.descartadas === 1 ? "" : "m"} entre as fontes consultadas e foi{busca.descartadas === 1 ? "" : "ram"} removido{busca.descartadas === 1 ? "" : "s"}. O dado ficou, sem fonte — confirme antes de publicar.
                   </div>
+                )}
+              </div>
+            )}
+            {notas && (
+              <div className="rounded-[9px] border border-[var(--ops-border)] bg-[var(--ops-tile)] px-2.5 py-2">
+                {notas.lista.length === 0 ? (
+                  <div className="text-[10.5px] leading-relaxed text-[var(--ops-mut)]">
+                    A base da casa não devolveu nota para este assunto{notas.semantica ? "" : " (a busca por significado não rodou — o resultado pode estar incompleto)"}.
+                  </div>
+                ) : (
+                  <>
+                    <CtLabel className="mb-1">Base da casa ({notas.lista.length})</CtLabel>
+                    <div className="flex flex-col gap-1">
+                      {notas.lista.map((n) => (
+                        <div key={n.path} className="truncate text-[10.5px] text-[var(--ops-sec)]" title={n.path}>
+                          {n.titulo}
+                          <span className="ml-1 text-[9.5px] text-[var(--ops-mut)]">{n.procedencia === "casa" ? "· nossa doutrina" : "· mercado"}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
                 )}
               </div>
             )}

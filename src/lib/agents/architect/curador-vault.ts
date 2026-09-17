@@ -22,10 +22,12 @@
  * Builders são PUROS (testáveis); só os `load*` tocam o banco.
  */
 
+import { filtrarPorToque, vaultPorToqueLigado } from "@/lib/vault/toque"
 import { derivarAliviadorEProfundidade } from "../objecoes/aliviador-bridge"
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 import type { CatalogVaultExtra } from "./catalog-builder"
+import { normalizarSecao } from "./repeticao"
 
 const log = logger.child("CuradorVault")
 
@@ -98,6 +100,49 @@ export async function loadCuradorVaultMode(storeId: string): Promise<CuradorVaul
     if (error) return "off" // coluna/linha ausente (migration 20261093 não aplicada)
     const mode = (data as { curador_vault_mode?: string | null } | null)?.curador_vault_mode
     return mode === "shadow" || mode === "on" ? mode : "off"
+  } catch {
+    return "off"
+  }
+}
+
+/**
+ * Leque do Curador (migration 20261158): uma chamada por POSIÇÃO.
+ *   off → o caminho de hoje: uma chamada, o e-mail inteiro.
+ *   on  → o leque decide a peça.
+ *
+ * **Sem `shadow`**: rodar o laço em paralelo pagaria o Curador duas vezes
+ * por geração de cliente e gravaria uma segunda run `assembler_chooser`,
+ * que a RPC do Estúdio (DISTINCT ON por e-mail × bucket) esconderia. Medir
+ * é rodar a bancada da Fase 1a com o gate em `on` e voltar para `off` — ela
+ * custa o Curador sozinho. Valor no enum que nenhum código executa é a
+ * armadilha que este repo já pagou três vezes.
+ *
+ * Fail-open para `off`, como o `curador_vault_mode` e ao contrário do
+ * `loadMontadorMode`, que devolve `on` na falha de leitura e discorda do
+ * default da própria migration. Aqui errar para o lado do caminho de hoje
+ * é barato; trocar a forma do prompt por causa de um timeout no Postgres
+ * não é.
+ */
+export type CuradorLequeMode = "off" | "on"
+
+export async function loadCuradorLequeMode(storeId: string): Promise<CuradorLequeMode> {
+  try {
+    const admin = createAdminClient()
+    const { data: store } = await admin
+      .from("client_stores")
+      .select("org_id")
+      .eq("id", storeId)
+      .maybeSingle()
+    const orgId = (store as { org_id?: string | null } | null)?.org_id
+    if (!orgId) return "off"
+    const { data, error } = await admin
+      .from("email_generation_settings")
+      .select("curador_leque_mode")
+      .eq("org_id", orgId)
+      .maybeSingle()
+    if (error) return "off" // coluna ausente (migration 20261158 não aplicada)
+    const mode = (data as { curador_leque_mode?: string | null } | null)?.curador_leque_mode
+    return mode === "on" ? "on" : "off"
   } catch {
     return "off"
   }
@@ -589,12 +634,28 @@ export function secaoDaLacuna(doc: VaultDocRow, secoesConhecidas: ReadonlyArray<
  * Lacunas das seções deste email + as gerais (sem seção). Lacuna não é
  * veto: o prompt a usa como peso contra e como motivo obrigatório na
  * justificativa quando a escolhida a carrega.
+ *
+ * `secaoDaPosicao` (16/09, leque) restringe a UMA seção — a da posição que
+ * está sendo decidida. As seções do EMAIL inteiro continuam entrando em
+ * `secoesDoEmail`, e não é detalhe: `secaoDaLacuna` infere a seção a partir
+ * do slug comparando com uma lista de seções conhecidas, então recortar
+ * essa lista para uma faria a nota `lacuna-body-garantias` deixar de ser
+ * reconhecida como de `body` e virar lacuna GERAL — servida em todas as
+ * posições, que é o oposto de fatiar.
+ *
+ * Sem `secaoDaPosicao`, o comportamento é o de antes: todas as seções do
+ * e-mail.
  */
-export function buildLacunasBlock(k: CuradorVaultKnowledge, sections: string[]): string {
+export function buildLacunasBlock(
+  k: CuradorVaultKnowledge,
+  secoesDoEmail: string[],
+  secaoDaPosicao?: string | null,
+): string {
   if (k.lacunas.length === 0) return "(nenhuma lacuna registrada no vault)"
-  const pedidas = new Set(sections.map((s) => s.toLowerCase()))
-  const conhecidas = Array.from(new Set(k.lacunas.map((d) => secaoDaLacuna(d, [...pedidas])).filter((x): x is string => !!x)))
-  const todas = Array.from(new Set([...pedidas, ...conhecidas]))
+  const doEmail = new Set(secoesDoEmail.map((s) => normalizarSecao(s)))
+  const pedidas = secaoDaPosicao ? new Set([normalizarSecao(secaoDaPosicao)]) : doEmail
+  const conhecidas = Array.from(new Set(k.lacunas.map((d) => secaoDaLacuna(d, [...doEmail])).filter((x): x is string => !!x)))
+  const todas = Array.from(new Set([...doEmail, ...conhecidas]))
   const blocos: string[] = []
   for (const d of k.lacunas) {
     const secao = secaoDaLacuna(d, todas)
@@ -603,7 +664,11 @@ export function buildLacunasBlock(k: CuradorVaultKnowledge, sections: string[]):
     blocos.push(`${titulo}\n${clamp(d.body_md, 1_200)}`)
     if (blocos.length >= 12) break
   }
-  if (blocos.length === 0) return "(nenhuma lacuna registrada para as seções deste email)"
+  if (blocos.length === 0) {
+    return secaoDaPosicao
+      ? `(nenhuma lacuna registrada para ${normalizarSecao(secaoDaPosicao)})`
+      : "(nenhuma lacuna registrada para as seções deste email)"
+  }
   return blocos.join("\n\n")
 }
 
@@ -791,31 +856,78 @@ export function buildAprendizadosBlock(aprendizados: AprendizadoResumo[]): strin
     .join("\n\n")
 }
 
-/** email_learnings do flow + globais com `aplica_a` (fail-open → []). */
-export async function loadAprendizadosResumo(flowType: string): Promise<AprendizadoResumo[]> {
+export interface AprendizadosPorToque {
+  /** Servem a todo toque do flow — vão no bloco flow do user (cacheado). */
+  globais: AprendizadoResumo[]
+  /** Declarados para ESTE toque (`serve_a`) — vão no bloco do e-mail. */
+  doToque: AprendizadoResumo[]
+  /** De OUTRO toque: não servidos (telemetria). */
+  fora: string[]
+  avisos: string[]
+  failOpen: boolean
+}
+
+/**
+ * email_learnings do flow + globais com `aplica_a`, separados por toque
+ * (passo 6, `frontmatter.serve_a`). Fail-open → vazio.
+ */
+export async function loadAprendizadosPorToque(
+  flowType: string,
+  emailNumber: number,
+  opts: { ligado?: boolean } = {},
+): Promise<AprendizadosPorToque> {
+  const vazio: AprendizadosPorToque = { globais: [], doToque: [], fora: [], avisos: [], failOpen: false }
   try {
     const admin = createAdminClient()
     const { data, error } = await admin
       .from("email_learnings")
-      .select("slug, body_md, flow_type, aplica_a")
+      .select("slug, body_md, flow_type, aplica_a, frontmatter")
       .eq("is_active", true)
       .or(`flow_type.eq.${flowType},flow_type.is.null`)
       .order("slug")
     if (error) {
       log.warn("aprendizados_load_failed", { flowType, error: error.message })
-      return []
+      return vazio
     }
-    return (data ?? [])
+    const doFlow = (data ?? [])
       .filter((r) => {
         if (r.flow_type === flowType) return true
         const aplica = Array.isArray(r.aplica_a) ? (r.aplica_a as string[]) : []
         return aplica.length === 0 || aplica.includes(flowType)
       })
-      .map((r) => ({ slug: r.slug as string, body: (r.body_md as string) ?? "" }))
+      .map((r) => ({
+        slug: r.slug as string,
+        body: (r.body_md as string) ?? "",
+        serve_a: (r.frontmatter as Record<string, unknown> | null)?.serve_a,
+      }))
+    const f = filtrarPorToque({
+      referencias: [],
+      aprendizados: doFlow,
+      flowType,
+      emailNumber,
+      ligado: opts.ligado ?? vaultPorToqueLigado(),
+    })
+    const resumo = (a: { slug: string; body: string }) => ({ slug: a.slug, body: a.body })
+    return {
+      globais: f.aprendizados.globais.map(resumo),
+      doToque: f.aprendizados.doToque.map(resumo),
+      fora: f.aprendizados.fora.map((a) => a.slug),
+      avisos: f.aprendizados.avisos,
+      failOpen: f.failOpen,
+    }
   } catch (err) {
     log.warn("aprendizados_load_threw", { flowType, error: err instanceof Error ? err.message : String(err) })
-    return []
+    return vazio
   }
+}
+
+/**
+ * Compatibilidade: globais + do toque numa lista só. Sem `emailNumber`, o
+ * comportamento antigo — nada é descartado.
+ */
+export async function loadAprendizadosResumo(flowType: string, emailNumber?: number): Promise<AprendizadoResumo[]> {
+  const r = await loadAprendizadosPorToque(flowType, emailNumber ?? 0, emailNumber === undefined ? { ligado: false } : {})
+  return [...r.globais, ...r.doToque]
 }
 
 // ── Contagem de uso por variante (desempate por menor uso) ──────────────
@@ -825,14 +937,19 @@ export async function loadAprendizadosResumo(flowType: string): Promise<Aprendiz
  * email_generation_choices (fail-open → mapa vazio). Aproximação suficiente
  * para rotação de criativo — o objetivo é "menos usada primeiro", não BI.
  */
-export async function loadVariantUsageCounts(limitRows = 500): Promise<Map<string, number>> {
+export async function loadVariantUsageCounts(storeId?: string | null, limitRows = 500): Promise<Map<string, number>> {
   try {
     const admin = createAdminClient()
-    const { data, error } = await admin
+    // B3: memória POR LOJA — "menos usada" era global do sistema, e a rotação
+    // que importa é a da carteira desta loja (o índice (store_id, flow_type,
+    // email_number, created_at) já existia; a query é que não o usava).
+    let q = admin
       .from("email_generation_choices")
       .select("choices")
       .order("created_at", { ascending: false })
       .limit(limitRows)
+    if (storeId) q = q.eq("store_id", storeId)
+    const { data, error } = await q
     if (error) {
       log.warn("usage_load_failed", { error: error.message })
       return new Map()
@@ -851,17 +968,50 @@ export async function loadVariantUsageCounts(limitRows = 500): Promise<Map<strin
   }
 }
 
-/** Bloco `<uso_por_variante>` da memória — slug do vault quando existir. */
+/** Quantas linhas de uso cabem no bloco — as MENOS usadas primeiro. */
+const USO_MAX_LINHAS = 60
+
+/**
+ * Bloco `<uso_por_variante>` da memória — slug do vault quando existir.
+ *
+ * **A lista inclui as ELEGÍVEIS com `0×`, e sai em ordem CRESCENTE** (15/09).
+ * Antes ela era montada só a partir das escolhas: quem nunca foi escolhido
+ * não estava no mapa e simplesmente **não aparecia** — para o modelo era
+ * ausência, não "0×". Vinha ordenada do mais usado para o menos, sob a
+ * legenda "a MENOS usada vence em empate total": uma instrução impossível de
+ * cumprir, porque a menos usada era justamente a invisível.
+ *
+ * O efeito medido em 45 dias: os três dispositivos em que o ranking por
+ * eixos chega ao EMPATE TOTAL — `footer_nav` (89·0·0), `offer_sem_cupom`
+ * (19·0) e `hero_lineup` (5·0) — concentraram 100% das escolhas no mesmo
+ * bloco. Realimentação positiva pura: quem ganhou uma vez aparece na lista
+ * e ganha sempre; quem nunca ganhou nunca entra nela. Onde a `objecao`
+ * separa, a distribuição é saudável (`reviews_com_credencial`: 36·34·10).
+ *
+ * Isto não muda régua nenhuma — faz existir o dado que a régua já pedia.
+ */
 export function renderUsageCounts(
   counts: Map<string, number>,
   extras?: Map<string, { slug: string }>,
+  /**
+   * Variantes que podem ser escolhidas nesta geração. Sem elas o bloco
+   * volta ao que era: só o histórico, e nenhum `0×`.
+   */
+  elegiveis?: Iterable<string>,
 ): string {
-  if (counts.size === 0) return "<uso_por_variante>\n(sem histórico de uso ainda)\n</uso_por_variante>"
-  const linhas = Array.from(counts.entries())
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 60)
-    .map(([id, n]) => `- ${extras?.get(id)?.slug ?? id}: ${n}×`)
-  return `<uso_por_variante>\nPeças já montadas por variante (desempate: a MENOS usada vence em empate total):\n${linhas.join("\n")}\n</uso_por_variante>`
+  const todas = new Map<string, number>()
+  for (const id of elegiveis ?? []) todas.set(id, 0)
+  for (const [id, n] of counts) todas.set(id, n)
+  if (todas.size === 0) return "<uso_por_variante>\n(sem histórico de uso ainda)\n</uso_por_variante>"
+  const nome = (id: string) => extras?.get(id)?.slug ?? id
+  const linhas = Array.from(todas.entries())
+    // Crescente, e o corte tira as MAIS usadas: quem decide o desempate é
+    // o começo da lista. Cortar pelo fim removeria exatamente as linhas
+    // que a instrução manda usar.
+    .sort((a, b) => a[1] - b[1] || nome(a[0]).localeCompare(nome(b[0])))
+    .slice(0, USO_MAX_LINHAS)
+    .map(([id, n]) => `- ${nome(id)}: ${n}×`)
+  return `<uso_por_variante>\nPeças já montadas por variante, da MENOS para a MAIS usada (desempate: a menos usada vence em empate total). \`0×\` é variante elegível que nunca foi escolhida:\n${linhas.join("\n")}\n</uso_por_variante>`
 }
 
 /** Carrega as referências ativas do flow (fail-open → lista vazia). */

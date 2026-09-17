@@ -111,6 +111,9 @@ export interface EmailBlueprint {
   // store_email_blueprints (migration 20261083). Opcional: rows globais e
   // legadas passam pelo mesmo cast; consumidores caem no `messaging`.
   fio_narrativo?: string | null
+  // Contrato de decisão do e-mail (migration 20261145) — só em
+  // store_email_blueprints; lido com `lerDecisao` (versão conferida).
+  decisao?: unknown
   // ── Epic AE-Image Niche-Adaptive (story AE-10) ───────────
   // Briefing visual por blueprint (slot E1..E6). Opcional para
   // retrocompat com rows legacy criados antes da migration
@@ -146,6 +149,9 @@ export type AgentType =
   // alvo do toque). Plano: docs/email-generation/plano-objecoes-macro-micro.md.
   | "catalogador"
   | "seletor"
+  // gerador_anatomia (Trilha B4): escreve uma variante nova da biblioteca
+  // (offline; nasce is_active=false, source='gerada').
+  | "gerador_anatomia"
   | "copy"
   | "image"
   | "html"
@@ -271,6 +277,40 @@ export type QaIssueType =
   // — href de exemplo da variante, que não é merge tag e por isso nenhum
   // strip alcança e nenhum ESP preenche.
   | "link_sem_endereco"
+  // ── Validador TEXTUAL do contrato de decisão (14/09, shared/validadores) ──
+  // Claims de oferta no HTML final contra `store_email_blueprints.decisao`.
+  // Em `contrato_textual = shadow` saem `low`/`warning` (só registro); em
+  // `on`, `high`/`blocking`.
+  | "contrato_oferta_sem_incentivo"
+  | "contrato_percentual_diverge"
+  | "contrato_codigo_diverge"
+  | "contrato_urgencia_artificial"
+  // ── Passo 15 (14/09): o QA recebe a decisão ──────────────────────────
+  // A decisão pediu uma posição e a biblioteca não tinha variante (Passo
+  // 11); o e-mail saiu com uma seção a menos.
+  | "posicao_sem_variante"
+  // O cupom saiu em pt-BR numa loja de outro idioma (Passo 4 gravou
+  // `traducao_faltante` no incentivo).
+  | "traducao_faltante"
+  // Passo 16: a plataforma da loja foi consultada e o código NÃO existe.
+  | "cupom_inexistente_na_plataforma"
+
+/**
+ * Quem CORRIGE a issue (Passo 15). É vocabulário de ação, não de
+ * fronteira: o `NoResponsavel` de `shared/conformidade.ts` nomeia o agente
+ * em que a decisão divergiu; este nomeia para quem a issue vai. Uma issue
+ * sem dono não vira correção — foi o que se mediu no batch 6249aef2.
+ */
+export type NoResponsavelQa =
+  | "seletor"
+  | "estruturador"
+  | "curador"
+  | "copy"
+  | "imagem"
+  | "formatacao"
+  | "biblioteca"
+  | "loja"
+  | "sistema"
 
 export interface QaIssue {
   type: QaIssueType
@@ -280,6 +320,8 @@ export interface QaIssue {
   /** email_blocks.id do bloco apontado (F5 — views por bloco). Aditivo:
    *  issues antigas seguem válidas sem o campo. */
   block_id?: string | null
+  /** Quem corrige (Passo 15). Atribuído por `atribuirResponsavel` sobre a lista FINAL. */
+  no_responsavel?: NoResponsavelQa
   /** Resultado do gate determinístico. `blocking` impede `ready`; `warning`
    * continua visível para revisão, mas não interrompe a fase 2.
    *
@@ -412,6 +454,13 @@ export type GenerationRunAgent =
   | "copy_fit"
   // background_fit: faixa + foto no tamanho declarado (migration 20261102).
   | "background_fit"
+  // Trilha B (migration 20261147): gate de prontidão da loja (skipped =
+  // bloqueou), override humano com motivo, lint de renderização (código,
+  // custo zero) e gerador offline de anatomias da biblioteca.
+  | "gate"
+  | "gate_override"
+  | "lint_envio"
+  | "gerador_anatomia"
 
 export interface EmailGenerationRun {
   id: string
@@ -585,6 +634,16 @@ export interface EmailComponentVariant {
   version: number
   created_at: string
   created_by: string | null
+  // Trilha B (migration 20261149).
+  /** Dispositivo (vocabulário fechado de 22 — `shared/dispositivos.ts`); null = não classificada. */
+  dispositivo?: string | null
+  /** Identidade da anatomia (slug do vault ou nome normalizado). */
+  anatomia_slug?: string | null
+  /** O HTML usa tokens {{COR_*}}/{{FONTE_*}} (B5). */
+  tokens_de_identidade?: boolean
+  /** manual | gerada (B4). */
+  source?: "manual" | "gerada"
+  geracao_meta?: Record<string, unknown> | null
   // As colunas do épico Taguedor (html_tagged/tagging_status/tagging_meta)
   // saíram do tipo em 20/08 — o merge por example matou a camada tagueada.
   // A migration APPLY_MANUALLY_drop_tagged_columns.sql derruba as colunas.
@@ -607,11 +666,15 @@ export interface EmailOutlineTemplate {
   suggested_blocks: string[]
   tone_hint: string | null
   /**
-   * Código de cupom padrão deste email (global). A variação por idioma/loja é
-   * feita depois, por loja, no bloco `coupon`. Usado como default do bloco
-   * `coupon` quando ainda está vazio. `null` = email sem cupom.
+   * Código de cupom deste toque em pt-BR e fallback dos demais idiomas.
+   * `null` = o toque NÃO entrega cupom (decisão do flow — é daqui que
+   * `incentivoDoOutline` deriva `existe`).
    */
   coupon_code: string | null
+  /** Código por idioma da loja (`{"en":"WELCOME10"}`), migration 20261144. */
+  coupon_codes?: Record<string, string> | null
+  /** Valor do desconto como texto ("10%"), migration 20261144. */
+  coupon_value?: string | null
   is_active: boolean
   version: number
   created_at: string
@@ -658,6 +721,27 @@ export interface ReferenceSlotMapEntry {
    * o consumidor não filtra, para não descartar tudo por falta de dado.
    */
   assembled?: boolean
+  /**
+   * Passo 11: por que a posição ficou sem variante — `sem_candidata`,
+   * `todas_descartadas` (só havia dispositivo que a decisão descartou),
+   * `resgate_recusado`, `dispositivo_indisponivel` (Passo 19, 15/09: a
+   * seção tem variante, nenhuma realiza o dispositivo pedido) ou
+   * `orcamento_esgotado` (leque, 16/09: a chamada daquela posição não
+   * aconteceu — relógio, rede, provedor). Só em slot `variant_id: null`
+   * gravado depois de 14/09.
+   *
+   * O último é separado dos outros de propósito: falta de tempo NÃO é
+   * lacuna de biblioteca, e tratá-la como tal manda a curadoria cadastrar
+   * um bloco para resolver um timeout.
+   */
+  motivo?:
+    | "sem_candidata"
+    | "todas_descartadas"
+    | "resgate_recusado"
+    | "dispositivo_indisponivel"
+    | "orcamento_esgotado"
+  /** Dispositivo que a decisão pedia para a posição vazia. */
+  dispositivo_pedido?: string | null
 }
 
 // Reference HTML GERADO por (loja × email). Ocupa o papel do reference_html

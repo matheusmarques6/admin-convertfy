@@ -38,6 +38,7 @@ import {
   carregarExecucaoManualViva,
   criarExecucaoManual,
   finalizarExecucao,
+  liberarEmailDaExecucao,
   snapshotDeConfig,
 } from "@/lib/agents/execucao/execution.service"
 import {
@@ -223,8 +224,28 @@ export async function PATCH(request: NextRequest) {
       return successResponse(request, { cancelada: false, motivo: "nenhuma viva" })
     }
     await finalizarExecucao(viva.id, "cancelled")
-    log.info("execucao.cancelada", { executionId: viva.id, por: user.id })
-    return successResponse(request, { cancelada: true, execution_id: viva.id })
+
+    // Execução PAUSADA deixou o e-mail em `rendering` de propósito, e nada
+    // mais vai terminá-lo: ele sai daqui com o motivo verdadeiro. Sem isto o
+    // Front 5 do watchdog o retomaria dentro de 25 min — cancelar viraria
+    // "continue". Execução `running` fica de fora: pode haver runner em voo,
+    // e ele é quem escreve o desfecho.
+    const emailLiberado =
+      viva.status === "paused"
+        ? await liberarEmailDaExecucao(parsed.email_id, "execucao_manual_cancelada")
+        : false
+
+    log.info("execucao.cancelada", {
+      executionId: viva.id,
+      por: user.id,
+      status: viva.status,
+      emailLiberado,
+    })
+    return successResponse(request, {
+      cancelada: true,
+      execution_id: viva.id,
+      email_liberado: emailLiberado,
+    })
   } catch (error) {
     log.error("PATCH execução manual", error)
     return errorResponse(request, error, "execucao-manual-patch")

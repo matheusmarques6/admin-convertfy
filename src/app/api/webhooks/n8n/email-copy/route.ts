@@ -18,6 +18,7 @@
  *    (front 1) chama runPhase2InBackground pra cada email em copy_ready.
  */
 
+import { REGRAS_PENDENTES } from "@/lib/agents/shared/validadores/tipos"
 import { NextRequest, after } from "next/server"
 import { z } from "zod"
 import { createAdminClient } from "@/lib/supabase/server"
@@ -40,6 +41,9 @@ import { resolveStoreLanguage } from "@/lib/i18n/store-language"
 import { logGenerationRun } from "@/lib/agents/callbacks/telemetry.callback"
 import type { InputSummaryItem } from "@/lib/agents/shared/prompt-provenance"
 import { normalizeCopyEnvelope } from "@/lib/email-workspace/copy-envelope"
+import { carregarDecisaoDoEmail } from "@/lib/agents/shared/decisao-loader"
+import { bloqueia, loadContratoModes, roda } from "@/lib/agents/shared/contrato-mode"
+import { validarCopy } from "@/lib/agents/shared/validadores/copy"
 import type { BlueprintBlockField } from "@/types/email-generation"
 import { resolveBrandTokens } from "@/lib/agents/html/brand-guards"
 import { couponTokenKeys, resolveCouponTokens } from "@/lib/agents/html/coupon-tokens"
@@ -76,6 +80,10 @@ const schema = z.object({
   dispatch_batch_id: z.string().uuid().optional().nullable(),
   subject: z.string().min(1),
   preheader: z.string().optional().nullable(),
+  // Passo 13: versão do prompt de copy do n8n (variável COPY_PROMPT_VERSION
+  // ecoada no callback). Ausente/vazio vira AVISO na run `copy` — é como se
+  // sabe se o flow que respondeu já leu `directive`/`campos_omitidos`.
+  copy_prompt_version: z.string().optional().nullable(),
   blocks: z.array(
     z.object({
       block_id: z.string().uuid(),
@@ -595,6 +603,118 @@ export async function POST(request: NextRequest) {
       })
     }
 
+    // 3.5) Copy VAZIA ou fora do contrato = ERRO (decisão do dono, 14/09:
+    // sem copy do n8n o e-mail não é gerado). Até aqui o callback já tinha
+    // marcado `copy_ready` no passo 2 e, com zero bloco gravado, zero
+    // caractere ou contrato 100% ignorado, só fazia `log.error` e seguia:
+    // a fase 2 renderizava placeholder e texto de exemplo, e quem
+    // reprovava era o QA — no fim, depois de gastar a fase 2 inteira.
+    // Bloco SEM contrato (`esperados = 0`) não conta para a taxa: já é erro
+    // de curadoria por `merge_sem_contrato`, não copy errada.
+    const blocosComSchema = contratoPorBloco.filter(
+      (b) => (b.esperados as number) > 0,
+    ).length
+    const motivoSemCopy =
+      blocksWritten === 0 || charsTotal === 0
+        ? "copy_vazia"
+        : taxaContrato === 0 && blocosComSchema > 0
+          ? "copy_fora_do_contrato"
+          : null
+    if (motivoSemCopy) {
+      const agora = new Date().toISOString()
+      const { error: failErr } = await admin
+        .from("email_flow_emails")
+        .update({
+          status: "failed",
+          failed_at: agora,
+          failure_reason: motivoSemCopy,
+          copy_ready_at: null,
+          updated_at: agora,
+        })
+        .eq("id", body.email_id)
+      if (failErr) {
+        log.error("email_copy.sem_copy_update_failed", {
+          email_id: body.email_id,
+          error: failErr.message,
+        })
+      }
+      log.error("email_copy.sem_copy", {
+        email_id: body.email_id,
+        motivo: motivoSemCopy,
+        blocks_written: blocksWritten,
+        blocks_total: body.blocks.length,
+        chars_total: charsTotal,
+        taxa_contrato: taxaContrato,
+        por_bloco: contratoPorBloco,
+      })
+      await logGenerationRun({
+        storeId: body.store_id,
+        flowId: email.flow_id,
+        emailId: body.email_id,
+        batchId: currentBatchId ?? "",
+        agent: "copy",
+        status: "error",
+        errorMessage:
+          motivoSemCopy === "copy_vazia"
+            ? `copy_vazia: ${blocksWritten} bloco(s) gravado(s), ${charsTotal} chars — o e-mail NÃO foi gerado`
+            : `copy_fora_do_contrato: 0 de ${keysRecebidas} chave(s) no schema dos blocos — o e-mail NÃO foi gerado`,
+        model: body.meta?.model ?? "n8n",
+        tokensInput: body.meta?.tokens_input ?? undefined,
+        tokensOutput: body.meta?.tokens_output ?? undefined,
+        durationMs: body.meta?.duration_ms ?? undefined,
+        inputSummary: [
+          {
+            rotulo: "Copy recebida do n8n",
+            cls: "upstream",
+            valor: `${body.blocks.length} bloco(s) · ${charsTotal.toLocaleString("pt-BR")} chars de texto`,
+          },
+          {
+            rotulo: "Blocos gravados",
+            cls: "sistema",
+            valor: `${blocksWritten} de ${body.blocks.length} recebido(s)`,
+          },
+          {
+            rotulo: "Adesão ao contrato",
+            cls: "biblioteca",
+            valor:
+              taxaContrato == null
+                ? "sem chaves recebidas"
+                : `${taxaContrato}% — ${keysNoContrato} de ${keysRecebidas} chave(s) dentro do schema da variante`,
+          },
+          {
+            rotulo: "Desfecho",
+            cls: "sistema",
+            valor: `failed: ${motivoSemCopy} — sem copy do n8n o e-mail não é gerado (decisão de 14/09)`,
+          },
+        ],
+        parsedOutput: {
+          skip_reason: motivoSemCopy,
+          subject: body.subject,
+          blocks_written: blocksWritten,
+          blocks_total: body.blocks.length,
+          chars_total: charsTotal,
+          copy_prompt_version: (body.copy_prompt_version ?? "").trim() || null,
+          contrato: {
+            keys_recebidas: keysRecebidas,
+            keys_no_contrato: keysNoContrato,
+            taxa_pct: taxaContrato,
+            por_bloco: contratoPorBloco,
+          },
+          desvios: copyDeviations,
+        },
+      }).catch(() => {})
+      if (currentBatchId) {
+        await checkBatchTerminal(body.store_id, currentBatchId).catch(() => {})
+      }
+      return successResponse(request, {
+        ok: false,
+        email_id: body.email_id,
+        motivo: motivoSemCopy,
+        blocks_written: blocksWritten,
+        chars_total: charsTotal,
+      })
+    }
+
     if (couponSemCodigo.length > 0) {
       log.error("email_copy.coupon_placeholder_sem_codigo", {
         email_id: body.email_id,
@@ -774,6 +894,71 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // 3.7) Validador TEXTUAL do contrato (14/09, gate `contrato_textual`):
+    // a copy GRAVADA (depois do encurtador) contra a decisão persistida no
+    // blueprint — claims de oferta, campo omitido preenchido, max_len. Em
+    // `shadow` só grava em `_contrato` da run `copy`; em `on`, violação
+    // `high` derruba o e-mail com `copy_contrato` e a fase 2 não dispara.
+    // O reenvio único ao n8n com as violações fica para a leitura da
+    // primeira semana em shadow (a saída `on` já existe atrás do gate).
+    let contratoCopy: Record<string, unknown> = { modo: "off", decisao_presente: false, violacoes: [], regra_pendente: [...REGRAS_PENDENTES] }
+    let copyContratoReprovada: string | null = null
+    try {
+      const modoTextual = (await loadContratoModes(body.store_id)).textual
+      if (roda(modoTextual) && flowType) {
+        const decisao = await carregarDecisaoDoEmail(admin, body.store_id, flowType, emailNumber)
+        if (!decisao) {
+          contratoCopy = { modo: modoTextual, decisao_presente: false, violacoes: [], regra_pendente: [...REGRAS_PENDENTES] }
+        } else {
+          const { data: blocosFinais } = await admin
+            .from("email_blocks")
+            .select("id, content, block_type, fields, position")
+            .eq("email_id", body.email_id)
+            .order("position", { ascending: true })
+          const r = validarCopy(
+            decisao,
+            ((blocosFinais ?? []) as Array<{ id: string; content: Record<string, unknown> | null; block_type: string | null; fields: unknown }>).map((b, i) => ({
+              block_index: i,
+              block_id: b.id,
+              block_type: b.block_type,
+              fields: Array.isArray(b.fields) ? (b.fields as BlueprintBlockField[]) : [],
+              content: b.content,
+            })),
+          )
+          contratoCopy = { modo: modoTextual, decisao_presente: true, ok: r.ok, violacoes: r.violacoes, regra_pendente: r.regra_pendente }
+          if (r.violacoes.length > 0) {
+            log.warn("email_copy.contrato_textual", {
+              email_id: body.email_id, modo: modoTextual,
+              violacoes: r.violacoes.map((v) => `${v.block_index}.${v.campo ?? "?"}:${v.tipo}`),
+            })
+          }
+          if (!r.ok && bloqueia(modoTextual)) {
+            copyContratoReprovada = r.violacoes
+              .filter((v) => v.severidade === "high")
+              .map((v) => `${v.block_index}.${v.campo ?? "?"}:${v.tipo}`)
+              .join(", ")
+          }
+        }
+      }
+    } catch (err) {
+      log.warn("email_copy.contrato_textual_failed", {
+        email_id: body.email_id, error: err instanceof Error ? err.message : String(err),
+      })
+    }
+    if (copyContratoReprovada) {
+      const { error: failErr } = await admin
+        .from("email_flow_emails")
+        .update({
+          status: "failed",
+          failed_at: new Date().toISOString(),
+          failure_reason: "copy_contrato",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", body.email_id)
+      if (failErr) log.error("email_copy.contrato_fail_update_failed", { email_id: body.email_id, error: failErr.message })
+      log.error("email_copy.contrato_reprovou", { email_id: body.email_id, violacoes: copyContratoReprovada })
+    }
+
     // 4) Telemetria
     //
     // Entrada estruturada: o que VOLTOU do n8n, com origem. A copy é do
@@ -826,6 +1011,11 @@ export async function POST(request: NextRequest) {
               .join(" · "),
       },
       {
+        rotulo: "Versão do prompt (n8n)",
+        cls: "sistema",
+        valor: (body.copy_prompt_version ?? "").trim() || "(não ecoada — flow anterior ao v3.2?)",
+      },
+      {
         rotulo: "Cupom",
         cls: "sistema",
         valor: couponSemCodigo.length > 0
@@ -859,7 +1049,8 @@ export async function POST(request: NextRequest) {
       // id já estava aqui em escopo desde o guard de batch stale.
       batchId: currentBatchId ?? "",
       agent: "copy",
-      status: "success",
+      status: copyContratoReprovada ? "error" : "success",
+      ...(copyContratoReprovada ? { errorMessage: `copy_contrato: ${copyContratoReprovada}`.slice(0, 2000) } : {}),
       model: body.meta?.model ?? "n8n",
       tokensInput: body.meta?.tokens_input ?? undefined,
       tokensOutput: body.meta?.tokens_output ?? undefined,
@@ -870,6 +1061,14 @@ export async function POST(request: NextRequest) {
         preheader: body.preheader ?? null,
         blocks_written: blocksWritten,
         blocks_total: body.blocks.length,
+        // Passo 13: qual versão do prompt do n8n produziu esta copy. Sem ela
+        // o aviso denuncia o flow antigo — não é issue de QA, é operacional.
+        copy_prompt_version: (body.copy_prompt_version ?? "").trim() || null,
+        ...((body.copy_prompt_version ?? "").trim()
+          ? {}
+          : { avisos: ["copy_prompt_version_ausente: o n8n não ecoou COPY_PROMPT_VERSION — o flow pode ser anterior ao payload v3.2 (directive/campos_omitidos/decisao.proibido)"] }),
+        // Validador textual do contrato (14/09) — sempre presente.
+        _contrato: contratoCopy,
         contrato: {
           keys_recebidas: keysRecebidas,
           keys_no_contrato: keysNoContrato,
@@ -970,6 +1169,19 @@ export async function POST(request: NextRequest) {
     // Somente-texto: já ficou `ready` acima — sem fase 2. Se veio de um
     // batch (aba Testar / legado), fecha a contagem terminal do batch
     // (paridade com o phase2-runner, que faz isso ao marcar ready).
+    if (copyContratoReprovada) {
+      // Contrato reprovado em `on`: o e-mail já está `failed`; a fase 2 não
+      // dispara e o batch fecha a contagem terminal como em qualquer falha.
+      const batchId = (email as { generation_batch_id?: string | null }).generation_batch_id
+      if (batchId) await checkBatchTerminal(body.store_id, batchId).catch(() => {})
+      return successResponse(request, {
+        ok: false,
+        email_id: body.email_id,
+        blocks_written: blocksWritten,
+        contrato: "reprovado",
+        violacoes: copyContratoReprovada,
+      })
+    }
     if (textOnly) {
       const batchId = (email as { generation_batch_id?: string | null })
         .generation_batch_id

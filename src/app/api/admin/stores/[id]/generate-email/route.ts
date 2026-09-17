@@ -21,7 +21,7 @@
  * Settings → Functions.
  */
 
-import { NextRequest, after } from "next/server"
+import { NextRequest, NextResponse, after } from "next/server"
 import { z } from "zod"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
@@ -29,6 +29,7 @@ import { logger } from "@/lib/logger"
 import { runTestGeneration } from "@/lib/agents/test-generation.service"
 import { runPhase2InBackground } from "@/lib/agents/phase2-runner.service"
 import { assertCanManagePrompts } from "@/lib/services/prompt-management.service"
+import { aplicarGate } from "@/lib/stores/prontidao.service"
 
 const log = logger.child("GenerateEmail")
 
@@ -62,6 +63,12 @@ const bodySchema = z.object({
    * quem mandou.
    */
   batch_id: z.string().uuid().optional(),
+  /**
+   * Gate de prontidão (B1): com bloqueio a rota responde 422 com o checklist;
+   * o operador que quer gerar assim mesmo manda o motivo (≥ 10 chars) e a
+   * geração segue com run `gate_override`.
+   */
+  override_motivo: z.string().trim().min(10).max(500).optional(),
 })
 
 export async function POST(
@@ -78,6 +85,27 @@ export async function POST(
     const parsed = bodySchema.parse(body)
 
     const batchId = parsed.batch_id ?? crypto.randomUUID()
+
+    const gate = await aplicarGate({
+      storeId,
+      batchId,
+      triggeredBy: user.id,
+      origem: "generate-email",
+      override: parsed.override_motivo ? { motivo: parsed.override_motivo } : null,
+      flowType: parsed.flowType,
+      emailNumber: parsed.emailNumber,
+    })
+    if (gate.bloqueada) {
+      return NextResponse.json(
+        {
+          error: "A loja não está pronta para gerar. Resolva os bloqueios ou informe um motivo para gerar mesmo assim.",
+          code: "store_not_ready",
+          bloqueios: gate.prontidao.bloqueios,
+          avisos: gate.prontidao.avisos,
+        },
+        { status: 422 },
+      )
+    }
 
     log.info("generate-email.start", {
       storeId,

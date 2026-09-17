@@ -13,8 +13,11 @@ import { Icon } from "@/components/ui/icon"
 import { CORES_PADRAO, GRADIENTE_PADRAO, SLIDE, brandKitPadrao, fundoValido, gradienteCss } from "@/lib/conteudo/brand"
 import { PILARES } from "@/lib/conteudo/config"
 import { slotDeUrl, uploadImagem } from "@/lib/conteudo/data"
-import { CAMPO_OPCIONAL_GUIA, CAMPO_OPCIONAL_LABEL, camposOpcionaisDoTipo } from "@/lib/conteudo/campos"
-import { FAMILIAS, FAMILIA_OPCOES, aplicarCorPrimaria, aplicarFamilia, corPrimariaDe, familiaDe } from "@/lib/conteudo/familias"
+import { CAMPO_OPCIONAL_GUIA, CAMPO_OPCIONAL_LABEL, camposOpcionaisDaPeca } from "@/lib/conteudo/campos"
+import { FAMILIAS, FAMILIA_OPCOES, aplicarCorPrimaria, aplicarFamilia, corPrimariaDe, familiaDe, tracoDe } from "@/lib/conteudo/familias"
+import { TEMAS_DO_X, TEMA_PADRAO_DO_POST, TEMA_ROTULOS, aplicarTemaDoPost, medidasPost, type TemaDoPost } from "@/lib/conteudo/formato-post"
+import { CONTADOR_EXEMPLO, CONTADOR_LABEL, carimboDeAgora, mostrarInfo, mostrarMetricas, type ContadorDoTweet } from "@/lib/conteudo/formato-tweet"
+import { camposDeMarca, handleComArroba, seloDeVerificado } from "@/lib/conteudo/rotulos-de-marca"
 import { aceitaImagem, aplicarPerfil, aplicarPropostas, propostasDeLinhas, setTexto as setTextoDoc, slotsDeImagem, trocarTemplate } from "@/lib/conteudo/documento"
 import { chamarIA, gerarImagemIA } from "@/lib/conteudo/ia/client"
 import { resumoDocumento } from "@/lib/conteudo/ia/prompt"
@@ -303,6 +306,9 @@ export function PainelAssistente({ api }: { api: EditorApi }) {
 export function PainelGlobais({ api }: { api: EditorApi }) {
   const { doc } = api
   const fileRef = useRef<HTMLInputElement>(null)
+  const traco = tracoDe(familiaDe(doc))
+  const campos = camposDeMarca(traco)
+  const selo = seloDeVerificado(traco)
   const toggle = (k: OcultavelGlobal) => api.set({ ocultos: { ...doc.ocultos, [k]: !doc.ocultos[k] } })
   const olho = (k: OcultavelGlobal) => (
     <button type="button" title={doc.ocultos[k] ? "Mostrar no slide" : "Ocultar do slide"} onClick={() => toggle(k)} className={cn("mb-1.5 flex text-[var(--ops-sec)]", doc.ocultos[k] && "opacity-50")}>
@@ -341,19 +347,23 @@ export function PainelGlobais({ api }: { api: EditorApi }) {
           </div>
         )}
       </div>
-      {(
-        [
-          ["brandName", "brand-name"],
-          ["brandName2", "brand-name-2"],
-          ["copyright", "copyright"],
-        ] as Array<[keyof typeof doc.brandKit & OcultavelGlobal, string]>
-      ).map(([k, l]) => (
-        <div key={k}>
+      {/* Os campos vêm da IDENTIDADE: no cartão de perfil o `brandName` é o
+          @handle e o `brandName2` é o nome exibido — com os nomes internos
+          na tela ninguém achava onde editar a arroba. O que a identidade
+          não desenha (o copyright, nas famílias de print) fica de fora. */}
+      {campos.map((c) => (
+        <div key={c.campo}>
           <div className="flex items-center justify-between">
-            {label(l)}
-            {olho(k)}
+            {label(c.rotulo)}
+            {olho(c.campo)}
           </div>
-          <input value={String(doc.brandKit[k] ?? "")} onChange={(e) => api.set({ brandKit: { ...doc.brandKit, [k]: e.target.value } })} className={inputCls} />
+          <input
+            value={String(doc.brandKit[c.campo] ?? "")}
+            onChange={(e) => api.set({ brandKit: { ...doc.brandKit, [c.campo]: c.arroba ? handleComArroba(e.target.value) : e.target.value } })}
+            placeholder={c.arroba ? "@perfil" : undefined}
+            className={inputCls}
+          />
+          {c.dica && <div className="mt-0.5 text-[10px] text-[var(--ops-mut)]">{c.dica}</div>}
         </div>
       ))}
       <div>
@@ -384,9 +394,12 @@ export function PainelGlobais({ api }: { api: EditorApi }) {
       </div>
       <div className="border-t border-[var(--ops-border)] pt-2">
         {label("Acessórios")}
-        <label className="flex cursor-pointer items-center gap-2 text-[12px] text-[var(--ops-title)]">
-          <input type="checkbox" checked={doc.brandKit.verificado} onChange={(e) => api.set({ brandKit: { ...doc.brandKit, verificado: e.target.checked } })} className="m-0 accent-[var(--ops-accent)]" /> Verificado
+        <label className={cn("flex items-center gap-2 text-[12px] text-[var(--ops-title)]", selo.desenha ? "cursor-pointer" : "cursor-not-allowed opacity-60")}>
+          <input type="checkbox" checked={doc.brandKit.verificado} disabled={!selo.desenha} onChange={(e) => api.set({ brandKit: { ...doc.brandKit, verificado: e.target.checked } })} className="m-0 accent-[var(--ops-accent)]" /> Selo verificado
         </label>
+        {/* Onde ele aparece, ou por que não aparece: um interruptor que não
+            muda nada na tela é lido como editor quebrado. */}
+        <div className="mt-0.5 text-[10px] leading-relaxed text-[var(--ops-mut)]">{selo.onde}</div>
       </div>
       <button type="button" onClick={() => api.setModal("brandkit")} className="text-left text-[11.5px] font-medium text-[var(--ops-accent)] hover:underline">
         Gerenciar no Brand Kit
@@ -409,7 +422,7 @@ function CamposOpcionais({ api }: { api: EditorApi }) {
   if (!f) return null
   // Só o que ESTE tipo de slide sabe desenhar — oferecer o resto criaria
   // campo que o operador preenche e nunca vê na tela.
-  const OPCIONAIS = camposOpcionaisDoTipo(f.tipo).map((c) => [c, CAMPO_OPCIONAL_LABEL[c], CAMPO_OPCIONAL_GUIA[c]] as const)
+  const OPCIONAIS = camposOpcionaisDaPeca(f.tipo, tracoDe(familiaDe(doc))).map((c) => [c, CAMPO_OPCIONAL_LABEL[c], CAMPO_OPCIONAL_GUIA[c]] as const)
   if (OPCIONAIS.length === 0) return null
   const alternar = (campo: Campo, guia: string) => {
     const tem = f.campos.includes(campo)
@@ -450,8 +463,100 @@ function CamposOpcionais({ api }: { api: EditorApi }) {
           )
         })}
       </div>
-      <div className="mt-1 text-[10.5px] leading-relaxed text-[var(--ops-mut)]">O gancho é a linha em itálico acima do título; a anotação é o rabisco à mão, inclinado, na cor de destaque.</div>
+      <div className="mt-1 text-[10.5px] leading-relaxed text-[var(--ops-mut)]">O gancho é a linha em itálico acima do título; a anotação é o rabisco à mão; a caixa de destaque é o retângulo sólido na cor de acento.</div>
     </div>
+  )
+}
+
+/**
+ * As "informações" do cartão do X: hora, data e os cinco contadores.
+ *
+ * Elas não são copy — não entram em `campos`/`textos`, não têm limite de
+ * caracteres e o auto-fit não as encolhe —, então precisam de um lugar
+ * PRÓPRIO na tela. Sem ele o cartão teria uma barra de números que ninguém
+ * descobriria como editar.
+ *
+ * Nenhum valor nasce preenchido: número semeado por nós seria engajamento
+ * inventado impresso na peça. O exemplo fica no `placeholder`.
+ */
+function InfoDoCartaoX({ api }: { api: EditorApi }) {
+  const { doc, ativo } = api
+  const f = doc.frames[ativo]
+  if (!f || !tracoDe(familiaDe(doc)).cartaoTweet) return null
+  const meta = f.tweet ?? {}
+  const patch = (p: Partial<NonNullable<DocFrame["tweet"]>>, rotulo: string) =>
+    api.set((d) => ({ ...d, frames: d.frames.map((x, j) => (j === ativo ? { ...x, tweet: { ...(x.tweet ?? {}), ...p } } : x)) }), rotulo)
+  // "Usar em todos" existe porque o carrossel simula um FIO: digitar cinco
+  // números em cinco slides é o atrito que faria a barra ficar vazia.
+  const emTodos = () =>
+    api.set((d) => ({ ...d, frames: d.frames.map((x) => ({ ...x, tweet: { ...(x.tweet ?? {}), ...meta } })) }), "Informações do post em todos os slides")
+  const campo = (chave: ContadorDoTweet) => (
+    <div key={chave}>
+      {label(CONTADOR_LABEL[chave])}
+      <input
+        value={meta[chave] ?? ""}
+        placeholder={CONTADOR_EXEMPLO[chave]}
+        onChange={(ev) => patch({ [chave]: ev.target.value }, `${CONTADOR_LABEL[chave]} · ${f.label}`)}
+        className={cn(inputCls, "h-7 text-[11.5px]")}
+      />
+    </div>
+  )
+  return (
+    <div className="rounded-[10px] border border-[var(--ops-border)] px-2.5 py-2.5">
+      <CtLabel>Informações do post · {f.label}</CtLabel>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          {label("Hora")}
+          <input value={meta.hora ?? ""} placeholder="14:32" onChange={(ev) => patch({ hora: ev.target.value }, `Hora · ${f.label}`)} className={cn(inputCls, "h-7 text-[11.5px]")} />
+        </div>
+        <div>
+          {label("Data")}
+          <input value={meta.data ?? ""} placeholder="17 de set de 2026" onChange={(ev) => patch({ data: ev.target.value }, `Data · ${f.label}`)} className={cn(inputCls, "h-7 text-[11.5px]")} />
+        </div>
+        {campo("visualizacoes")}
+        {campo("respostas")}
+        {campo("reposts")}
+        {campo("curtidas")}
+        {campo("salvos")}
+      </div>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        <Ghost
+          onClick={() => {
+            const c = carimboDeAgora()
+            patch({ hora: c.hora, data: c.data }, `Carimbo de agora · ${f.label}`)
+          }}
+        >
+          Usar agora
+        </Ghost>
+        <Ghost onClick={emTodos}>Usar em todos os slides</Ghost>
+      </div>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        <Alternar ligado={mostrarInfo(meta)} onClick={() => patch({ mostrarInfo: !(meta.mostrarInfo !== false) }, `Linha de hora · ${f.label}`)}>
+          Linha de hora e data
+        </Alternar>
+        <Alternar ligado={mostrarMetricas(meta)} onClick={() => patch({ mostrarMetricas: !(meta.mostrarMetricas !== false) }, `Barra de contadores · ${f.label}`)}>
+          Barra de contadores
+        </Alternar>
+      </div>
+      <div className="mt-1.5 text-[10px] leading-relaxed text-[var(--ops-mut)]">
+        Campo vazio deixa o ícone SEM número — que é como o X mostra um post recém-publicado. Nada é preenchido sozinho: o número que aparecer na peça é o que você escrever aqui.
+      </div>
+    </div>
+  )
+}
+
+function Alternar({ ligado, onClick, children }: { ligado: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "inline-flex h-[30px] items-center gap-1 rounded-lg border px-[11px] text-[11.5px] font-medium",
+        ligado ? "border-[var(--ops-accent)] text-[var(--ops-title)]" : "border-[var(--ops-border)] text-[var(--ops-mut)] hover:bg-[var(--ops-hover)]",
+      )}
+    >
+      {ligado ? "−" : "+"} {children}
+    </button>
   )
 }
 
@@ -465,6 +570,7 @@ export function PainelTexto({ api }: { api: EditorApi }) {
           <div className="mt-1.5 text-[10.5px] text-[var(--ops-mut)]">Posição vertical, tamanho, peso, alinhamento e cor. Nada sai da grade do template.</div>
         </div>
         <CamposOpcionais api={api} />
+        <InfoDoCartaoX api={api} />
       </div>
     )
   }
@@ -531,6 +637,7 @@ export function PainelTexto({ api }: { api: EditorApi }) {
         Voltar ao padrão do template
       </button>
       <CamposOpcionais api={api} />
+      <InfoDoCartaoX api={api} />
     </div>
   )
 }
@@ -540,6 +647,12 @@ export function PainelTexto({ api }: { api: EditorApi }) {
 export function PainelMidia({ api }: { api: EditorApi }) {
   const { doc, ativo } = api
   const f = doc.frames[ativo]
+  // Colagem de duas fotos: só o formato que a declara. O alternador troca o
+  // DESTINO de tudo o que o painel faz (upload, banco, IA) — sem ele a
+  // segunda foto não teria como ser enviada.
+  const temColagem = medidasPost("topo", f?.tipo, tracoDe(familiaDe(doc)).estiloPost).gapGaleria > 0
+  const [slotAlvo, setSlotAlvo] = useState<1 | 2>(1)
+  const chaveSlot: "slot1" | "slot2" = temColagem && slotAlvo === 2 ? "slot2" : "slot1"
   const fileRef = useRef<HTMLInputElement>(null)
   const alvoRef = useRef<number>(ativo)
   const [ia, setIa] = useState<"off" | "prompt" | "loading" | string[]>("off")
@@ -558,7 +671,7 @@ export function PainelMidia({ api }: { api: EditorApi }) {
     // Frame sem slot mas com imagem é o "slide inteiro" da via B: trocar a
     // imagem dele aqui é legítimo; recusar em silêncio é que não era.
     if (!fr || !aceitaImagem(fr)) return
-    api.set((d) => ({ ...d, frames: d.frames.map((x, j) => (j === i ? { ...x, imagens: { slot1: slotDeUrl(url) } } : x)) }), `${label} · ${fr.label}`)
+    api.set((d) => ({ ...d, frames: d.frames.map((x, j) => (j === i ? { ...x, imagens: { ...x.imagens, [chaveSlot]: slotDeUrl(url) } } : x)) }), `${label} · ${fr.label}`)
   }
   const enviarArquivo = async (i: number, file: File) => {
     setEnviando(true)
@@ -608,6 +721,13 @@ export function PainelMidia({ api }: { api: EditorApi }) {
         <div className="mt-1.5 text-[12px] font-semibold text-[var(--ops-title)]">{enviando ? "Enviando…" : f && aceitaImagem(f) ? "Arraste ou clique" : "Este frame não tem slot"}</div>
         <div className="mt-0.5 text-[10.5px] text-[var(--ops-mut)]">PNG, JPG, WebP · vai para o Storage da org (≤ 1350px)</div>
       </div>
+      {temColagem && (
+        <div>
+          {label("Foto da colagem")}
+          <CtSeg size="sm" val={String(slotAlvo)} onChange={(v) => setSlotAlvo(v === "2" ? 2 : 1)} opts={[["1", "1ª foto"], ["2", "2ª foto"]]} />
+          <div className="mt-1 text-[10.5px] text-[var(--ops-mut)]">Este formato mostra duas fotos lado a lado. Sem a segunda, a primeira ocupa a largura toda.</div>
+        </div>
+      )}
       <div className="text-[11.5px] font-semibold text-[var(--ops-title)]" style={TNUM}>
         {cheios} de {total} slots
       </div>
@@ -622,13 +742,13 @@ export function PainelMidia({ api }: { api: EditorApi }) {
                 title={x.label}
                 onClick={() => {
                   api.setAtivo(i)
-                  if (!x.imagens.slot1) abrirUpload(i)
-                  else api.setImgSel({ frameId: x.frameId })
+                  if (!x.imagens[chaveSlot]) abrirUpload(i)
+                  else api.setImgSel({ frameId: x.frameId, slot: chaveSlot === "slot2" ? 2 : 1 })
                 }}
-                className={cn("relative aspect-square rounded-lg border bg-cover bg-center text-[16px] text-[var(--ops-mut)]", x.imagens.slot1 ? "border-solid" : "border-dashed", ativo === i ? "border-[var(--ops-accent)]" : "border-[var(--ops-border)]")}
-                style={x.imagens.slot1 ? { backgroundImage: `url(${x.imagens.slot1.url})` } : undefined}
+                className={cn("relative aspect-square rounded-lg border bg-cover bg-center text-[16px] text-[var(--ops-mut)]", x.imagens[chaveSlot] ? "border-solid" : "border-dashed", ativo === i ? "border-[var(--ops-accent)]" : "border-[var(--ops-border)]")}
+                style={x.imagens[chaveSlot] ? { backgroundImage: `url(${x.imagens[chaveSlot]?.url})` } : undefined}
               >
-                {!x.imagens.slot1 && "+"}
+                {!x.imagens[chaveSlot] && "+"}
                 <span className="absolute left-[3px] top-[3px] inline-flex h-[15px] w-[15px] items-center justify-center rounded bg-[var(--ops-title)] text-[9px] font-bold text-[var(--ops-card)]">{i + 1}</span>
               </button>
             ),
@@ -652,7 +772,7 @@ export function PainelMidia({ api }: { api: EditorApi }) {
               {assets
                 .filter((a) => a.kind !== "avatar")
                 .map((a) => (
-                  <button key={a.path} type="button" title={a.nome} aria-label="Usar imagem do banco" onClick={() => aplicarUrl(ativo, a.url, "Imagem do banco")} className={cn("aspect-[4/5] rounded-lg border-2 bg-cover bg-center", f.imagens.slot1?.url === a.url ? "border-[var(--ops-accent)]" : "border-[var(--ops-border)]")} style={{ backgroundImage: `url(${a.url})` }} />
+                  <button key={a.path} type="button" title={a.nome} aria-label="Usar imagem do banco" onClick={() => aplicarUrl(ativo, a.url, "Imagem do banco")} className={cn("aspect-[4/5] rounded-lg border-2 bg-cover bg-center", f.imagens[chaveSlot]?.url === a.url ? "border-[var(--ops-accent)]" : "border-[var(--ops-border)]")} style={{ backgroundImage: `url(${a.url})` }} />
                 ))}
             </div>
           )}
@@ -735,6 +855,40 @@ export function PainelFamilia({ api }: { api: EditorApi }) {
           </button>
         )
       })}
+      {tracoDe(atual).cartaoPerfil || tracoDe(atual).cartaoThread || tracoDe(atual).cartaoTweet ? (
+        <div className="rounded-[10px] border border-[var(--ops-border)] px-2.5 py-2.5">
+          <CtLabel>Tema do X</CtLabel>
+          <div className="flex flex-col gap-1.5">
+            {(Object.keys(TEMAS_DO_X) as TemaDoPost[]).map((key) => {
+              const t = TEMAS_DO_X[key]
+              const ativo = key === (doc.temaPost ?? TEMA_PADRAO_DO_POST)
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => !ativo && api.set((d) => aplicarTemaDoPost(d, key), `Tema do X: ${TEMA_ROTULOS[key]}`)}
+                  className={cn(
+                    "flex items-center gap-2 rounded-[8px] border px-2 py-1.5 text-left transition-colors",
+                    ativo ? "border-[var(--ops-accent)] bg-[var(--ops-tile)]" : "border-[var(--ops-border)] hover:bg-[var(--ops-hover)]",
+                  )}
+                >
+                  <span className="flex overflow-hidden rounded-[4px] border border-[var(--ops-border)]">
+                    {[t.fundo, t.texto, t.handle, t.link].map((c) => (
+                      <span key={c} className="h-[14px] w-[14px]" style={{ background: c }} />
+                    ))}
+                  </span>
+                  <span className="text-[11px] text-[var(--ops-title)]">{TEMA_ROTULOS[key]}</span>
+                  {ativo && <span className="ml-auto text-[10px] font-semibold text-[var(--ops-accent)]">em uso</span>}
+                </button>
+              )
+            })}
+          </div>
+          <div className="mt-1.5 text-[10px] leading-relaxed text-[var(--ops-mut)]">
+            As cores vêm da especificação pública do embed do X. No texto, <span className="font-semibold text-[var(--ops-title)]">@menção</span>,{" "}
+            <span className="font-semibold text-[var(--ops-title)]">#hashtag</span> e link saem em azul, como na rede.
+          </div>
+        </div>
+      ) : null}
       {atual === "alternado" && (
         <div className="rounded-[10px] border border-[var(--ops-border)] px-2.5 py-2.5">
           <CtLabel>Cor da marca</CtLabel>

@@ -117,38 +117,92 @@ export function cabeNaJanela(input: {
 }
 
 /**
+ * Custo TÍPICO de cada agente da fase 1, em ms — medido, não derivado.
+ *
+ * ── Por que não dá para usar o teto de tokens aqui ───────────────────
+ *
+ * `relogioParaTeto(maxTokens)` responde "quanto tempo esta chamada pode
+ * levar no pior caso", e é a resposta certa para o RELÓGIO: o provedor
+ * reserva `prompt + max_tokens` em crédito enquanto a chamada está em voo,
+ * então o relógio tem de cobrir o teto. Mas `cabeNaJanela` faz outra
+ * pergunta — "vale a pena começar?" — e responder com o teto é ser
+ * pessimista por um fator de três: o Curador tem teto de 32.000 tokens
+ * (371s pela conta) e escreve ~12.000 (210s medidos).
+ *
+ * A diferença não é acadêmica. Foi ela que desligou o Estruturador em
+ * 11/09: a reserva subiu, o custo estimado continuou sendo o teto, e a
+ * conta passou a nunca fechar. Estimar pelo teto e reservar pelo teto é
+ * pedir duas vezes o mesmo tempo.
+ *
+ * ── Os números (produção, 7 dias até 15/09) ──────────────────────────
+ *
+ * Modelo vigente `~anthropic/claude-fable-latest` nos três que decidem:
+ *
+ * | agente             | p50  | p90  | max  | n |
+ * |--------------------|------|------|------|---|
+ * | seletor            |  61s |  65s |  66s | 8 |
+ * | estruturador       | 150s | 210s | 267s | 7 |
+ * | assembler_chooser  | 210s | 336s | 376s | 7 |
+ * | blueprint (código) |   8s |  20s |  22s |17 |
+ * | subject (4.6)      |   6s |   7s |   7s | 8 |
+ *
+ * Usamos o MAX medido, não o p90: errar para baixo aqui faz começar uma
+ * etapa que não termina, e quem paga é o gateway. O relógio continua
+ * sendo a defesa real — se a etapa passar disto, `relogioDaChamada` a
+ * corta.
+ *
+ * **Trocar o modelo de um destes agentes OBRIGA a remedir a linha dele.**
+ * A query está em `supabase/migrations/DIAGNOSTICO_fase1_relogio.sql`.
+ */
+export const CUSTO_TIPICO_MS: Record<string, number> = {
+  seletor: 70_000,
+  estruturador: 270_000,
+  assembler_chooser: 340_000,
+}
+
+/**
+ * O custo estimado desta etapa para decidir se vale começar.
+ *
+ * Agente sem medição cai no teto de tokens — o comportamento de antes
+ * deste mapa, preservado de propósito para que nada fora da fase 1 mude.
+ */
+export function custoTipicoDoAgente(agente: string | null | undefined, maxTokens: number): number {
+  const medido = agente ? CUSTO_TIPICO_MS[agente] : undefined
+  return medido ?? relogioParaTeto(maxTokens)
+}
+
+/**
  * Reserva para o que vem DEPOIS do Estruturador. O Curador NÃO é pulável —
  * sem variante nenhuma, `coberturaSuficiente` recusa a montagem e a fase 2
  * morre em `hero_failed`, que é pior que um 504 porque parece sucesso.
  *
- * ── O número é do MODELO vigente, e foi isso que quebrou ─────────────
+ * ── O número é do MODELO vigente, e já quebrou duas vezes ────────────
  *
- * 490s vieram do Curador levando 442s, medido em `anthropic/claude-sonnet-5`
- * com raciocínio (11/09, batch 1ea00ba9). Os agentes voltaram para o
- * `sonnet-4.6` no mesmo dia e ninguém remediu — o comentário aqui embaixo
- * pedia exatamente isso e foi ignorado.
+ * 490s vieram do Curador levando 442s no `anthropic/claude-sonnet-5`
+ * (11/09, batch 1ea00ba9). Os agentes voltaram para o `sonnet-4.6` no
+ * mesmo dia e ninguém remediu; o efeito não foi "o Estruturador cede às
+ * vezes", foi ele nunca mais rodar — 742s de janela menos 490s de reserva
+ * deixam 252s contra os 371s que ele pedia. Toda geração desde 05:21
+ * reusou a decisão das 04:39 e a tela dizia só "pulado".
  *
- * O Curador no 4.6, medido em produção em 11/09: 69s, 88s e 97s (a run que
- * concluiu). Ou seja, a reserva ficou CINCO vezes maior que a necessidade.
+ * A correção da época baixou a reserva para 150s com o Curador medido em
+ * 97s. Esse 97s tinha n=3 e não sobreviveu: em 7 dias até 15/09 o Curador
+ * está em 210s de mediana, 336s no p90 e 376s no máximo. A reserva ficou
+ * menor que a mediana da etapa que ela existe para proteger.
  *
- * O efeito não foi "o Estruturador cede às vezes": foi ele nunca mais
- * rodar. A conta não tinha solução — 742s de janela menos 490s de reserva
- * deixam 252s, e ele pede 371s (derivados do teto de 32.000 tokens). Toda
- * geração desde 05:21 reusou a decisão das 04:39, e a tela dizia só
- * "pulado". O Estruturador foi desligado de fato sem ninguém desligá-lo.
+ * 400s = 340s do Curador (máximo medido, arredondado) + 22s de Blueprint +
+ * 7s de Subject + ~31s de folga.
  *
- * 150s = 97s do Curador (o pior caso medido no 4.6) + ~11s de Blueprint +
- * ~15s de Subject + ~27s de folga. Com isso sobram 592s para o
- * Estruturador, que usa 240s de mediana e 264s no pior caso medido.
+ * A conta fecha porque o custo estimado do Estruturador passou a ser
+ * MEDIDO (270s) e não mais o teto de tokens (371s): dos 742s que restam
+ * quando ele é consultado, 400 são reserva e sobram 342 — 72s acima do
+ * pior caso dele. Com o teto antigo a mesma reserva o teria desligado de
+ * novo, que é a armadilha de 11/09 repetida.
  *
- * **Trocar o modelo do Curador OBRIGA a remedir este número** — voltar ao
- * sonnet-5 traz os 442s de volta e a conta inverte: quem seria cortado
- * passa a ser o Curador. É a armadilha que já disparou uma vez, e a única
- * defesa hoje é este parágrafo. A saída definitiva é não ter reserva
- * nenhuma: com cada agente num passo durável, ninguém divide janela com
- * ninguém.
+ * A saída definitiva é não ter reserva nenhuma: com cada agente num passo
+ * durável, ninguém divide janela com ninguém.
  */
-export const RESERVA_POS_ESTRUTURADOR_MS = 150_000
+export const RESERVA_POS_ESTRUTURADOR_MS = 400_000
 
 /**
  * NÃO existe reserva pós-Seletor, e isso é decisão medida — não esquecimento.
@@ -169,11 +223,22 @@ export const RESERVA_POS_ESTRUTURADOR_MS = 150_000
 /**
  * Teto de relógio por agente da fase 1, em ms.
  *
- * O global (`ARCHITECT_INVOKE_TIMEOUT_MS`, 240s) NÃO pode subir: ele é
- * compartilhado com o Curador, o Montador e o catalogador, e o
- * `DISPATCH_TICK_BUDGET_MS` do cron foi dimensionado por escrito sobre ele
- * (`45s + 240s <= maxDuration 300s`). Um número maior lá mata o cron no
- * meio — pior que o 504, porque deixa run órfã e job reclamável.
+ * O global (`ARCHITECT_INVOKE_TIMEOUT_MS`, 240s) é compartilhado com o
+ * Montador e o catalogador. Subi-lo mexe em quem não pediu.
+ *
+ * ── A conta que estava escrita aqui era FALSA ────────────────────────
+ *
+ * Dizia que o `DISPATCH_TICK_BUDGET_MS` do cron fora dimensionado sobre os
+ * 240s globais: `45s + 240s <= maxDuration 300s`. Mas o Curador tem teto
+ * PRÓPRIO de 360s e faz até duas chamadas, e a fase 1 de um e-mail leva
+ * 363s de mediana (p90 681s, máximo 1213s — 43 e-mails, 14 dias). Nunca
+ * coube em 300s. O cron sobrevivia morrendo no meio e recomeçando o e-mail
+ * no tick seguinte, pagando o Curador de novo.
+ *
+ * Quem faz a conta fechar agora é `email-dispatch-queue.service.ts`: a
+ * função do cron tem 800s (o teto da Vercel, o mesmo das rotas de fase 2)
+ * e a janela da fase 1 é aberta dentro dela. Os números e a invariante
+ * estão lá, com teste.
  *
  * Os valores saem da conta, não do gosto: a 90 tok/s, o teto de tokens de
  * cada agente pede este tempo para ser alcançável. Teto de token que o

@@ -99,20 +99,36 @@ export function fichaSugeridaDaLoja(store: {
   frete_prazo?: string | null
   frete_gratis_acima_cents?: number | null
   devolucao_politica?: string | null
+  /** Passo 16: políticas lidas das páginas públicas — a sugestão mais completa quando existe. */
+  politicas?: {
+    troca?: { dias?: number | null; texto?: string | null } | null
+    frete?: { gratis?: boolean | null; gratis_condicao?: string | null; prazo?: string | null; texto?: string | null } | null
+  } | null
 }): FichaOperacional | null {
+  const pol = store.politicas
   const out: FichaOperacional = {
     envio:
-      store.frete_prazo || store.frete_gratis_acima_cents
+      pol?.frete
         ? {
-            prazo: str(store.frete_prazo),
-            frete_gratis_acima:
-              typeof store.frete_gratis_acima_cents === "number" && store.frete_gratis_acima_cents > 0
-                ? (store.frete_gratis_acima_cents / 100).toFixed(2)
-                : null,
-            texto: null,
+            prazo: str(pol.frete.prazo),
+            frete_gratis_acima: pol.frete.gratis ? str(pol.frete.gratis_condicao) ?? "sim" : null,
+            texto: str(pol.frete.texto),
           }
+        : store.frete_prazo || store.frete_gratis_acima_cents
+          ? {
+              prazo: str(store.frete_prazo),
+              frete_gratis_acima:
+                typeof store.frete_gratis_acima_cents === "number" && store.frete_gratis_acima_cents > 0
+                  ? (store.frete_gratis_acima_cents / 100).toFixed(2)
+                  : null,
+              texto: null,
+            }
+          : null,
+    troca: pol?.troca
+      ? { prazo_dias: typeof pol.troca.dias === "number" ? pol.troca.dias : null, texto: str(pol.troca.texto) }
+      : store.devolucao_politica
+        ? { prazo_dias: null, texto: str(store.devolucao_politica) }
         : null,
-    troca: store.devolucao_politica ? { prazo_dias: null, texto: str(store.devolucao_politica) } : null,
   }
   return fichaVazia(out) ? null : out
 }

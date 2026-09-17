@@ -57,6 +57,9 @@ export interface StepUsage {
   /** Por que o modelo parou — `length` explica o JSON cortado. */
   finishReason?: string
   reasoningTokens?: number
+  /** Cache de prompt lido / escrito — vale no erro tanto quanto no sucesso. */
+  cachedTokens?: number
+  cacheWriteTokens?: number
 }
 
 const KEY = "__cfyStepUsage"
@@ -111,6 +114,10 @@ export function usageOf(err: unknown): StepUsage | null {
     ...(typeof rec.reasoningTokens === "number"
       ? { reasoningTokens: rec.reasoningTokens }
       : {}),
+    ...(typeof rec.cachedTokens === "number" ? { cachedTokens: rec.cachedTokens } : {}),
+    ...(typeof rec.cacheWriteTokens === "number"
+      ? { cacheWriteTokens: rec.cacheWriteTokens }
+      : {}),
   }
 }
 
@@ -123,5 +130,35 @@ export function withUsage<T>(usage: StepUsage, parse: () => T): T {
     return parse()
   } catch (err) {
     throw attachUsage(err, usage)
+  }
+}
+
+/**
+ * Os dois campos do cache de prompt, prontos para `...cacheDe(res)` em
+ * qualquer objeto de consumo. Ausentes quando o provedor não reportou —
+ * `tokens_cache` ausente não é zero acerto, é provedor mudo.
+ */
+export function cacheDe(r: {
+  cachedTokens?: number
+  cacheWriteTokens?: number
+}): { cachedTokens?: number; cacheWriteTokens?: number } {
+  return {
+    ...(typeof r.cachedTokens === "number" ? { cachedTokens: r.cachedTokens } : {}),
+    ...(typeof r.cacheWriteTokens === "number" ? { cacheWriteTokens: r.cacheWriteTokens } : {}),
+  }
+}
+
+/** O mesmo, no formato gravado em `parsed_output.cache` da run do step. */
+export function cacheParaRun(r: {
+  cachedTokens?: number
+  cacheWriteTokens?: number
+}): { cache?: { tokens_lidos?: number; tokens_escritos?: number } } {
+  const c = cacheDe(r)
+  if (c.cachedTokens === undefined && c.cacheWriteTokens === undefined) return {}
+  return {
+    cache: {
+      ...(c.cachedTokens !== undefined ? { tokens_lidos: c.cachedTokens } : {}),
+      ...(c.cacheWriteTokens !== undefined ? { tokens_escritos: c.cacheWriteTokens } : {}),
+    },
   }
 }

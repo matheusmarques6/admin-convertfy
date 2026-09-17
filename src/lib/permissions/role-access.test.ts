@@ -55,6 +55,8 @@ const MATRIX: Matrix = {
   "ops.image_studio":       { admin: true, dev: true, coo: true,  suporte: true,  designer: true,  implementacao: true },
   "ops.conteudo":           { admin: true, dev: true, coo: true,  suporte: true,  designer: true,  implementacao: true },
   "ops.conteudo.dashboard": { admin: true, dev: true, coo: true,  suporte: true,  designer: true,  implementacao: true },
+  "ops.conteudo.raio_x":    { admin: true, dev: true, coo: true,  suporte: true,  designer: true,  implementacao: true },
+  "ops.conteudo.espionagem":{ admin: true, dev: true, coo: true,  suporte: true,  designer: true,  implementacao: true },
   "ops.conteudo.estudio":   { admin: true, dev: true, coo: true,  suporte: true,  designer: true,  implementacao: true },
   "ops.conteudo.reels":     { admin: true, dev: true, coo: true,  suporte: true,  designer: true,  implementacao: true },
   "ops.conteudo.calendario":{ admin: true, dev: true, coo: true,  suporte: true,  designer: true,  implementacao: true },

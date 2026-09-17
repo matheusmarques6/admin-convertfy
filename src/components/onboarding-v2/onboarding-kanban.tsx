@@ -14,6 +14,8 @@ import useSWR from "swr"
 import { SelectClientAndStore } from "./select-client-and-store"
 import { OnboardingCard } from "./onboarding-card"
 import { OnboardingDrawer } from "./onboarding-drawer"
+import { AdvanceDialog } from "./advance-dialog"
+import { TemplatesDialog } from "./templates-dialog"
 import {
   DragDropContext,
   Droppable,
@@ -23,6 +25,7 @@ import {
 import {
   Plus,
   Loader2,
+  MessageSquare,
   Search,
   Flame,
   Activity,
@@ -141,6 +144,14 @@ export function OnboardingKanban({
 
   const [newOpen, setNewOpen] = useState(false)
   const [drawerId, setDrawerId] = useState<string | null>(null)
+  // Arrastar um card e um gesto de organizacao e ate 15/09/2026 ele mandava
+  // WhatsApp ao cliente. Agora abre o dialogo: o avanco so acontece depois de
+  // alguem ver a mensagem e decidir. O card volta sozinho pra coluna de
+  // origem enquanto isso — a lista vem do SWR, sem estado otimista local.
+  const [templatesOpen, setTemplatesOpen] = useState(false)
+  const [advanceContext, setAdvanceContext] = useState<string | null>(null)
+  const [advancing, setAdvancing] = useState(false)
+
   const [goBackContext, setGoBackContext] = useState<{
     onboardingId: string
     targetSlug: string
@@ -307,24 +318,9 @@ export function OnboardingKanban({
     const destIdx = columns.findIndex((c) => c.id === destination.droppableId)
     if (srcIdx < 0 || destIdx < 0) return
 
-    // Avancar (proximo +1)
+    // Avancar (proximo +1) — passa pelo dialogo, nunca direto.
     if (destIdx === srcIdx + 1) {
-      const res = await fetch(`/api/onboardings/${draggableId}/advance`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: "{}",
-      })
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}))
-        toast.toast({
-          variant: "destructive",
-          title: "Nao foi possivel avancar",
-          description: j.error?.message ?? j.error ?? "Tente novamente.",
-        })
-        return
-      }
-      toast.toast({ title: "Onboarding avancou de coluna" })
-      mutate()
+      setAdvanceContext(draggableId)
       return
     }
 
@@ -345,6 +341,36 @@ export function OnboardingKanban({
     })
   }
 
+  async function confirmarAvanco(onboardingId: string, sendWhatsApp: boolean) {
+    setAdvancing(true)
+    try {
+      const res = await fetch(`/api/onboardings/${onboardingId}/advance`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(sendWhatsApp ? { send_whatsapp: true } : {}),
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        toast.toast({
+          variant: "destructive",
+          title: "Nao foi possivel avancar",
+          description: j.error?.message ?? j.error ?? "Tente novamente.",
+        })
+        return
+      }
+      toast.toast({
+        title: "Onboarding avancou de coluna",
+        description: sendWhatsApp
+          ? "A mensagem foi enviada ao cliente."
+          : "Nenhuma mensagem foi enviada ao cliente.",
+      })
+      mutate()
+    } finally {
+      setAdvancing(false)
+      setAdvanceContext(null)
+    }
+  }
+
   if (isLoading) return <KanbanSkeleton />
 
   return (
@@ -363,14 +389,24 @@ export function OnboardingKanban({
               </span>
             </h1>
           </div>
-          <button
-            type="button"
-            onClick={() => setNewOpen(true)}
-            className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-[8px] bg-[#1F1F1F] dark:bg-white text-white dark:text-black text-[12.5px] font-semibold hover:opacity-90 transition-opacity shadow-[0_1px_2px_rgba(0,0,0,0.08)]"
-          >
-            <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
-            Novo onboarding
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setTemplatesOpen(true)}
+              className="inline-flex items-center gap-1.5 h-9 px-3 rounded-[8px] text-[12.5px] font-medium text-slate-600 dark:text-white/70 border border-black/[0.08] dark:border-white/[0.12] hover:bg-slate-50 dark:hover:bg-white/[0.04] transition-colors"
+            >
+              <MessageSquare className="h-3.5 w-3.5" strokeWidth={2} />
+              Mensagens
+            </button>
+            <button
+              type="button"
+              onClick={() => setNewOpen(true)}
+              className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-[8px] bg-[#1F1F1F] dark:bg-white text-white dark:text-black text-[12.5px] font-semibold hover:opacity-90 transition-opacity shadow-[0_1px_2px_rgba(0,0,0,0.08)]"
+            >
+              <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
+              Novo onboarding
+            </button>
+          </div>
         </div>
 
         {/* KPI strip */}
@@ -715,6 +751,21 @@ export function OnboardingKanban({
             setNewOpen(false)
             mutate()
           }}
+        />
+      )}
+
+      {templatesOpen && (
+        <TemplatesDialog onClose={() => setTemplatesOpen(false)} />
+      )}
+
+      {advanceContext && (
+        <AdvanceDialog
+          onboardingId={advanceContext}
+          onClose={() => setAdvanceContext(null)}
+          onConfirm={(sendWhatsApp) =>
+            confirmarAvanco(advanceContext, sendWhatsApp)
+          }
+          submitting={advancing}
         />
       )}
 

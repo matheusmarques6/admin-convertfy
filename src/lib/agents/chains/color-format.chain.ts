@@ -35,7 +35,7 @@ import { invokeFormatModel, truncou, type FormatChainConfig } from "./format-inv
 import { corteParaStepMecanico } from "../model-capabilities"
 import { OpsParseError, parseOps, type FormatOp } from "../html/apply-patches"
 import { parsePlanoDeCor, type PlanoDeCor } from "../html/plano-de-cor"
-import { attachUsage, withUsage } from "./step-usage"
+import { attachUsage, withUsage, cacheDe } from "./step-usage"
 import { doctrinePromptSegment, withDoctrine } from "../shared/doctrine-packets"
 import {
   ALCADA,
@@ -56,7 +56,7 @@ const timeoutMs = () => {
 }
 
 export const DEFAULT_COLOR_FORMAT_SYSTEM_PROMPT = `<role>
-You are the COLOR & BUTTON finisher of an email-design pipeline — the last visual pass before QA. You do NOT see the email document. You receive three readings of it: the COLOR INVENTORY (every color value, with occurrence count and usage context), the BANDS (\`<faixas>\`: the sequence of section backgrounds, in scroll order) and the BUTTONS (\`<ctas>\`: each button with the band it sits in). Plus the store's approved palette, fonts and research.
+You are the COLOR & BUTTON finisher of an email-design pipeline — the last visual pass before QA. You do NOT see the email document. You receive three readings of it: the COLOR INVENTORY (every color value, with occurrence count and usage context), the BANDS (\`<faixas>\`: the sequence of section backgrounds, in scroll order) and the BUTTONS (\`<ctas>\`: each button with the band it sits in, and \`tem_cta_por_contrato\` — whether the block's CONTRACT declares a button, which outranks what you infer). Plus the store's approved palette and fonts.
 
 Your job is no longer only "which values must change". It is three decisions: the RHYTHM of the bands, the COLOR AND PRESENCE of every button, and the value-level conformance to the identity. Deterministic code applies each one — you never write HTML.
 </role>
@@ -155,10 +155,6 @@ export const DEFAULT_COLOR_FORMAT_USER_TEMPLATE = `<store>
   <subject>{{subject}}</subject>
 </email>
 
-<pesquisa_diagnostico>
-{{pesquisa_full_text}}
-</pesquisa_diagnostico>
-
 <color_inventory>
 {{color_inventory_json}}
 </color_inventory>
@@ -222,6 +218,9 @@ export interface InvokeColorFormatResult {
   tokensInput: number
   tokensOutput: number
   costUsd: number
+  /** Cache de prompt lido / escrito nesta chamada, quando reportado. */
+  cachedTokens?: number
+  cacheWriteTokens?: number
   renderedPrompt: string
   /** O mesmo prompt marcado por origem; null quando não foi possível cortar. */
   promptSegments: PromptSegment[] | null
@@ -297,6 +296,7 @@ export async function invokeColorFormatChain(input: {
     tokensInput: res.tokensInput,
     tokensOutput: res.tokensOutput,
     costUsd: res.costUsd,
+    ...cacheDe(res),
     renderedPrompt: userMessage,
     promptSegments,
     // A resposta rejeitada viaja no erro: é a única coisa capaz de
@@ -352,6 +352,7 @@ export async function invokeColorFormatChain(input: {
     tokensInput: res.tokensInput,
     tokensOutput: res.tokensOutput,
     costUsd: res.costUsd,
+    ...cacheDe(res),
     renderedPrompt: userMessage,
     promptSegments,
     rawOutput: res.text,

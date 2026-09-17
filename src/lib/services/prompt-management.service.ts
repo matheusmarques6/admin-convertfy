@@ -159,6 +159,7 @@ export async function listPrompts(opts: {
     estruturador: { active: null, history: [] },
     catalogador: { active: null, history: [] },
     seletor: { active: null, history: [] },
+    gerador_anatomia: { active: null, history: [] },
     copy: { active: null, history: [] },
     image: { active: null, history: [] },
     html: { active: null, history: [] },

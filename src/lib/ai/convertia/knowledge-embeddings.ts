@@ -23,8 +23,33 @@ const log = logger.child("KnowledgeEmbeddings")
 export const EMBEDDING_MODEL = "openai/text-embedding-3-small"
 export const EMBEDDING_DIMS = 1536
 const OPENROUTER_EMBEDDINGS_URL = "https://openrouter.ai/api/v1/embeddings"
-/** ~8k tokens do modelo; cortamos por caracteres com folga. */
-const MAX_INPUT_CHARS = 24_000
+/**
+ * Teto por NOTA, em caracteres.
+ *
+ * Era 24.000, com o comentário "~8k tokens do modelo; cortamos por
+ * caracteres com folga". **A folga não existia**: a régua de ~4 chars por
+ * token é do inglês; em português acentuado — e num corpus que mistura
+ * código, JSON e nomes próprios — o `cl100k_base` gasta perto de 3, então
+ * 24.000 chars ficam colados nos 8.192 tokens do modelo, e passam dele com
+ * facilidade.
+ *
+ * Medido em 15/09: 251 das 256 notas aprovadas têm vetor, e as **5 que
+ * não têm são as cinco maiores** (12k, 27k, 29,6k, 41,6k e 43,4k chars),
+ * todas paradas desde 09/09. 16.000 dá folga real (~5,3k tokens a 3
+ * chars/token). A cauda cortada é o preço de a nota EXISTIR na busca — e
+ * ela já era cortada antes, só que num ponto que não cabia.
+ */
+const MAX_INPUT_CHARS = 16_000
+/**
+ * Teto de caracteres por REQUISIÇÃO.
+ *
+ * O limite do endpoint é por chamada, não por item: 32 notas de 16k
+ * somam 512k chars num único POST. Era isto que derrubava o lote inteiro
+ * — inclusive as notas pequenas que viajavam junto com as grandes.
+ */
+const MAX_BATCH_CHARS = 60_000
+/** Teto de itens por requisição, para lote de notas curtas não explodir. */
+const MAX_BATCH_ITENS = 32
 
 export function embeddingsAvailable(): boolean {
   return Boolean(process.env.OPENROUTER_API_KEY)
@@ -33,6 +58,41 @@ export function embeddingsAvailable(): boolean {
 /** Texto que vira o vetor: título + tags + corpo (cortado). */
 export function embeddingInput(note: { title: string; tags: string[]; body: string }): string {
   return `${note.title}\n${note.tags.map((t) => `#${t}`).join(" ")}\n\n${note.body}`.slice(0, MAX_INPUT_CHARS)
+}
+
+/**
+ * PURA. Agrupa os textos em requisições que cabem no endpoint.
+ *
+ * Devolve ÍNDICES, não os textos: quem chama precisa casar o vetor de
+ * volta com a linha do banco, e um lote de textos perde essa amarração.
+ *
+ * Item sozinho maior que o orçamento vai SOZINHO no seu lote em vez de
+ * ser descartado — ele pode passar (o teto por nota já o cortou), e
+ * descartá-lo aqui repetiria em silêncio o defeito que esta função
+ * existe para desfazer.
+ */
+export function lotesPorOrcamento(
+  textos: readonly string[],
+  maxChars: number = MAX_BATCH_CHARS,
+  maxItens: number = MAX_BATCH_ITENS,
+): number[][] {
+  const lotes: number[][] = []
+  let atual: number[] = []
+  let chars = 0
+  for (let i = 0; i < textos.length; i++) {
+    const n = textos[i]?.length ?? 0
+    const estouraChars = atual.length > 0 && chars + n > maxChars
+    const estouraItens = atual.length >= maxItens
+    if (estouraChars || estouraItens) {
+      lotes.push(atual)
+      atual = []
+      chars = 0
+    }
+    atual.push(i)
+    chars += n
+  }
+  if (atual.length > 0) lotes.push(atual)
+  return lotes
 }
 
 export interface EmbedResult {

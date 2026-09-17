@@ -9,6 +9,7 @@ import { convertToBRL, convertToBRLDetailed } from "@/lib/services/exchange-rate
 import { moedaDaLinha } from "@/lib/money/moeda-da-loja"
 import { normalizePeriodLabel } from "@/lib/services/sync-persistence.service"
 import { ANY_EMAIL_PLATFORM_FILTER, KLAVIYO_CREDENTIALS_FILTER } from "@/lib/services/credentials.service"
+import { medirFrescor, type CacheOrfao } from "@/lib/dashboard/frescor"
 
 const log = logger.child("TotalRevenue")
 
@@ -78,6 +79,13 @@ interface TotalRevenueResponse {
     count: number
     stores: Array<{ storeId: string; storeName: string; clientName: string; error: string }>
   }
+  /**
+   * Lojas cujo cache NENHUMA sincronização alcança — sem plataforma de
+   * e-mail conectada. O número delas continua nos cards (descartá-lo
+   * derrubaria o total sem explicação), mas é o último coletado, e antes
+   * disto ele ainda ancorava a idade do dashboard inteiro.
+   */
+  cacheOrfao?: { count: number; stores: CacheOrfao[] }
 }
 
 type EnhancedTotalRevenueResponse = TotalRevenueResponse & DataStatusMeta & {
@@ -182,6 +190,7 @@ function buildResponse(
   rows: Array<{ sync_status: string; fetched_at: string | null }>,
   meta: DataStatusMeta & { dataAge: number; isStale: boolean },
   storesCount: number,
+  orfaos: CacheOrfao[] = [],
 ): EnhancedTotalRevenueResponse {
   const totalRevenue = storeBreakdown.reduce((sum, s) => sum + s.totalRevenueBRL, 0)
   const campaignRevenue = storeBreakdown.reduce((sum, s) => sum + s.campaignRevenueBRL, 0)
@@ -246,6 +255,7 @@ function buildResponse(
     dataAge: meta.dataAge,
     isStale: meta.isStale,
     syncIssues: { count: issueStores.length, stores: issueStores },
+    cacheOrfao: { count: orfaos.length, stores: orfaos },
   }
 }
 
@@ -296,22 +306,34 @@ async function handleGet(request: NextRequest) {
     const orgId = await resolveOrgId(user.id)
     const adminClient = createAdminClient()
 
-    // Conta lojas com QUALQUER plataforma de email marketing (Klaviyo ou Omnisend).
+    // Lojas com QUALQUER plataforma de email marketing (Klaviyo ou Omnisend).
     // Resiliente a migration pendente: se omnisend_api_key nao existe, cai no
     // filtro legado so-Klaviyo.
-    let countResp = await adminClient
+    //
+    // Traz os IDS, não um `count: 'exact'`: este é o MESMO conjunto que a
+    // rota de refresh percorre, e a idade do cache precisa ser medida
+    // sobre ele (ver `medirFrescor`). De quebra sai do `count exact` em
+    // caminho quente, que é a regra da casa desde o incidente do inbox.
+    let storesResp = await adminClient
       .from("client_stores")
-      .select("id", { count: "exact", head: true })
+      .select("id")
       .eq("org_id", orgId)
       .or(ANY_EMAIL_PLATFORM_FILTER)
-    if (countResp.error && /omnisend_api_key/.test(countResp.error.message || "")) {
-      countResp = await adminClient
+    if (storesResp.error && /omnisend_api_key/.test(storesResp.error.message || "")) {
+      storesResp = await adminClient
         .from("client_stores")
-        .select("id", { count: "exact", head: true })
+        .select("id")
         .eq("org_id", orgId)
         .or(KLAVIYO_CREDENTIALS_FILTER)
     }
-    const storesCount = countResp.count ?? 0
+    // Falha na leitura vira conjunto VAZIO só para a contagem; para o
+    // frescor, conjunto vazio diria "toda a carteira está órfã" — por isso
+    // o `null` abaixo, que faz `medirFrescor` ser pulado e a idade voltar
+    // ao comportamento anterior. Erro de leitura não pode inventar órfã.
+    const idsRenovaveis = storesResp.error
+      ? null
+      : new Set((storesResp.data ?? []).map((s) => (s as { id: string }).id))
+    const storesCount = idsRenovaveis?.size ?? 0
 
     if (storesCount === 0) {
       const elapsed = Date.now() - startTime
@@ -407,15 +429,26 @@ async function handleGet(request: NextRequest) {
       return response
     }
 
-    // Calculate data age from oldest fetched_at — SÓ de linhas não-erro.
-    // Linha de erro zerada com fetched_at recente (cron/refresh marcando a
-    // falha) deixaria a tela "ready" mostrando R$ 0 como se fosse fresco.
-    const freshnessRows = rows.filter((s) => s.sync_status !== "error")
-    const oldestFetchedAt = freshnessRows.reduce((oldest: string | null, s) => {
-      if (!s.fetched_at) return oldest
-      if (!oldest) return s.fetched_at
-      return new Date(s.fetched_at) < new Date(oldest) ? s.fetched_at : oldest
-    }, null)
+    // Idade do cache: linha de erro não conta (zerada com carimbo recente
+    // deixaria a tela "ready" mostrando R$ 0 como se fosse fresco), e
+    // linha de loja que NENHUMA passada de sync alcança também não —
+    // ela não fica velha, fica órfã. Ver `lib/dashboard/frescor`.
+    const frescor = medirFrescor(
+      rows.map((s) => {
+        const sd = s.client_stores as unknown as { store_name?: string } | null
+        return {
+          storeId: s.store_id as string,
+          storeName: sd?.store_name ?? (s.store_id as string),
+          fetchedAt: (s.fetched_at as string | null) ?? null,
+          syncStatus: s.sync_status as string,
+        }
+      }),
+      // Sem a lista de lojas (falha de leitura), toda linha é tratada
+      // como renovável: é o comportamento de antes, e é melhor que
+      // declarar órfã uma carteira inteira por causa de um erro de query.
+      idsRenovaveis ?? new Set(rows.map((s) => s.store_id as string)),
+    )
+    const oldestFetchedAt = frescor.maisAntiga
 
     const dataAgeMs = oldestFetchedAt ? Date.now() - new Date(oldestFetchedAt).getTime() : Infinity
     const dataAgeMinutes = oldestFetchedAt ? Math.round(dataAgeMs / 60_000) : -1
@@ -460,7 +493,7 @@ async function handleGet(request: NextRequest) {
       source: isStale ? "stale-cache" : "cache",
       dataAge: dataAgeMinutes,
       isStale,
-    }, storesCount)
+    }, storesCount, frescor.orfaos)
 
     const response = successResponse(request, result)
     response.headers.set("X-Response-Time", `${elapsed}ms`)

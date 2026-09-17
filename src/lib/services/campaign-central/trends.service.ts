@@ -26,10 +26,30 @@ import { getSearchLocale } from "@/lib/constants/country-search-language"
 import { evaluateRisk } from "@/lib/constants/risk-keywords"
 import { captureFromTrendtrack } from "./trendtrack.service"
 import { getSettings } from "./settings.service"
+import { classificarFalha, planejarRetentativa } from "@/lib/agents/retry-teto"
+import {
+  DURACAO_TIPICA_DA_CAPTURA_MS,
+  avisoDeCapturaParcial,
+  cabeMaisUmCluster,
+  ordemDaCaptura,
+} from "@/lib/campaign-central/ciclo-saude"
 
 const log = logger.child("CampaignTrends")
 
 const TRENDS_MODEL = "claude-sonnet-4-6"
+
+/** Teto usado quando a config não declara um. */
+const TETO_INICIAL_DAS_TRENDS = 4096
+/**
+ * Teto máximo da retentativa.
+ *
+ * Não é decoração: cada token a mais é tempo (o modelo gera ~90 tok/s) e
+ * a captura inteira vive dentro do relógio de um cron de 300 s. 12.288
+ * comporta a saída medida — as respostas cortadas paravam entre 1,7k e
+ * 3,2k caracteres úteis — sem transformar um cluster em dois minutos.
+ */
+const TETO_MAXIMO_DAS_TRENDS = 12_288
+const MAX_TENTATIVAS_DAS_TRENDS = 2
 
 export type TrendInput = Pick<
   CampaignTrend,
@@ -82,6 +102,23 @@ interface CaptureCycleParams {
   orgId: string
   cycleId: string
   clusters: ClusterParams[]
+  /**
+   * Quanto de relógio esta captura pode gastar.
+   *
+   * Sem isto, o laço em série (81 s de média por cluster, máximo medido
+   * 199 s) atravessava os 300 s do cron com 7 países e a função era MORTA
+   * pelo runtime: nem o `catch` nem o `finally` rodavam, o ciclo ficava
+   * `generating` para sempre e a geração de sugestões — que é o produto —
+   * nunca chegava a ser chamada. Tendência é enriquecimento; sugestão é o
+   * entregável, e é ela que tem de caber.
+   */
+  orcamentoMs?: number
+}
+
+export interface ResultadoDaCaptura {
+  trends: TrendInput[]
+  /** Países que não começaram por falta de relógio — entram na frente na próxima. */
+  adiados: string[]
 }
 
 /**
@@ -217,6 +254,20 @@ async function captureFromWebSearch(params: {
   tokensOut: number
   costCents: number
   parseError: string | null
+  /** Quantas chamadas foram feitas (a 2ª só existe se o teto cortou a 1ª). */
+  tentativas: number
+  /** O teto REALMENTE usado na última chamada — vai para a telemetria. */
+  maxTokens: number
+  /**
+   * O modelo REALMENTE chamado.
+   *
+   * A run gravava `TRENDS_MODEL` fixo enquanto a chamada usava
+   * `cfg?.model` — com a config em `moonshotai/kimi-k3`, toda a
+   * telemetria de 16/09 dizia `claude-sonnet-4-6`. É a mesma armadilha
+   * do `onMeta.modelUsed`: comparar modelos vira ficção quando a run
+   * registra o pedido em vez do servido.
+   */
+  model: string
 }> {
   const locale = getSearchLocale(params.cluster.country)
   const cfg = await loadTrendsConfig()
@@ -246,46 +297,86 @@ async function captureFromWebSearch(params: {
   const system = renderTrendsVars(systemTemplate, vars)
   const user = cfg?.user_template ? renderTrendsVars(userTemplate, vars) : userTemplate
 
-  const result = await callAnthropicWithWebSearch({
-    model: cfg?.model ?? TRENDS_MODEL,
-    system,
-    user,
-    maxTokens: cfg?.max_tokens ?? 4096,
-    temperature: cfg?.temperature ?? 0.6,
-    maxSearches: params.maxSearches,
-  })
+  // ── Retentativa com teto MAIOR quando a resposta foi cortada ────────
+  //
+  // Medido em 16/09: as 20 runs `invalid_output` desde 17/08 têm
+  // `tokens_output` = 4.096 — o teto EXATO da config — e o `raw_output`
+  // termina no meio de uma palavra. Não é o modelo errando o JSON: é o
+  // orçamento acabando. Repetir com o mesmo teto falharia igual, cobrando
+  // de novo, e é por isso que `retry-teto` existe. Ele nasceu para o
+  // Seletor e o Estruturador, desceu ao `copy_fit` em 15/09 e nunca
+  // tinha chegado até aqui.
+  const modelo = cfg?.model ?? TRENDS_MODEL
+  const tetoInicial = cfg?.max_tokens ?? TETO_INICIAL_DAS_TRENDS
+  let teto = tetoInicial
+  let result: Awaited<ReturnType<typeof callAnthropicWithWebSearch>> | null = null
+  let ultimoErro: string | null = null
+  let tentativas = 0
 
-  if (!result.parsed) {
-    return {
-      trends: [],
-      rawText: result.rawText,
-      tokensIn: result.tokensInput,
-      tokensOut: result.tokensOutput,
-      costCents: result.costCents,
-      parseError: result.parseError ?? "Output sem JSON",
+  for (let tentativa = 1; tentativa <= MAX_TENTATIVAS_DAS_TRENDS; tentativa++) {
+    tentativas = tentativa
+    result = await callAnthropicWithWebSearch({
+      model: modelo,
+      system,
+      user,
+      maxTokens: teto,
+      temperature: cfg?.temperature ?? 0.6,
+      maxSearches: params.maxSearches,
+    })
+
+    const validation = result.parsed ? aiTrendsOutputSchema.safeParse(result.parsed) : null
+    if (validation?.success) {
+      return {
+        trends: validation.data.trends,
+        rawText: result.rawText,
+        tokensIn: result.tokensInput,
+        tokensOut: result.tokensOutput,
+        costCents: result.costCents,
+        parseError: null,
+        tentativas,
+        maxTokens: teto,
+        model: modelo,
+      }
     }
+
+    const ehValidacao = validation != null && !validation.success
+    const erroDaVez =
+      validation != null && !validation.success
+        ? validation.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")
+        : (result.parseError ?? "Output sem JSON")
+
+    const causa = classificarFalha({
+      finishReason: result.finishReason,
+      tokensOutput: result.tokensOutput,
+      maxTokens: teto,
+      ehValidacao,
+    })
+    const plano = planejarRetentativa({
+      causa,
+      tentativa,
+      maxAttempts: MAX_TENTATIVAS_DAS_TRENDS,
+      tetoAtual: teto,
+      tetoMaximo: TETO_MAXIMO_DAS_TRENDS,
+    })
+    // O motivo vai junto do erro gravado: "JSON parse falhou em todos os
+    // candidatos" sozinho descreve o sintoma e esconde a causa — foi o que
+    // fez este diagnóstico custar um mês.
+    ultimoErro = `${erroDaVez} (${plano.motivo})`
+    if (!plano.repetir) break
+    log.warn("trends.retentativa", { cluster: params.cluster.country, causa, motivo: plano.motivo })
+    teto = plano.maxTokens
   }
 
-  const validation = aiTrendsOutputSchema.safeParse(result.parsed)
-  if (!validation.success) {
-    return {
-      trends: [],
-      rawText: result.rawText,
-      tokensIn: result.tokensInput,
-      tokensOut: result.tokensOutput,
-      costCents: result.costCents,
-      parseError: validation.error.issues
-        .map((i) => `${i.path.join(".")}: ${i.message}`)
-        .join("; "),
-    }
-  }
   return {
-    trends: validation.data.trends,
-    rawText: result.rawText,
-    tokensIn: result.tokensInput,
-    tokensOut: result.tokensOutput,
-    costCents: result.costCents,
-    parseError: null,
+    trends: [],
+    rawText: result?.rawText ?? "",
+    tokensIn: result?.tokensInput ?? 0,
+    tokensOut: result?.tokensOutput ?? 0,
+    costCents: result?.costCents ?? 0,
+    parseError: ultimoErro ?? "Output sem JSON",
+    tentativas,
+    maxTokens: teto,
+    model: modelo,
   }
 }
 
@@ -342,20 +433,65 @@ export function dedupeTrends(trends: TrendInput[]): TrendInput[] {
 }
 
 /**
- * Captura trends pra TODOS os clusters do ciclo. 1 chamada IA por cluster
- * (web search). Persiste em campaign_trends e devolve a lista mergeada.
+ * Última captura bem-sucedida por país. É o que dá a ordem da fila: quem
+ * ficou de fora do orçamento na semana passada entra primeiro nesta.
  */
-export async function captureTrends(params: CaptureCycleParams): Promise<TrendInput[]> {
+async function ultimaCapturaPorPais(countries: string[]): Promise<Map<string, string | null>> {
+  const mapa = new Map<string, string | null>()
   const admin = createAdminClient()
-  const { orgId, cycleId, clusters } = params
+  const { data, error } = await admin
+    .from("campaign_trends")
+    .select("country, created_at")
+    .in("country", countries)
+    .order("created_at", { ascending: false })
+    .limit(1000)
+  // Falha aqui não pode derrubar a captura: sem o mapa, todos ficam como
+  // "nunca capturados" e a ordem cai na alfabética — pior fila, nenhuma
+  // perda.
+  if (error) {
+    log.warn("trends.ultima_captura_falhou", { error: error.message })
+    return mapa
+  }
+  for (const row of (data ?? []) as Array<{ country: string | null; created_at: string }>) {
+    const c = (row.country ?? "").toUpperCase()
+    if (!c || mapa.has(c)) continue
+    mapa.set(c, row.created_at)
+  }
+  return mapa
+}
+
+/**
+ * Captura trends pros clusters do ciclo que couberem no relógio. 1 chamada
+ * IA por cluster (web search). Persiste em campaign_trends e devolve a
+ * lista mergeada mais os países adiados.
+ */
+export async function captureTrends(params: CaptureCycleParams): Promise<ResultadoDaCaptura> {
+  const t0Captura = Date.now()
+  const admin = createAdminClient()
+  const { orgId, cycleId } = params
   const settings = await getSettings(orgId)
-  const countries = Array.from(new Set(clusters.map((c) => c.country.toUpperCase())))
+  const countries = Array.from(new Set(params.clusters.map((c) => c.country.toUpperCase())))
   const excludedByCountry = await loadExcludedDateNames(countries)
+  // Quem esperou mais vai primeiro: com o orçamento cortando a fila, uma
+  // ordem fixa faria os últimos países nunca terem tendência nenhuma.
+  const clusters = ordemDaCaptura(params.clusters, await ultimaCapturaPorPais(countries))
 
   const collected: TrendInput[] = []
+  const adiados: string[] = []
+  // A decisão é sobre o PRÓXIMO cluster, então a evidência mais próxima é
+  // o que acabou de acontecer aqui — com piso na média medida, para a
+  // primeira decisão não ser tomada às cegas.
+  let duracaoTipica = DURACAO_TIPICA_DA_CAPTURA_MS
 
   for (const cluster of clusters) {
     const country = cluster.country.toUpperCase()
+    if (
+      params.orcamentoMs != null &&
+      !cabeMaisUmCluster(Date.now() - t0Captura, params.orcamentoMs, duracaoTipica)
+    ) {
+      adiados.push(country)
+      continue
+    }
     const excludedDates = excludedByCountry.get(country) ?? []
 
     // 1. TrendTrack stub (futuro: fonte primária)
@@ -382,6 +518,9 @@ export async function captureTrends(params: CaptureCycleParams): Promise<TrendIn
     let tokensOut = 0
     let costCents = 0
     let fromWeb: TrendInput[] = []
+    let tentativas = 1
+    let tetoUsado = 0
+    let modeloUsado = TRENDS_MODEL
 
     try {
       const ws = await captureFromWebSearch({
@@ -393,6 +532,9 @@ export async function captureTrends(params: CaptureCycleParams): Promise<TrendIn
       tokensIn = ws.tokensIn
       tokensOut = ws.tokensOut
       costCents = ws.costCents
+      tentativas = ws.tentativas
+      tetoUsado = ws.maxTokens
+      modeloUsado = ws.model
       if (ws.parseError) {
         runStatus = "invalid_output"
         errorMessage = ws.parseError
@@ -417,13 +559,15 @@ export async function captureTrends(params: CaptureCycleParams): Promise<TrendIn
       org_id: orgId,
       cycle_id: cycleId,
       kind: "trends",
-      model: TRENDS_MODEL,
+      model: modeloUsado,
       status: runStatus,
       input_vars: {
         country,
         niches: cluster.niches,
         search_language: getSearchLocale(country).name,
         excluded_count: excludedDates.length,
+        tentativas,
+        max_tokens: tetoUsado,
       },
       raw_output: raw,
       parsed_output: fromWeb.length > 0 ? { trends: fromWeb } : null,
@@ -435,6 +579,9 @@ export async function captureTrends(params: CaptureCycleParams): Promise<TrendIn
     })
 
     collected.push(...fromTt, ...fromWeb)
+    // O relógio do próximo cluster é calibrado pelo pior caso já visto
+    // nesta execução — começar um que não termina mata a função inteira.
+    duracaoTipica = Math.max(duracaoTipica, Date.now() - t0)
   }
 
   // Dedup entre clusters
@@ -464,12 +611,19 @@ export async function captureTrends(params: CaptureCycleParams): Promise<TrendIn
     }
   }
 
+  const aviso = avisoDeCapturaParcial({
+    total: clusters.length,
+    feitos: clusters.length - adiados.length,
+    adiados,
+  })
   log.info("trends.cycle_done", {
     cycleId,
     clusters: clusters.length,
     captured: collected.length,
     deduped: final.length,
     risk_high: final.filter((t) => t.risk_flag === "high").length,
+    adiados,
+    aviso,
   })
-  return final
+  return { trends: final, adiados }
 }

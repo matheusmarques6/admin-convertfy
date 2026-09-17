@@ -8,6 +8,7 @@ import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
 import { sourceSha } from "@/lib/agents/shared/rendered-reference"
 import { assertCanManagePrompts } from "@/lib/services/prompt-management.service"
 import { logger } from "@/lib/logger"
+import { DISPOSITIVOS } from "@/lib/agents/shared/dispositivos"
 import { COMPONENT_CATEGORY_KEYS } from "@/lib/agents/shared/component-categories"
 import { outputFieldSchema } from "@/lib/agents/shared/component-schemas"
 import { enforceEmailWidth } from "@/lib/email-workspace/email-width"
@@ -34,6 +35,9 @@ const patchSchema = z.object({
   design_system: z.string().nullable().optional(),
   photo_direction: z.string().nullable().optional(),
   product_slots: z.number().int().min(0).max(20).optional(),
+  dispositivo: z.enum(DISPOSITIVOS as unknown as [string, ...string[]]).nullable().optional(),
+  anatomia_slug: z.string().trim().max(120).nullable().optional(),
+  tokens_de_identidade: z.boolean().optional(),
   output_schema: z.array(outputFieldSchema).optional(),
   density: z.enum(["minimal", "balanced", "rich"]).nullable().optional(),
   tags: z.array(z.string()).optional(),

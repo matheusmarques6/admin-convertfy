@@ -77,7 +77,12 @@ export interface TestGenerationInput {
 }
 
 export interface TestGenerationResult {
-  status: "running" | "dispatched" | "error"
+  /**
+   * `paused`: a execução manual pediu `stop_after` num nó da fase 1 e a
+   * geração terminou ali, de propósito. Não é `error` (nada falhou) nem
+   * `dispatched` (o n8n não foi chamado) — a tela precisa dos três.
+   */
+  status: "running" | "dispatched" | "paused" | "error"
   path: "with_copy" | "without_copy"
   hasCopy: boolean
   error?: string
@@ -259,7 +264,7 @@ async function runTestGenerationInterno(
     // irmãos já atacaram; força porque a estrutura vai ser refeita.
     await ensureObjectionTargets({ storeId, emails: [{ flowType, emailNumber }], triggeredBy, batchId, force: true, logSkipped: true })
     try {
-      await generateBlueprintAndReference({
+      const fase1 = await generateBlueprintAndReference({
         storeId,
         flowType,
         emailNumber,
@@ -267,6 +272,21 @@ async function runTestGenerationInterno(
         triggeredBy,
         force: true,
       })
+      // Parou num nó da fase 1 por pedido de quem está na tela
+      // (`stop_after`). Disparar a copy aqui gastaria o n8n e a fase 2
+      // inteira — o oposto do que "parar" quer dizer, e o motivo de este
+      // ramo ter de conhecer a pausa: quem para é o `generate.service`, mas
+      // quem chama o n8n é este.
+      if (fase1.pausada) {
+        await rollbackClaim()
+        return {
+          status: "paused",
+          path: "without_copy",
+          hasCopy: false,
+          batchId,
+          emailId,
+        }
+      }
     } catch (err) {
       // Sem fase 1 não haverá dispatch: desfaz o claim (batch + flag).
       await rollbackClaim()
@@ -366,13 +386,26 @@ async function runTestGenerationInterno(
       log.info("test.phase2_only.skip_architect", { storeId, emailId, batchId })
     } else {
       await ensureObjectionTargets({ storeId, emails: [{ flowType, emailNumber }], triggeredBy, batchId, logSkipped: true })
-      await generateBlueprintAndReference({
+      const fase1 = await generateBlueprintAndReference({
         storeId,
         flowType,
         emailNumber,
         batchId,
         triggeredBy,
       })
+      // Parou na fase 1: não marca `copy_ready` nem devolve `triggerPhase2`.
+      // Sem isto o e-mail sairia de `draft` e a rota dispararia a fase 2
+      // inteira — mais cara que a fase 1 que o operador acabou de
+      // interromper.
+      if (fase1.pausada) {
+        return {
+          status: "paused",
+          path: "with_copy",
+          hasCopy: true,
+          batchId,
+          emailId,
+        }
+      }
     }
 
     // Reset de status pra `copy_ready` pra que phase2 possa fazer claim

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
-import { CORES_PADRAO, GRADIENTE_PADRAO } from "./brand"
+import { CORES_PADRAO, GRADIENTE_PADRAO, SLIDE } from "./brand"
+import { FAMILIAS } from "./familias"
 import { construirPromptDeSlide, pedeImagem, preenchimento, promptEfetivo, sugerirModo, type ContextoPrompt } from "./prompt-slide"
 import type { DocFrame, Documento } from "./types"
 import { aceitaImagem, novoDocumento } from "./documento"
@@ -73,7 +74,9 @@ describe("prompt híbrido", () => {
     expect(construirPromptDeSlide(ctx({ frame: frame({ tipo: "capa" }) }))).toMatch(/terço INFERIOR/)
     expect(construirPromptDeSlide(ctx({ frame: frame({ tipo: "capa", variante: "b" }) }))).toMatch(/centralizado/)
     expect(construirPromptDeSlide(ctx({ frame: frame({ tipo: "texto", variante: "b" }) }))).toMatch(/METADE SUPERIOR/)
-    expect(construirPromptDeSlide(ctx({ frame: frame({ tipo: "prova" }) }))).toMatch(/véu azul-escuro/)
+    // O véu sai na cor do documento, não num azul fixo: com outra
+    // identidade o azul da casa seria a única cor fora da paleta.
+    expect(construirPromptDeSlide(ctx({ frame: frame({ tipo: "prova" }) }))).toMatch(/véu escuro/)
   })
 
   it("a cena vem do papel narrativo quando há motor editorial, senão do tipo", () => {
@@ -133,8 +136,24 @@ describe("prompt completo (slide inteiro)", () => {
 
   it("descreve o fundo do frame: gradiente ou cor sólida", () => {
     const f = frame({ tipo: "texto", frameId: "f3" })
-    expect(construirPromptDeSlide(ctx({ frame: f, modo: "completo" }))).toMatch(/gradiente diagonal \(160°\)/)
+    expect(construirPromptDeSlide(ctx({ frame: f, modo: "completo", doc: { ...doc, fundoPorFrame: { f3: "gradiente" } } }))).toMatch(/gradiente diagonal \(160°\)/)
     expect(construirPromptDeSlide(ctx({ frame: f, modo: "completo", doc: { ...doc, fundoPorFrame: { f3: "#F6F8FE" } } }))).toMatch(/cor sólida #F6F8FE \(fundo claro/)
+  })
+
+  it("frame sem fundo no mapa cai no MESMO padrão do renderer, não em gradiente", () => {
+    // `doc.fundoPorFrame[id] ?? SLIDE.fundoClaro` é o que o `frame.tsx` faz;
+    // o prompt descrevia um gradiente que a peça não teria.
+    const p = construirPromptDeSlide(ctx({ frame: frame({ tipo: "texto", frameId: "f9" }), modo: "completo" }))
+    expect(p).toContain(`cor sólida ${SLIDE.fundoClaro}`)
+    expect(p).not.toMatch(/gradiente diagonal/)
+  })
+
+  it("o realce `**` vira instrução de COR, nunca asterisco na imagem", () => {
+    const f = frame({ tipo: "texto", textos: { titulo: "O frete grátis **não** trava a venda", corpo: "São **40 segundos** antes." } })
+    const p = construirPromptDeSlide(ctx({ frame: f, modo: "completo" }))
+    expect(p).not.toContain("**")
+    expect(p).toContain("O frete grátis não trava a venda")
+    expect(p).toMatch(/As palavras «não», «40 segundos» saem na cor de destaque/)
   })
 })
 
@@ -168,7 +187,7 @@ describe("integração com o documento salvo", () => {
   })
 
   it("o documento com prompt e modo sobrevive à validação da rota de salvamento", () => {
-    const base = novoDocumento("Carrossel", "canal-1", "molde-turbo", { agora: new Date("2026-09-09T10:00:00-03:00") })
+    const base = novoDocumento("Carrossel", "canal-1", "molde-manchete", { agora: new Date("2026-09-09T10:00:00-03:00") })
     const doc = {
       ...base,
       frames: base.frames.map((fr, i) =>
@@ -181,5 +200,63 @@ describe("integração com o documento salvo", () => {
     expect(salvo.frames[1].promptImagem).toBe("Prompt escrito à mão")
     expect(salvo.frames[1].imagemModo).toBe("completo")
     expect(salvo.frames[1].imagens.slot1?.url).toBe("https://x/y.png")
+  })
+})
+
+describe("a anatomia é da FAMÍLIA, não da casa", () => {
+  const post: ContextoPrompt["doc"] = { ...doc, familia: "post" }
+  const manchete: ContextoPrompt["doc"] = { ...doc, familia: "manchete", cores: { ...FAMILIAS.manchete.cores } }
+  const comFoto = frame({ tipo: "texto", slotsImagem: 1, textos: { titulo: "Why it works:", corpo: "The biggest option wins." } })
+
+  it("nada de instrução contraditória: a Post nega fotografia e o fundo é declarado UMA vez", () => {
+    const p = construirPromptDeSlide({ frame: comFoto, indice: 1, total: 4, doc: post, modo: "completo" })
+    // O ESTILO_BASE abre com "fotografia real"; a direção da Post diz o
+    // contrário. As duas no mesmo prompt = o modelo escolhe uma ao acaso.
+    expect(p).toContain("não é fotografia")
+    expect(p).not.toContain("fotografia real ou 3D fotorrealista")
+    // A cena da casa fala de objeto e gesto; a direção da Post proíbe os dois.
+    expect(p).not.toContain("objeto, ambiente ou gesto")
+    expect(p).toContain("a tela que o post comenta")
+    expect(p.match(/Fundo|fundo #/g)?.length).toBe(1)
+  })
+
+  it("o cartão de perfil descreve a captura — e NÃO o rodapé da casa", () => {
+    const p = construirPromptDeSlide({ frame: comFoto, indice: 1, total: 4, doc: post, modo: "completo" })
+    expect(p).toContain("Captura de tela de um post")
+    expect(p).toContain("@convertfy")
+    // O que denuncia que a peça não é uma captura:
+    expect(p).not.toContain("Rodapé:")
+    expect(p).not.toContain('contador "2/4"')
+  })
+
+  it("no cartão de perfil a foto NÃO é fundo, nem no híbrido nem no completo", () => {
+    const hibrido = construirPromptDeSlide({ frame: comFoto, indice: 1, total: 4, doc: post, modo: "hibrido" })
+    expect(hibrido).toMatch(/não ocupa o slide inteiro/)
+    const capa = construirPromptDeSlide({ frame: frame({ tipo: "capa", slotsImagem: 1 }), indice: 0, total: 4, doc: post, modo: "completo" })
+    expect(capa).not.toContain("a fotografia descrita abaixo")
+  })
+
+  it("na Manchete a foto é CARD entre margens, nunca o fundo do slide", () => {
+    const t = construirPromptDeSlide({ frame: frame({ tipo: "texto", slotsImagem: 1, textos: { titulo: "O erro", corpo: "x" } }), indice: 1, total: 5, doc: manchete, modo: "hibrido" })
+    expect(t).toMatch(/card entre margens/)
+    // Fundo do slide ela nunca é: a peça alterna preto e branco chapados.
+    expect(t).not.toMatch(/ocupa o slide inteiro/)
+  })
+
+  it("o CTA sai na forma que a família desenha", () => {
+    const cta = frame({ tipo: "cta", textos: { titulo: "Quer o passo a passo?", botao: "Comente TURBO" } })
+    expect(construirPromptDeSlide({ frame: cta, indice: 5, total: 6, doc: manchete, modo: "completo" })).toMatch(/Caixa sólida/)
+    expect(construirPromptDeSlide({ frame: cta, indice: 5, total: 6, doc, modo: "completo" })).toMatch(/Pílula sólida/)
+  })
+
+  it("a CAIXA sólida de destaque é descrita onde a família a desenha — e só com texto dentro", () => {
+    const comCaixa = frame({ tipo: "texto", campos: ["titulo", "corpo", "destaque"], textos: { titulo: "Corte três campos", corpo: "Nome, e-mail e pagamento.", destaque: "O problema não é a data." } })
+    expect(construirPromptDeSlide({ frame: comCaixa, indice: 3, total: 6, doc: manchete, modo: "completo" })).toMatch(/CAIXA SÓLIDA/)
+    // Na casa o campo nem é oferecido; descrevê-lo mandaria o modelo
+    // desenhar um retângulo que o renderer não põe na peça.
+    expect(construirPromptDeSlide({ frame: comCaixa, indice: 3, total: 6, doc, modo: "completo" })).not.toMatch(/CAIXA SÓLIDA/)
+    // Caixa vazia não vira barra de cor sem motivo.
+    const sem = frame({ tipo: "texto", campos: ["titulo", "corpo", "destaque"], textos: { titulo: "x", corpo: "y", destaque: "  " } })
+    expect(construirPromptDeSlide({ frame: sem, indice: 3, total: 6, doc: manchete, modo: "completo" })).not.toMatch(/CAIXA SÓLIDA/)
   })
 })

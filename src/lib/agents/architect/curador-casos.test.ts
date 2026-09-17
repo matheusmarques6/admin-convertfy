@@ -47,6 +47,9 @@ const stats = (over: Partial<AssembledStats>): AssembledStats => ({
   unshelled: [],
   stylesInlined: 0,
   guttersNeutralized: [],
+  blocosTokenizados: [],
+  tokensAplicados: 0,
+  tokensSemValor: [],
   expected: [],
   ...over,
 } as AssembledStats)

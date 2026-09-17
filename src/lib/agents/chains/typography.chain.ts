@@ -31,7 +31,7 @@ import {
 import { TYPOGRAPHY_VAR_ORIGINS } from "../html/format-context"
 import { invokeFormatModel, type FormatChainConfig } from "./format-invoke"
 import { corteParaStepMecanico } from "../model-capabilities"
-import { withUsage } from "./step-usage"
+import { withUsage, cacheDe } from "./step-usage"
 import type { TypographyDecision, SegundaFonte, TypographyOp } from "../typography/rules"
 import { doctrinePromptSegment, withDoctrine } from "../shared/doctrine-packets"
 
@@ -256,6 +256,9 @@ export interface InvokeTypographyResult {
   renderedPrompt: string
   promptSegments: PromptSegment[] | null
   rawOutput: string
+  /** Cache de prompt lido / escrito nesta chamada, quando reportado. */
+  cachedTokens?: number
+  cacheWriteTokens?: number
 }
 
 export async function invokeTypographyChain(input: {
@@ -310,6 +313,7 @@ export async function invokeTypographyChain(input: {
       tokensInput: res.tokensInput,
       tokensOutput: res.tokensOutput,
       costUsd: res.costUsd,
+      ...cacheDe(res),
       renderedPrompt: userMessage,
       promptSegments,
     },
@@ -328,6 +332,7 @@ export async function invokeTypographyChain(input: {
     tokensInput: res.tokensInput,
     tokensOutput: res.tokensOutput,
     costUsd: res.costUsd,
+    ...cacheDe(res),
     renderedPrompt: userMessage,
     promptSegments,
     rawOutput: res.text,

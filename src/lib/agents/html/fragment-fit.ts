@@ -26,8 +26,9 @@
  * Puro (zero I/O) — testável.
  */
 
-import { neutralizeGutterPadding } from "@/lib/email-workspace/email-width"
+import { enforceEmailWidth, neutralizeGutterPadding } from "@/lib/email-workspace/email-width"
 import { hasDocumentShell, stripDocumentShell } from "../shared/document-shell"
+import { aplicarTokens, type TokenDeIdentidade, type ValoresDeTokens } from "./identity-tokens"
 
 export interface FitOptions {
   /**
@@ -44,6 +45,18 @@ export interface FitOptions {
    * embrulhar uma variante cadastrada fora do padrão.
    */
   wrapUnknown?: boolean
+  /**
+   * Valores dos tokens de identidade da LOJA (`resolverTokens`). Uma
+   * anatomia escrita com `{{COR_PRINCIPAL}}`/`{{FONTE_TITULO}}` (B5) é
+   * resolvida AQUI, na mesma fronteira do `neutralizeGutterPadding` e pelo
+   * mesmo motivo: montagem e enxerto precisam ver o MESMO fragmento — se só
+   * a montagem resolvesse, o enxerto compararia a região resolvida com a
+   * variante crua, não veria igualdade e reenxertaria os tokens.
+   *
+   * Ausente → o fragmento passa como está (chamadores de análise, como a
+   * auditoria de cobertura, não precisam da paleta).
+   */
+  tokens?: Partial<ValoresDeTokens> | null
 }
 
 export type FitKind = "row" | "wrapped_table" | "wrapped_unknown"
@@ -72,6 +85,24 @@ export interface FitResult {
    * é a diferença entre a peça solta e a peça encaixada.
    */
   gutterNeutralized?: boolean
+  /**
+   * A variante declarava o container fora de 600px (a assinatura de quem
+   * errou o número: 560–640, quase sempre 598) e foi normalizada no
+   * encaixe pela MESMA régua do salvar/varredura (`enforceEmailWidth`).
+   * Medido em 14/09: 14 variantes ativas em 598 e a varredura "Largura
+   * 600px na biblioteca" nunca rodada — o lint de envio (B2) reprovava
+   * a peça montada em `largura_container`. Fica aqui, e não só na
+   * biblioteca, porque o email montado não pode depender de alguém ter
+   * clicado no botão da varredura.
+   */
+  widthEnforced?: boolean
+  /**
+   * Tokens de identidade resolvidos no encaixe (B5). `total` = ocorrências
+   * trocadas; `sem_valor` = tokens que o HTML pedia e o chamador não tinha
+   * (caíram no padrão). Ausente quando o fragmento não usa tokens ou o
+   * chamador não passou valores.
+   */
+  tokens?: { total: number; sem_valor: TokenDeIdentidade[] }
 }
 
 const wrap = (t: string): string =>
@@ -94,9 +125,22 @@ export function fitFragment(
   opts: FitOptions = {},
 ): FitResult | null {
   const canonical = neutralizeGutterPadding(variantHtml ?? "")
-  const fit = fitVariant(canonical.html, opts)
+  // Largura canônica pela MESMA régua do salvar/varredura: container em
+  // 560–640 vira 600, calha 100% de nível raiz vira 600. Variante gravada
+  // em 598 continua no banco até alguém rodar a varredura — o email montado
+  // não pode depender disso (14/09: 14 ativas em 598, lint reprovando).
+  const largura = enforceEmailWidth(canonical.html)
+  const resolvido = opts.tokens ? aplicarTokens(largura.html, opts.tokens) : null
+  const fit = fitVariant(resolvido?.html ?? largura.html, opts)
   if (!fit) return null
-  return canonical.changed ? { ...fit, gutterNeutralized: true } : fit
+  return {
+    ...fit,
+    ...(canonical.changed ? { gutterNeutralized: true } : {}),
+    ...(largura.changed ? { widthEnforced: true } : {}),
+    ...(resolvido && resolvido.total > 0
+      ? { tokens: { total: resolvido.total, sem_valor: resolvido.sem_valor } }
+      : {}),
+  }
 }
 
 /** O encaixe em si, já com a calha normalizada. Recursivo. */
@@ -147,6 +191,9 @@ function fitVariant(
 }
 
 /** Atalho do enxerto: só o HTML, no modo conservador. */
-export function fitFragmentToRow(variantHtml: string): string | null {
-  return fitFragment(variantHtml)?.html ?? null
+export function fitFragmentToRow(
+  variantHtml: string,
+  tokens?: Partial<ValoresDeTokens> | null,
+): string | null {
+  return fitFragment(variantHtml, tokens ? { tokens } : {})?.html ?? null
 }

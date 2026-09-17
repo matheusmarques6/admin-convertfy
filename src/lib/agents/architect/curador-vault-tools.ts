@@ -1,154 +1,179 @@
 /**
- * curador-vault-tools — as ferramentas de consulta ao Obsidian que o
- * Curador do vault pode chamar sob demanda (02/09; `buscar_doutrina` em
- * 09/09).
+ * curador-vault-tools — a nota de cada variante finalista, servida na cauda
+ * do prompt do Curador.
  *
- * O prompt já leva tudo que o protocolo precisa; o índice de pastas
- * (`<indice_do_vault>`) existe para o modelo conferir UMA nota quando
- * quiser — e cada consulta fica registrada na telemetria
- * (`consultas_ao_vault`). Resolvidas por código contra as 4 tabelas
- * sincronizadas pelo vault-sync, todas com `file_path` relativo à base do
- * vault: `email_vault_docs` (componentes/**), `email_intents`
- * (intencoes/**), `email_structure_refs` (estruturas/**), `email_learnings`
- * (aprendizados/**). Nunca lança: erro vira texto para o modelo.
+ * **As FERRAMENTAS de consulta sob demanda foram removidas em 16/09.**
+ * `VAULT_TOOLS`, `executarFerramentaDoVault`, `executorRestritoAFinalistas`,
+ * `listar_pasta`, `ler_nota` e `buscar_doutrina` existiram de 02/09 a 16/09
+ * e **nunca tiveram um importador de produção**: só testes. O caminho vivo
+ * sempre foi `invokeAgent` (não `invokeAgentWithTools`), e por isso
+ * `consultas: []` era literal no `curador-shadow` — `consultou_vault`,
+ * `consultas_ao_vault` e `fallback_sem_ferramentas` eram constantes
+ * gravadas como se fossem medição, em 8 de 8 runs.
+ *
+ * O `<indice_do_vault>` do prompt **continua** (decisão do dono, 14/09):
+ * o que saiu é o código morto, não o conteúdo servido ao modelo.
+ *
+ * O que sobra aqui é o caminho por CÓDIGO: `loadFinalistNotes` lê as notas
+ * das finalistas numa consulta só, em `email_vault_docs` (`file_path`
+ * relativo à base do vault), já filtrando `is_active` da própria variante.
+ * Nunca lança: erro vira status na linha.
  */
 
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
-import { buscarConhecimento, lerNotaDaBase } from "@/lib/ai/convertia/knowledge"
-import type { ToolSpec } from "./llm-invoke"
 
 const log = logger.child("CuradorVaultTools")
 
-/**
- * `buscar_doutrina` (09/09): a base do Advisor Max — a mesma que a
- * ConvertIA consulta — aberta ao Curador e ao Estruturador. Só as pastas
- * de método que dizem respeito a uma peça de e-mail; `_registro`,
- * `deliverability`, `sms`, `list-growth` ficam fora por não decidirem
- * bloco nem sequência. É doutrina de CURSO: perde para dado da loja, alvo
- * do Seletor e aprendizado com origem, e o cabeçalho da resposta diz isso
- * toda vez — sem o rótulo o modelo lê a doutrina como regra da casa.
- */
-export const buscarDoutrinaTool: ToolSpec = {
-  type: "function",
-  function: {
-    name: "buscar_doutrina",
-    description:
-      "Busca na doutrina de e-mail marketing da Convertfy (base do Advisor Max: design, copy, flows, doutrina, fundamentos) por significado e por palavras. Devolve as 3 notas mais próximas e o corpo da primeira. É doutrina de curso — use para fundamentar uma escolha entre candidatas, nunca para contrariar dado da loja, o alvo do Seletor ou um aprendizado com origem.",
-    parameters: {
-      type: "object",
-      properties: {
-        pergunta: { type: "string", description: "O que você quer fundamentar, em linguagem natural (ex.: 'prova social antes ou depois da oferta no welcome')" },
-      },
-      required: ["pergunta"],
-    },
-  },
-}
-
-export const VAULT_TOOLS: ToolSpec[] = [
-  {
-    type: "function",
-    function: {
-      name: "selecionar_finalistas",
-      description: "Registra as variantes finalistas escolhidas no índice compacto. Faça isto antes de ler notas; ler_nota aceitará somente notas dessas variantes.",
-      parameters: { type: "object", properties: { variant_ids: { type: "array", items: { type: "string" } } }, required: ["variant_ids"] },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "listar_pasta",
-      description:
-        "Lista as notas de uma pasta do vault (Obsidian): caminho de cada nota e a primeira linha do corpo. Use o caminho da pasta como aparece em <indice_do_vault>.",
-      parameters: {
-        type: "object",
-        properties: {
-          pasta: { type: "string", description: "Caminho da pasta, ex.: componentes/secoes ou estruturas/welcome" },
-        },
-        required: ["pasta"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "ler_nota",
-      description:
-        "Devolve o corpo (markdown) de uma nota do vault pelo caminho completo, ex.: componentes/lacunas/offer-sem-isolamento.md.",
-      parameters: {
-        type: "object",
-        properties: {
-          caminho: { type: "string", description: "Caminho completo da nota, com .md" },
-        },
-        required: ["caminho"],
-      },
-    },
-  },
-  buscarDoutrinaTool,
-]
-
-/** Restringe notas completas ao conjunto explicitamente finalizado. */
-export function executorRestritoAFinalistas(
-  executar: ExecutorDeFerramenta,
-  variantes: ReadonlyArray<{ variant_id: string; slug?: string }>,
-): { executar: ExecutorDeFerramenta; finalistas: Set<string>; notasAbertas: Set<string> } {
-  const permitidas = new Map(variantes.map((v) => [v.variant_id, v.slug]))
-  const finalistas = new Set<string>()
-  const notasAbertas = new Set<string>()
-  return {
-    finalistas,
-    notasAbertas,
-    executar: async (nome, args) => {
-      if (nome === "selecionar_finalistas") {
-        const ids = Array.isArray(args.variant_ids) ? args.variant_ids.map(String) : []
-        const invalidas = ids.filter((id) => !permitidas.has(id))
-        if (!ids.length || invalidas.length) return `erro: finalistas inválidas: ${invalidas.join(", ") || "lista vazia"}`
-        finalistas.clear()
-        for (const id of ids) finalistas.add(id)
-        return `finalistas registradas: ${ids.join(", ")}. Agora leia somente as notas necessárias dessas variantes.`
-      }
-      if (nome === "listar_pasta") return "erro: use o índice compacto, selecione finalistas e então use ler_nota"
-      if (nome === "ler_nota") {
-        const caminho = normalizarCaminho(args.caminho)
-        const id = Array.from(finalistas).find((candidate) => {
-          const slug = permitidas.get(candidate)
-          return Boolean(slug) && (caminho === slug || caminho.endsWith(`/${slug}`) || caminho.endsWith(`/${slug}.md`))
-        })
-        if (!id) return "erro: ler_nota aceita somente nota de variant_id registrada em selecionar_finalistas"
-        notasAbertas.add(id)
-      }
-      return executar(nome, args)
-    },
-  }
-}
-
-const TABELAS = ["email_vault_docs", "email_intents", "email_structure_refs", "email_learnings"] as const
 /** A única tabela com nota de variante — as outras não têm `variant_id`. */
 const TABELA_COMPONENTES = "email_vault_docs"
-const NOTA_MAX_CHARS = 12_000
-const LISTA_MAX = 60
+/**
+ * Teto por nota de finalista. Era 12.000 e virou 3.000 em 15/09, junto com
+ * o extrato: a nota inteira tem 6.524 chars em média e o que serve à
+ * ESCOLHA cabe em ~2.100.
+ */
+const NOTA_MAX_CHARS = 3_000
 
-interface LinhaDeNota {
-  file_path: string
-  body_md: string
-  kind?: string | null
-  variant_id?: string | null
+/**
+ * Teto do conjunto de notas servido em UMA chamada.
+ *
+ * A cauda fica DEPOIS do último marcador de cache e paga preço cheio em
+ * toda geração — e abaixo do limiar de shortlist TODAS as elegíveis viram
+ * finalistas (`planejarShortlist`), então um grupo de 5 servia 32.620 chars
+ * por posição. Sem teto, cadastrar variante encarece toda geração daquela
+ * posição; com ele, o custo marginal é o da LINHA do catálogo, que é
+ * cacheada. É esta a propriedade "adicionar mais custa pouco".
+ *
+ * Quem não couber fica com a linha do catálogo, que desde 15/09 carrega a
+ * forma derivada do schema — não é ausência, é menos detalhe.
+ *
+ * **"Uma chamada" é o eixo, e ele muda de significado com o leque.** No
+ * caminho de hoje a chamada é o E-MAIL INTEIRO, e aí o teto reparte 18.000
+ * chars entre todas as posições, **na ordem** — as primeiras levam tudo e
+ * as últimas ficam sem nota. Medido nas 11 runs com telemetria de notas
+ * (11–15/09): 10 a 15 finalistas por e-mail, **59.794 a 84.908 chars** de
+ * nota pedidos, maior nota 9.036. O teto e o `NOTA_MAX_CHARS` entraram em
+ * 15/09 19:02 e a última run do banco é de 15/09 15:49, então **nenhuma
+ * run mediu o corte ainda** (`sem_orcamento` = 0 em 11 de 11 porque o teto
+ * não existia). Com eles, as 13 notas de um e-mail típico caem para
+ * 13×3.000 = 39.000 pedidos contra 18.000 disponíveis: ~metade rebaixada,
+ * e a metade das ÚLTIMAS posições.
+ *
+ * No leque a chamada é UMA POSIÇÃO, e o mesmo número deixa de repartir: as
+ * 2–5 finalistas daquela posição cabem folgadas, e o teto volta a ser o que
+ * ele existe para ser — rede contra cadastro que cresce, não corte. É por
+ * isso que a consulta e o orçamento estão separados abaixo
+ * (`carregarNotasDasFinalistas` + `aplicarOrcamentoDaCauda`): o leque lê o
+ * banco UMA vez e aplica o orçamento por posição.
+ */
+export const CAUDA_MAX_CHARS = 18_000
+
+
+/**
+ * Seções da nota que servem à ESCOLHA. As outras quatro
+ * (design system, direção fotográfica, orientações de copy, e o que mais o
+ * time escrever) servem a OUTROS agentes e já estão no banco, nas colunas
+ * `design_system`, `photo_direction` e `copy_guidance`.
+ *
+ * Medido nas 40 notas ativas (15/09): design system 2.218 chars em média,
+ * direção fotográfica 1.349, orientações de copy 796 — **67% da nota é
+ * material que o Curador não usa**, servido cru, sem `semMomento` nem
+ * `semExige`, contrariando o próprio system que manda ignorar esses campos.
+ */
+const SECOES_DE_DECISAO = [
+  "descrição curta",
+  "descricao curta",
+  "descrição detalhada",
+  "descricao detalhada",
+  "quando usar",
+  "quando não usar",
+  "quando nao usar",
+]
+
+/**
+ * A nota reduzida ao que decide: frontmatter + as seções de decisão.
+ *
+ * **Fail-open**: nota sem NENHUMA seção conhecida volta inteira (truncada),
+ * como antes — formato novo no vault não pode virar finalista sem nota.
+ * Puro.
+ */
+export function extratoParaDecisao(body: string): string {
+  const texto = (body ?? "").trim()
+  if (!texto) return ""
+  // O frontmatter é o bloco `---` do topo; ele carrega os eixos.
+  const fm = /^---\n[\s\S]*?\n---\n/.exec(texto)
+  const cabeca = fm ? fm[0] : ""
+  const corpo = texto.slice(cabeca.length)
+  const partes = corpo.split(/^##\s+/m)
+  const mantidas: string[] = []
+  for (const parte of partes.slice(1)) {
+    const nl = parte.indexOf("\n")
+    const titulo = (nl < 0 ? parte : parte.slice(0, nl)).trim().toLowerCase()
+    if (!SECOES_DE_DECISAO.includes(titulo)) continue
+    mantidas.push(`## ${parte.trimEnd()}`)
+  }
+  if (mantidas.length === 0) return texto
+  // O que vem ANTES do primeiro `##` é o título da nota — fica.
+  const preambulo = partes[0].trim()
+  return [cabeca.trimEnd(), preambulo, mantidas.join("\n\n")].filter(Boolean).join("\n\n").trim()
 }
 
 export interface FinalistNoteResult {
   variant_id: string
-  status: "opened" | "missing" | "database_error"
+  /**
+   * `sem_orcamento` (15/09): a nota existe e não coube em
+   * `CAUDA_MAX_CHARS`. É diferente de `missing` — a variante segue
+   * escolhível pela linha do catálogo, que carrega eixos e forma.
+   */
+  status: "opened" | "missing" | "database_error" | "sem_orcamento"
   file_path: string | null
   body: string | null
   error?: string
 }
 
 /**
- * Carrega as notas das finalistas em UMA consulta. A shortlist já foi
- * validada contra o catálogo ativo; por isso o modelo não escolhe caminhos
- * nem ganha uma ferramenta de navegação na etapa final.
+ * Aplica o orçamento da cauda a notas JÁ carregadas. Pura.
+ *
+ * Consome na ORDEM recebida, que é a do ranking, e **para na primeira que
+ * não cabe**: dali para a frente todas saem `sem_orcamento`, mesmo as
+ * curtas. Era o contrário até 16/09 — o laço pulava a que estourava e
+ * seguia servindo as menores —, e isso fazia o orçamento premiar nota
+ * CURTA em vez de nota bem colocada: a 5ª aparecia com evidência e a 4ª
+ * não. Como o modelo lê "tem nota" como mais evidência, era o critério do
+ * ranking sendo invertido pelo tamanho do texto, em silêncio. A propriedade
+ * que fica é simples de enunciar e de conferir: a evidência degrada na
+ * ordem do ranking, nunca fora dela.
+ *
+ * Separada de `carregarNotasDasFinalistas` porque o leque lê o banco uma
+ * vez, para todas as posições, e reparte o orçamento POR posição.
  */
-export async function loadFinalistNotes(
+export function aplicarOrcamentoDaCauda(
+  notas: readonly FinalistNoteResult[],
+  teto: number = CAUDA_MAX_CHARS,
+): FinalistNoteResult[] {
+  let orcamento = teto
+  let estourou = false
+  return notas.map((nota) => {
+    if (nota.status !== "opened" || !nota.body) return { ...nota }
+    if (estourou || nota.body.length > orcamento) {
+      estourou = true
+      return { ...nota, status: "sem_orcamento" as const, body: null }
+    }
+    orcamento -= nota.body.length
+    return { ...nota }
+  })
+}
+
+/**
+ * Carrega as notas das finalistas em UMA consulta, cortadas por
+ * `NOTA_MAX_CHARS` e **sem** orçamento de cauda — quem aplica o orçamento é
+ * `aplicarOrcamentoDaCauda`, porque no leque ele é por posição.
+ *
+ * A shortlist já foi validada contra o catálogo ativo; por isso o modelo
+ * não escolhe caminhos nem ganha uma ferramenta de navegação na etapa
+ * final.
+ */
+export async function carregarNotasDasFinalistas(
   variantIds: readonly string[],
 ): Promise<FinalistNoteResult[]> {
   const ids = Array.from(new Set(variantIds.filter(Boolean)))
@@ -178,192 +203,24 @@ export async function loadFinalistNotes(
   return ids.map((variant_id) => {
     const row = byId.get(variant_id)
     if (!row) return { variant_id, status: "missing" as const, file_path: null, body: null }
-    const clean = (row.body_md ?? "").trim()
+    const extrato = extratoParaDecisao(row.body_md ?? "")
+    const cortada =
+      extrato.length <= NOTA_MAX_CHARS ? extrato : `${extrato.slice(0, NOTA_MAX_CHARS)}\n(… nota truncada)`
     return {
       variant_id,
       status: "opened" as const,
       file_path: row.file_path,
-      body: clean.length <= NOTA_MAX_CHARS ? clean : `${clean.slice(0, NOTA_MAX_CHARS)}\n(… nota truncada)`,
+      body: cortada,
     }
   })
 }
 
 /**
- * Quais destes ids estão DESATIVADOS na biblioteca.
- *
- * Incidente 07/09 (Hero Boxers, welcome 1): as duas ferramentas filtravam
- * `is_active` da NOTA (`email_vault_docs`) e nunca da VARIANTE
- * (`email_component_variants`). O Curador leu
- * `componentes/variantes/offer/offer-4-manifesto-antes-do-cupom.md`,
- * escolheu a variante — que está `is_active=false` e por isso fora do
- * catálogo servido — e a escolha morreu em `invalid_ids`. A posição de
- * offer ficou vazia e a peça saiu com 2 de 6 blocos. Bloco que a
- * biblioteca não serve não pode ser escolhível em lugar nenhum.
- *
- * Erro de consulta NÃO esconde nada: sem a checagem, calar o vault inteiro
- * tiraria do Curador a anatomia das 36 variantes boas para proteger contra
- * 4. Serve demais e loga — o parser ainda recusa o id no fim da linha.
+ * O caminho de hoje: carrega e aplica o orçamento do e-mail inteiro numa
+ * chamada só. O leque usa as duas peças separadas.
  */
-async function idsDesativados(
-  admin: ReturnType<typeof createAdminClient>,
-  ids: Array<string | null | undefined>,
-): Promise<Set<string>> {
-  const unicos = Array.from(new Set(ids.filter((v): v is string => Boolean(v))))
-  if (unicos.length === 0) return new Set()
-  const { data, error } = await admin
-    .from("email_component_variants")
-    .select("id")
-    .in("id", unicos)
-    .eq("is_active", false)
-  if (error) {
-    log.warn("variantes_desativadas_check_failed", { error: error.message, ids: unicos.length })
-    return new Set()
-  }
-  return new Set((data ?? []).map((r) => (r as { id: string }).id))
-}
-
-/** Nota de variante desativada não é servida. */
-function ehVarianteDesativada(row: LinhaDeNota, desativados: Set<string>): boolean {
-  return row.kind === "variante" && Boolean(row.variant_id) && desativados.has(row.variant_id as string)
-}
-
-function normalizarCaminho(v: unknown): string {
-  return String(v ?? "")
-    .trim()
-    .replace(/^\/+/, "")
-    .replace(/\/+$/, "")
-}
-
-function primeiraLinha(body: string): string {
-  const linha = body
-    .split("\n")
-    .map((l) => l.trim())
-    .find((l) => l && !l.startsWith("---") && !l.startsWith("#"))
-  return (linha ?? "").slice(0, 140)
-}
-
-export async function listarPasta(pastaCrua: unknown): Promise<string> {
-  const pasta = normalizarCaminho(pastaCrua)
-  if (!pasta) return "erro: informe a pasta (ex.: componentes/secoes)"
-  const admin = createAdminClient()
-  const linhas: string[] = []
-  for (const t of TABELAS) {
-    const componentes = t === TABELA_COMPONENTES
-    const { data, error } = await admin
-      .from(t)
-      .select(componentes ? "file_path, body_md, kind, variant_id" : "file_path, body_md")
-      .eq("is_active", true)
-      .like("file_path", `${pasta}/%`)
-      .order("file_path")
-      .limit(LISTA_MAX)
-    if (error) {
-      log.warn("listar_pasta_failed", { tabela: t, pasta, error: error.message })
-      continue
-    }
-    let rows = (data ?? []) as unknown as LinhaDeNota[]
-    if (componentes) {
-      const desativados = await idsDesativados(admin, rows.map((r) => r.variant_id))
-      const antes = rows.length
-      rows = rows.filter((r) => !ehVarianteDesativada(r, desativados))
-      if (rows.length !== antes) {
-        log.info("listar_pasta_variantes_ocultas", { pasta, ocultas: antes - rows.length })
-      }
-    }
-    for (const row of rows) {
-      linhas.push(`- ${row.file_path} — ${primeiraLinha(row.body_md ?? "")}`)
-    }
-  }
-  if (linhas.length === 0) return `(nenhuma nota sincronizada em ${pasta}/)`
-  return linhas.slice(0, LISTA_MAX).join("\n")
-}
-
-export async function lerNota(caminhoCru: unknown): Promise<string> {
-  let caminho = normalizarCaminho(caminhoCru)
-  if (!caminho) return "erro: informe o caminho da nota"
-  if (!caminho.endsWith(".md")) caminho = `${caminho}.md`
-  const admin = createAdminClient()
-  for (const t of TABELAS) {
-    const componentes = t === TABELA_COMPONENTES
-    const { data, error } = await admin
-      .from(t)
-      .select(componentes ? "file_path, body_md, kind, variant_id" : "file_path, body_md")
-      .eq("is_active", true)
-      .eq("file_path", caminho)
-      .maybeSingle()
-    if (error) {
-      log.warn("ler_nota_failed", { tabela: t, caminho, error: error.message })
-      continue
-    }
-    const row = data as unknown as LinhaDeNota | null
-    if (componentes && row) {
-      const desativados = await idsDesativados(admin, [row.variant_id])
-      if (ehVarianteDesativada(row, desativados)) {
-        // Dizer o MOTIVO, não "não encontrada": assim o modelo sabe que o
-        // bloco existe e está fora, em vez de insistir no caminho.
-        return `(fora da biblioteca: ${caminho} — esta variante está desativada e NÃO pode ser escolhida; procure outra na mesma seção)`
-      }
-    }
-    const body = row?.body_md
-    if (typeof body === "string") {
-      const t2 = body.trim()
-      return t2.length <= NOTA_MAX_CHARS ? t2 : `${t2.slice(0, NOTA_MAX_CHARS)}\n(… nota truncada)`
-    }
-  }
-  return `(nota não encontrada: ${caminho} — confira o caminho em listar_pasta)`
-}
-
-/** Pasta-raiz do Max em `ai_knowledge_notes` — a RPC filtra por UM prefixo. */
-const DOUTRINA_PREFIXO = "Advisors/Max"
-/** Subpastas que decidem peça de e-mail; o resto é filtrado em TS. */
-const DOUTRINA_PASTAS = new Set(["design", "copy", "flows", "doutrina", "fundamentos"])
-const DOUTRINA_TOP = 3
-const DOUTRINA_CORPO_MAX = 8_000
-const DOUTRINA_CABECALHO =
-  "[doutrina de curso — perde para dado da loja, alvo do Seletor e aprendizado com origem; use para fundamentar, não para contrariar]"
-
-function pastaDaDoutrina(folder: string): string | null {
-  const resto = folder.startsWith(`${DOUTRINA_PREFIXO}/`) ? folder.slice(DOUTRINA_PREFIXO.length + 1) : ""
-  const primeira = resto.split("/")[0]
-  return DOUTRINA_PASTAS.has(primeira) ? primeira : null
-}
-
-export async function buscarDoutrina(perguntaCrua: unknown): Promise<string> {
-  const pergunta = String(perguntaCrua ?? "").trim()
-  if (!pergunta) return "erro: informe a pergunta (ex.: 'prova social antes ou depois da oferta')"
-  try {
-    const admin = createAdminClient()
-    // Pede mais que o top para sobrar depois do filtro por subpasta.
-    const { notas, semanticaRodou } = await buscarConhecimento(admin, {
-      query: pergunta,
-      folderPrefix: DOUTRINA_PREFIXO,
-      limit: 12,
-    })
-    const elegiveis = notas.filter((n) => pastaDaDoutrina(n.pasta) !== null).slice(0, DOUTRINA_TOP)
-    const aviso = semanticaRodou ? "" : "\n(só a busca por palavras rodou — a semântica está indisponível; resultado pode ser pobre)"
-    if (elegiveis.length === 0) {
-      return `${DOUTRINA_CABECALHO}\n(nenhuma nota de doutrina sobre isto — não invente a regra; decida pelo protocolo e pelo catálogo)${aviso}`
-    }
-    const linhas = elegiveis.map((n, i) => `${i + 1}. ${n.titulo} — ${n.path}${n.resumo ? ` — ${n.resumo}` : ""}`)
-    const primeira = await lerNotaDaBase(admin, elegiveis[0].path)
-    const corpo = primeira
-      ? primeira.body.length <= DOUTRINA_CORPO_MAX
-        ? primeira.body.trim()
-        : `${primeira.body.slice(0, DOUTRINA_CORPO_MAX)}\n(… nota truncada)`
-      : "(corpo indisponível)"
-    return `${DOUTRINA_CABECALHO}${aviso}\n\nNotas mais próximas:\n${linhas.join("\n")}\n\n## ${elegiveis[0].titulo}\n${corpo}`
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    log.warn("buscar_doutrina_failed", { pergunta, error: msg })
-    return `${DOUTRINA_CABECALHO}\n(a busca na doutrina falhou: ${msg} — siga sem ela)`
-  }
-}
-
-export type ExecutorDeFerramenta = (nome: string, args: Record<string, unknown>) => Promise<string>
-
-/** Despacho por nome. Nome desconhecido vira texto — o modelo lê e segue. */
-export const executarFerramentaDoVault: ExecutorDeFerramenta = async (nome, args) => {
-  if (nome === "listar_pasta") return listarPasta(args.pasta)
-  if (nome === "ler_nota") return lerNota(args.caminho)
-  if (nome === "buscar_doutrina") return buscarDoutrina(args.pergunta)
-  return `erro: ferramenta desconhecida "${nome}"`
+export async function loadFinalistNotes(
+  variantIds: readonly string[],
+): Promise<FinalistNoteResult[]> {
+  return aplicarOrcamentoDaCauda(await carregarNotasDasFinalistas(variantIds))
 }

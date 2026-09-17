@@ -8,27 +8,47 @@
 
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
+import type { ResumoDoSnapshot } from "@/lib/crm/snapshot-saude"
 
 const log = logger.child("CrmSnapshot")
 
-export async function computeAllOrgSnapshots(): Promise<{ orgs: number; pipelines: number }> {
-  const admin = createAdminClient()
-
-  const { data: orgs } = await admin
-    .from("organizations")
-    .select("id")
-    .eq("type", "agency")
-
-  let pipelinesProcessed = 0
-
-  for (const org of orgs || []) {
-    pipelinesProcessed += await snapshotOrg(org.id)
-  }
-
-  return { orgs: orgs?.length || 0, pipelines: pipelinesProcessed }
+/** Contadores da rodada — o cron os usa para saber se escreveu de fato. */
+interface Contadores {
+  pipeline: number
+  org: number
+  funil: number
+  erros: string[]
 }
 
-async function snapshotOrg(orgId: string): Promise<number> {
+export async function computeAllOrgSnapshots(): Promise<ResumoDoSnapshot & { pipelines: number }> {
+  const admin = createAdminClient()
+
+  // SEM filtro de `type`.
+  //
+  // Era `.eq("type", "agency")`, e a única organização deste banco é
+  // `type: 'internal'` — o laço percorria uma lista vazia e as três
+  // tabelas ficaram com ZERO linhas desde sempre, com o cron
+  // respondendo `success: true` todo dia. O rótulo era uma suposição
+  // sobre um modelo de negócio que nunca existiu aqui; quem decide se a
+  // org rende snapshot é ter pipeline e carteira, e isso o próprio
+  // `snapshotOrg` já mede.
+  const { data: orgs, error } = await admin.from("organizations").select("id")
+  const contadores: Contadores = { pipeline: 0, org: 0, funil: 0, erros: [] }
+  if (error) contadores.erros.push(`organizations: ${error.message}`)
+
+  for (const org of orgs || []) {
+    await snapshotOrg(org.id, contadores)
+  }
+
+  return {
+    orgs: orgs?.length || 0,
+    pipelines: contadores.pipeline,
+    escritos: { pipeline: contadores.pipeline, org: contadores.org, funil: contadores.funil },
+    erros: contadores.erros,
+  }
+}
+
+async function snapshotOrg(orgId: string, contadores: Contadores): Promise<number> {
   const admin = createAdminClient()
   const today = new Date().toISOString().slice(0, 10)
   const since30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
@@ -134,7 +154,7 @@ async function snapshotOrg(orgId: string): Promise<number> {
     const avgCycle =
       cycleDays.length > 0 ? cycleDays.reduce((a, b) => a + b, 0) / cycleDays.length : null
 
-    await admin.from("crm_pipeline_snapshots").upsert(
+    const upPipeline = await admin.from("crm_pipeline_snapshots").upsert(
       {
         org_id: orgId,
         pipeline_id: p.id,
@@ -154,6 +174,11 @@ async function snapshotOrg(orgId: string): Promise<number> {
       },
       { onConflict: "org_id,pipeline_id,day" },
     )
+    // Upsert que falha em silêncio é o que fez estas três tabelas
+    // ficarem vazias sem ninguém saber: o erro do PostgREST volta em
+    // `error`, não como exceção, e o código nem o desestruturava.
+    if (upPipeline.error) contadores.erros.push(`pipeline ${p.id}: ${upPipeline.error.message}`)
+    else contadores.pipeline += 1
 
     pipelineCount += 1
   }
@@ -248,7 +273,7 @@ async function snapshotOrg(orgId: string): Promise<number> {
   const inboxOpen = (openThreads || []).filter((t) => t.status === "open").length
   const inboxPending = (openThreads || []).filter((t) => t.status === "pending").length
 
-  await admin.from("crm_org_snapshots").upsert(
+  const upOrg = await admin.from("crm_org_snapshots").upsert(
     {
       org_id: orgId,
       day: today,
@@ -271,6 +296,8 @@ async function snapshotOrg(orgId: string): Promise<number> {
     },
     { onConflict: "org_id,day" },
   )
+  if (upOrg.error) contadores.erros.push(`org ${orgId}: ${upOrg.error.message}`)
+  else contadores.org += 1
 
   // Lead funnel
   const { data: orgMembersAll } = await admin
@@ -309,7 +336,7 @@ async function snapshotOrg(orgId: string): Promise<number> {
     .slice(0, 5)
     .reduce((acc, [k, v]) => ({ ...acc, [k]: v }), {})
 
-  await admin.from("crm_lead_funnel_snapshots").upsert(
+  const upFunil = await admin.from("crm_lead_funnel_snapshots").upsert(
     {
       org_id: orgId,
       day: today,
@@ -325,6 +352,8 @@ async function snapshotOrg(orgId: string): Promise<number> {
     },
     { onConflict: "org_id,day" },
   )
+  if (upFunil.error) contadores.erros.push(`funil ${orgId}: ${upFunil.error.message}`)
+  else contadores.funil += 1
 
   log.info("[Snapshot] org done", { org_id: orgId, pipelines: pipelineCount })
   return pipelineCount

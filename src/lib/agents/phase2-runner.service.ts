@@ -36,6 +36,7 @@ import type {
   QaIssue,
   QaResult,
   StoreImageOverrides,
+  ReferenceSlotMapEntry,
 } from "@/types/email-generation"
 import {
   generateEmailImage,
@@ -65,14 +66,27 @@ import { pickProductForField } from "./image/product-for-field"
 import { personaToText } from "./image/persona-text"
 import { buildImageAlt } from "./image/resolve-block-prompt.service"
 import { computeRenderChecks } from "./html/render-checks"
+import { atribuirResponsaveis } from "./html/qa-responsavel"
+import { inventarioDeCtas } from "./html/cta-inventario"
+import { aplicarPaletaPorCodigo } from "./html/paleta-por-codigo"
+import { diffTextoVisivel } from "./html/texto-diff"
+import { cupomExisteNaPlataforma } from "@/lib/integrations/shopify/discount-lookup"
 import { computeContentChecks } from "./html/content-checks"
-import { incentivoDoCatalogo, incentivoExisteDoCatalogo } from "./objecoes/incentivo"
+import { lerDecisao } from "./shared/decisao-do-email"
+import { loadContratoModes, bloqueia, roda } from "./shared/contrato-mode"
+import { validarHtmlFinal } from "./shared/validadores/html-final"
+import { orphanTextFragments } from "./html/anchor-match"
+import { resolverIncentivoDoEmail } from "./objecoes/incentivo-da-loja.service"
 import {
   runQaAgent,
   runSchemaChecks,
   type SchemaCheckBlueprintBlock,
 } from "./chains/qa.chain"
 import { resolveQaMode } from "./chains/qa-mode-loader"
+import { resolveLintMode } from "./chains/lint-mode-loader"
+import { lintEnvio, resumoDoLint } from "./html/lint-envio"
+import { posProcessar } from "./html/pos-processador"
+import { PREVIEW_BUDGET_MIN_MS, capturarPreviews } from "./html/render-previews.service"
 // ── Cadeia de formatação (split do HTML agent, migration 20261039) ──
 import {
   invokeHeroChain,
@@ -102,7 +116,7 @@ import {
 } from "./typography/apply"
 import { renderWhitelistForPrompt } from "./refiner/font-whitelist"
 import { pesoNumerico } from "./html/hero-graft"
-import { attachUsage, usageOf } from "./chains/step-usage"
+import { attachUsage, usageOf, cacheDe, cacheParaRun } from "./chains/step-usage"
 import {
   type InputSummaryItem,
   type PromptSegment,
@@ -168,6 +182,9 @@ import {
 import { resolveRenderedReference } from "./shared/rendered-reference"
 import { alvoDaOp, applyOps } from "./html/apply-patches"
 import { extrairCtas, extrairFaixas, tonsDeFundo } from "./html/color-faixas"
+import { blocosTokenizadosDoSlotMap, tokensDaLoja } from "./html/apply-identity-tokens"
+import { aplicarTokens } from "./html/identity-tokens"
+import { preservarBlocos } from "./html/blocos-tokenizados"
 import { planoParaOps } from "./html/plano-de-cor"
 import { aplicaFaixasEBotoes, loadColorPlanoMode } from "./html/color-plano-mode"
 import { colorOccurrenceCount,
@@ -182,7 +199,6 @@ import {
   stripNbspIndentation,
   enforceLangAttribute,
 } from "./html/post-process"
-import { pesquisaToFullText, type PesquisaFields } from "@/lib/briefing/briefing-text"
 import {
   logGenerationRun,
   startGenerationRun,
@@ -671,10 +687,47 @@ async function loadMinimalContext(storeId: string, emailId: string) {
       | undefined) ?? null,
   )
 
+  const incentivo = await resolverIncentivoDoEmail({
+    storeId,
+    flowType: flowTypeForBlueprint,
+    emailNumber: emailNumberForBlueprint,
+    emailId,
+  })
+
+  // Briefing: `store_briefings` tem 0 linhas em lojas cujo briefing vive só
+  // em `onboardings.briefing` (Hero Boxers, 14/09) — o QA recebia `{}` e
+  // marcava "não coberto" o que o onboarding já dizia. A origem viaja junto.
+  let briefing: StoreBriefing | null = (briefingRes.data as StoreBriefing | null) ?? null
+  let briefingOrigem: "store_briefings" | "onboardings" | "nenhum" = briefing ? "store_briefings" : "nenhum"
+  if (!briefing) {
+    // Fallback fail-open: o briefing é insumo do QA, e o QA sem briefing
+    // já existia — uma leitura que falha aqui não pode derrubar a fase 2.
+    try {
+      const { data: onb } = await admin
+        .from("onboardings")
+        .select("briefing")
+        .eq("store_id", storeId)
+        .not("briefing", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      const b = (onb as { briefing?: unknown } | null)?.briefing
+      if (b && typeof b === "object") {
+        briefing = b as StoreBriefing
+        briefingOrigem = "onboardings"
+      }
+    } catch (err) {
+      log.warn("phase2.briefing_onboarding_fallback_failed", {
+        storeId, error: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }
+
   return {
     storeRaw: (storeData as Record<string, unknown>) ?? { store_name: "Loja" },
     brand: (brandRes.data as StoreBrandIdentity | null) ?? null,
-    briefing: (briefingRes.data as StoreBriefing | null) ?? null,
+    briefing,
+    briefingOrigem,
     topProducts,
     generateImages,
     qaVisionEnabled,
@@ -705,14 +758,15 @@ async function loadMinimalContext(storeId: string, emailId: string) {
     heroVisionModel,
     flowType: flowTypeForBlueprint,
     emailNumber: emailNumberForBlueprint,
-    // Decisão de incentivo da loja (Catalogador, `objection_catalog.incentivo.existe`):
-    // `false` liga o check `oferta_sem_incentivo`; `null` = desconhecido.
-    incentivoExiste: incentivoExisteDoCatalogo(storeData?.objection_catalog),
-    incentivoCodigo: incentivoDoCatalogo(storeData?.objection_catalog).codigo,
+    // Decisão de incentivo do TOQUE (14/09): vem do catálogo de outlines
+    // (`coupon_code` + tradução por idioma + override do bloco `coupon`),
+    // nunca do Catalogador. `existe` é booleano; `false` liga o check
+    // `oferta_sem_incentivo` e o `codigo` alimenta `codigo_inventado`.
+    incentivo,
+    incentivoExiste: incentivo.existe,
+    incentivoCodigo: incentivo.codigo,
   }
 }
-
-export { incentivoExisteDoCatalogo }
 
 // ── checkBatchTerminal: chamado apos cada UPDATE final ────────────────
 export async function checkBatchTerminal(
@@ -2212,6 +2266,9 @@ interface StepAttemptResult<T> {
   tokensInput: number
   tokensOutput: number
   costUsd: number
+  /** Cache de prompt lido / escrito — vai para `parsed_output.cache`. */
+  cachedTokens?: number
+  cacheWriteTokens?: number
   renderedPrompt: string
   /** O mesmo prompt marcado por origem (migration 20261085). */
   promptSegments?: PromptSegment[] | null
@@ -2306,7 +2363,9 @@ async function executeFormatStep<T>(p: {
         promptSegments: r.promptSegments,
         inputSummary: r.inputSummary,
         rawOutput: r.rawOutput,
-        parsedOutput: r.parsed,
+        // `cache` ao lado do parsed: é o único lugar onde se vê se o system
+        // do step (marcado desde 14/09) foi lido do cache ou reescrito.
+        parsedOutput: { ...r.parsed, ...cacheParaRun(r) },
         tokensInput: r.tokensInput,
         tokensOutput: r.tokensOutput,
         costCents: resolveCostCents({
@@ -2314,6 +2373,7 @@ async function executeFormatStep<T>(p: {
           tokensInput: r.tokensInput,
           tokensOutput: r.tokensOutput,
           costUsd: r.costUsd,
+          ...cacheDe(r),
         }),
         durationMs: Date.now() - t0,
         retryCount: priorErrors,
@@ -2372,6 +2432,9 @@ async function executeFormatStep<T>(p: {
                 tokensOutput: usage.tokensOutput,
                 costUsd: usage.costUsd,
               }),
+              // A chamada paga também leu/escreveu cache — no erro é onde
+              // "reescreveu o prefixo inteiro" mais custa explicar.
+              ...(cacheParaRun(usage).cache ? { parsedOutput: cacheParaRun(usage) } : {}),
               ...(usage.renderedPrompt
                 ? { renderedPrompt: usage.renderedPrompt }
                 : {}),
@@ -2419,6 +2482,8 @@ async function runFormattingChain(p: {
       heroCopyAceita: string[]
       /** Texto que o agente de hero inventou na última tentativa (a região do merge ficou no lugar). */
       heroInventado: string[]
+      /** Passo 15: variante por posição, para o QA e os checks de lacuna. */
+      slotMap: ReferenceSlotMapEntry[] | null
     }
   | { status: "failed" }
   | { status: "out_of_budget" }
@@ -2586,7 +2651,12 @@ async function runFormattingChain(p: {
       ...ids,
       agent,
       status: "skipped",
-      model: motivo === "agent_disabled" ? "disabled" : "pinado",
+      model:
+        motivo === "agent_disabled"
+          ? "disabled"
+          : motivo === "tokens_de_identidade"
+            ? "deterministic"
+            : "pinado",
       inputVars: { input_html_len: html.length, input_sha8: sha8(html) },
       parsedOutput: {
         reason: motivo,
@@ -2650,6 +2720,13 @@ async function runFormattingChain(p: {
   // de espelho). Enxertado ANTES da anotação de slots para que os
   // placeholders da variante entrem no endereçamento como os demais.
   let heroVariant: HeroVariantData | null = null
+  // B5: os 11 valores da loja — a MESMA paleta (`fmtCtx.roles`) que o Cores
+  // & Botões recebe. Resolvem os `{{COR_*}}`/`{{FONTE_*}}` da variante no
+  // encaixe (enxerto da hero) e no HTML servido ao agente de hero.
+  const tokensDeIdentidade = tokensDaLoja(ctx.brand, {
+    roles: fmtCtx.roles,
+    raioBotaoPx: null,
+  })
   let heroVariantSource: HeroVariantSource = null
   let heroGraftStatus:
     | GraftStatus
@@ -2685,6 +2762,8 @@ async function runFormattingChain(p: {
       blueprint: ctx.blueprint,
     })
     heroVariant = resolved.variant
+      ? { ...resolved.variant, html: aplicarTokens(resolved.variant.html, tokensDeIdentidade).html }
+      : null
     heroVariantSource = resolved.source
     heroVariantMismatch = resolved.mismatch
   }
@@ -2702,6 +2781,7 @@ async function runFormattingChain(p: {
     const graft = graftHeroVariant(
       fmtCtx.referenceHtml,
       heroVariant?.html ?? null,
+      tokensDeIdentidade,
     )
     heroGraftStatus = graft.status
     if (graft.status === "grafted") {
@@ -3139,6 +3219,7 @@ async function runFormattingChain(p: {
             tokensInput: r.tokensInput,
             tokensOutput: r.tokensOutput,
             costUsd: r.costUsd,
+            ...cacheDe(r),
             renderedPrompt: r.renderedPrompt,
           })
         }
@@ -3165,6 +3246,7 @@ async function runFormattingChain(p: {
           tokensInput: r.tokensInput,
           tokensOutput: r.tokensOutput,
           costUsd: r.costUsd,
+          ...cacheDe(r),
           renderedPrompt: r.renderedPrompt,
           promptSegments: r.promptSegments,
           inputSummary: [
@@ -3233,6 +3315,12 @@ async function runFormattingChain(p: {
             // guards rodaram e o fragmento do agente entrou.
             hero_fallback: heroFallback,
             hero_inventado: inventado,
+            // Passo 14: o diff do TEXTO VISÍVEL entre a região do merge e o
+            // fragmento do agente — o rastro que os guards sim/não não davam.
+            texto_diff: (() => {
+              const d = diffTextoVisivel(regionHtml, r.output)
+              return { removidas: d.removidas.slice(0, 20), inseridas: d.inseridas.slice(0, 20), mantidas: d.mantidas }
+            })(),
             // CM-6: por que o exemplo renderizado da variante entrou (ou
             // não) no prompt. `stale` alimenta o selo dos logs.
             rendered_reference: heroRendered
@@ -3340,6 +3428,7 @@ async function runFormattingChain(p: {
           tokensInput: r.tokensInput,
           tokensOutput: r.tokensOutput,
           costUsd: r.costUsd,
+          ...cacheDe(r),
           renderedPrompt: r.renderedPrompt,
           promptSegments: r.promptSegments,
           inputSummary: [
@@ -3690,6 +3779,7 @@ async function runFormattingChain(p: {
             tokensInput: r.tokensInput,
             tokensOutput: r.tokensOutput,
             costUsd: r.costUsd,
+            ...cacheDe(r),
             renderedPrompt: r.renderedPrompt,
             promptSegments: r.promptSegments,
             inputSummary: [
@@ -3756,12 +3846,46 @@ async function runFormattingChain(p: {
   if (await pararAqui("typography")) return { status: "paused", node: "typography" }
 
   // ── STEP 4 — CORES & BOTÕES (substitui o Refinador; FAIL-OPEN) ─────
+  // B5: bloco cuja variante usa tokens de identidade já saiu do encaixe na
+  // paleta da loja. Todos tokenizados → o agente não roda (run `skipped`,
+  // motivo `tokens_de_identidade`). Misto → ele só vê os legados, e o que
+  // uma op global alcançar nos tokenizados é desfeito por código.
+  const tokenizados = await blocosTokenizadosDoSlotMap(admin, fmtCtx.slotMap)
   if (colorSwitch.disabled) {
     await logStepDisabled("color_format", currentHtml, colorSwitch.motivo ?? "agent_disabled")
+  } else if (tokenizados.todas) {
+    log.info("phase2.fmt.color_format_skipped_tokens", {
+      emailId,
+      blocos: tokenizados.indices,
+    })
+    await logStepDisabled("color_format", currentHtml, "tokens_de_identidade")
   } else {
     const inputHtml = currentHtml
     const config = toChainConfig(colorSwitch.config, "color_format")
     const storeRaw = ctx.storeRaw as Record<string, unknown>
+    // Passo 14: o botão de cada bloco pelo CONTRATO (schema da variante),
+    // com a heurística como verificação. Os contratos vêm das mesmas
+    // linhas de `email_blocks` que o QA usa; a decisão (requisitos.cta por
+    // posição) e os papéis decidem, junto do código, a inserção e a cor.
+    const contratosDosBlocos = buildBlockContracts(
+      (fmtCtx.blocks ?? []).map((b) => ({
+        id: (b as { id?: string }).id ?? "",
+        position: (b as { position: number }).position,
+        block_type: (b as { block_type: string }).block_type,
+        label: (b as { label?: string | null }).label ?? null,
+        fields: (b as { fields?: unknown }).fields,
+      })),
+    )
+    const faixasParaInventario = extrairFaixas(inputHtml)
+    const inventarioCta = inventarioDeCtas(
+      faixasParaInventario,
+      contratosDosBlocos,
+      extrairCtas(inputHtml, faixasParaInventario),
+    )
+    const decisaoParaCor = lerDecisao(ctx.blueprint?.decisao)
+    const requisitosCtaPorBloco: Record<number, boolean | null> | null = decisaoParaCor
+      ? Object.fromEntries(decisaoParaCor.posicoes.map((p) => [p.block_index, p.requisitos?.cta ?? null]))
+      : null
     const vars = buildColorFormatVars(fmtCtx, inputHtml, {
       brand: ctx.brand,
       niche: (storeRaw.niche as string) || "",
@@ -3770,7 +3894,10 @@ async function runFormattingChain(p: {
           (storeRaw.tom_de_voz as string)) ||
           null,
       ).join(", "),
-      pesquisaFullText: pesquisaToFullText(storeRaw as PesquisaFields),
+      // Passo 14: a pesquisa (15,5k chars) saiu do prompt — o agente nunca a
+      // usou e ela custava ~30% do input.
+      inventarioDeCtas: inventarioCta,
+      blocosExcluidos: tokenizados.indices,
     })
     // Var exigida pelo schema que o builder não montou. Em produção isso só
     // virava log.warn — e foi assim que `color_surface`/`color_surface_strong`
@@ -3797,8 +3924,9 @@ async function runFormattingChain(p: {
         // O agente devolve um PLANO; quem o traduz em ops é o código, que
         // tem o que ele não tem: as faixas, os botões e o incentivo real da
         // peça (é contra ele que um label que promete desconto é medido).
-        const faixas = extrairFaixas(inputHtml)
-        const ctas = extrairCtas(inputHtml, faixas)
+        const excluidos = new Set(tokenizados.indices)
+        const faixas = extrairFaixas(inputHtml).filter((f) => !excluidos.has(f.bloco))
+        const ctas = extrairCtas(inputHtml, faixas).filter((c) => c.bloco == null || !excluidos.has(c.bloco))
         const modo = await loadColorPlanoMode(storeId)
         const traducao = r.plano
           ? planoParaOps(r.plano, {
@@ -3810,8 +3938,14 @@ async function runFormattingChain(p: {
               },
               urlLoja: (storeRaw.url as string) || (storeRaw.store_url as string) || null,
               fontFamily: fmtCtx.fontBody || null,
+              // Passo 14: contrato decide se o bloco tem CTA; a decisão pode
+              // negar CTA na posição; a cor do botão é do código (AA contra
+              // a faixa real).
+              inventario: inventarioCta,
+              requisitosCta: requisitosCtaPorBloco,
+              roles: fmtCtx.roles ?? null,
             })
-          : { ops: r.ops, descartes: [] }
+          : { ops: r.ops, descartes: [], ajustes: [] }
         // Em `shadow` o plano é decidido e GRAVADO, e nada de faixa ou botão
         // é aplicado: a aparência da peça sai como saía. É a única forma de
         // ler as decisões antes de deixá-las mexer em e-mail de cliente.
@@ -3867,6 +4001,16 @@ async function runFormattingChain(p: {
             ocorrencias_corrigidas: corrigidasFora,
           })
         }
+        // B5: o `recolor` é global por valor — o que chegou num bloco
+        // tokenizado é desfeito aqui, pelos marcadores.
+        const preservacao = preservarBlocos(inputHtml, htmlFinal, tokenizados.indices)
+        htmlFinal = preservacao.html
+        if (preservacao.restaurados.length > 0) {
+          log.info("phase2.fmt.color_format_blocos_preservados", {
+            emailId,
+            restaurados: preservacao.restaurados,
+          })
+        }
         const restantesFora = fmtCtx.roles ? coresForaDaPaleta(htmlFinal, fmtCtx.roles) : []
         // Guard: ops replace não podem quebrar a estrutura (um find/replace
         // que engole um </table> corrompe o documento).
@@ -3888,6 +4032,7 @@ async function runFormattingChain(p: {
           tokensInput: r.tokensInput,
           tokensOutput: r.tokensOutput,
           costUsd: r.costUsd,
+          ...cacheDe(r),
           renderedPrompt: r.renderedPrompt,
           promptSegments: r.promptSegments,
           inputSummary: [
@@ -3918,6 +4063,12 @@ async function runFormattingChain(p: {
             // este e-mail ficou assim" não tinha resposta. Em `shadow` é o
             // único registro que existe — nada foi aplicado.
             color_plano_mode: modo,
+            ...(tokenizados.indices.length > 0
+              ? {
+                  blocos_tokenizados: tokenizados.indices,
+                  blocos_preservados: preservacao.restaurados,
+                }
+              : {}),
             // Por que o modelo parou e quanto gastou pensando. Um step
             // mecânico que gasta 90% da saída em raciocínio é caro e fica a
             // um empurrão do teto — sem estes dois campos isso só aparece
@@ -3930,6 +4081,19 @@ async function runFormattingChain(p: {
             ...(traducao.descartes.length > 0
               ? { plano_descartes: traducao.descartes }
               : {}),
+            // Passo 14: cores de botão que o código trocou, e os blocos em
+            // que contrato e heurística DISCORDAM sobre haver CTA — é o
+            // teste de regressão de "a heurística não viu body-3".
+            ...(traducao.ajustes.length > 0 ? { ajustes_de_cor: traducao.ajustes } : {}),
+            cta_inventario: inventarioCta.map((i) => ({
+              bloco: i.bloco,
+              tipo: i.tipo,
+              contrato: i.tem_cta_por_contrato,
+              heuristica: i.tem_cta_por_heuristica,
+            })),
+            cta_inventario_divergente: inventarioCta
+              .filter((i) => i.divergente)
+              .map((i) => ({ bloco: i.bloco, tipo: i.tipo, campos_cta: i.campos_cta, heuristica: i.tem_cta_por_heuristica })),
             ritmo: {
               faixas_no_documento: faixas.length,
               faixas_decididas: r.plano?.faixas?.length ?? 0,
@@ -4027,6 +4191,61 @@ async function runFormattingChain(p: {
           model: config.model,
           parsedOutput: { reason: "out_of_budget" },
         }).catch(() => {})
+      }
+      // Passo 14: a 2ª falha do agente NÃO deixa o HTML da etapa anterior
+      // no ar. O que o código já sabe fazer roda sem o modelo: cor saturada
+      // fora da paleta → papel; fundo de seção estranho à identidade →
+      // fundo da loja. Sem ritmo nem botão novo (isso é decisão). Sem
+      // papéis derivados não há para onde mandar: mantém e diz.
+      if (outcome.kind === "failed") {
+        const t0 = Date.now()
+        if (fmtCtx.roles) {
+          const fallback = aplicarPaletaPorCodigo(
+            inputHtml,
+            fmtCtx.roles,
+            fundosLegitimos(fmtCtx.roles, ctx.brand ?? null),
+          )
+          const preservado = preservarBlocos(inputHtml, fallback.html, tokenizados.indices)
+          const count = (h: string) => (h.match(/<table[\s>]/gi) ?? []).length
+          const estruturaOk = count(preservado.html) === count(inputHtml)
+          if (estruturaOk) currentHtml = preservado.html
+          await logGenerationRun({
+            ...ids,
+            agent: "color_format",
+            status: "success",
+            model: "deterministic",
+            costCents: 0,
+            durationMs: Date.now() - t0,
+            parsedOutput: {
+              fallback: "paleta_por_codigo",
+              motivo_do_fallback: outcome.lastError,
+              recolors: fallback.recolors,
+              faixas_corrigidas: fallback.faixas_corrigidas,
+              ocorrencias_recoloridas: fallback.ocorrencias,
+              estrutura_ok: estruturaOk,
+              ...(tokenizados.indices.length > 0 ? { blocos_preservados: preservado.restaurados } : {}),
+              output_html_len: currentHtml.length,
+              output_sha8: sha8(currentHtml),
+              output_html: htmlSnapshot(currentHtml),
+            },
+          }).catch(() => {})
+          log.warn("phase2.fmt.color_fallback_paleta_por_codigo", {
+            emailId,
+            recolors: fallback.recolors.length,
+            faixas: fallback.faixas_corrigidas.length,
+            estruturaOk,
+          })
+        } else {
+          await logGenerationRun({
+            ...ids,
+            agent: "color_format",
+            status: "skipped",
+            model: "deterministic",
+            costCents: 0,
+            durationMs: 0,
+            parsedOutput: { fallback: "sem_paleta", motivo_do_fallback: outcome.lastError },
+          }).catch(() => {})
+        }
       }
       await persistStage(currentHtml, null)
     }
@@ -4149,7 +4368,7 @@ async function runFormattingChain(p: {
     }
   }
 
-  return { status: "ok", html: currentHtml, qaViews, heroCopyAceita, heroInventado }
+  return { status: "ok", html: currentHtml, qaViews, heroCopyAceita, heroInventado, slotMap: fmtCtx.slotMap }
 }
 
 
@@ -4268,9 +4487,128 @@ export async function runPhase2HtmlQa(
   }
   // O QA e os checks determinísticos julgam o EMAIL, não o andaime: o
   // documento chega da cadeia com os marcadores de bloco (a fronteira de
-  // saída é o persistStage), e aqui eles saem. As views por bloco vêm
-  // separadas, extraídas do documento marcado.
-  const finalHtml = stripCfyBlockMarkers(fmtResult.html)
+  // saída é o persistStage), e o strip acontece DEPOIS do pós-processador,
+  // logo abaixo — `htmlMarcado` é o mesmo documento do cliente, ainda com
+  // os marcadores, e é dele que as views do QA saem.
+  //
+  // ── Por que o strip desceu (15/09) ──────────────────────────────────
+  //
+  // As views eram extraídas lá atrás, no fim do `image_format`, com a
+  // justificativa de que "depois do strip os marcadores somem". Verdade —
+  // mas isso deixava o QA julgando DOIS documentos ao mesmo tempo: o
+  // `{{html}}` final e views de três agentes atrás (typography,
+  // color_format, background_fit) e de todo o pós-processador.
+  //
+  // Medido na Innova (15/09): o QA abriu `links_quebrados` dizendo "footer
+  // social media CTAs use placeholder values instead of real URLs" — e os
+  // ícones sociais NÃO EXISTEM no HTML entregue; o passo 9 do
+  // pós-processador (`icones_sem_destino_removidos`) os tinha removido. A
+  // varredura dos hrefs do documento final devolve 15 links para
+  // `https://innovabay.site` e um `[unsubscribe_link]` (merge tag válida):
+  // zero links quebrados. Com `qa_mode = enforce`, uma issue `high` nessas
+  // condições reprova peça boa — e o erro simétrico é pior: o que esses
+  // três agentes e o pós-processador INTRODUZEM ficaria invisível na view,
+  // que é justamente o que a arquitetura de views existe para o QA ler.
+  //
+  // `posProcessar` preserva `<!-- cfy:… -->` por construção
+  // (`ehMarcadorInterno`), então extrair depois dele é seguro.
+  let htmlMarcado = fmtResult.html
+  // Valor do modo `lint off`, em que o pós-processador não roda: o
+  // documento sai da cadeia direto para o cliente, e as views saem dele.
+  let finalHtml = stripCfyBlockMarkers(htmlMarcado)
+
+  // ── Pós-processador + lint de envio (B2, set/2026; código, custo zero) ──
+  // Sobre o documento que VAI ao cliente: funde os <style>, resolve var(--x),
+  // tira comentário de dev, sincroniza o botão do Outlook, apaga <img src="">,
+  // preenche alt, ano e line-height — e depois o lint diz o que restou. Em
+  // `enforce`, achado bloqueante reprova ANTES do QA por modelo (sem pagar a
+  // chamada); em `shadow` só grava; em `off` nem roda. Os prints (600/375px)
+  // saem daqui porque é este HTML, e não um estágio, que o operador revisa.
+  {
+    const lintMode = await resolveLintMode(storeId)
+    if (lintMode !== "off") {
+      const lintT0 = Date.now()
+      const entrada = stripCfyBlockMarkers(htmlMarcado)
+      const altPorUrl = new Map<string, string>()
+      const { data: blocosAlt } = await admin.from("email_blocks").select("content").eq("email_id", emailId)
+      for (const b of (blocosAlt ?? []) as Array<{ content?: { images?: Record<string, { url?: string; alt?: string }> } | null }>) {
+        for (const img of Object.values(b.content?.images ?? {})) if (img?.url && img?.alt) altPorUrl.set(img.url, img.alt)
+      }
+      const brandFontes = [ctx.brand?.font_heading, ctx.brand?.font_body].filter((f): f is string => typeof f === "string" && f.trim().length > 0)
+      const { data: storeNome } = await admin.from("client_stores").select("store_name").eq("id", storeId).maybeSingle()
+      // O pós-processador roda sobre o documento COM marcadores — ele os
+      // preserva — para que as views do QA saiam do MESMO HTML que o
+      // cliente recebe. O lint mede o documento final, sem andaime.
+      const pos = posProcessar(htmlMarcado, { altPorUrl, altPadrao: (storeNome as { store_name?: string } | null)?.store_name ?? null })
+      htmlMarcado = pos.html
+      const lint = lintEnvio(stripCfyBlockMarkers(htmlMarcado), { fontesDaLoja: brandFontes })
+      const bloqueou = lintMode === "enforce" && lint.bloqueia
+      finalHtml = stripCfyBlockMarkers(htmlMarcado)
+      if (pos.aplicados.length > 0 || lint.itens.length > 0) {
+        log.info("phase2.lint_envio", { emailId, modo: lintMode, aplicados: pos.aplicados.map((a) => `${a.id}×${a.n}`), lint: resumoDoLint(lint), bloqueou })
+      }
+      // O HTML pós-processado é o que fica gravado — o QA e o cliente leem o mesmo.
+      if (pos.aplicados.length > 0) {
+        await admin.from("email_flow_emails").update({ html: finalHtml, updated_at: new Date().toISOString() }).eq("id", emailId)
+      }
+      await logGenerationRun({
+        storeId,
+        flowId,
+        emailId,
+        triggeredBy,
+        batchId: batchId ?? "",
+        agent: "lint_envio",
+        status: bloqueou ? "error" : "success",
+        model: "deterministic",
+        inputVars: { input_html_len: entrada.length, input_sha8: sha8(entrada), modo: lintMode },
+        inputSummary: [
+          { rotulo: "Documento de entrada", cls: "upstream", valor: `${entrada.length.toLocaleString("pt-BR")} chars — HTML final da cadeia, sem marcadores (sha8 ${sha8(entrada)})` },
+          { rotulo: "Modo", cls: "sistema", valor: `lint ${lintMode} (email_generation_settings.lint_mode; EMAIL_LINT_MODE vence)` },
+          { rotulo: "Fontes da loja", cls: "loja", valor: brandFontes.join(", ") || "(nenhuma)" },
+        ] as InputSummaryItem[],
+        parsedOutput: {
+          modo: lintMode,
+          aplicados: pos.aplicados,
+          itens: lint.itens,
+          bloqueia: lint.bloqueia,
+          bloqueantes: lint.bloqueantes,
+          bloqueou,
+          output_html_len: finalHtml.length,
+          output_sha8: sha8(finalHtml),
+          output_html: htmlSnapshot(finalHtml),
+        },
+        errorMessage: bloqueou ? resumoDoLint(lint).slice(0, 500) : undefined,
+        costCents: 0,
+        durationMs: Date.now() - lintT0,
+      }).catch(() => {})
+
+      // Prints — fail-open, só com orçamento.
+      const restante = budgetMs - (Date.now() - routeT0)
+      if (restante >= PREVIEW_BUDGET_MIN_MS) {
+        await capturarPreviews({ storeId, emailId, html: finalHtml })
+      } else {
+        log.info("phase2.render_previews_skipped_budget", { emailId, restante })
+      }
+
+      if (bloqueou) {
+        const lintIssues: QaIssue[] = lint.itens
+          .filter((i) => i.severidade === "bloqueia")
+          .map((i) => ({
+            type: "html_invalido" as QaIssue["type"],
+            severity: "high" as const,
+            disposition: "blocking" as const,
+            message: `[lint ${i.id}] ${i.evidencia}`,
+            location: "html",
+          }))
+        await markEmailFailed(emailId, `lint_${lint.bloqueantes[0]}`, lintIssues)
+        await safeNotifyEmailFailed(storeId, emailId, `lint_${lint.bloqueantes[0]}`, batchId || null)
+        if (batchId) await rollupCostAndMaybeAlert({ storeId, emailId, batchId, costAlertUsd: ctx.costAlertUsd }).catch(() => {})
+        if (batchId) await checkBatchTerminal(storeId, batchId).catch(() => {})
+        log.info("phase2.lint_envio.blocked", { emailId, bloqueantes: lint.bloqueantes })
+        return { status: "failed" }
+      }
+    }
+  }
 
   // Copy da hero aceita apesar do guard (última tentativa). Vai para a aba
   // QA do email, que é onde o operador olha — e o email EXISTE para ele
@@ -4282,6 +4620,7 @@ export async function runPhase2HtmlQa(
       disposition: "blocking" as const,
       message: `A copy "${valor.slice(0, 80)}" não foi encontrada no bloco da hero depois da formatação. A região do merge ficou no lugar do acabamento do agente — confira a hero antes de aprovar.`,
       location: "hero",
+      evidence: valor,
     })),
     ...fmtResult.heroInventado.map((texto) => ({
       type: "hero_copy_inventada" as const,
@@ -4289,16 +4628,51 @@ export async function runPhase2HtmlQa(
       disposition: "blocking" as const,
       message: `O agente de hero escreveu "${texto.slice(0, 80)}", que não existia na copy. O fragmento foi descartado e a região do merge ficou no lugar.`,
       location: "hero",
+      evidence: texto,
     })),
   ]
 
   // Checks de CONTEÚDO por código (09/09): oferta sem incentivo,
   // placeholder entre colchetes, texto de exemplo da biblioteca, parágrafo
   // repetido. Rodam sempre e bloqueiam antes do QA configurável por modelo.
+  // Passo 15: a decisão e o slot_map entram no QA (checks por código e
+  // agente). Lidos UMA vez aqui; o validador textual abaixo usa a mesma.
+  const decisaoDoEmail = lerDecisao(ctx.blueprint?.decisao)
+  const slotMapDoEmail = fmtResult.slotMap ?? null
+  const posicoesSemVariante = (slotMapDoEmail ?? [])
+    .filter((e) => e.variant_id == null)
+    .map((e) => ({ block_index: e.block_index, section: e.section, dispositivo_pedido: e.dispositivo_pedido ?? null, motivo: e.motivo ?? null }))
   const contentIssues: QaIssue[] = computeContentChecks(finalHtml, {
     incentivoExiste: ctx.incentivoExiste ?? null,
     incentivoCodigo: ctx.incentivoCodigo ?? null,
+    posicoesSemVariante,
+    traducaoFaltante: decisaoDoEmail?.incentivo.traducao_faltante ?? null,
   })
+  // Passo 16: o cupom da peça existe na PLATAFORMA da loja? Com token
+  // Shopify, `discountNodes` responde; sem token, vira NOTA da run `qa`
+  // (`cupom_nao_conferido`), nunca issue — "não conferi" não é "não existe".
+  const notasQa: string[] = []
+  if (decisaoDoEmail?.incentivo.existe && decisaoDoEmail.incentivo.codigo) {
+    try {
+      const conf = await cupomExisteNaPlataforma(storeId, decisaoDoEmail.incentivo.codigo)
+      if (conf.conferido && !conf.existe) {
+        contentIssues.push({
+          type: "cupom_inexistente_na_plataforma",
+          severity: "high",
+          disposition: "blocking",
+          message: `O cupom ${conf.codigo} não existe na plataforma da loja (Shopify discountNodes) — a peça promete um desconto que o checkout não reconhece.`,
+          location: "html",
+          no_responsavel: "loja",
+        })
+      } else if (conf.conferido) {
+        notasQa.push(`cupom_conferido: ${conf.codigo} existe na plataforma${conf.titulo ? ` (${conf.titulo})` : ""}`)
+      } else {
+        notasQa.push(`cupom_nao_conferido: ${conf.motivo}${conf.detalhe ? ` — ${conf.detalhe}` : ""} (código ${conf.codigo})`)
+      }
+    } catch (err) {
+      notasQa.push(`cupom_nao_conferido: erro — ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
   if (contentIssues.length > 0) {
     log.warn("phase2.qa.content_checks_issues", {
       emailId,
@@ -4306,6 +4680,38 @@ export async function runPhase2HtmlQa(
       incentivoExiste: ctx.incentivoExiste ?? null,
     })
   }
+
+  // Validador TEXTUAL do contrato (14/09, gate `contrato_textual`): claims
+  // de oferta por bloco contra a decisão persistida no blueprint. Nasce em
+  // `shadow` — `low`/`warning`, só registro em `qa_issues`; em `on`,
+  // `high`/`blocking`. Sem decisão (Estruturador desligado) não roda.
+  const contratoIssues: QaIssue[] = await (async () => {
+    try {
+      const decisao = decisaoDoEmail
+      if (!decisao) return []
+      const modo = (await loadContratoModes(storeId)).textual
+      if (!roda(modo)) return []
+      const views = fmtResult.qaViews.length > 0
+        ? fmtResult.qaViews
+        : [{ block_id: null, indice: 0, tipo: "documento", texto_visivel: orphanTextFragments(finalHtml, []).map((f) => f.texto).join(" ") }]
+      const r = validarHtmlFinal(decisao, views)
+      if (r.violacoes.length > 0) {
+        log.warn("phase2.qa.contrato_textual", { emailId, modo, violacoes: r.violacoes.map((v) => `${v.block_index}:${v.tipo}`) })
+      }
+      const on = bloqueia(modo)
+      return r.violacoes.map((v) => ({
+        type: `contrato_${v.tipo}` as QaIssue["type"],
+        severity: on ? (v.severidade === "high" ? "high" : "medium") : "low",
+        disposition: on && v.severidade === "high" ? ("blocking" as const) : ("warning" as const),
+        message: `[contrato ${modo}] "${v.evidencia}" — esperado: ${v.esperado}`,
+        location: v.section ?? "html",
+        block_id: v.variant_id ?? null,
+      }))
+    } catch (err) {
+      log.warn("phase2.qa.contrato_textual_failed", { emailId, error: err instanceof Error ? err.message : String(err) })
+      return []
+    }
+  })()
 
   // ── QA fora do fluxo somente quando EMAIL_QA_MODE=off ────────────────
   // Bypass do agente LLM: HTML pronto -> status `ready` direto, sem custo,
@@ -4342,12 +4748,16 @@ export async function runPhase2HtmlQa(
         fields: (b.fields ?? null) as SchemaCheckBlueprintBlock["fields"],
       })),
     )
-    const renderIssues = [
+    // Passo 15: toda issue sai com dono — a tabela é aplicada UMA vez,
+    // sobre a lista final, para checks antigos e novos passarem pela
+    // mesma régua.
+    const renderIssues = atribuirResponsaveis([
       ...heroCopyIssues,
       ...contentIssues,
+      ...contratoIssues,
       ...computeRenderChecks(finalHtml),
       ...schemaIssues,
-    ]
+    ])
     if (renderIssues.length > 0) {
       log.warn("phase2.qa.render_checks_issues", {
         emailId,
@@ -4384,6 +4794,7 @@ export async function runPhase2HtmlQa(
         reason: "qa_disabled_flag",
         passed: true,
         issues_count: renderIssues.length,
+        ...(notasQa.length > 0 ? { notas: notasQa } : {}),
       },
     }).catch(() => {})
     if (batchId) await rollupCostAndMaybeAlert({ storeId, emailId, batchId, costAlertUsd: ctx.costAlertUsd }).catch(() => {})
@@ -4441,10 +4852,24 @@ export async function runPhase2HtmlQa(
         fields: b.fields,
       })),
     )
-    // F5: views extraídas pela cadeia (com marcadores); resume pós-strip
-    // deixa a lista vazia → fallback por content dos blocos.
+    // F5: as views saem do documento FINAL com marcadores (`htmlMarcado`),
+    // que é o mesmo `finalHtml` mais o andaime — o QA passa a julgar UM
+    // documento só (ver a nota do strip, acima). As da cadeia ficam de
+    // reserva: num resume pós-strip não há marcador para recortar, e aí
+    // valem as que o `image_format` guardou; sem nenhuma, o fallback por
+    // content dos blocos.
+    const viewsDoFinal = buildQaBlockViews(
+      htmlMarcado,
+      (qaBlocks ?? []).map((b: Record<string, unknown>) => ({
+        id: (b.id as string) ?? "",
+        position: (b.position as number) ?? 0,
+        block_type: (b.block_type as string) ?? "unknown",
+      })),
+    )
     const blockViews =
-      fmtResult.qaViews.length > 0
+      viewsDoFinal.length > 0
+        ? viewsDoFinal
+        : fmtResult.qaViews.length > 0
         ? fmtResult.qaViews
         : viewsFromBlocksFallback(
             (qaBlocks ?? []).map((b: Record<string, unknown>) => ({
@@ -4464,12 +4889,19 @@ export async function runPhase2HtmlQa(
       blocks: blocksForQa,
       blockViews,
       briefing: ctx.briefing,
+      briefingOrigem: ctx.briefingOrigem,
       brand: ctx.brand,
+      topProducts: ctx.topProducts,
       blueprintObjective: ctx.blueprintObjective,
       qaVisionEnabled: ctx.qaVisionEnabled,
       // fields v2 do blueprint híbrido → validação max_len/required no QA.
       blueprintBlocks: ctx.blueprint?.blocks ?? [],
       blockContracts: qaContracts,
+      // Passo 15: a decisão e o slot_map — o QA deixa de reprovar o que o
+      // Seletor verificou.
+      decisao: decisaoDoEmail,
+      slotMap: slotMapDoEmail,
+      notas: notasQa,
     })
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Erro no QA"
@@ -4487,7 +4919,11 @@ export async function runPhase2HtmlQa(
   // double-check redundante.
   // Com o gate ligado, `high` dos checks de conteúdo reprova como o agente
   // reprovaria — é o mesmo threshold (EMAIL_QA_BLOCK_SEVERITY default high).
-  const contentReprova = contentIssues.some((i) => i.severity === "high")
+  // O validador textual do contrato entra na mesma conta: em `on` ele emite
+  // `high` e reprova; em `shadow` emite `low` e nunca chega aqui.
+  const contentReprova = [...contentIssues, ...contratoIssues].some((i) => i.severity === "high")
+  // Passo 15: dono em toda issue, aplicado UMA vez sobre a lista final.
+  const issuesFinais = atribuirResponsaveis([...heroCopyIssues, ...contentIssues, ...contratoIssues, ...qaResult.issues])
   if (qaMode === "enforce" && (!qaResult.passed || contentReprova)) {
     await admin
       .from("email_flow_emails")
@@ -4495,7 +4931,7 @@ export async function runPhase2HtmlQa(
         status: "failed",
         failed_at: new Date().toISOString(),
         failure_reason: "qa_failed",
-        qa_issues: [...heroCopyIssues, ...contentIssues, ...qaResult.issues],
+        qa_issues: issuesFinais,
         updated_at: new Date().toISOString(),
       })
       .eq("id", emailId)
@@ -4520,7 +4956,7 @@ export async function runPhase2HtmlQa(
     .update({
       status: "ready",
       ready_at: new Date().toISOString(),
-      qa_issues: [...heroCopyIssues, ...contentIssues, ...qaResult.issues],
+      qa_issues: issuesFinais,
       updated_at: new Date().toISOString(),
     })
     .eq("id", emailId)

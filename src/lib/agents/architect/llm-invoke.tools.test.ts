@@ -33,9 +33,10 @@ const toolCall = (id: string, caminho: string) => ({
   tool_calls: [{ id, type: "function", function: { name: "ler_nota", arguments: JSON.stringify({ caminho }) } }],
 })
 
-function config(): AgentInvokeConfig {
+function configBase(): AgentInvokeConfig {
   return { model: "anthropic/claude-sonnet-4.6", temperature: 0.2, max_tokens: 800, system_prompt: "sys", user_template: "user {{x}}" }
 }
+const config = configBase
 function bodies(): Array<Record<string, unknown>> {
   return fetchMock.mock.calls.map((c) => JSON.parse(c[1].body as string))
 }
@@ -133,6 +134,10 @@ describe("invokeAgentWithTools", () => {
 })
 
 describe("invokeAgentWithTools — retomada do JSON (09/09)", () => {
+  // Prefill só nos modelos anteriores à família 4.6 (Sonnet 4.6+, Sonnet 5,
+  // Opus 5, Fable respondem 400 a mensagem assistant final). O fixture
+  // padrão é Sonnet 4.6, então aqui a retomada roda em Haiku 4.5.
+  const config = (): AgentInvokeConfig => ({ ...configBase(), model: "anthropic/claude-haiku-4.5" })
   const retomada = {
     precisa: (raw: string, fr?: string) => (raw.trim().startsWith("{") ? null : fr === "length" ? "cortado" : "sem_json"),
     mensagem: "só o JSON",
@@ -205,5 +210,19 @@ describe("invokeAgentWithTools — retomada do JSON (09/09)", () => {
     expect(r2.retomada).toEqual({ feita: true, prefill_usado: false, motivo: "sem_json" })
     const msgs = bodies()[1].messages as Array<{ role: string }>
     expect(msgs[msgs.length - 1].role).toBe("user")
+  })
+
+  it("Sonnet 4.6 e Fable não recebem prefill — a família 4.6+ responde 400 e a tentativa era um 400 garantido", async () => {
+    for (const model of ["anthropic/claude-sonnet-4.6", "~anthropic/claude-fable-latest"]) {
+      fetchMock.mockReset()
+      fetchMock
+        .mockResolvedValueOnce(resposta({ role: "assistant", content: "prosa" }))
+        .mockResolvedValueOnce(resposta({ role: "assistant", content: '{"papeis":[]}' }))
+      const r = await invokeAgentWithTools({ ...configBase(), model }, { x: "1" }, undefined, { tools: TOOLS, executar: async () => "ok", retomada })
+      expect(r.retomada).toEqual({ feita: true, prefill_usado: false, motivo: "sem_json" })
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+      const msgs = bodies()[1].messages as Array<{ role: string }>
+      expect(msgs[msgs.length - 1].role).toBe("user")
+    }
   })
 })

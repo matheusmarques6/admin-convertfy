@@ -21,6 +21,7 @@ import { C, F, TNUM } from "@/components/email-generation/ui/eg-theme"
 import {
   DEGRADACAO,
   NOS_COM_OVERRIDE,
+  podeRodarSoEsteNo,
   resumirOverrides,
   validarOverrides,
   type ExecutionOverrides,
@@ -132,12 +133,20 @@ export function NoNaExecucaoManual({
   onRascunho,
   disparando,
   onDispararSoEste,
+  custoUsd,
 }: {
   nodeKey: string
   rascunho: ExecutionOverrides
   onRascunho: (ov: ExecutionOverrides) => void
   disparando: boolean
   onDispararSoEste: () => void
+  /**
+   * O que ESTE nó custou nesta execução — medido, não estimado. É o número
+   * que responde "quanto sai o clique", e por isso vem da run em vez de uma
+   * tabela de referência: custo por nó varia com a loja e com o tamanho da
+   * biblioteca, e um valor fixo na tela envelheceria em silêncio.
+   */
+  custoUsd?: number | null
 }) {
   if (!NOS_COM_OVERRIDE.includes(nodeKey)) return null
 
@@ -145,6 +154,11 @@ export function NoNaExecucaoManual({
   const pinado = Boolean(rascunho.pinned?.[nodeKey])
   const paraAqui = rascunho.stop_after === nodeKey
   const deg = DEGRADACAO[nodeKey]
+  // `stop_after` só vale onde há ponto de parada escrito. Oferecer os dois
+  // botões em todo nó era um clique que a régua do servidor recusa — e, até
+  // 16/09, um clique que não fazia nada: `deveParar` tinha um call site só.
+  const para = podeRodarSoEsteNo(nodeKey)
+  const semParada = "este nó ainda não tem ponto de parada no pipeline — a execução seguiria até o fim. Escolha o nó seguinte que pare."
 
   // O aviso que este bloco existe para dar: o que a execução perde se este
   // nó não rodar. Recusa aparece em vermelho porque o disparo não vai
@@ -218,21 +232,45 @@ export function NoNaExecucaoManual({
         <div style={{ display: "flex", gap: 6 }}>
           <StudioBtn
             onClick={() => onRascunho(alternarParada(rascunho, nodeKey))}
+            disabled={!para}
             style={botao}
-            title="A execução termina depois deste nó e fica pausada"
+            title={para ? "A execução termina depois deste nó e fica pausada" : semParada}
           >
             <Square size={12} /> {paraAqui ? "Não parar" : "Parar aqui"}
           </StudioBtn>
           <StudioBtn
             variant="primary"
             onClick={onDispararSoEste}
-            disabled={disparando}
+            disabled={disparando || !para}
             style={botao}
-            title="Pina tudo antes, roda só este nó e para. É o 'Execute step' do n8n — sem re-executar os anteriores."
+            title={
+              para
+                ? `Pina tudo antes, roda só este nó e para. É o 'Execute step' do n8n — sem re-executar os anteriores.${
+                    custoUsd != null && custoUsd > 0
+                      ? ` Custou US$ ${custoUsd.toFixed(2)} nesta execução.`
+                      : ""
+                  }`
+                : semParada
+            }
           >
             <Zap size={12} /> Rodar só este
+            {para && custoUsd != null && custoUsd > 0 ? ` · ~US$ ${custoUsd.toFixed(2)}` : ""}
           </StudioBtn>
         </div>
+
+        {!para && (
+          <div
+            style={{
+              marginTop: 9,
+              fontSize: 11.5,
+              lineHeight: 1.5,
+              color: C.g400,
+              fontFamily: F.sans,
+            }}
+          >
+            {semParada}
+          </div>
+        )}
 
         {aviso && (
           <div

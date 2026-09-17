@@ -28,11 +28,18 @@ import {
   RefreshCw,
   Download,
   File as FileIcon,
+  MessageSquare,
 } from "lucide-react"
 import { useToast } from "@/lib/hooks/use-toast"
 import { TaskRow, type TaskRowData } from "@/components/tasks/task-row"
 import { SubItemsList, type SubItem } from "@/components/onboarding-v2/sub-items-list"
 import { pickAnchorTask } from "@/lib/onboarding/anchor-task"
+import {
+  AdvanceDialog,
+  MensagemAoCliente,
+  type AdvancePreview,
+} from "@/components/onboarding-v2/advance-dialog"
+import { motivoDoEnvio } from "@/lib/onboarding/motivo-do-envio"
 import { ROUTES } from "@/lib/routes"
 import { buildFormUrl } from "@/lib/utils/form-url"
 import type {
@@ -57,6 +64,20 @@ interface DetailResponse {
   }
   columns: OperationalPipelineColumn[]
   deliverables: TaskDeliverable[]
+  /**
+   * A rota SEMPRE devolveu isto (top 20 de `events`, autor resolvido) e a
+   * ficha nunca leu — por isso o envio de WhatsApp, que agora emite evento,
+   * aparece aqui sem nenhuma consulta nova.
+   */
+  activity?: MensagemEvento[]
+}
+
+interface MensagemEvento {
+  id: string
+  event_type: string
+  created_at: string
+  payload: Record<string, unknown>
+  actor?: { id: string; name: string } | null
 }
 
 type Tab = "checklist" | "deliverables" | "briefing" | "versions" | "form"
@@ -69,6 +90,7 @@ export function OnboardingDetailClient({ id }: { id: string }) {
   const [tab, setTab] = useState<Tab>("checklist")
   const [goBackOpen, setGoBackOpen] = useState(false)
   const [overrideOpen, setOverrideOpen] = useState(false)
+  const [advanceOpen, setAdvanceOpen] = useState(false)
   const router = useRouter()
   const searchParams = useSearchParams()
 
@@ -116,19 +138,30 @@ export function OnboardingDetailClient({ id }: { id: string }) {
       ((t as unknown as { version?: number }).version ?? 1) === onb.current_version,
   )
 
-  async function advance(override?: {
-    justification: string
-    items_skipped: Array<
-      | { type: "checklist"; id: string; label: string }
-      | { type: "deliverable"; slug: string; label: string }
-    >
-  }) {
+  /**
+   * `sendWhatsApp` so chega aqui vindo do interruptor do dialogo. Nenhuma
+   * chamada monta o corpo sozinha: corpo sem a chave = avanca sem avisar o
+   * cliente, que e o default desde o incidente de 15/09/2026.
+   */
+  async function advance(
+    sendWhatsApp: boolean,
+    override?: {
+      justification: string
+      items_skipped: Array<
+        | { type: "checklist"; id: string; label: string }
+        | { type: "deliverable"; slug: string; label: string }
+      >
+    },
+  ) {
     setAdvancing(true)
     try {
       const res = await fetch(`/api/onboardings/${id}/advance`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(override ? { override } : {}),
+        body: JSON.stringify({
+          ...(override ? { override } : {}),
+          ...(sendWhatsApp ? { send_whatsapp: true } : {}),
+        }),
       })
       const j = await res.json().catch(() => ({}))
       if (!res.ok) {
@@ -142,12 +175,18 @@ export function OnboardingDetailClient({ id }: { id: string }) {
           description: errMsg,
         })
       } else {
-        toast.toast({ title: "Onboarding avancou de coluna" })
+        toast.toast({
+          title: "Onboarding avancou de coluna",
+          description: sendWhatsApp
+            ? "A mensagem foi enviada ao cliente."
+            : "Nenhuma mensagem foi enviada ao cliente.",
+        })
         mutate()
       }
     } finally {
       setAdvancing(false)
       setOverrideOpen(false)
+      setAdvanceOpen(false)
     }
   }
 
@@ -282,7 +321,7 @@ export function OnboardingDetailClient({ id }: { id: string }) {
                 </button>
                 <button
                   type="button"
-                  onClick={() => advance()}
+                  onClick={() => setAdvanceOpen(true)}
                   disabled={advancing}
                   className="inline-flex items-center gap-1.5 h-9 px-4 rounded-[8px] text-[12.5px] font-semibold bg-[#1F1F1F] dark:bg-white text-white dark:text-black disabled:opacity-50 hover:opacity-90 transition-opacity shadow-[0_1px_2px_rgba(0,0,0,0.08)]"
                 >
@@ -550,6 +589,8 @@ export function OnboardingDetailClient({ id }: { id: string }) {
           {tab === "versions" && <VersionsTab versions={onb.versions ?? []} />}
           {tab === "form" && <FormResponsesTab onboarding={onb} />}
         </div>
+
+        <MensagensAoCliente activity={data.activity ?? []} />
       </div>
 
       {goBackOpen && (
@@ -565,14 +606,27 @@ export function OnboardingDetailClient({ id }: { id: string }) {
         />
       )}
 
+      {advanceOpen && (
+        <AdvanceDialog
+          onboardingId={id}
+          onClose={() => setAdvanceOpen(false)}
+          onConfirm={(sendWhatsApp) => advance(sendWhatsApp)}
+          submitting={advancing}
+        />
+      )}
+
       {overrideOpen && currentCol && (
         <OverrideDialog
+          onboardingId={id}
           column={currentCol}
           tasksInCurrent={tasksInCurrent}
           deliverables={deliverables}
           onClose={() => setOverrideOpen(false)}
-          onConfirm={(justification, itemsSkipped) =>
-            advance({ justification, items_skipped: itemsSkipped })
+          onConfirm={(justification, itemsSkipped, sendWhatsApp) =>
+            advance(sendWhatsApp, {
+              justification,
+              items_skipped: itemsSkipped,
+            })
           }
           submitting={advancing}
         />
@@ -581,7 +635,95 @@ export function OnboardingDetailClient({ id }: { id: string }) {
   )
 }
 
+/**
+ * O que saiu (ou nao saiu) para o cliente, nesta ficha.
+ *
+ * Fica FORA das abas de proposito: o envio nao pertence a nenhuma etapa, e o
+ * que o incidente de 15/09/2026 mostrou e que ele nao pode depender de alguem
+ * procurar. Le `data.activity`, que a rota ja devolvia e a ficha ignorava.
+ */
+function MensagensAoCliente({ activity }: { activity: MensagemEvento[] }) {
+  const envios = activity.filter(
+    (e) =>
+      e.event_type === "onboarding.whatsapp_sent" ||
+      e.event_type === "onboarding.whatsapp_failed",
+  )
+
+  return (
+    <div className="px-5 sm:px-7 pb-6">
+      <div className="rounded-[8px] border border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-white/[0.02] overflow-hidden">
+        <div className="px-4 py-2.5 border-b border-black/[0.04] dark:border-white/[0.06] flex items-center gap-1.5">
+          <MessageSquare className="h-3.5 w-3.5 text-slate-400" />
+          <h3 className="text-[12.5px] font-semibold text-slate-900 dark:text-white">
+            Mensagens ao cliente
+          </h3>
+        </div>
+
+        {envios.length === 0 ? (
+          <p className="px-4 py-3 text-[12px] text-slate-500 dark:text-white/55">
+            Nenhuma mensagem foi enviada por este onboarding. Avançar etapa só
+            avisa o cliente com o interruptor ligado no diálogo.
+          </p>
+        ) : (
+          <ul className="divide-y divide-black/[0.04] dark:divide-white/[0.06]">
+            {envios.slice(0, 8).map((e) => {
+              const p = e.payload ?? {}
+              const enviou = e.event_type === "onboarding.whatsapp_sent"
+              const quando = new Date(e.created_at).toLocaleString("pt-BR", {
+                day: "2-digit",
+                month: "2-digit",
+                hour: "2-digit",
+                minute: "2-digit",
+              })
+              return (
+                <li key={e.id} className="px-4 py-2.5">
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="text-[12.5px] text-slate-800 dark:text-white/80">
+                      <span
+                        className={
+                          enviou
+                            ? "font-semibold text-emerald-700 dark:text-emerald-300"
+                            : "font-semibold text-amber-700 dark:text-amber-300"
+                        }
+                      >
+                        {enviou ? "Enviada" : "Não saiu"}
+                      </span>
+                      {typeof p.column_name === "string"
+                        ? ` · ${p.column_name}`
+                        : ""}
+                      {typeof p.destinatario === "string"
+                        ? ` · ${p.destinatario}`
+                        : ""}
+                    </p>
+                    <span className="text-[11px] text-slate-400 dark:text-white/40 tabular-nums shrink-0">
+                      {quando}
+                      {e.actor?.name ? ` · ${e.actor.name}` : ""}
+                    </span>
+                  </div>
+                  {!enviou && (
+                    <p className="text-[11.5px] text-amber-700 dark:text-amber-300 mt-0.5">
+                      {motivoDoEnvio(
+                        typeof p.reason === "string" ? p.reason : null,
+                      )}
+                    </p>
+                  )}
+                  {enviou && typeof p.previa === "string" && (
+                    <p className="text-[11.5px] text-slate-500 dark:text-white/55 mt-0.5 line-clamp-2">
+                      {p.previa}
+                    </p>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function OverrideDialog({
+  onboardingId,
   column,
   tasksInCurrent,
   deliverables,
@@ -589,6 +731,7 @@ function OverrideDialog({
   onConfirm,
   submitting,
 }: {
+  onboardingId: string
   column: OperationalPipelineColumn
   tasksInCurrent: (OnboardingTaskLite)[]
   deliverables: TaskDeliverable[]
@@ -599,10 +742,24 @@ function OverrideDialog({
       | { type: "checklist"; id: string; label: string }
       | { type: "deliverable"; slug: string; label: string }
     >,
+    sendWhatsApp: boolean,
   ) => void
   submitting: boolean
 }) {
   const [justification, setJustification] = useState("")
+  // O forcado tambem entra numa coluna com mensagem. Sem este bloco ele
+  // seria o caminho que nunca avisa o cliente — e o time migraria pra ele.
+  const [enviar, setEnviar] = useState(false)
+  const { data: preview } = useSWR<AdvancePreview>(
+    `/api/onboardings/${onboardingId}/advance/preview`,
+    async (url: string) => {
+      const r = await fetch(url)
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(j.error?.message ?? `HTTP ${r.status}`)
+      return j as AdvancePreview
+    },
+    { revalidateOnFocus: false },
+  )
   // Tasks pendentes da coluna atual (cada checklist item é uma task)
   const pendingTasks = tasksInCurrent.filter((t) => t.status !== "completed")
   const anchorTask = tasksInCurrent[0] ?? null
@@ -684,6 +841,12 @@ function OverrideDialog({
               </div>
             </>
           )}
+          <MensagemAoCliente
+            preview={preview}
+            enviar={enviar}
+            onChange={setEnviar}
+            disabled={submitting}
+          />
         </div>
         <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-black/[0.06] dark:border-white/[0.08] bg-slate-50/60 dark:bg-white/[0.02]">
           <button
@@ -695,7 +858,7 @@ function OverrideDialog({
           </button>
           <button
             type="button"
-            onClick={() => onConfirm(justification, skipped)}
+            onClick={() => onConfirm(justification, skipped, enviar)}
             disabled={
               submitting || (skipped.length > 0 && justification.trim().length < 10)
             }

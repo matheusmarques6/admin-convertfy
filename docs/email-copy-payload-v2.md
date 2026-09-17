@@ -431,3 +431,54 @@ Regras que o n8n deve honrar:
 - A chave não muda o shape de `blocks[]` nem de `fields[]`; um flow que a
   ignora continua funcionando.
 
+## v3.2 (14/09) — `payload_version`, `directive`, `campos_omitidos`, `decisao.proibido`, `copy_prompt_version`
+
+Passo 13 do plano de set/2026. Todas ADITIVAS, exceto `estrutura_geral`,
+que passa a vir `null` quando há decisão.
+
+```jsonc
+{
+  "payload_version": "v3.2",
+  "flows": [{ "emails": [{
+    "decisao": {
+      "incentivo": { "existe": false, "codigo": null, "valor": null },
+      "insumos_permitidos": ["…"],
+      "proibido": ["Não prometer troca sem página viva", "No artificial urgency"]   // uma vez, sem os pares PT/EN
+    },
+    "estrutura_geral": null,          // com decisão (alvo do Seletor) o outline NÃO viaja; somente-texto continua com ele
+    "blocks": [{
+      "campos_omitidos": ["coupon_line", "cta_2_label"],   // o que a arbitragem tirou DESTE bloco
+      "schema": {
+        "campos": {
+          "cta_label": {
+            "exemplo": null,                                 // era "SHOP 10% OFF" — removido pela régua de claims
+            "directive": "Sem oferta neste campo (sem incentivo neste toque). Escreva no mesmo formato e tamanho de um text_short, sem cupom, percentual ou código."
+          }
+        },
+        "exemplos_removidos": [{ "campo": "cta_label", "exemplo": "SHOP 10% OFF", "motivo": "oferta_sem_incentivo: …" }]
+      }
+    }]
+  }]}]
+}
+```
+
+- **`directive` vence `exemplo`.** Só nasce quando o exemplo foi removido
+  por prometer o que a decisão nega (`avaliarClaims`: oferta sem incentivo,
+  percentual ou código divergente). O n8n obedecia ao exemplo "SHOP 10%
+  OFF" numa loja sem incentivo (batch 6249aef2) — o exemplo é a instrução
+  mais forte do prompt dele.
+- **`campos_omitidos`** por bloco: o n8n não vê esses campos em `campos` e
+  NÃO deve inferi-los do `purpose`; se devolver, o callback força `""`.
+- **`decisao.proibido`** no nível do e-mail, deduplicado.
+  `alvo.proibido_neste_toque` continua vindo (duplicata transitória) até o
+  flow migrar para `decisao`.
+- **`estrutura_geral: null`** com decisão: eram duas vozes para a mesma
+  peça e o flow obedecia à do outline ("entregue o cupom").
+- **Callback**: ecoar `copy_prompt_version` (variável `COPY_PROMPT_VERSION`
+  do flow). Ausente vira aviso na run `copy`
+  (`copy_prompt_version_ausente`) — é como se sabe se o flow que respondeu
+  já lê os campos acima.
+- **`copy_fit`**: não cria mais campo vazio (item de lista ausente sai
+  pelo merge); o aparo por código corta só em fronteira de frase; a
+  coluna comparativa que não cabe vai ao modelo com `par` (a célula do
+  outro lado) e a instrução de manter o lado.

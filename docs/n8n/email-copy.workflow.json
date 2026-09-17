@@ -1,0 +1,1599 @@
+{
+  "name": "SISTEMA ONBOARDING",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "email-copy-convertfy-00",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        300
+      ],
+      "id": "a8372cbc-f607-4520-bcfe-c6734146436a",
+      "name": "Webhook",
+      "webhookId": "3ceb018f-8d6a-466e-81b9-e54c26fc9b91"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "d1f3442b-ac75-455f-b2c4-fe87aede4379",
+              "name": "language",
+              "value": "={{ $json.body.store.language_label }}",
+              "type": "string"
+            },
+            {
+              "id": "882d1058-466f-446a-8950-63373e4aafdc",
+              "name": "brand",
+              "value": "={{ $json.body.store.brand }}",
+              "type": "object"
+            },
+            {
+              "id": "33fe0e4d-ce8f-4450-af01-378852a56903",
+              "name": "icp",
+              "value": "={{ $json.body.store.icp }}",
+              "type": "object"
+            },
+            {
+              "id": "d1563a64-c50d-4bd8-9abd-714f0d09acad",
+              "name": "tone",
+              "value": "={{ $json.body.store.tone }}",
+              "type": "object"
+            },
+            {
+              "id": "07aea36d-e2e6-43b7-9ba6-6b78d3549162",
+              "name": "positioning",
+              "value": "={{ $json.body.store.positioning }}",
+              "type": "object"
+            },
+            {
+              "id": "d18807b9-152a-424a-a8c6-1d0f940870cc",
+              "name": "story",
+              "value": "={{ $json.body.store.story }}",
+              "type": "object"
+            },
+            {
+              "id": "6d9720a5-1f55-4881-8631-d5d71c41bac7",
+              "name": "ads_review",
+              "value": "={{ $json.body.store.ads_review }}",
+              "type": "object"
+            },
+            {
+              "id": "239bfef5-a59d-4bfa-a255-1f4e028f4067",
+              "name": "operations",
+              "value": "={{ $json.body.store.operations }}",
+              "type": "object"
+            },
+            {
+              "id": "40f6e481-2b4c-4597-b66c-69e5e6c67d44",
+              "name": "audience",
+              "value": "={{ $json.body.store.audience }}",
+              "type": "object"
+            },
+            {
+              "id": "124a7473-32e7-45bc-b0d9-f3a540536fbb",
+              "name": "top_products",
+              "value": "={{ $json.body.top_products }}",
+              "type": "array"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        300
+      ],
+      "id": "d1d2615d-6e3e-4426-ba4f-298574ffd042",
+      "name": "BRIEFING"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "b4e29975-f3b1-402e-ae8e-6b48faec93f1",
+              "name": "flows",
+              "value": "={{ $('Webhook').item.json.body.flows }}",
+              "type": "array"
+            },
+            {
+              "id": "e6eb2881-b0f5-4e24-9fbe-f17d00c58776",
+              "name": "blocks",
+              "value": "={{ $('Webhook').item.json.body.flows[0].emails[0].blocks }}",
+              "type": "array"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        440,
+        300
+      ],
+      "id": "a3b7c083-5276-417a-968d-0aa629b35787",
+      "name": "EMAILS"
+    },
+    {
+      "parameters": {
+        "jsCode": "const PREFIX = {\n  welcome: 'WELCOME-MAIL', site_abandoned: 'SITEABANDONE-MAIL',\n  browse_abandonment: 'BROWSEABANDONE-MAIL', abandoned_cart: 'CARRINHOABANDONADOE-MAIL',\n  upsell: 'UPSELL-EMAIL', win_back: 'WINBACK-EMAIL', shipping_stages: 'ENVIO-MAIL',\n};\nconst pad = (n) => String(n).padStart(2, '0');\nconst body = $('Webhook').first().json.body;\nconst flows = Array.isArray(body.flows) ? body.flows : [];\nconst out = [];\nfor (const flow of flows) {\n  const prefix = PREFIX[flow.flow_type] || (flow.flow_type || 'FLOW').toUpperCase().replace(/_/g, '') + '-MAIL';\n  for (const email of (flow.emails || [])) {\n    const blocks = (email.blocks || []).slice().sort((a, b) => (a.position ?? 0) - (b.position ?? 0));\n    if (blocks.length === 0) continue; // sem bloco não há o que escrever\n    out.push({ json: {\n      ...email,                       // alvo, decisao, objective, tones, coupon_code, dispatch_batch_id, doutrina…\n      key: `${prefix}${pad(email.email_number)}`,\n      flow_id: flow.flow_id, flow_type: flow.flow_type, flow_name: flow.flow_name,\n      email_name: email.name,\n      blocks, blocks_count: blocks.length,\n    }});\n  }\n}\nreturn out;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        300
+      ],
+      "id": "3d1f3387-bc8b-46fa-a635-01e3dc03589e",
+      "name": "SEPARADOR DE FLOWS"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        900,
+        300
+      ],
+      "id": "114a7f8e-4cc9-4f46-9dd4-4d6bbbbfe501",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $('Webhook').first().json.body;\nconst store = body.store || {};\nconst email = $('Loop Over Items').item.json;\n\nconst j = (v) => (v == null ? '' : typeof v === 'string' ? v : JSON.stringify(v, null, 1));\nconst lista = (arr) => (Array.isArray(arr) && arr.length ? arr.map((x) => `- ${typeof x === 'string' ? x : JSON.stringify(x)}`).join('\\n') : '(nenhum)');\n\n// ---- decisão ----\nconst dec = email.decisao || {};\nconst inc = dec.incentivo || { existe: null };\nconst incentivoTxt = inc.existe === true\n  ? `EXISTE: ${inc.valor ?? ''} com o código ${inc.codigo ?? ''}. Use SÓ este valor e este código. Sem prazo, sem condição nova.`\n  : inc.existe === false\n    ? 'NÃO EXISTE incentivo neste e-mail. Proibido: desconto, cupom, código, percentual, \"use o código\", \"oferta\", em QUALQUER campo.'\n    : 'NÃO SE SABE se há incentivo. Não prometa oferta nem cupom.';\n\n// ---- alvo ----\nconst alvo = email.alvo;\nlet alvoTxt = '(sem alvo declarado — siga o papel de cada bloco e o fio narrativo)';\nif (alvo && !alvo.lacuna) {\n  const alvos = (alvo.alvos || []).map((a) =>\n    `- [${a.primaria ? 'PRIMÁRIA' : 'secundária'}] Objeção (na voz do cliente): \"${a.objecao}\"\\n  Tratamento: ${a.tratamento}\\n  Profundidade de prova permitida: ${a.profundidade_de_prova}`).join('\\n');\n  const angulo = (alvo.angulo_do_tratamento || []).map((v) => `- ${v.ordem}. ${v.veiculo}: ${v.papel}${v.insumo_disponivel === true ? '' : ' (insumo parcial — não invente o que falta)'}`).join('\\n');\n  alvoTxt = [\n    `Modo do toque: ${alvo.modo}`,\n    `Trabalhos fixos: ${(alvo.trabalhos_fixos || []).join(', ') || '(nenhum)'}`,\n    alvos ? `Objeção atacada:\\n${alvos}` : '',\n    angulo ? `Ângulo do tratamento (nesta ordem):\\n${angulo}` : '',\n    alvo.suspeita_a_antecipar ? `Suspeita a antecipar: ${alvo.suspeita_a_antecipar}` : '',\n    alvo.razao ? `Razão: ${alvo.razao}` : '',\n    (alvo.ja_atacadas || []).length ? `Já atacadas em e-mails anteriores (NÃO repetir o argumento): ${alvo.ja_atacadas.map((x) => `${x.id} (e-mail ${x.email_number})`).join(', ')}` : '',\n  ].filter(Boolean).join('\\n');\n} else if (alvo && alvo.lacuna) {\n  alvoTxt = `Sem objeção declarada (${alvo.lacuna.motivo}). Siga o papel de cada bloco. Não invente objeção.`;\n}\n\n// ---- doutrina (quando o admin enviar) ----\nconst dout = Array.isArray(email.doutrina) && email.doutrina.length\n  ? email.doutrina.map((d) => `### ${d.slug} (seção: ${d.secao}; fonte: ${d.fonte})\\n${d.resumo || ''}\\n${d.corpo || ''}`).join('\\n\\n')\n  : '';\n\n// ---- loja ----\nconst tone = store.tone || {};\nconst lojaTxt = [\n  `Marca: ${store.store_name || ''} — ${store.store_url || ''}`,\n  `Nicho: ${store.niche || ''}`,\n  `Quem é a marca:\\n${j(store.brand)}`,\n  `Posicionamento:\\n${j(store.positioning)}`,\n  `Origem da marca (usar SÓ se o alvo pedir origem_da_marca):\\n${j(store.story)}`,\n  `Público, dores e objeções (ICP):\\n${j(store.icp)}`,\n  `Operação (troca, envio, garantia — só afirme o que estiver escrito aqui E em insumos permitidos):\\n${j(store.operations)}`,\n].join('\\n\\n');\nconst tomTxt = [\n  `FAZER: ${j(tone.do)}`,\n  `NÃO FAZER: ${j(tone.dont)}`,\n  `Palavras a usar (são REFERÊNCIA DE VOZ, na língua em que estão — traduza para o idioma do e-mail, nunca copie): ${j(tone.use_words)}`,\n  `Palavras PROIBIDAS: ${j(tone.avoid_words)}`,\n  `Tons canônicos: ${(email.tones || []).join(', ')}`,\n  `Descrição do tom: ${j(tone.description || tone.summary || '')}`,\n].join('\\n');\nconst produtosTxt = (body.top_products || []).map((p, i) =>\n  `${i + 1}. ${p.name || p.title} — ${p.price ?? ''} ${p.currency ?? ''} — ${p.url || ''}${p.description ? `\\n   ${String(p.description).slice(0, 240)}` : ''}`).join('\\n') || '(sem produtos)';\n\n// ---- blocos: só o que o copywriter precisa, na ordem ----\nconst blocos = (email.blocks || []).map((b) => {\n  const s = b.schema || {};\n  const campos = {};\n  for (const [k, c] of Object.entries(s.campos || {})) {\n    campos[k] = {\n      label: c.label, tipo: c.tipo, max_caracteres: c.max_caracteres,\n      obrigatorio: !!c.obrigatorio, orientacao: c.orientacao || '',\n      ...(c.directive ? { directive: c.directive } : { exemplo: c.exemplo ?? '' }),\n    };\n  }\n  return {\n    block_id: b.block_id, position: b.position, type: b.type,\n    papel: s.papel || b.purpose || '', forma: s.diretriz || '',\n    requisitos: s.requisitos || {}, campos_omitidos: b.campos_omitidos || [],\n    campos,\n  };\n});\n\nreturn { json: {\n  ...email,\n  language_directive: body.language_directive || `Write every field in ${store.language_label || store.language}.`,\n  idioma: store.language_label || store.language || '',\n  incentivo_txt: incentivoTxt,\n  proibido_txt: lista(dec.proibido),\n  insumos_txt: lista(dec.insumos_permitidos),\n  alvo_txt: alvoTxt,\n  doutrina_txt: dout,\n  loja_txt: lojaTxt,\n  tom_txt: tomTxt,\n  produtos_txt: produtosTxt,\n  blocos_json: JSON.stringify(blocos, null, 1),\n  fio: email.blueprint?.fio_narrativo || '',\n  messaging: email.blueprint?.messaging || '',\n  objetivo: email.objective || email.blueprint?.objective || '',\n  total_campos: blocos.reduce((n, b) => n + Object.keys(b.campos).length, 0),\n}};\n"
+      },
+      "id": "c0e7e0a1-0000-4000-8000-000000000001",
+      "name": "CONTEXTO DA COPY",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1160,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.language_directive }}\n\n# ESTE E-MAIL\nFlow: {{ $json.flow_name }} ({{ $json.flow_type }}) · E-mail #{{ $json.email_number }} de {{ $('Webhook').item.json.body.flows.find(f => f.flow_type === $json.flow_type)?.emails?.length ?? '?' }}\nObjetivo: {{ $json.objetivo }}\nDireção (messaging): {{ $json.messaging }}\nFio narrativo: {{ $json.fio }}\n\n# DECISÃO (vence o material da loja e o exemplo dos campos)\nIncentivo: {{ $json.incentivo_txt }}\nProibido afirmar:\n{{ $json.proibido_txt }}\nInsumos permitidos (os únicos fatos verificáveis):\n{{ $json.insumos_txt }}\n\n# ALVO DO TOQUE\n{{ $json.alvo_txt }}\n\n{{ $json.doutrina_txt ? '# DOUTRINA DA CASA (como escrever cada seção; perde para a decisão e para o alvo)\\n' + $json.doutrina_txt + '\\n' : '' }}\n# LOJA\n{{ $json.loja_txt }}\n\n# TOM DE VOZ\n{{ $json.tom_txt }}\n\n# PRODUTOS (só estes; preço e moeda como estão)\n{{ $json.produtos_txt }}\n\n# BLOCOS — o contrato ({{ $json.total_campos }} campos no total)\nEscreva exatamente as chaves de `campos` de cada bloco, abaixo de `max_caracteres`. `directive` vence `exemplo`. `campos_omitidos` não se escreve.\n{{ $json.blocos_json }}\n\nAntes de responder, confira campo a campo: idioma da ordem; contagem abaixo de max_caracteres; nenhuma oferta se o incentivo não existe; nada da lista de proibições; nenhum número, nome ou política fora dos insumos; sem travessão, sem aspas duplas, sem placeholder. Depois responda apenas com o objeto JSON: nada antes do { e nada depois do }.",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "Você escreve a copy de UM e-mail de e-commerce, campo a campo, para um layout que já está pronto. Cada campo tem uma caixa de tamanho fixo e um papel. Você não desenha, não escolhe blocos, não muda a estrutura: preenche o contrato.\n\n# O QUE VOCÊ RECEBE\n- Uma ORDEM DE IDIOMA E MOEDA no topo. Ela vence tudo, inclusive o material da loja (que pode estar em outra língua).\n- A DECISÃO do e-mail: se existe incentivo (e qual), o que é PROIBIDO afirmar, e os INSUMOS PERMITIDOS (os únicos fatos verificáveis).\n- O ALVO do toque: a objeção que este e-mail ataca, o tratamento e a profundidade de prova permitida.\n- A DIREÇÃO: objetivo, messaging e fio narrativo — o argumento em uma linha, que atravessa todos os blocos na ordem.\n- A LOJA: marca, posicionamento, público, tom de voz, produtos com preço e moeda.\n- Os BLOCOS, na ordem do e-mail. Cada bloco tem `papel` (o que ele faz na peça), `forma` (como a variante é), `requisitos` e `campos`. Cada campo tem `label`, `tipo`, `max_caracteres`, `orientacao` e `exemplo` OU `directive`.\n\n# REGRAS DURAS (o código confere cada uma; violação derruba o e-mail)\n1. IDIOMA: todos os valores no idioma da ordem. Nenhuma palavra em outra língua, nem citação do material da loja sem traduzir. Moeda e formato de preço da ordem.\n2. CONTRATO: escreva EXATAMENTE as chaves de `campos` de cada bloco — nenhuma a mais, nenhuma a menos. Chaves em `campos_omitidos` NÃO existem para você; não as escreva nem infira o conteúdo delas em outro campo.\n3. CAIXA: `max_caracteres` é o tamanho físico do campo. Conte os caracteres ANTES de fechar cada valor e fique ABAIXO do limite (mire 85-95% dele). Um campo que estoura vaza por cima do layout. Se a ideia não cabe, encurte a ideia, não a caixa.\n4. `directive` VENCE `exemplo`. Quando um campo traz `directive`, o exemplo foi removido porque prometia o que a decisão nega: escreva pela directive.\n5. `exemplo` é referência de FORMA e TAMANHO — nunca de conteúdo. Não copie, não traduza, não adapte a frase do exemplo. \"Lorem ipsum\", \"dolor sit amet\", \"LOGO HERE\", \"TEXTO_DE_…\" são placeholders: ignore o texto e use só o tamanho.\n6. INCENTIVO: se a decisão diz que NÃO existe, nenhum campo pode conter desconto, cupom, código, percentual, \"oferta\", \"use o código\", \"grátis\". Se existe, use SÓ o valor e o código informados, sem prazo, sem condição nova, sem \"termina em\".\n7. PROIBIDO é lista fechada: o que está lá não entra, nem parafraseado, nem suavizado.\n8. FATOS: só afirme sobre a loja o que estiver em INSUMOS PERMITIDOS, na LOJA ou nos PRODUTOS. Sem número inventado (quantidade de clientes, nota, percentual, \"milhares\"), sem prazo de entrega, sem garantia, sem política de troca, sem selo, sem estoque, sem \"mais vendido\" que o material não diga. Review/depoimento: só com o texto e a assinatura que a orientação do campo autorizar; sem nome, idade, cidade ou credencial inventados — se o campo pede \"nome do cliente\" e não há nome nos insumos, use só iniciais ou o rótulo neutro que a orientação indicar.\n9. SEM PLACEHOLDER: nunca escreva [Nome], [Produto], {first_name}, chaves duplas de merge tag, \"XXXX\" nem colchetes de nenhum tipo. Cada valor é texto final.\n10. TIPOGRAFIA: não use travessão (— ou –) em nenhum campo: use ponto, vírgula ou dois-pontos. Não use aspas duplas (\") dentro de nenhum valor — use aspas simples ou «». Sem emoji, salvo se o tom da loja for explicitamente descontraído E o campo for título. Sem ponto final em título, botão e eyebrow. Sem CAIXA ALTA fora de botão e eyebrow, salvo orientação do campo.\n11. BOTÃO (campos `*cta*`, `*label*` de botão): verbo + objeto, 2-4 palavras, no idioma da ordem, caixa alta se a orientação pedir. Diz o que acontece ao clicar. Nunca \"Clique aqui\", \"Saiba mais\", \"Link Here\".\n12. `copy_no_desenho` / selo / arco (`*seal*`, `*arc*`, `*ribbon*`): 1-4 palavras, caixa alta, sem pontuação.\n\n# COMO ESCREVER (a régua da casa)\n- UMA ideia por e-mail: o fio narrativo é o argumento, cada bloco é uma etapa dele. Quem lê só os títulos tem de entender o argumento inteiro sem ler o corpo.\n- Otimize para a VARREDURA, não para a leitura: títulos carregam o argumento; o corpo só prova. Frases curtas. Nada de \"fluff\": nada de \"estamos felizes em\", \"bem-vindo à nossa comunidade\", \"não perca\", \"oferta imperdível\", \"conteúdo exclusivo\".\n- A hero (primeiro bloco) responde em 2 segundos \"o que eu ganho e onde clico\": título com o benefício ou a promessa entregue, valor claro, botão.\n- O bloco logo abaixo da hero apoia o título da hero e leva ao produto; não abre assunto novo.\n- Ataque a objeção do alvo pelo TRATAMENTO indicado, na profundidade permitida: `afirmacao` = afirme; `mecanismo` = explique como funciona; `prova_de_terceiro` = deixe quem já comprou dizer; `garantia` = só com a política nos insumos.\n- Não repita entre blocos a mesma frase, o mesmo argumento ou o mesmo benefício. Não repita entre e-mails o que está em \"já atacadas\".\n- Segunda pessoa, direta, sem \"nós somos\"; a marca fala com uma pessoa.\n- Nada de urgência artificial (\"só hoje\", \"últimas unidades\", \"termina em\"), nada de escassez inventada, nada de \"milhares já compraram\".\n- Respeite FAZER / NÃO FAZER / palavras proibidas do tom de voz.\n\n# SAÍDA\nDevolva APENAS este JSON, sem markdown, sem comentário:\n{\"blocks\":[{\"block_id\":\"<id do bloco>\",\"campos\":[{\"key\":\"<chave>\",\"valor\":\"<texto final>\"}]}]}\nUm item em `blocks` por bloco recebido, na mesma ordem; em `campos`, uma entrada por chave de `campos` daquele bloco, na ordem em que vieram. Valores sempre string. Sem análise, sem raciocínio e sem comentário antes ou depois: o primeiro caractere da resposta é { e o último é }."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        1400,
+        340
+      ],
+      "id": "025c9c7a-6319-44d9-8bee-365eaca41330",
+      "name": "FAZEDOR DE COPY",
+      "retryOnFail": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "model": "anthropic/claude-sonnet-4.6",
+        "options": {
+          "temperature": 0.7,
+          "maxTokens": 8000
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        1380,
+        560
+      ],
+      "id": "68cadd3e-0642-4f04-a67e-51880472dc02",
+      "name": "OpenRouter · Copy",
+      "credentials": {
+        "openRouterApi": {
+          "id": "ldWR3qoWEcFLv1Ga",
+          "name": "OpenRouter Convertfy"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"blocks\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"block_id\": {\n            \"type\": \"string\"\n          },\n          \"campos\": {\n            \"type\": \"array\",\n            \"items\": {\n              \"type\": \"object\",\n              \"properties\": {\n                \"key\": {\n                  \"type\": \"string\"\n                },\n                \"valor\": {\n                  \"type\": \"string\"\n                }\n              },\n              \"required\": [\n                \"key\",\n                \"valor\"\n              ]\n            }\n          }\n        },\n        \"required\": [\n          \"block_id\",\n          \"campos\"\n        ]\n      }\n    }\n  },\n  \"required\": [\n    \"blocks\"\n  ]\n}",
+        "autoFix": true
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        1560,
+        560
+      ],
+      "id": "5e888709-35d3-43e2-bda5-970105818ddb",
+      "name": "Parser · Copy",
+      "retryOnFail": true
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $('CONTEXTO DA COPY').item.json.language_directive }}\n\nFlow: {{ $('CONTEXTO DA COPY').item.json.flow_name }} · E-mail #{{ $('CONTEXTO DA COPY').item.json.email_number }}\nObjetivo: {{ $('CONTEXTO DA COPY').item.json.objetivo }}\nFio narrativo: {{ $('CONTEXTO DA COPY').item.json.fio }}\nCandidato a assunto (pode estar na língua errada; reescreva no idioma da ordem): {{ $('CONTEXTO DA COPY').item.json.blueprint?.subject_hint || '(nenhum)' }}\n\nDECISÃO\nIncentivo: {{ $('CONTEXTO DA COPY').item.json.incentivo_txt }}\nProibido:\n{{ $('CONTEXTO DA COPY').item.json.proibido_txt }}\n\nALVO DO TOQUE\n{{ $('CONTEXTO DA COPY').item.json.alvo_txt }}\n\nTOM DE VOZ\n{{ $('CONTEXTO DA COPY').item.json.tom_txt }}\n\nCOPY DO E-MAIL (o assunto tem de casar com o primeiro bloco)\n{{ JSON.stringify($('FAZEDOR DE COPY').item.json.output) }}\n\nResponda apenas com o objeto JSON. Nada antes do { e nada depois do }.",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "Você escreve o assunto e o preheader de UM e-mail de e-commerce a partir da copy já escrita e da decisão do e-mail. O par não existe para \"ganhar abertura\": existe para ENQUADRAR a venda — dizer o que a pessoa ganha ao abrir, no registro da marca.\n\nREGRAS\n1. Idioma: o da ordem de idioma. Nunca português numa loja em inglês, nunca o contrário. O `subject_hint` é só um candidato e pode estar na língua errada: reescreva no idioma certo.\n2. Assunto: 2 a 6 palavras, até 50 caracteres, com a ideia central nos primeiros 33. Title Case se o idioma usar (inglês); caixa normal em português/espanhol/francês/alemão/italiano. Sem ponto final. Sem ALL CAPS. Sem \"Re:\", sem \"Fwd:\".\n3. Preheader: UMA frase, 40 a 90 caracteres, caixa normal, que COMPLEMENTA o assunto (nunca repete, nunca reformula). Pode terminar em reticências.\n4. Incentivo: se a decisão diz que NÃO existe, nenhuma oferta, cupom, código, percentual ou \"grátis\" no assunto nem no preheader. Se existe, pode nomear o valor ou o código, sem prazo e sem condição nova.\n5. Proibido é lista fechada: nada de lá entra, nem parafraseado. Sem urgência artificial (\"só hoje\", \"últimas horas\", \"termina em\"), sem escassez inventada, sem número que não esteja nos insumos.\n6. Sem clickbait, sem pergunta retórica vazia, sem \"Bem-vindo!\" solto, sem \"Não perca\", sem \"Grandes novidades\", sem \"Confira\".\n7. Sem travessão (— ou –): use ponto, vírgula ou dois-pontos. Sem aspas duplas. Sem emoji — exceto se o tom for explicitamente descontraído E o e-mail não for de boas-vindas; então no máximo um, no fim do assunto.\n8. O assunto fala do MESMO argumento que a hero da copy (primeiro bloco): a pessoa abre e encontra o que o assunto prometeu.\n\nSAÍDA: somente o objeto JSON {\"subject\":\"…\",\"preheader\":\"…\"}. Sem análise, sem raciocínio, sem comentário, sem cercas de código: o primeiro caractere da resposta é { e o último é }."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        1760,
+        340
+      ],
+      "id": "d7330e0e-1131-47ff-a842-349ebcb99df6",
+      "name": "GERADOR DE ASSUNTO",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "model": "anthropic/claude-sonnet-4.6",
+        "options": {
+          "temperature": 0.8,
+          "maxTokens": 600
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        1740,
+        560
+      ],
+      "id": "3fe3fdb6-8bb7-401c-b9e8-42b9c03fb893",
+      "name": "OpenRouter · Assunto",
+      "credentials": {
+        "openRouterApi": {
+          "id": "ldWR3qoWEcFLv1Ga",
+          "name": "OpenRouter Convertfy"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"subject\":   { \"type\": \"string\" },\n    \"preheader\": { \"type\": \"string\" }\n  },\n  \"required\": [\"subject\", \"preheader\"]\n}",
+        "autoFix": true
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        1920,
+        560
+      ],
+      "id": "f430680a-9172-41fd-ba45-2562f2469923",
+      "name": "Parser · Assunto"
+    },
+    {
+      "parameters": {
+        "jsCode": "const COPY_PROMPT_VERSION = 'n8n-v3.2-2026-09-15';\nconst ctx = $('CONTEXTO DA COPY').item.json;\nconst copyOut = $('FAZEDOR DE COPY').item.json.output ?? $('FAZEDOR DE COPY').item.json;\nconst subjOut = $('GERADOR DE ASSUNTO').item.json.output ?? $('GERADOR DE ASSUNTO').item.json;\n\nconst tryJson = (v) => {\n  if (v && typeof v === 'object') return v;\n  if (typeof v !== 'string') return null;\n  const s = v.replace(/`{3}json|`{3}/gi, '').trim(); // sem crases literais: quebrariam o bloco deste doc\n  const i = s.search(/[\\[{]/);\n  if (i < 0) return null;\n  try { return JSON.parse(s.slice(i)); } catch { return null; }\n};\nconst copy = tryJson(copyOut) || {};\nconst subj = tryJson(subjOut) || {};\n\nconst porId = new Map();\nfor (const b of (copy.blocks || [])) {\n  const campos = Array.isArray(b?.campos) ? b.campos : Object.entries(b?.content || {}).map(([key, valor]) => ({ key, valor }));\n  porId.set(String(b?.block_id), campos);\n}\n\nconst meta = { ignoradas_fora_do_contrato: [], omitidas_devolvidas: [], estouros: [], blocos_sem_resposta: [] };\nconst blocks = (ctx.blocks || []).map((b) => {\n  const schema = b.schema?.campos || {};\n  const omitidos = new Set(b.campos_omitidos || []);\n  const campos = porId.get(String(b.block_id));\n  if (!campos) { meta.blocos_sem_resposta.push(b.block_id); return { block_id: b.block_id, content: {} }; }\n  const content = {};\n  for (const c of campos) {\n    const k = c?.key; const v = typeof c?.valor === 'string' ? c.valor.trim() : '';\n    if (!k) continue;\n    if (omitidos.has(k)) { meta.omitidas_devolvidas.push(`${b.position}.${k}`); continue; }\n    if (!(k in schema)) { meta.ignoradas_fora_do_contrato.push(`${b.position}.${k}`); continue; }\n    const max = schema[k]?.max_caracteres;\n    if (typeof max === 'number' && max > 0 && v.length > max) meta.estouros.push({ key: k, position: b.position, len: v.length, max });\n    content[k] = v;\n  }\n  return { block_id: b.block_id, content };\n});\n\nconst chars = blocks.reduce((n, b) => n + Object.values(b.content).join('').length, 0);\nif (chars === 0) throw new Error(`copy vazia para o e-mail ${ctx.email_id} — nada enviado ao callback`);\n\nconst strip = (s) => String(s || '').replace(/\\s*[—–]\\s*/g, ', ').replace(/\"/g, \"'\").trim();\nlet subject = strip(subj.subject || subj.assunto || '');\nlet preheader = strip(subj.preheader || subj.pre_header || subj.preview || '');\nif (!subject) subject = strip(blocks.map((b) => b.content.headline_l1 || b.content.hero_headline || b.content.section_title || '').find(Boolean) || ctx.blueprint?.subject_hint || ctx.email_name);\n\nreturn { json: {\n  store_id: String($('Webhook').item.json.body.store.id),\n  email_id: ctx.email_id,\n  dispatch_batch_id: ctx.dispatch_batch_id ?? null,\n  copy_prompt_version: COPY_PROMPT_VERSION,\n  subject, preheader,\n  blocks,\n  meta: { model: 'anthropic/claude-sonnet-4.6', ...meta },\n}};\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2120,
+        340
+      ],
+      "id": "7d05ea88-75b6-4ea7-9c10-07d3207440a5",
+      "name": "MONTADOR"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://app.convertfy.me/api/webhooks/n8n/email-copy",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-webhook-secret",
+              "value": "={{ $('Webhook').item.json.headers['x-webhook-secret'] }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2340,
+        340
+      ],
+      "id": "456c3b8d-d334-4470-8f5e-602f88504c90",
+      "name": "HTTP Request"
+    }
+  ],
+  "pinData": {
+    "Webhook": [
+      {
+        "json": {
+          "headers": {
+            "content-type": "application/json",
+            "x-webhook-secret": "<N8N_WEBHOOK_SECRET>"
+          },
+          "params": {},
+          "query": {},
+          "body": {
+            "event": "email_copy.requested",
+            "flows": [
+              {
+                "emails": [
+                  {
+                    "alvo": {
+                      "modo": "quebra_de_objecao",
+                      "alvos": [
+                        {
+                          "id": "obj_1",
+                          "ordem": 1,
+                          "objecao": "I've never heard of this brand and the site looks small — I'm not sure I trust it with my card.",
+                          "primaria": true,
+                          "tratamento": "Surface real buyer testimonials with age and body context alongside visible secure-payment badge and plain-language return policy",
+                          "tipo_de_risco": "seguranca",
+                          "aliviador_pedido": "reputacao_da_loja",
+                          "profundidade_de_prova": "afirmacao"
+                        }
+                      ],
+                      "razao": "Quem chegou por 10% e não conhece a marca só vira comprador se a marca nomear a dúvida de confiar num site pequeno e responder com o que é verificável — checkout Shopify, uma razão de existir e uma alegação central — sem prometer política que ainda não se confirmou.",
+                      "lacuna": null,
+                      "incentivo": {
+                        "valor": "10%",
+                        "codigo": "WELCOME10",
+                        "existe": true
+                      },
+                      "medos_alvo": [],
+                      "ja_atacadas": [],
+                      "contradicoes": [
+                        {
+                          "motivo": "tratamento_sem_insumo",
+                          "detalhe": "o tratamento pede política de troca/devolução e este toque proíbe afirmá-la (\"Policy described in brand thesis as a goal, not confirmed as live on site. Verif\") — falta o dado na loja (ficha operacional)"
+                        }
+                      ],
+                      "trabalhos_fixos": [
+                        "entrega_de_incentivo",
+                        "prova_secundaria",
+                        "remocao_de_risco"
+                      ],
+                      "alerta_de_lastro": "obj_1 tem lastro NÃO verificado e o contrato flagra: (1) política de troca/devolução descrita como meta da tese, não confirmada no site; (2) selos de confiança não confirmados no checkout; (3) claim 83% vem de um depoimento em anúncio. Profundidade rebaixada para afirmacao. A remoção de risco deve se apoiar no que é verificável — checkout Shopify — e apontar para a página de política sem citar prazo ou condição. A prova_secundaria só pode usar depoimento que exista literalmente na pesquisa, sem número 83% e sem inventar idade/nome.",
+                      "promessa_a_pagar": "10% · WELCOME10",
+                      "dimensao_confianca": "integridade",
+                      "insumos_permitidos": [
+                        "checkout runs on Shopify, PCI-compliant and SSL by default (pesquisa: plataforma)",
+                        "brand built for men over 50 whose bodies don't match the generic cut; sizing up at a department store makes fit worse (veículo: origem_da_marca)",
+                        "bamboo fibre construction, softer than cotton, naturally moisture-wicking (veículo: mecanismo_unico)",
+                        "waistband sits above the abdomen instead of digging in; leg opening proportioned not to ride up through a full day sitting (veículo: mecanismo_unico)",
+                        "customer testimonials describe concrete fit differences: waistband that doesn't dig, fabric that doesn't ride up, holds through a full day sitting (catálogo: obj_4 lastro)",
+                        "brand sells its own proprietary bamboo boxer design, no third-party resellers (catálogo: medos_de_categoria)",
+                        "Bamboo Fibre Boxer Shorts — $59.90 — https://heroboxers.com/products/box-hero-bamboo-fibre-boxer-shorts (produtos: top produtos)",
+                        "Premium Bamboo Fibre Socks — $31.98 (produtos: top produtos)",
+                        "size guide uses real waist and hip measurements, not generic S-M-L (catálogo: obj_3 lastro)",
+                        "store offers multi-pair bundles (catálogo: obj_5 lastro)"
+                      ],
+                      "criterio_de_selecao": "O contrato exige a dominante da categoria e obj_1 é a única marcada assim; passa na elegibilidade dupla (welcome + seguranca) e tem a maior severidade (5). Nenhuma objeção do catálogo tem lastro verificado, então a alternativa (a) da regra de lastro não existe — mantive obj_1 e rebaixei a profundidade para afirmacao, o piso do contrato. obj_2/obj_5 (financeiro) e obj_3 (adequacao) ficam para toques seguintes; obj_4 (desempenho) é servida indiretamente pelo veículo mecanismo_unico, não como alvo.",
+                      "angulo_do_tratamento": [
+                        {
+                          "ordem": 1,
+                          "papel": "nomear a dúvida ('nunca ouvi falar') e responder por que a marca existe: um recorte que o mercado grande ignora, homens 50+ cujo corpo não cabe no molde genérico — sem contar a história longa",
+                          "veiculo": "origem_da_marca",
+                          "insumo_disponivel": true
+                        },
+                        {
+                          "ordem": 2,
+                          "papel": "a alegação central que troca o motivo da compra: fibra de bambu e cós que assenta acima do abdômen em vez de cravar — dito como afirmação, sem o número 83%",
+                          "veiculo": "mecanismo_unico",
+                          "insumo_disponivel": "parcial"
+                        }
+                      ],
+                      "proibido_neste_toque": [
+                        "história longa da fundação (profundidade tem toque próprio)",
+                        "pedido de engajamento paralelo (rede social, preferências) — um pedido só",
+                        "urgência artificial",
+                        "esgotar os argumentos — uma objeção só, bem atacada",
+                        "condição nova no incentivo",
+                        "Claim '83% more resistant' sourced from ad copy testimonial (Jeff C.), not independent test. Flag for verification before use in email. Cut engineering described from brand thesis; specific pattern details unverified.",
+                        "No on-site quality-control statement found in research. Cannot fully confirm without checking product page copy.",
+                        "No shipping SLA, carrier information, or tracking policy found in the research material. Cannot assert the brand is outside this fear without evidence.",
+                        "Shipping described as 'personalizado por região' but no explicit statement about all-in pricing or duty disclosure found. Do not use until confirmed.",
+                        "No support channel, response time, or contact policy mentioned in any research field. Cannot assert the brand is outside this fear.",
+                        "Shopify security is platform-level and verifiable, but the brand should display trust badges explicitly on checkout to activate this reassurance for the buyer.",
+                        "Policy described in brand thesis as a goal, not confirmed as live on site. Verify return policy page exists and matches these terms before using in email.",
+                        "No long founding story — depth has its own touch",
+                        "No parallel engagement ask (social follow, preferences) — one ask only",
+                        "No artificial urgency, countdown or 'offer ends soon'",
+                        "No stacking arguments — one objection, well attacked",
+                        "No new condition attached to the incentive",
+                        "Do not use the '83% more resistant' figure — it is a single ad testimonial, not a test",
+                        "Do not claim a quality-control or inspection step — none is documented",
+                        "Do not state any shipping SLA, carrier or tracking promise",
+                        "Do not claim all-in pricing or no hidden fees at checkout",
+                        "Do not name a support channel or response time",
+                        "Do not state that trust badges are displayed on the site — only that checkout runs on Shopify",
+                        "Do not quote return/exchange terms as live policy (window, free label, first-order rule) — describe risk removal only as a link to the policy page, no numbers",
+                        "Do not invent review counts, star ratings, named reviewers or ages not present in research",
+                        "Do not describe pattern or construction details beyond waistband placement and leg proportion"
+                      ],
+                      "suspeita_a_antecipar": "O desconto é isca de um site pequeno que ninguém conhece; entrego o cartão e não sei quem está do outro lado nem se consigo devolver."
+                    },
+                    "name": "Welcome 1",
+                    "tones": [
+                      "Descontraído"
+                    ],
+                    "blocks": [
+                      {
+                        "type": "hero",
+                        "label": "Entrega imediata da promessa: boas-vindas curtas + código WELCOME10 em texto + CTA, sobre…",
+                        "schema": {
+                          "papel": "Entrega imediata da promessa: boas-vindas curtas + código WELCOME10 em texto + CTA, sobre foto de uso real. Pergunta que responde: 'o código que eu vim buscar está aqui?'. Como ele se sente: 'ok, cumpriram a parte deles nos primeiros dois segundos — não fui enrolado'. — Adaptação: A foto deixa de ser produto em contexto de moda e vira o primeiro argumento de confiança da loja: um homem adulto de corpo real, sentado, de boxer, luz de casa — não modelo fitness, não estúdio. O incentivo é 10% com WELCOME10, sem prazo e sem condição nova. Absorve o papel do header (logo sobreposto, sem menu que ofereça saída antes do argumento).",
+                          "campos": {
+                            "logo": {
+                              "tipo": "text_short",
+                              "label": "limite de 40 caracteres",
+                              "exemplo": "LOGO HERE",
+                              "orientacao": "Nome da marca, com régua de 1px na largura exata\nEx - \tLondon Brow Company",
+                              "obrigatorio": false,
+                              "max_caracteres": 22,
+                              "min_caracteres": null
+                            },
+                            "cta_label": {
+                              "tipo": "text_short",
+                              "label": "cta_label",
+                              "exemplo": "SHOP XXXX% OFF",
+                              "orientacao": "Caixa alta, verbo + valor da oferta\nEx -\tSHOP 10% OFF",
+                              "obrigatorio": false,
+                              "max_caracteres": 20,
+                              "min_caracteres": null
+                            },
+                            "coupon_line": {
+                              "tipo": "text_short",
+                              "label": "coupon_line",
+                              "exemplo": "Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium.",
+                              "orientacao": "Instrução com o código em bold, sem contêiner\nEx - Use code: WELCOME-5F3K at checkout - dividido em duas linhas",
+                              "obrigatorio": false,
+                              "max_caracteres": 48,
+                              "min_caracteres": null
+                            },
+                            "headline_l1": {
+                              "tipo": "text_short",
+                              "label": "headline_l1",
+                              "exemplo": "Lorem ipsum",
+                              "orientacao": "Abre com o valor da oferta, peso regular\nEx - Here's 10% OFF",
+                              "obrigatorio": false,
+                              "max_caracteres": 18,
+                              "min_caracteres": null
+                            },
+                            "headline_l2": {
+                              "tipo": "text_short",
+                              "label": "headline_l2",
+                              "exemplo": "dolor sit amet",
+                              "orientacao": "Diz a que se aplica, peso bold, sem ponto final\nEx - Your Next Purchase",
+                              "obrigatorio": false,
+                              "max_caracteres": 20,
+                              "min_caracteres": null
+                            },
+                            "welcome_eyebrow": {
+                              "tipo": "text_short",
+                              "label": "limite de 15 caracteres",
+                              "exemplo": "TEXTO_DE_PREHEADER_AQUI",
+                              "orientacao": "Saudação curta, caixa mista\nEx - Welcome To",
+                              "obrigatorio": false,
+                              "max_caracteres": 16,
+                              "min_caracteres": null
+                            }
+                          },
+                          "diretriz": "Entrega imediata da promessa: boas-vindas curtas + código WELCOME10 em texto + CTA, sobre foto de uso real. Pergunta que responde: 'o código que eu vim buscar está aqui?'. Como ele se sente: 'ok, cumpriram a parte deles nos primeiros dois segundos — não fui enrolado'. — Adaptação: A foto deixa de ser produto em contexto de moda e vira o primeiro argumento de confiança da loja: um homem adulto de corpo real, sentado, de boxer, luz de casa — não modelo fitness, não estúdio. O incentivo é 10% com WELCOME10, sem prazo e sem condição nova. Absorve o papel do header (logo sobreposto, sem menu que ofereça saída antes do argumento).\n\nForma (variante, subordinada ao papel): Eyebrow + nome da marca — lockup de duas linhas: uma saudação curta em cima (\"Welcome To\") e o nome da marca embaixo, com régua de 1px na largura exata do nome. Leitura contínua entre as duas linhas.\n\nHeadline — a oferta em duas linhas: linha 1 abre com o valor, linha 2 diz a que se aplica. Linha 2 em bold. Sem ponto final. Não repetir o nome da marca.\n\nLinha do cupom — instrução com o código em bold no meio, seguida de uma segunda linha curta com a condição (\"at checkout\" / \"no checkout\"). O código nunca ocupa linha própria com destaque gráfico.\n\nCTA — verbo + o valor da oferta, caixa alta com tracking largo. Repetir o percentual aqui é o padrão: o botão fecha o que a headline abriu.\n\nProibições: contagem regressiva · exclamação · brand story dentro do bloco · segundo botão · código em caixa tracejada · headline em uma linha só · nome de produto na headline.",
+                          "variante": "welcome - hero section 3",
+                          "requisitos": {
+                            "cta": true,
+                            "cupom": true,
+                            "exige": [
+                              "código WELCOME10 e valor 10% em texto real, nunca só na imagem",
+                              "sem prazo, sem 'offer ends soon', sem condição nova",
+                              "este é o CTA dominante do e-mail",
+                              "logo da marca presente, sem navegação"
+                            ],
+                            "preco": null,
+                            "campos": [],
+                            "imagem": "boxer em uso real num homem 50+ de corpo real (barriga incluída), sentado ou de pé em ambiente doméstico, luz natural — não modelo fitness, não estúdio, não pack de produto",
+                            "n_itens": null,
+                            "avaliacao": null,
+                            "dispositivo": "hero_oferta_cupom"
+                          },
+                          "obrigatorios": [],
+                          "total_campos": 6
+                        },
+                        "purpose": "Entrega imediata da promessa: boas-vindas curtas + código WELCOME10 em texto + CTA, sobre foto de uso real. Pergunta que responde: 'o código que eu vim buscar está aqui?'. Como ele se sente: 'ok, cumpriram a parte deles nos primeiros dois segundos — não fui enrolado'. — Adaptação: A foto deixa de ser produto em contexto de moda e vira o primeiro argumento de confiança da loja: um homem adulto de corpo real, sentado, de boxer, luz de casa — não modelo fitness, não estúdio. O incentivo é 10% com WELCOME10, sem prazo e sem condição nova. Absorve o papel do header (logo sobreposto, sem menu que ofereça saída antes do argumento).\n\nForma (variante, subordinada ao papel): Eyebrow + nome da marca — lockup de duas linhas: uma saudação curta em cima (\"Welcome To\") e o nome da marca embaixo, com régua de 1px na largura exata do nome. Leitura contínua entre as duas linhas.\n\nHeadline — a oferta em duas linhas: linha 1 abre com o valor, linha 2 diz a que se aplica. Linha 2 em bold. Sem ponto final. Não repetir o nome da marca.\n\nLinha do cupom — instrução com o código em bold no meio, seguida de uma segunda linha curta com a condição (\"at checkout\" / \"no checkout\"). O código nunca ocupa linha própria com destaque gráfico.\n\nCTA — verbo + o valor da oferta, caixa alta com tracking largo. Repetir o percentual aqui é o padrão: o botão fecha o que a headline abriu.\n\nProibições: contagem regressiva · exclamação · brand story dentro do bloco · segundo botão · código em caixa tracejada · headline em uma linha só · nome de produto na headline.",
+                        "block_id": "9de27772-21a0-4143-bbce-e1cedf3b5296",
+                        "position": 1,
+                        "variant_id": "d9e34a1f-7bc7-47e8-9081-53600b104dd2",
+                        "campos_omitidos": []
+                      },
+                      {
+                        "type": "body",
+                        "label": "Pivô: a tese que nomeia a dúvida ('nunca ouviu falar da gente — normal') e responde por q…",
+                        "schema": {
+                          "papel": "Pivô: a tese que nomeia a dúvida ('nunca ouviu falar da gente — normal') e responde por que a marca existe, fechando com a alegação central do produto. Pergunta que responde: 'por que essa marca existe e por que eu deveria acreditar nela?'. Como ele se sente: 'eles sabem exatamente qual é o meu problema — cueca de prateleira não veste barriga — e não estão fingindo ser grandes'. — Adaptação: Headline pega a dúvida do canal e a transforma em alegação própria: a marca é pequena porque é um recorte que o mercado grande ignora — homens 50+ cujo corpo não cabe no molde genérico (subir de tamanho na loja de departamento piora o caimento). Um parágrafo de origem, um de mecanismo: fibra de bambu mais macia que algodão, cós que assenta acima do abdômen em vez de cravar, abertura da perna proporcionada para não subir num dia inteiro sentado — como afirmação, sem número. Sem história longa da fundação, sem detalhes de construção além de cós e perna. O incentivo NÃO reaparece aqui (biblioteca sem slot no body): o fechamento do argumento é o CTA, secundário ao do hero.",
+                          "campos": {
+                            "cta_label": {
+                              "tipo": "text_short",
+                              "label": "cta_label",
+                              "exemplo": "SHOP BLACK FRIDAY",
+                              "orientacao": "Caixa alta, verbo + nome da campanha",
+                              "obrigatorio": false,
+                              "max_caracteres": 24,
+                              "min_caracteres": null
+                            },
+                            "ribbon_text": {
+                              "tipo": "text_short",
+                              "label": "ribbon_text",
+                              "exemplo": "Black Friday",
+                              "orientacao": "Nome da campanha, repetido 7× na fita alternando peso, OFERTA",
+                              "obrigatorio": false,
+                              "max_caracteres": 60,
+                              "min_caracteres": null
+                            },
+                            "section_title": {
+                              "tipo": "text_short",
+                              "label": "section_title",
+                              "exemplo": "It's the Perfect Time to Bring Your Family Joy",
+                              "orientacao": "68 (2 linhas)\nBold, liga a data ao sentimento",
+                              "obrigatorio": false,
+                              "max_caracteres": 68,
+                              "min_caracteres": null
+                            },
+                            "section_copy_1": {
+                              "tipo": "text_short",
+                              "label": "section_copy_1",
+                              "exemplo": "1 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor, Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor",
+                              "orientacao": "176 (4 linhas)\nA cena, em segunda pessoa, até duas exclamações",
+                              "obrigatorio": false,
+                              "max_caracteres": 176,
+                              "min_caracteres": null
+                            },
+                            "section_copy_2": {
+                              "tipo": "text_short",
+                              "label": "2",
+                              "exemplo": "2 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor, Lorem ipsum dolor sit amet,",
+                              "orientacao": "176 (4 linhas)\nA cena, em segunda pessoa, até duas exclamações",
+                              "obrigatorio": false,
+                              "max_caracteres": 176,
+                              "min_caracteres": null
+                            }
+                          },
+                          "diretriz": "Pivô: a tese que nomeia a dúvida ('nunca ouviu falar da gente — normal') e responde por que a marca existe, fechando com a alegação central do produto. Pergunta que responde: 'por que essa marca existe e por que eu deveria acreditar nela?'. Como ele se sente: 'eles sabem exatamente qual é o meu problema — cueca de prateleira não veste barriga — e não estão fingindo ser grandes'. — Adaptação: Headline pega a dúvida do canal e a transforma em alegação própria: a marca é pequena porque é um recorte que o mercado grande ignora — homens 50+ cujo corpo não cabe no molde genérico (subir de tamanho na loja de departamento piora o caimento). Um parágrafo de origem, um de mecanismo: fibra de bambu mais macia que algodão, cós que assenta acima do abdômen em vez de cravar, abertura da perna proporcionada para não subir num dia inteiro sentado — como afirmação, sem número. Sem história longa da fundação, sem detalhes de construção além de cós e perna. O incentivo NÃO reaparece aqui (biblioteca sem slot no body): o fechamento do argumento é o CTA, secundário ao do hero.\n\nForma (variante, subordinada ao papel): Texto da fita — o nome da campanha repetido, separado por ponto médio, alternando peso regular e bold. Sete repetições cobrem a largura.\n\nTítulo — duas linhas ligando a data ao sentimento. Sem percentual, sem nome de produto.\n\nParágrafo 1 — a cena, em segunda pessoa, começando por um convite a imaginar. Quatro linhas. É o único slot do arsenal onde exclamação é bem-vinda; até duas.\n\nParágrafo 2 — a urgência, em três linhas, terminando na ruptura de estoque. Muda o registro de afetivo para prático.\n\nCTA — verbo + nome da campanha, caixa alta.\n\nProibições: percentual ou cupom no título · parágrafos com a mesma função · nome de produto na fita · contagem regressiva · exclamação no parágrafo 2 · segundo botão.",
+                          "variante": "body 2 - bridge textos linha produtos",
+                          "requisitos": {
+                            "cta": true,
+                            "cupom": null,
+                            "exige": [
+                              "headline nomeia a dúvida 'nunca ouvi falar' e a devolve como razão de existir",
+                              "mecanismo dito como afirmação: bambu + cós acima do abdômen + perna que não sobe — sem 83%, sem detalhe de padrão",
+                              "sem história longa de fundação",
+                              "CTA secundário em hierarquia visual — o hero domina",
+                              "títulos escaneáveis contam a história sozinhos"
+                            ],
+                            "preco": null,
+                            "campos": [
+                              "mecanismo"
+                            ],
+                            "imagem": null,
+                            "n_itens": null,
+                            "avaliacao": null,
+                            "dispositivo": "body_tese"
+                          },
+                          "obrigatorios": [],
+                          "total_campos": 5
+                        },
+                        "purpose": "Pivô: a tese que nomeia a dúvida ('nunca ouviu falar da gente — normal') e responde por que a marca existe, fechando com a alegação central do produto. Pergunta que responde: 'por que essa marca existe e por que eu deveria acreditar nela?'. Como ele se sente: 'eles sabem exatamente qual é o meu problema — cueca de prateleira não veste barriga — e não estão fingindo ser grandes'. — Adaptação: Headline pega a dúvida do canal e a transforma em alegação própria: a marca é pequena porque é um recorte que o mercado grande ignora — homens 50+ cujo corpo não cabe no molde genérico (subir de tamanho na loja de departamento piora o caimento). Um parágrafo de origem, um de mecanismo: fibra de bambu mais macia que algodão, cós que assenta acima do abdômen em vez de cravar, abertura da perna proporcionada para não subir num dia inteiro sentado — como afirmação, sem número. Sem história longa da fundação, sem detalhes de construção além de cós e perna. O incentivo NÃO reaparece aqui (biblioteca sem slot no body): o fechamento do argumento é o CTA, secundário ao do hero.\n\nForma (variante, subordinada ao papel): Texto da fita — o nome da campanha repetido, separado por ponto médio, alternando peso regular e bold. Sete repetições cobrem a largura.\n\nTítulo — duas linhas ligando a data ao sentimento. Sem percentual, sem nome de produto.\n\nParágrafo 1 — a cena, em segunda pessoa, começando por um convite a imaginar. Quatro linhas. É o único slot do arsenal onde exclamação é bem-vinda; até duas.\n\nParágrafo 2 — a urgência, em três linhas, terminando na ruptura de estoque. Muda o registro de afetivo para prático.\n\nCTA — verbo + nome da campanha, caixa alta.\n\nProibições: percentual ou cupom no título · parágrafos com a mesma função · nome de produto na fita · contagem regressiva · exclamação no parágrafo 2 · segundo botão.",
+                        "block_id": "4ee57003-9e31-43ea-9371-a86de4aaad5d",
+                        "position": 2,
+                        "variant_id": "d5fb804f-8934-4c39-b011-950e20802498",
+                        "campos_omitidos": []
+                      },
+                      {
+                        "type": "body",
+                        "label": "Remoção de risco: faixa de 3 compromissos com lastro verificável, isolada por fundo contr…",
+                        "schema": {
+                          "papel": "Remoção de risco: faixa de 3 compromissos com lastro verificável, isolada por fundo contrastante. Pergunta que responde: 'se eu entregar o cartão, o que me protege?'. Como ele se sente: 'o pagamento é numa plataforma que eu conheço, tem uma política de troca pra eu ler, e quem vende é quem desenha — não é um revendedor'. — Adaptação: Os três ícones da amostra (entrega, devolução, compromisso de qualidade) viram: (1) checkout no Shopify — a única alegação de segurança verificável, sem afirmar selos exibidos no site; (2) trocas — apontar para a página de política sem citar prazo, etiqueta grátis ou regra de primeiro pedido; (3) desenho próprio de boxer em bambu, vendido só pela marca, sem revendedor. Cada item responde à MESMA objeção da tese (confiar num site pequeno), não a um selo genérico. Nada de frete, SLA, suporte ou controle de qualidade — não há lastro.",
+                          "campos": {
+                            "seal_1_arc": {
+                              "tipo": "text_short",
+                              "label": "seal_1_arc",
+                              "exemplo": "BAMBU · CINTURA REAL · DIA INTEIRO",
+                              "orientacao": "Desenhada no ARCO da borda do selo 1. Atributos separados por \" · \", caixa alta, sem frase. Máximo 44 caracteres — o arco não comporta mais.",
+                              "obrigatorio": false,
+                              "max_caracteres": 44,
+                              "min_caracteres": null
+                            },
+                            "seal_2_arc": {
+                              "tipo": "text_short",
+                              "label": "seal_2_arc",
+                              "exemplo": "SEM CUSTO · SEM PERGUNTA",
+                              "orientacao": "Arco do selo 2. Mesmo formato do selo 1.",
+                              "obrigatorio": false,
+                              "max_caracteres": 44,
+                              "min_caracteres": null
+                            },
+                            "seal_3_arc": {
+                              "tipo": "text_short",
+                              "label": "seal_3_arc",
+                              "exemplo": "SEM REVENDA · SEM SURPRESA",
+                              "orientacao": "Arco do selo 3. Mesmo formato dos anteriores.",
+                              "obrigatorio": false,
+                              "max_caracteres": 44,
+                              "min_caracteres": null
+                            },
+                            "seal_1_center": {
+                              "tipo": "text_short",
+                              "label": "seal_1_center",
+                              "exemplo": "SEM APERTO",
+                              "orientacao": "Desenhada no CENTRO do selo 1. O VALOR da marca em uma ou duas palavras, caixa alta, sem verbo e sem benefício operacional (nada de \"frete grátis\"). Precisa caber em 14 caracteres.",
+                              "obrigatorio": false,
+                              "max_caracteres": 14,
+                              "min_caracteres": null
+                            },
+                            "seal_2_center": {
+                              "tipo": "text_short",
+                              "label": "seal_2_center",
+                              "exemplo": "TROCA FACIL",
+                              "orientacao": "Centro do selo 2. Mesmo critério do selo 1, valor DIFERENTE dele.",
+                              "obrigatorio": false,
+                              "max_caracteres": 14,
+                              "min_caracteres": null
+                            },
+                            "seal_3_center": {
+                              "tipo": "text_short",
+                              "label": "seal_3_center",
+                              "exemplo": "DIRETO DA MARCA",
+                              "orientacao": "Centro do selo 3. Mesmo critério; o terceiro valor, distinto dos dois anteriores.",
+                              "obrigatorio": false,
+                              "max_caracteres": 14,
+                              "min_caracteres": null
+                            },
+                            "section_title": {
+                              "tipo": "text_short",
+                              "label": "section_title",
+                              "exemplo": "The Gift That Fits Every Taste",
+                              "orientacao": "36 (2 linhas)\nSerif bold, fala do destinatário",
+                              "obrigatorio": false,
+                              "max_caracteres": 36,
+                              "min_caracteres": null
+                            },
+                            "section_copy_1": {
+                              "tipo": "text_short",
+                              "label": "section_copy_1",
+                              "exemplo": "1 Lorem ipsum dolor sit amet, consectetur adipiscing elit",
+                              "orientacao": "O que o vale entrega, concreto",
+                              "obrigatorio": false,
+                              "max_caracteres": 126,
+                              "min_caracteres": null
+                            },
+                            "section_copy_2": {
+                              "tipo": "text_short",
+                              "label": "section_copy_2",
+                              "exemplo": "2 Lorem ipsum dolor sit amet, consectetur adipiscing elit",
+                              "orientacao": "O gesto, registro mais curto e lírico",
+                              "obrigatorio": false,
+                              "max_caracteres": 84,
+                              "min_caracteres": null
+                            }
+                          },
+                          "diretriz": "Remoção de risco: faixa de 3 compromissos com lastro verificável, isolada por fundo contrastante. Pergunta que responde: 'se eu entregar o cartão, o que me protege?'. Como ele se sente: 'o pagamento é numa plataforma que eu conheço, tem uma política de troca pra eu ler, e quem vende é quem desenha — não é um revendedor'. — Adaptação: Os três ícones da amostra (entrega, devolução, compromisso de qualidade) viram: (1) checkout no Shopify — a única alegação de segurança verificável, sem afirmar selos exibidos no site; (2) trocas — apontar para a página de política sem citar prazo, etiqueta grátis ou regra de primeiro pedido; (3) desenho próprio de boxer em bambu, vendido só pela marca, sem revendedor. Cada item responde à MESMA objeção da tese (confiar num site pequeno), não a um selo genérico. Nada de frete, SLA, suporte ou controle de qualidade — não há lastro.\n\nForma (variante, subordinada ao papel): Título — duas linhas ligando o presente a quem recebe. Fala do destinatário, não do produto.\n\nCopy 1 — o que o vale entrega em uma frase de três linhas. Concreto: o que a pessoa vai poder fazer com ele.\n\nCopy 2 — o gesto, em duas linhas. Registro mais curto e mais lírico que o primeiro parágrafo — é o fecho emocional antes do botão.\n\nCTA — o nome do produto, caixa alta. Aqui o botão não tem verbo: ele nomeia o que se compra.\n\nSelos — o texto central é o valor em uma ou duas palavras, sem verbo. O texto em arco é uma sequência de atributos separados por barra vertical, em caixa alta, que dá a volta na borda.\n\nProibições: preço ou percentual · verbo no CTA · valores genéricos nos selos (\"qualidade\", \"excelência\") · benefício operacional no lugar de valor · quarto selo · exclamação.",
+                          "variante": "body 3 - bridge features cards",
+                          "requisitos": {
+                            "cta": false,
+                            "cupom": null,
+                            "exige": [
+                              "item 1: checkout roda no Shopify — sem dizer que selos aparecem no site",
+                              "item 2: política de trocas como link para a página, sem prazo, sem condição, sem 'grátis'",
+                              "item 3: desenho próprio, vendido só pela marca — sem revendedor",
+                              "nada de frete, prazo de entrega, suporte, QC ou preço all-in",
+                              "fundo contrastante que isole o bloco como compromisso, não argumento"
+                            ],
+                            "preco": null,
+                            "campos": [
+                              "garantia"
+                            ],
+                            "imagem": null,
+                            "n_itens": {
+                              "max": 3,
+                              "min": 3
+                            },
+                            "avaliacao": null,
+                            "dispositivo": "body_garantias"
+                          },
+                          "obrigatorios": [],
+                          "total_campos": 9
+                        },
+                        "purpose": "Remoção de risco: faixa de 3 compromissos com lastro verificável, isolada por fundo contrastante. Pergunta que responde: 'se eu entregar o cartão, o que me protege?'. Como ele se sente: 'o pagamento é numa plataforma que eu conheço, tem uma política de troca pra eu ler, e quem vende é quem desenha — não é um revendedor'. — Adaptação: Os três ícones da amostra (entrega, devolução, compromisso de qualidade) viram: (1) checkout no Shopify — a única alegação de segurança verificável, sem afirmar selos exibidos no site; (2) trocas — apontar para a página de política sem citar prazo, etiqueta grátis ou regra de primeiro pedido; (3) desenho próprio de boxer em bambu, vendido só pela marca, sem revendedor. Cada item responde à MESMA objeção da tese (confiar num site pequeno), não a um selo genérico. Nada de frete, SLA, suporte ou controle de qualidade — não há lastro.\n\nForma (variante, subordinada ao papel): Título — duas linhas ligando o presente a quem recebe. Fala do destinatário, não do produto.\n\nCopy 1 — o que o vale entrega em uma frase de três linhas. Concreto: o que a pessoa vai poder fazer com ele.\n\nCopy 2 — o gesto, em duas linhas. Registro mais curto e mais lírico que o primeiro parágrafo — é o fecho emocional antes do botão.\n\nCTA — o nome do produto, caixa alta. Aqui o botão não tem verbo: ele nomeia o que se compra.\n\nSelos — o texto central é o valor em uma ou duas palavras, sem verbo. O texto em arco é uma sequência de atributos separados por barra vertical, em caixa alta, que dá a volta na borda.\n\nProibições: preço ou percentual · verbo no CTA · valores genéricos nos selos (\"qualidade\", \"excelência\") · benefício operacional no lugar de valor · quarto selo · exclamação.",
+                        "block_id": "7f32e54f-b53f-4be6-a680-95ec79eb5b34",
+                        "position": 3,
+                        "variant_id": "4e9726d1-40fe-40ce-aa81-c2a33b062603",
+                        "campos_omitidos": [
+                          "cta_label"
+                        ]
+                      },
+                      {
+                        "type": "reviews",
+                        "label": "Confirmação de terceiro ANTES da vitrine: dois compradores dizendo a frase que a marca nã…",
+                        "schema": {
+                          "papel": "Confirmação de terceiro ANTES da vitrine: dois compradores dizendo a frase que a marca não pode dizer sobre si. Pergunta que responde: 'alguém como eu já comprou e o que sentiu?'. Como ele se sente: 'não sou o primeiro a arriscar aqui — e o que eles descrevem é o meu incômodo, não um elogio genérico'. — Adaptação: A amostra tinha 1 depoimento com nota e nome no fim do e-mail; aqui sobem 2, colados entre o compromisso e a grade, porque a objeção é desconfiança. Só depoimento que existe literalmente na pesquisa: James W. (sem irritação/atrito) e o teor dos depoimentos do catálogo (cós que não crava, tecido que não sobe, segura um dia inteiro sentado) — sem nota em estrelas, sem contagem de reviews, sem idade nem nome inventado. Contexto de uso (dia inteiro sentado) faz o papel da credencial. Sem CTA e sem cupom neste bloco. Jeff C. fica de fora: sua fala só existe com o 83%.",
+                          "campos": {
+                            "review_1_body": {
+                              "tipo": "text_short",
+                              "label": "review_1_body",
+                              "exemplo": "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
+                              "orientacao": null,
+                              "obrigatorio": false,
+                              "max_caracteres": 190,
+                              "min_caracteres": null
+                            },
+                            "review_1_name": {
+                              "tipo": "text_short",
+                              "label": "review_1_name",
+                              "exemplo": "Name. 1",
+                              "orientacao": null,
+                              "obrigatorio": false,
+                              "max_caracteres": 24,
+                              "min_caracteres": null
+                            },
+                            "review_2_body": {
+                              "tipo": "text_short",
+                              "label": "review_2_body",
+                              "exemplo": "oi oi Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
+                              "orientacao": null,
+                              "obrigatorio": false,
+                              "max_caracteres": 190,
+                              "min_caracteres": null
+                            },
+                            "review_2_name": {
+                              "tipo": "text_short",
+                              "label": "review_2_name",
+                              "exemplo": "Name. 2",
+                              "orientacao": null,
+                              "obrigatorio": false,
+                              "max_caracteres": 24,
+                              "min_caracteres": null
+                            },
+                            "review_1_title": {
+                              "tipo": "text_short",
+                              "label": "review_1_title",
+                              "exemplo": "Ut enim ad minim veniam",
+                              "orientacao": null,
+                              "obrigatorio": false,
+                              "max_caracteres": 36,
+                              "min_caracteres": null
+                            },
+                            "review_2_title": {
+                              "tipo": "text_short",
+                              "label": "review_2_title",
+                              "exemplo": "2 Ut enim ad minim veniam",
+                              "orientacao": null,
+                              "obrigatorio": false,
+                              "max_caracteres": 36,
+                              "min_caracteres": null
+                            },
+                            "reviews_headline": {
+                              "tipo": "text_short",
+                              "label": "reviews_headline",
+                              "exemplo": "Lorem ipsum dolor sit amet consectetur 1",
+                              "orientacao": null,
+                              "obrigatorio": false,
+                              "max_caracteres": 44,
+                              "min_caracteres": null
+                            },
+                            "review_1_credential": {
+                              "tipo": "text_short",
+                              "label": "review_1_credential",
+                              "exemplo": "Verified Buyer 1",
+                              "orientacao": null,
+                              "obrigatorio": false,
+                              "max_caracteres": 22,
+                              "min_caracteres": null
+                            },
+                            "review_2_credential": {
+                              "tipo": "text_short",
+                              "label": "review_2_credential",
+                              "exemplo": "Verified Buyer 2",
+                              "orientacao": null,
+                              "obrigatorio": false,
+                              "max_caracteres": 22,
+                              "min_caracteres": null
+                            }
+                          },
+                          "diretriz": "Confirmação de terceiro ANTES da vitrine: dois compradores dizendo a frase que a marca não pode dizer sobre si. Pergunta que responde: 'alguém como eu já comprou e o que sentiu?'. Como ele se sente: 'não sou o primeiro a arriscar aqui — e o que eles descrevem é o meu incômodo, não um elogio genérico'. — Adaptação: A amostra tinha 1 depoimento com nota e nome no fim do e-mail; aqui sobem 2, colados entre o compromisso e a grade, porque a objeção é desconfiança. Só depoimento que existe literalmente na pesquisa: James W. (sem irritação/atrito) e o teor dos depoimentos do catálogo (cós que não crava, tecido que não sobe, segura um dia inteiro sentado) — sem nota em estrelas, sem contagem de reviews, sem idade nem nome inventado. Contexto de uso (dia inteiro sentado) faz o papel da credencial. Sem CTA e sem cupom neste bloco. Jeff C. fica de fora: sua fala só existe com o 83%.\n\nForma (variante, subordinada ao papel): Depoimento é citação, não copy. Preservar as palavras do cliente, inclusive repetição e falta de vírgula. Não corrigir gramática nem encurtar para \"ficar limpo\".\nTítulo do depoimento é o benefício em duas ou três palavras, extraído do próprio texto do review — nunca um slogan da marca.\nTítulo da seção fala do cliente, não do produto: quantos já compram, quem já usa, quem já aprovou.\nOs dois reviews devem cobrir atributos diferentes (um sobre a peça, outro sobre outro item ou outro aspecto). Dois reviews sobre a mesma coisa desperdiçam o bloco.\nSelo de credencial é obrigatório e sempre o mesmo texto nos dois (\"Verified Buyer\", \"Compra verificada\"). É o que sustenta a alegação.\nCTA retoma a ação pendente, não repete \"comprar agora\" genérico.\nSe o review original mencionar cupom ou código de afiliado, manter — reforça que é texto de gente real.",
+                          "variante": "review 3",
+                          "requisitos": {
+                            "cta": false,
+                            "cupom": false,
+                            "exige": [
+                              "apenas depoimentos que existem literalmente na pesquisa — James W. e o teor do catálogo; sem inventar nome, idade ou nota",
+                              "proibido o número 83% e qualquer citação de Jeff C. que dependa dele",
+                              "credencial = contexto de uso (dia inteiro sentado, cós que não crava), não idade",
+                              "James W. fica reservado para este toque — o #4 usa pessoas distintas"
+                            ],
+                            "preco": null,
+                            "campos": [
+                              "nome",
+                              "contexto"
+                            ],
+                            "imagem": null,
+                            "n_itens": {
+                              "max": 2,
+                              "min": 2
+                            },
+                            "avaliacao": false,
+                            "dispositivo": "reviews_com_credencial"
+                          },
+                          "obrigatorios": [],
+                          "total_campos": 9
+                        },
+                        "purpose": "Confirmação de terceiro ANTES da vitrine: dois compradores dizendo a frase que a marca não pode dizer sobre si. Pergunta que responde: 'alguém como eu já comprou e o que sentiu?'. Como ele se sente: 'não sou o primeiro a arriscar aqui — e o que eles descrevem é o meu incômodo, não um elogio genérico'. — Adaptação: A amostra tinha 1 depoimento com nota e nome no fim do e-mail; aqui sobem 2, colados entre o compromisso e a grade, porque a objeção é desconfiança. Só depoimento que existe literalmente na pesquisa: James W. (sem irritação/atrito) e o teor dos depoimentos do catálogo (cós que não crava, tecido que não sobe, segura um dia inteiro sentado) — sem nota em estrelas, sem contagem de reviews, sem idade nem nome inventado. Contexto de uso (dia inteiro sentado) faz o papel da credencial. Sem CTA e sem cupom neste bloco. Jeff C. fica de fora: sua fala só existe com o 83%.\n\nForma (variante, subordinada ao papel): Depoimento é citação, não copy. Preservar as palavras do cliente, inclusive repetição e falta de vírgula. Não corrigir gramática nem encurtar para \"ficar limpo\".\nTítulo do depoimento é o benefício em duas ou três palavras, extraído do próprio texto do review — nunca um slogan da marca.\nTítulo da seção fala do cliente, não do produto: quantos já compram, quem já usa, quem já aprovou.\nOs dois reviews devem cobrir atributos diferentes (um sobre a peça, outro sobre outro item ou outro aspecto). Dois reviews sobre a mesma coisa desperdiçam o bloco.\nSelo de credencial é obrigatório e sempre o mesmo texto nos dois (\"Verified Buyer\", \"Compra verificada\"). É o que sustenta a alegação.\nCTA retoma a ação pendente, não repete \"comprar agora\" genérico.\nSe o review original mencionar cupom ou código de afiliado, manter — reforça que é texto de gente real.",
+                        "block_id": "0bcfab7c-1556-4996-91aa-ae8dfc5cd211",
+                        "position": 4,
+                        "variant_id": "cff6c8d8-a0da-4c80-90fa-1875174a75a1",
+                        "campos_omitidos": [
+                          "reviews_cta_label"
+                        ]
+                      },
+                      {
+                        "type": "products",
+                        "label": "Aterrissar a tese em objetos compráveis: o boxer de bambu como item principal, mais um se…",
+                        "schema": {
+                          "papel": "Aterrissar a tese em objetos compráveis: o boxer de bambu como item principal, mais um segundo card, cada um com seu botão. Pergunta que responde: 'o que exatamente eu compro e por quanto?'. Como ele se sente: 'é um produto só, feito direito, com preço claro — não é um catálogo genérico'. — Adaptação: A amostra tinha grade 2×2 com avaliação e preço; a loja tem um produto principal (4 listagens do mesmo boxer) e meias. A grade cai para 2–3 cards: boxer de bambu (US$59,90) + meias de bambu (US$31,98), ou colorways do boxer. Sem avaliação por card (não existem notas e é proibido inventar). Preço em texto real quando a variante permitir. Absorve o papel do CTA isolado da amostra: os botões dos cards são a saída para quem decidiu. Sem urgência, sem 'últimas unidades'.",
+                          "campos": {
+                            "cta_label": {
+                              "tipo": "text_short",
+                              "label": "cta_label",
+                              "exemplo": "SHOP sale",
+                              "orientacao": "Caixa alta, tracking largo, aponta para a sale",
+                              "obrigatorio": false,
+                              "max_caracteres": 26,
+                              "min_caracteres": null
+                            },
+                            "section_title": {
+                              "tipo": "text_short",
+                              "label": "section_title",
+                              "exemplo": "WHAT'S ON SALE:",
+                              "orientacao": "Caixa alta, bold, termina em dois-pontos",
+                              "obrigatorio": false,
+                              "max_caracteres": 24,
+                              "min_caracteres": null
+                            },
+                            "product_1_name": {
+                              "tipo": "text_short",
+                              "label": "product_1_name",
+                              "exemplo": "Product Name 1",
+                              "orientacao": "Uma linha, peso regular",
+                              "obrigatorio": false,
+                              "max_caracteres": 26,
+                              "min_caracteres": null
+                            },
+                            "product_2_name": {
+                              "tipo": "text_short",
+                              "label": "product_2_name",
+                              "exemplo": "Product Name 2",
+                              "orientacao": "Uma linha, pode incluir peso ou medida",
+                              "obrigatorio": false,
+                              "max_caracteres": 26,
+                              "min_caracteres": null
+                            },
+                            "product_1_description": {
+                              "tipo": "text_short",
+                              "label": "product_1_description",
+                              "exemplo": "Brief Product 1 Description 1",
+                              "orientacao": "56 (2 linhas)\nUma frase, com ponto final",
+                              "obrigatorio": false,
+                              "max_caracteres": 56,
+                              "min_caracteres": null
+                            },
+                            "product_2_description": {
+                              "tipo": "text_short",
+                              "label": "3",
+                              "exemplo": "Brief Product 2 Description 2",
+                              "orientacao": "56 (2 linhas)\nEstrutura diferente da descrição 1",
+                              "obrigatorio": false,
+                              "max_caracteres": 56,
+                              "min_caracteres": null
+                            }
+                          },
+                          "diretriz": "Aterrissar a tese em objetos compráveis: o boxer de bambu como item principal, mais um segundo card, cada um com seu botão. Pergunta que responde: 'o que exatamente eu compro e por quanto?'. Como ele se sente: 'é um produto só, feito direito, com preço claro — não é um catálogo genérico'. — Adaptação: A amostra tinha grade 2×2 com avaliação e preço; a loja tem um produto principal (4 listagens do mesmo boxer) e meias. A grade cai para 2–3 cards: boxer de bambu (US$59,90) + meias de bambu (US$31,98), ou colorways do boxer. Sem avaliação por card (não existem notas e é proibido inventar). Preço em texto real quando a variante permitir. Absorve o papel do CTA isolado da amostra: os botões dos cards são a saída para quem decidiu. Sem urgência, sem 'últimas unidades'.\n\nForma (variante, subordinada ao papel): Título — anuncia a lista, em caixa alta, terminando em dois-pontos. O sinal é o que emenda no que vem abaixo.\n\nNome do produto — nome comercial curto, uma linha. Pode incluir a medida ou o peso quando isso identifica o item.\n\nDescrição — uma frase em duas linhas dizendo como é ou para que serve. Adjetivos concretos e o uso pretendido. Ponto final obrigatório. As duas descrições precisam ter estrutura diferente entre si — se as duas seguirem o mesmo molde, a lista fica mecânica.\n\nCTA — verbo genérico apontando para a sale inteira, caixa alta com tracking largo.\n\nProibições: preço ou percentual em qualquer slot · nome do produto em bold · descrição com mais de duas linhas · terceiro produto · CTA por item · exclamação.",
+                          "variante": "produtos 6",
+                          "requisitos": {
+                            "cta": true,
+                            "cupom": false,
+                            "exige": [
+                              "boxer de bambu como primeiro card; meias ou colorway como segundo",
+                              "sem nota, sem contagem de avaliações",
+                              "sem urgência nem escassez",
+                              "um produto principal, não catálogo amplo"
+                            ],
+                            "preco": null,
+                            "campos": [
+                              "nome"
+                            ],
+                            "imagem": "produto limpo, foto de catálogo do boxer de bambu e das meias — fundo neutro, sem modelo fitness",
+                            "n_itens": {
+                              "max": 3,
+                              "min": 2
+                            },
+                            "avaliacao": false,
+                            "dispositivo": "products_grade_sem_preco"
+                          },
+                          "obrigatorios": [],
+                          "total_campos": 6
+                        },
+                        "purpose": "Aterrissar a tese em objetos compráveis: o boxer de bambu como item principal, mais um segundo card, cada um com seu botão. Pergunta que responde: 'o que exatamente eu compro e por quanto?'. Como ele se sente: 'é um produto só, feito direito, com preço claro — não é um catálogo genérico'. — Adaptação: A amostra tinha grade 2×2 com avaliação e preço; a loja tem um produto principal (4 listagens do mesmo boxer) e meias. A grade cai para 2–3 cards: boxer de bambu (US$59,90) + meias de bambu (US$31,98), ou colorways do boxer. Sem avaliação por card (não existem notas e é proibido inventar). Preço em texto real quando a variante permitir. Absorve o papel do CTA isolado da amostra: os botões dos cards são a saída para quem decidiu. Sem urgência, sem 'últimas unidades'.\n\nForma (variante, subordinada ao papel): Título — anuncia a lista, em caixa alta, terminando em dois-pontos. O sinal é o que emenda no que vem abaixo.\n\nNome do produto — nome comercial curto, uma linha. Pode incluir a medida ou o peso quando isso identifica o item.\n\nDescrição — uma frase em duas linhas dizendo como é ou para que serve. Adjetivos concretos e o uso pretendido. Ponto final obrigatório. As duas descrições precisam ter estrutura diferente entre si — se as duas seguirem o mesmo molde, a lista fica mecânica.\n\nCTA — verbo genérico apontando para a sale inteira, caixa alta com tracking largo.\n\nProibições: preço ou percentual em qualquer slot · nome do produto em bold · descrição com mais de duas linhas · terceiro produto · CTA por item · exclamação.",
+                        "block_id": "5c23d63f-58a0-490d-8cf7-dcb7fb311ef3",
+                        "position": 5,
+                        "variant_id": "fc41efe6-a2dc-493a-ab92-75e30fd13198",
+                        "campos_omitidos": []
+                      },
+                      {
+                        "type": "footer",
+                        "label": "Rota de saída para quem não clicou: navegação mínima (cuecas, meias, política de trocas).…",
+                        "schema": {
+                          "papel": "Rota de saída para quem não clicou: navegação mínima (cuecas, meias, política de trocas). Pergunta que responde: 'onde eu vou se quiser ver mais antes de decidir?'. Como ele se sente: 'existe uma loja de verdade aqui, com páginas para eu conferir, e ninguém me pediu para seguir rede social'. — Adaptação: A amostra tinha logo + categorias + credencial de tempo de mercado + suporte. Aqui: logo + as duas categorias reais + link para a política. Sai a credencial de tempo de mercado (não verificada), sai o canal de suporte (não documentado), saem ícones de rede social (pedido paralelo proibido — e 13 seguidores só confirmariam a dúvida de site pequeno).",
+                          "campos": {
+                            "footer_copyright": {
+                              "tipo": "text_short",
+                              "label": "Linha de copyright",
+                              "exemplo": "Copyright © 2025, Company Name",
+                              "orientacao": "Nome da marca e ano. Mantenha o formato 'Copyright © ANO, MARCA'.",
+                              "obrigatorio": false,
+                              "max_caracteres": 44,
+                              "min_caracteres": null
+                            },
+                            "footer_unsub_text": {
+                              "tipo": "text_short",
+                              "label": "Frase que antecede o link de descadastro",
+                              "exemplo": "If you would like to unsubscribe, click",
+                              "orientacao": "Frase curta no idioma da loja.",
+                              "obrigatorio": false,
+                              "max_caracteres": 60,
+                              "min_caracteres": null
+                            },
+                            "footer_unsub_label": {
+                              "tipo": "text_short",
+                              "label": "Rótulo do link de descadastro",
+                              "exemplo": "Unsubscribe",
+                              "orientacao": "Use um termo com a raiz 'descadastr' (ex.: 'Descadastrar'). O check de compliance procura por essa palavra no HTML final.",
+                              "obrigatorio": false,
+                              "max_caracteres": 20,
+                              "min_caracteres": null
+                            }
+                          },
+                          "diretriz": "Rota de saída para quem não clicou: navegação mínima (cuecas, meias, política de trocas). Pergunta que responde: 'onde eu vou se quiser ver mais antes de decidir?'. Como ele se sente: 'existe uma loja de verdade aqui, com páginas para eu conferir, e ninguém me pediu para seguir rede social'. — Adaptação: A amostra tinha logo + categorias + credencial de tempo de mercado + suporte. Aqui: logo + as duas categorias reais + link para a política. Sai a credencial de tempo de mercado (não verificada), sai o canal de suporte (não documentado), saem ícones de rede social (pedido paralelo proibido — e 13 seguidores só confirmariam a dúvida de site pequeno).\n\nForma (variante, subordinada ao papel): A IA não gera copy aqui — footer é configuração por cliente, não geração por campanha: labels de link vêm do onboarding do cliente (máx ~15 caracteres por label, caps), sociais são URLs fixas, legal é template com ano dinâmico e nome da empresa. Único texto sensível: a frase de unsubscribe deve ser clara e sem dark pattern (\"Para cancelar a inscrição, clique aqui\"), traduzida pro idioma do público.",
+                          "variante": "footer 1",
+                          "requisitos": {
+                            "cta": false,
+                            "cupom": false,
+                            "exige": [
+                              "sem ícones ou pedido de rede social",
+                              "sem credencial de tempo de mercado",
+                              "sem canal de suporte ou tempo de resposta",
+                              "links: cuecas, meias, política de trocas"
+                            ],
+                            "preco": null,
+                            "campos": [
+                              "categoria"
+                            ],
+                            "imagem": null,
+                            "n_itens": null,
+                            "avaliacao": null,
+                            "dispositivo": "footer_nav"
+                          },
+                          "obrigatorios": [],
+                          "total_campos": 3
+                        },
+                        "purpose": "Rota de saída para quem não clicou: navegação mínima (cuecas, meias, política de trocas). Pergunta que responde: 'onde eu vou se quiser ver mais antes de decidir?'. Como ele se sente: 'existe uma loja de verdade aqui, com páginas para eu conferir, e ninguém me pediu para seguir rede social'. — Adaptação: A amostra tinha logo + categorias + credencial de tempo de mercado + suporte. Aqui: logo + as duas categorias reais + link para a política. Sai a credencial de tempo de mercado (não verificada), sai o canal de suporte (não documentado), saem ícones de rede social (pedido paralelo proibido — e 13 seguidores só confirmariam a dúvida de site pequeno).\n\nForma (variante, subordinada ao papel): A IA não gera copy aqui — footer é configuração por cliente, não geração por campanha: labels de link vêm do onboarding do cliente (máx ~15 caracteres por label, caps), sociais são URLs fixas, legal é template com ano dinâmico e nome da empresa. Único texto sensível: a frase de unsubscribe deve ser clara e sem dark pattern (\"Para cancelar a inscrição, clique aqui\"), traduzida pro idioma do público.",
+                        "block_id": "e8013e5b-c6ba-4efe-a7fc-99544507acd9",
+                        "position": 6,
+                        "variant_id": "35b5d8fd-59b5-4e0f-92ab-a180745242e0",
+                        "campos_omitidos": []
+                      }
+                    ],
+                    "decisao": {
+                      "proibido": [
+                        "história longa da fundação (profundidade tem toque próprio)",
+                        "pedido de engajamento paralelo (rede social, preferências) — um pedido só",
+                        "urgência artificial",
+                        "esgotar os argumentos — uma objeção só, bem atacada",
+                        "condição nova no incentivo",
+                        "Claim '83% more resistant' sourced from ad copy testimonial (Jeff C.), not independent test. Flag for verification before use in email. Cut engineering described from brand thesis; specific pattern details unverified.",
+                        "No on-site quality-control statement found in research. Cannot fully confirm without checking product page copy.",
+                        "No shipping SLA, carrier information, or tracking policy found in the research material. Cannot assert the brand is outside this fear without evidence.",
+                        "Shipping described as 'personalizado por região' but no explicit statement about all-in pricing or duty disclosure found. Do not use until confirmed.",
+                        "No support channel, response time, or contact policy mentioned in any research field. Cannot assert the brand is outside this fear.",
+                        "Shopify security is platform-level and verifiable, but the brand should display trust badges explicitly on checkout to activate this reassurance for the buyer.",
+                        "Policy described in brand thesis as a goal, not confirmed as live on site. Verify return policy page exists and matches these terms before using in email.",
+                        "No artificial urgency, countdown or 'offer ends soon'",
+                        "Do not use the '83% more resistant' figure — it is a single ad testimonial, not a test",
+                        "Do not claim all-in pricing or no hidden fees at checkout",
+                        "Do not invent review counts, star ratings, named reviewers or ages not present in research",
+                        "Do not describe pattern or construction details beyond waistband placement and leg proportion"
+                      ],
+                      "incentivo": {
+                        "valor": "10%",
+                        "codigo": "WELCOME10",
+                        "existe": true,
+                        "origem": "outline_traduzido",
+                        "traducao_faltante": false
+                      },
+                      "insumos_permitidos": [
+                        "checkout runs on Shopify, PCI-compliant and SSL by default (pesquisa: plataforma)",
+                        "brand built for men over 50 whose bodies don't match the generic cut; sizing up at a department store makes fit worse (veículo: origem_da_marca)",
+                        "bamboo fibre construction, softer than cotton, naturally moisture-wicking (veículo: mecanismo_unico)",
+                        "waistband sits above the abdomen instead of digging in; leg opening proportioned not to ride up through a full day sitting (veículo: mecanismo_unico)",
+                        "customer testimonials describe concrete fit differences: waistband that doesn't dig, fabric that doesn't ride up, holds through a full day sitting (catálogo: obj_4 lastro)",
+                        "brand sells its own proprietary bamboo boxer design, no third-party resellers (catálogo: medos_de_categoria)",
+                        "Bamboo Fibre Boxer Shorts — $59.90 — https://heroboxers.com/products/box-hero-bamboo-fibre-boxer-shorts (produtos: top produtos)",
+                        "Premium Bamboo Fibre Socks — $31.98 (produtos: top produtos)",
+                        "size guide uses real waist and hip measurements, not generic S-M-L (catálogo: obj_3 lastro)",
+                        "store offers multi-pair bundles (catálogo: obj_5 lastro)"
+                      ]
+                    },
+                    "email_id": "bb2ef22d-7653-4e92-9b52-be6cfbf96826",
+                    "blueprint": {
+                      "messaging": "O email abre entregando o código sem rodeios — WELCOME10, 10% off, sem condição nova. Em seguida, nomeia direto a dúvida que o Robert já carrega: nunca ouviu falar da marca, o site parece pequeno. A resposta não é defesa, é argumento prático: a loja é pequena de propósito, feita para corpo de homem acima dos 50 que o corte genérico de loja de departamento não veste bem — e o checkout roda em Shopify, a mesma plataforma onde ele já comprou antes. Dois compradores descrevem o mesmo problema resolvido — cós que não aperta, tecido que não sobe — e o produto aparece com preço claro, sem pressão.",
+                      "objective": "A pessoa acabou de assinar. Está no pico de atenção de todo o relacionamento,\nveio pelo incentivo, e não conhece a marca — mas já chega com a objeção dominante\nda categoria ativa na cabeça (a dúvida que qualquer comprador dessa categoria tem\nantes de confiar).",
+                      "subject_hint": "Seu código WELCOME10 está aqui",
+                      "fio_narrativo": "Promessa entregue em texto (WELCOME10) → a dúvida 'nunca ouvi falar' nomeada e devolvida como razão de existir, com a alegação central do produto → três compromissos que ele pode checar (Shopify, política, desenho próprio) → dois compradores descrevendo o mesmo incômodo resolvido → o produto que compra, com preço → saída sem discurso. Um argumento só: dá para confiar num site pequeno porque ele é pequeno de propósito, paga onde você já paga, e quem comprou descreve o seu corpo."
+                    },
+                    "objective": "A pessoa acabou de assinar. Está no pico de atenção de todo o relacionamento,\nveio pelo incentivo, e não conhece a marca — mas já chega com a objeção dominante\nda categoria ativa na cabeça (a dúvida que qualquer comprador dessa categoria tem\nantes de confiar).",
+                    "text_only": false,
+                    "coupon_code": "WELCOME10",
+                    "email_number": 1,
+                    "estrutura_geral": null,
+                    "dispatch_batch_id": "ddb2d125-5a88-42b1-b8e3-bc4726ec2735"
+                  }
+                ],
+                "flow_id": "84ee9885-24be-4501-ac1c-d8c5ac345221",
+                "flow_name": "Welcome Flow",
+                "flow_type": "welcome",
+                "reference": {
+                  "id": "8be715d8-c273-4e47-9de4-2893733b9822",
+                  "name": "Welcome 1"
+                }
+              }
+            ],
+            "store": {
+              "id": "daee0632-4a1d-476e-810b-c616ba32625d",
+              "icp": {
+                "persona": {
+                  "age": "57",
+                  "city": "Estados Unidos, concentração em subúrbios e cidades médias, distribuição nacional",
+                  "name": "Robert Conforto",
+                  "monogram": "R"
+                },
+                "frictions": [
+                  "Cuecas convencionais não são modeladas para corpos com barriga e cintura mais larga. O elástico cava, o tecido enrola, o tamanho grande resolve a cintura mas sobra tecido nas pernas. Nenhuma marca de prateleira fala abertamente sobre isso.",
+                  "Desconforto diário acumulado que vira irritação crônica. Gaveta cheia de cuecas ruins que ele continua usando por falta de alternativa. Sensação velada de que o mercado ignora o corpo dele.",
+                  "Comprou tamanhos maiores em marcas genéricas e o caimento ficou pior, com excesso de tecido sobrando",
+                  "Testou marcas premium de departamento que prometiam conforto mas usavam o mesmo molde genérico em tamanho ampliado",
+                  "Tentou modelos trunk ou brief que pareciam bons na foto mas subiam na coxa ou marcavam a barriga",
+                  "Pesquisou online mas encontrou sites sem avaliações reais, sem fotos de uso e sem informação clara de modelagem"
+                ],
+                "day_in_life": "Acorda cedo, toma café sem pressa. Trabalha sentado boa parte do dia, seja em escritório, home office ou já semi-aposentado com rotina própria. Quando se veste de manhã, a cueca é a primeira peça que coloca e a última em que pensa, mas é a que mais incomoda ao longo do dia quando o elástico aperta na barriga, o tecido sobe na coxa ou a costura irrita. Ele não vai ao shopping buscar underwear: compra online quando a situação já passou do ponto. Passa tempo no computador, lê emails, assiste esporte. A esposa às vezes sugere trocar as cuecas velhas. Ele concorda, mas não sabe por onde começar porque as marcas convencionais não falam com o corpo dele. Quando encontra algo que funciona, compra mais do mesmo e encerra o assunto.",
+                "motivations": [
+                  "Encontrar uma cueca com caimento que acomode barriga, não suba na coxa, não aperte na cintura e aguente lavagens sem perder forma.",
+                  "Sentir que existe um produto feito para o corpo dele como ele é agora, sem precisar se encaixar em padrões de modelo fitness nem aceitar desconforto como normal.",
+                  "Não precisar falar sobre isso com ninguém. Resolver em silêncio, com dignidade, e talvez recomendar pra um amigo na mesma situação."
+                ],
+                "demographics": {
+                  "income": "R$ 15.000 - R$ 30.000 mensais equivalentes (USD 60k-120k anuais)",
+                  "religion": "Não especificado",
+                  "age_range": "52–62 anos",
+                  "education": "Ensino superior",
+                  "occupation": "Profissional assalariado(a)"
+                }
+              },
+              "tone": {
+                "do": [
+                  "Bem-vindo. Aqui, cueca boa tem que vestir corpo real.",
+                  "A cueca que não briga com a cintura.",
+                  "Ver tamanhos e escolher o caimento certo.",
+                  "Seu pedido atrasou. Já fomos atrás da rota e te atualizamos aqui."
+                ],
+                "dont": [
+                  "Seja parte da família Hero e descubra uma nova experiência de conforto.",
+                  "Eleve seu dia a dia com a boxer definitiva para máximo conforto.",
+                  "Compre agora e garanta já a sua antes que acabe.",
+                  "Pedimos sinceras desculpas pelo inconveniente e agradecemos sua compreensão."
+                ],
+                "use_words": [
+                  "corpo real",
+                  "caimento certo",
+                  "sem apertar",
+                  "fica no lugar",
+                  "cintura que acomoda",
+                  "feito para barriga",
+                  "conforto que dura",
+                  "trocou, sentiu a diferença",
+                  "caimento",
+                  "cintura",
+                  "ajuste",
+                  "tecido",
+                  "modelagem",
+                  "tamanho",
+                  "vestir",
+                  "ajustar",
+                  "acompanhar",
+                  "segurar",
+                  "trocar",
+                  "aqui,",
+                  "se a sua cueca",
+                  "no fim,"
+                ],
+                "avoid_words": [
+                  "jornada",
+                  "imersão",
+                  "ecossistema",
+                  "sinergia",
+                  "DNA",
+                  "patamar",
+                  "desbloqueie",
+                  "potencialize",
+                  "elevar",
+                  "alavancar",
+                  "viabilizar",
+                  "em última análise",
+                  "vale ressaltar",
+                  "no mundo atual",
+                  "mais do que nunca",
+                  "diante desse contexto",
+                  "não é apenas X, é Y",
+                  "mais do que X, é Y",
+                  "em um mundo onde",
+                  "revolucionário",
+                  "máximo conforto",
+                  "experiência premium",
+                  "seja parte da família",
+                  "nós nos importamos profundamente",
+                  "sinceras desculpas pelo inconveniente",
+                  "agradecemos sua compreensão",
+                  "garanta já",
+                  "últimas unidades",
+                  "correndo",
+                  "cuequinha",
+                  "barriguinha",
+                  "estaremos enviando",
+                  "encomenda"
+                ],
+                "description": "A voz entra como conversa de balcão bem feita: segura, curta, sem pressa de parecer esperta. As frases alternam uma linha mais seca com outra levemente calorosa, o bastante para tirar o peso do assunto sem fazer piada de tio. Fala com homem adulto, não com garoto nem com paciente. Quando menciona barriga, ajuste ou conforto, faz isso com naturalidade prática. O efeito é simples: alivia o constrangimento, passa domínio do produto e deixa espaço para a confiança crescer.\n\nO léxico gira em torno de construção e uso real: “caimento”, “cintura”, “segura no lugar”, “sem apertar”, “feito para corpo real”. Prefere verbos concretos, como “veste”, “ajusta”, “acompanha”, “trocar”. Pode usar humor curto em email ou anúncio, mas sem emoji em excesso; no máximo um, e só em canais leves. Em PT-BR, pede segunda pessoa implícita e contrações naturais. Corta gerúndio, slogans grandiosos e fórmulas como “não é apenas X, é Y”. Também evita euforia de liquidação e intimidade fabricada."
+              },
+              "brand": {
+                "about": "Hero Boxers é uma marca norte-americana de nicho que opera via Shopify e se dedica exclusivamente a cuecas masculinas. O posicionamento é cirúrgico: em vez de competir no mercado amplo de underwear, a marca aposta em modelos diferenciados com caimento projetado para homens com corpo real — incluindo quem tem barriga. O ticket médio entre R$ 250 e R$ 500 posiciona o produto acima do básico, sinalizando qualidade de material e construção.\n\nO público-alvo são homens acima de 50 anos que já passaram da fase de comprar qualquer cueca na prateleira e buscam conforto genuíno sem abrir mão de um visual que faça sentido. O principal motivador é encontrar um modelo diferente do convencional — algo que resolva dores reais como ajuste na cintura, tecido que não irrita e caimento que acompanha o corpo. A objeção central gira em torno de prova social e credibilidade do site, o que exige comunicação que construa confiança antes de empurrar conversão.\n\nA oportunidade está em transformar um produto considerado commodity em item de preferência pessoal. Com comunicação casual e direta em inglês, Hero Boxers pode criar um ciclo de recompra forte — cueca é consumível, e quem encontra o modelo certo não troca. O frete personalizado por região adiciona uma camada de complexidade operacional, mas também permite estratégias segmentadas de oferta.",
+                "thesis": "Cuecas com modelagem pensada para o corpo real do homem 50+, vendidas com tom leve e sem constrangimento.",
+                "pillars": [
+                  {
+                    "text": "O diferencial central não é estampa ou marca bordada — é caimento. Hero Boxers existe para resolver o problema do homem que não se encaixa nos moldes genéricos de underwear. Cada modelo é pensado para corpos reais, com atenção especial a conforto na região abdominal e liberdade de movimento ao longo do dia.",
+                    "label": "Modelagem para o corpo real",
+                    "number": "01"
+                  },
+                  {
+                    "text": "O tom casual e amigável não é acidente — é estratégia. Falar sobre cuecas para um público 50+ exige leveza sem infantilizar. A comunicação precisa ser direta, bem-humorada quando cabe, e sempre respeitosa. Construir confiança com prova social, depoimentos e transparência é o caminho para derrubar a barreira de credibilidade do primeiro pedido.",
+                    "label": "Confiança sem formalidade",
+                    "number": "02"
+                  },
+                  {
+                    "text": "Cueca é um produto de ciclo curto. Quem encontra o modelo certo compra de novo — e de novo. A estratégia de retenção deve explorar esse comportamento natural com lembretes inteligentes, bundles progressivos e comunicação que reforce a escolha já feita. O ticket médio elevado sustenta margens saudáveis mesmo com frequência moderada de compra.",
+                    "label": "Recompra como motor de crescimento",
+                    "number": "03"
+                  }
+                ],
+                "presence": "Operação 100% digital via Shopify, com sede nos Estados Unidos. A presença atual depende do site como principal canal de conversão, o que torna a estruturação de prova social e credibilidade on-page uma prioridade. O email marketing em inglês funciona como canal primário de retenção e relacionamento, com potencial para segmentação por região dado o modelo de frete personalizado."
+              },
+              "niche": "Moda masculina - Cuecas",
+              "story": {
+                "story": "Hero Boxers é uma loja de moda masculina - cuecas  sediada no Estados Unidos, operando na plataforma Shopify. Posiciona-se como nicho específico, com ticket médio R$ 250 - 500 e frete personalizado (varia por região/produto).\n\nO público principal é Masculino 50+ , com perfil de compra orientado a equilibrado — depende da categoria. A principal motivação identificada é modelo diferente de cueca e a principal objeção a ser superada é site / provs social bem estruturado . O tom de comunicação adotado é casual / amigável.\n\nHero Boxers atua no segmento de Moda masculina - Cuecas com posicionamento Nicho específico. Principais produtos: Cuecas. Operação rodando em shopify.",
+                "milestones": [
+                  {
+                    "year": "09/26",
+                    "event": "Formulário de onboarding enviado pelo cliente"
+                  },
+                  {
+                    "year": "09/26",
+                    "event": "Briefing inicial gerado pela IA"
+                  },
+                  {
+                    "year": "09/26",
+                    "event": "Briefing aprovado e cliente onboarded na Convertfy",
+                    "highlight": true
+                  }
+                ]
+              },
+              "visual": {
+                "cores": [],
+                "fontes": null,
+                "brand_manual_url": null,
+                "research_doc_url": null
+              },
+              "audience": {
+                "lista_total": null,
+                "sms_consent_pct": null,
+                "lista_engajados_30": null,
+                "lista_engajados_90": null,
+                "lista_crescimento_mensal": null
+              },
+              "language": "en",
+              "platform": "shopify",
+              "store_url": "https://heroboxers.com/",
+              "ads_review": {
+                "risks": [
+                  {
+                    "body": "0 active ads, 0 reach 30d, 0 live ads. All 5 historical creatives marked inactive. No active prospecting or retargeting means 100% traffic dependency on organic search or direct. Risk of traffic cliff if SEO drops or brand awareness erodes.",
+                    "what": "Complete campaign shutdown with no backup"
+                  },
+                  {
+                    "body": "First 2 ads promoted backpack hoodie (non-existent in catalog) to Ireland. This indicates either account mismanagement, failed product pivot, or creative reuse from different brand. Wastes spend on conversion-hostile messaging.",
+                    "what": "Severe product-market confusion"
+                  },
+                  {
+                    "body": "Shop traffic spiked to 6354 (May), then crashed -61% to 2890 (June), stabilized at 2462 (July). With 0 active ads, cannot re-stimulate demand if organic traffic drops further. No paid media buffer creates revenue vulnerability.",
+                    "what": "Volatile traffic with no paid cushion"
+                  },
+                  {
+                    "body": "Hero Boxers Facebook page has 4 likes, Instagram 13 followers, total reach 399. No Meta Pages linked. Severe brand credibility gap. Organic social amplification impossible; retargeting pools will be extremely shallow.",
+                    "what": "Micro-audience social media presence"
+                  },
+                  {
+                    "body": "Testimonials emphasize fit, softness, durability. No competitive differentiation vs. Calvin Klein or other premium boxer brands. Risk of high CAC due to generic benefits without unique selling angle (USP).",
+                    "what": "Undifferentiated value proposition in copy"
+                  },
+                  {
+                    "body": "Last 3 ads have null country/age targeting. If relaunched with platform defaults (18-65, no geo refinement), will hit massive irrelevant audience, burning budget on low-intent users far outside target demographic.",
+                    "what": "Audience targeting defaults to broad demographic"
+                  }
+                ],
+                "score": 18,
+                "summary": "Hero Boxers' Meta campaign is completely inactive (0 ads, 0 reach 30d, 399 total historical reach) despite 2462 monthly shop visits. Last 5 ads ran Sept 2025, all now inactive. Historical data reveals critical failures: product-market mismatch (ads promoted non-existent hoodie to Ireland), null audience targeting, missing conversion tracking, and micro social presence (4 FB likes, 13 IG followers). Strengths: testimonial copy and format diversity. Immediate action required: consolidate to bamboo boxers category, implement Conversions API, rebuild audience targeting to US 25-55, test creative library, and restart with 50-100 USD daily budget to validate demand before scaling.",
+                "strengths": [
+                  {
+                    "body": "All inactive ads point to bamboo boxer shorts or related merchandise, matching top products ranked 1-4 at 59.9 USD. Despite 0 live ads, the advertiser maintained thematic consistency across 5 historical creatives.",
+                    "what": "Consistent brand-product alignment"
+                  },
+                  {
+                    "body": "3 of 5 ads use customer testimonials (Jeff C., James W.) with specific benefits (83% more resistant, no chafing). This PAS-style hook shows some creative sophistication, though execution lacks reach.",
+                    "what": "Testimonial-driven copy structure"
+                  },
+                  {
+                    "body": "Ad set includes 1 video and 4 images. Format diversity indicates willingness to test, even if total reach was minimal (399 total reach across all ads).",
+                    "what": "Multi-format experimentation"
+                  },
+                  {
+                    "body": "CTAs include scarcity triggers (Buy 5 & Get 5 FREE, Offer Ends Soon) and 45-Day Money Back Guarantee, applying classic conversion copywriting tactics.",
+                    "what": "Urgency and guarantee messaging"
+                  }
+                ],
+                "sub_scores": {
+                  "strategy": 12,
+                  "tracking": 10,
+                  "creatives": 25,
+                  "targeting": 15,
+                  "diversification": 22
+                },
+                "reviewed_at": "2026-09-01T20:01:10.103+00:00",
+                "opportunities": [
+                  {
+                    "body": "Shop receives 2462 monthly visits with volatile history (peaked at 6354 in May 2026, then -61% to 2890 in June). 0 active ads means 0 reach contribution. Relaunch targeting US market (99.99% of traffic) with budget sufficient to test product-market fit before scaling.",
+                    "what": "Restart campaign with traffic baseline"
+                  },
+                  {
+                    "body": "First 2 historical ads promoted hoodie/backpack (Travel Smarter copy) to Ireland audience, completely misaligned with shop catalog (bamboo boxers + socks). Last 3 ads corrected to boxers. Consolidate to bamboo intimates category only; remove unrelated products.",
+                    "what": "Eliminate product-market mismatch"
+                  },
+                  {
+                    "body": "Currently 0 active ads means no retargeting. Implement pixel-based audiences: cart abandoners (60% of visits likely exit without purchase), product page visitors, and past customers for repeat upsell on premium socks (31.98 USD).",
+                    "what": "Build segmented retargeting funnel"
+                  },
+                  {
+                    "body": "All video/image assets are static or low-production. Test UGC (user-generated content) testimonials, lifestyle shots, or product-in-context reels to diversify hooks beyond text-heavy testimonials. Current 399 total reach suggests creative fatigue despite low spend.",
+                    "what": "Expand creative library systematically"
+                  },
+                  {
+                    "body": "Last 3 historical ads had null audience targeting; first 2 targeted IE (Ireland) despite 99.99% shop traffic from US. Relaunch with US age 25-55, household income 50k+, interest in mens health/wellness or premium apparel. Test lookalike audiences from existing customers.",
+                    "what": "Geo-targeting precision correction"
+                  },
+                  {
+                    "body": "All 5 ads point to 2 LPs: hoodie (misaligned) and bamboo boxers product page. Create dedicated hero page with bundle offer (boxers + socks), social proof carousel, and money-back guarantee messaging to improve conversion clarity.",
+                    "what": "Landing page consolidation"
+                  },
+                  {
+                    "body": "No mention of Facebook Pixel, Conversions API, or Shopify integration data. Implement Conversions API before relaunch to measure purchase events, add-to-cart, and AOV. Essential for campaign optimization.",
+                    "what": "Establish baseline conversion tracking"
+                  },
+                  {
+                    "body": "Buy 5 & Get 5 FREE offer (100% incentive) generated attention despite low spend. A/B test against lesser discounts (20-30% off) to identify true demand elasticity while protecting margin.",
+                    "what": "Leverage high-engagement offer"
+                  }
+                ]
+              },
+              "operations": {
+                "frete_prazo": null,
+                "recorrencia": null,
+                "margem_media": null,
+                "taxa_conversao": null,
+                "frete_cobertura": null,
+                "frete_medio_cents": null,
+                "ticket_medio_cents": 37500,
+                "faturamento_medio_cents": null
+              },
+              "store_name": "Hero Boxers",
+              "positioning": {
+                "slogan": null,
+                "persona": "Masculino 50+",
+                "hashtags": [],
+                "tom_de_voz": "casual",
+                "diferencial": null,
+                "posicionamento_preco": "medio"
+              },
+              "language_label": "Inglês",
+              "language_source": "store",
+              "language_form_raw": "Inglês",
+              "language_directive": "LANGUAGE — NOT NEGOTIABLE\nWrite every word of this email in English (en): the subject, the preheader and every field of every block. Not one sentence, not one word in another language.\n\nThe store research in this payload — brand, icp, tone, story, pesquisa_diagnostico, ads_review — is written in Brazilian Portuguese. It is internal material for the Convertfy team, never for this store's customers. It tells you HOW this brand sounds; it is reference about the voice, not text to copy, quote or translate.\nIn particular: `tone.use_words` and `tone.do` are examples of the VOICE written in Brazilian Portuguese. Match their register, their directness and their level of concreteness — never their actual words.\n\nMONEY: this store sells in USD. Every price you write uses that currency. Prices in Brazilian reais (R$) appear in the research only because the research was written in Brazil — never carry one into the copy.",
+              "language_form_other_raw": null
+            },
+            "briefing": null,
+            "timestamp": "2026-09-14T22:43:28.881Z",
+            "competitors": [],
+            "test_context": null,
+            "top_products": [
+              {
+                "url": "https://heroboxers.com//products/bamboo-fibre-boxer-shorts-for-all-day-comfort-copy",
+                "name": "BAMBOO FIBRE BOXER SHORTS - FOR ALL DAY COMFORT",
+                "rank": 1,
+                "price": 59.9,
+                "currency": "USD",
+                "image_url": "https://cdn.shopify.com/s/files/1/0873/0004/7172/files/7_373b785b-b84e-4cec-90f0-80e74109ce85.jpg?v=1730988651",
+                "external_id": "14801086742852"
+              },
+              {
+                "url": "https://heroboxers.com//products/bamboo-fibre-boxer-shorts-for-all-day-comfort-1",
+                "name": "BAMBOO FIBRE BOXER SHORTS - FOR ALL-DAY COMFORT",
+                "rank": 2,
+                "price": 59.9,
+                "currency": "USD",
+                "image_url": "https://cdn.shopify.com/s/files/1/0873/0004/7172/files/7_373b785b-b84e-4cec-90f0-80e74109ce85.jpg?v=1730988651",
+                "external_id": "9642979131716"
+              },
+              {
+                "url": "https://heroboxers.com//products/box-hero-bamboo-fibre-boxer-shorts",
+                "name": "Bamboo Fibre Boxer Shorts",
+                "rank": 3,
+                "price": 59.9,
+                "currency": "USD",
+                "image_url": "https://cdn.shopify.com/s/files/1/0873/0004/7172/files/Boxhero_2.gif?v=1729166797",
+                "external_id": "9642981654852"
+              },
+              {
+                "url": "https://heroboxers.com//products/bamboo-fibre-boxer-shorts-for-all-day-comfort-copy-2",
+                "name": "BAMBOO FIBRE BOXER SHORTS - FOR ALL DAY COMFORT",
+                "rank": 4,
+                "price": 59.9,
+                "currency": "USD",
+                "image_url": "https://cdn.shopify.com/s/files/1/0873/0004/7172/files/7_373b785b-b84e-4cec-90f0-80e74109ce85.jpg?v=1730988651",
+                "external_id": "14812942238020"
+              },
+              {
+                "url": "https://heroboxers.com//products/bamboo-fibre-socks",
+                "name": "Premium Bamboo Fibre Socks",
+                "rank": 5,
+                "price": 31.98,
+                "currency": "USD",
+                "image_url": "https://cdn.shopify.com/s/files/1/0873/0004/7172/files/Designsanstitre_5_248a3b4c-893f-4421-b4d5-b42c92e18d47.webp?v=1729166680",
+                "external_id": "9642978312516"
+              }
+            ],
+            "brand_identity": {
+              "voice": [],
+              "logo_url": "https://ppygkfeffknypfncsnlv.supabase.co/storage/v1/object/sign/onboarding-visual-assets/stores/daee0632-4a1d-476e-810b-c616ba32625d/brand/logo_main_png-1788368546737-1788294553656-30477516-cf74-4443-9420-60610a126183-removebg-preview.png",
+              "font_body": "Poppins",
+              "font_heading": "Poppins",
+              "primary_colors": [
+                {
+                  "hex": "#000000",
+                  "name": "Nova cor",
+                  "role": "principal"
+                }
+              ],
+              "secondary_colors": [
+                {
+                  "hex": "#ffffff",
+                  "name": "Nova cor",
+                  "role": ""
+                }
+              ]
+            },
+            "trigger_source": "test_full_pipeline",
+            "payload_version": "v3.2",
+            "language_directive": "LANGUAGE — NOT NEGOTIABLE\nWrite every word of this email in English (en): the subject, the preheader and every field of every block. Not one sentence, not one word in another language.\n\nThe store research in this payload — brand, icp, tone, story, pesquisa_diagnostico, ads_review — is written in Brazilian Portuguese. It is internal material for the Convertfy team, never for this store's customers. It tells you HOW this brand sounds; it is reference about the voice, not text to copy, quote or translate.\nIn particular: `tone.use_words` and `tone.do` are examples of the VOICE written in Brazilian Portuguese. Match their register, their directness and their level of concreteness — never their actual words.\n\nMONEY: this store sells in USD. Every price you write uses that currency. Prices in Brazilian reais (R$) appear in the research only because the research was written in Brazil — never carry one into the copy.",
+            "pesquisa_diagnostico": "LANGUAGE — NOT NEGOTIABLE\nWrite every word of this email in English (en): the subject, the preheader and every field of every block. Not one sentence, not one word in another language.\n\nThe store research in this payload — brand, icp, tone, story, pesquisa_diagnostico, ads_review — is written in Brazilian Portuguese. It is internal material for the Convertfy team, never for this store's customers. It tells you HOW this brand sounds; it is reference about the voice, not text to copy, quote or translate.\nIn particular: `tone.use_words` and `tone.do` are examples of the VOICE written in Brazilian Portuguese. Match their register, their directness and their level of concreteness — never their actual words.\n\nMONEY: this store sells in USD. Every price you write uses that currency. Prices in Brazilian reais (R$) appear in the research only because the research was written in Brazil — never carry one into the copy.\n\n## 01 · Perfil da Marca\n\"Cuecas com modelagem pensada para o corpo real do homem 50+, vendidas com tom leve e sem constrangimento.\"\nHero Boxers é uma marca norte-americana de nicho que opera via Shopify e se dedica exclusivamente a cuecas masculinas. O posicionamento é cirúrgico: em vez de competir no mercado amplo de underwear, a marca aposta em modelos diferenciados com caimento projetado para homens com corpo real — incluindo quem tem barriga. O ticket médio entre R$ 250 e R$ 500 posiciona o produto acima do básico, sinalizando qualidade de material e construção.\n\nO público-alvo são homens acima de 50 anos que já passaram da fase de comprar qualquer cueca na prateleira e buscam conforto genuíno sem abrir mão de um visual que faça sentido. O principal motivador é encontrar um modelo diferente do convencional — algo que resolva dores reais como ajuste na cintura, tecido que não irrita e caimento que acompanha o corpo. A objeção central gira em torno de prova social e credibilidade do site, o que exige comunicação que construa confiança antes de empurrar conversão.\n\nA oportunidade está em transformar um produto considerado commodity em item de preferência pessoal. Com comunicação casual e direta em inglês, Hero Boxers pode criar um ciclo de recompra forte — cueca é consumível, e quem encontra o modelo certo não troca. O frete personalizado por região adiciona uma camada de complexidade operacional, mas também permite estratégias segmentadas de oferta.\nOperação 100% digital via Shopify, com sede nos Estados Unidos. A presença atual depende do site como principal canal de conversão, o que torna a estruturação de prova social e credibilidade on-page uma prioridade. O email marketing em inglês funciona como canal primário de retenção e relacionamento, com potencial para segmentação por região dado o modelo de frete personalizado.\nPilares:\n- 01 Modelagem para o corpo real: O diferencial central não é estampa ou marca bordada — é caimento. Hero Boxers existe para resolver o problema do homem que não se encaixa nos moldes genéricos de underwear. Cada modelo é pensado para corpos reais, com atenção especial a conforto na região abdominal e liberdade de movimento ao longo do dia.\n- 02 Confiança sem formalidade: O tom casual e amigável não é acidente — é estratégia. Falar sobre cuecas para um público 50+ exige leveza sem infantilizar. A comunicação precisa ser direta, bem-humorada quando cabe, e sempre respeitosa. Construir confiança com prova social, depoimentos e transparência é o caminho para derrubar a barreira de credibilidade do primeiro pedido.\n- 03 Recompra como motor de crescimento: Cueca é um produto de ciclo curto. Quem encontra o modelo certo compra de novo — e de novo. A estratégia de retenção deve explorar esse comportamento natural com lembretes inteligentes, bundles progressivos e comunicação que reforce a escolha já feita. O ticket médio elevado sustenta margens saudáveis mesmo com frequência moderada de compra.\n\n## 02 · Sobre a loja\nHero Boxers é uma loja de moda masculina - cuecas  sediada no Estados Unidos, operando na plataforma Shopify. Posiciona-se como nicho específico, com ticket médio R$ 250 - 500 e frete personalizado (varia por região/produto).\n\nO público principal é Masculino 50+ , com perfil de compra orientado a equilibrado — depende da categoria. A principal motivação identificada é modelo diferente de cueca e a principal objeção a ser superada é site / provs social bem estruturado . O tom de comunicação adotado é casual / amigável.\n\nHero Boxers atua no segmento de Moda masculina - Cuecas com posicionamento Nicho específico. Principais produtos: Cuecas. Operação rodando em shopify.\nMarcos da operação:\n- 09/26: Formulário de onboarding enviado pelo cliente\n- 09/26: Briefing inicial gerado pela IA\n- 09/26: Briefing aprovado e cliente onboarded na Convertfy\n\n## 03 · Cliente Ideal\nPersona: Robert Conforto — 57 · Estados Unidos, concentração em subúrbios e cidades médias, distribuição nacional\nFaixa etária: 52–62 anos\nRenda familiar: R$ 15.000 - R$ 30.000 mensais equivalentes (USD 60k-120k anuais)\nEducação: Ensino superior\nProfissão típica: Profissional assalariado(a)\nReligião: Não especificado\nUm dia na vida:\nAcorda cedo, toma café sem pressa. Trabalha sentado boa parte do dia, seja em escritório, home office ou já semi-aposentado com rotina própria. Quando se veste de manhã, a cueca é a primeira peça que coloca e a última em que pensa, mas é a que mais incomoda ao longo do dia quando o elástico aperta na barriga, o tecido sobe na coxa ou a costura irrita. Ele não vai ao shopping buscar underwear: compra online quando a situação já passou do ponto. Passa tempo no computador, lê emails, assiste esporte. A esposa às vezes sugere trocar as cuecas velhas. Ele concorda, mas não sabe por onde começar porque as marcas convencionais não falam com o corpo dele. Quando encontra algo que funciona, compra mais do mesmo e encerra o assunto.\nO que ela quer:\n- Encontrar uma cueca com caimento que acomode barriga, não suba na coxa, não aperte na cintura e aguente lavagens sem perder forma.\n- Sentir que existe um produto feito para o corpo dele como ele é agora, sem precisar se encaixar em padrões de modelo fitness nem aceitar desconforto como normal.\n- Não precisar falar sobre isso com ninguém. Resolver em silêncio, com dignidade, e talvez recomendar pra um amigo na mesma situação.\nO que a faz hesitar:\n- Cuecas convencionais não são modeladas para corpos com barriga e cintura mais larga. O elástico cava, o tecido enrola, o tamanho grande resolve a cintura mas sobra tecido nas pernas. Nenhuma marca de prateleira fala abertamente sobre isso.\n- Desconforto diário acumulado que vira irritação crônica. Gaveta cheia de cuecas ruins que ele continua usando por falta de alternativa. Sensação velada de que o mercado ignora o corpo dele.\n- Comprou tamanhos maiores em marcas genéricas e o caimento ficou pior, com excesso de tecido sobrando\n- Testou marcas premium de departamento que prometiam conforto mas usavam o mesmo molde genérico em tamanho ampliado\n- Tentou modelos trunk ou brief que pareciam bons na foto mas subiam na coxa ou marcavam a barriga\n- Pesquisou online mas encontrou sites sem avaliações reais, sem fotos de uso e sem informação clara de modelagem\n\n## 04 · Tom de Comunicação\nA voz entra como conversa de balcão bem feita: segura, curta, sem pressa de parecer esperta. As frases alternam uma linha mais seca com outra levemente calorosa, o bastante para tirar o peso do assunto sem fazer piada de tio. Fala com homem adulto, não com garoto nem com paciente. Quando menciona barriga, ajuste ou conforto, faz isso com naturalidade prática. O efeito é simples: alivia o constrangimento, passa domínio do produto e deixa espaço para a confiança crescer.\n\nO léxico gira em torno de construção e uso real: “caimento”, “cintura”, “segura no lugar”, “sem apertar”, “feito para corpo real”. Prefere verbos concretos, como “veste”, “ajusta”, “acompanha”, “trocar”. Pode usar humor curto em email ou anúncio, mas sem emoji em excesso; no máximo um, e só em canais leves. Em PT-BR, pede segunda pessoa implícita e contrações naturais. Corta gerúndio, slogans grandiosos e fórmulas como “não é apenas X, é Y”. Também evita euforia de liquidação e intimidade fabricada.\nComo falamos:\n- Bem-vindo. Aqui, cueca boa tem que vestir corpo real.\n- A cueca que não briga com a cintura.\n- Ver tamanhos e escolher o caimento certo.\n- Seu pedido atrasou. Já fomos atrás da rota e te atualizamos aqui.\nComo nunca falamos:\n- Seja parte da família Hero e descubra uma nova experiência de conforto.\n- Eleve seu dia a dia com a boxer definitiva para máximo conforto.\n- Compre agora e garanta já a sua antes que acabe.\n- Pedimos sinceras desculpas pelo inconveniente e agradecemos sua compreensão.\nVocabulário · Usar: corpo real, caimento certo, sem apertar, fica no lugar, cintura que acomoda, feito para barriga, conforto que dura, trocou, sentiu a diferença, caimento, cintura, ajuste, tecido, modelagem, tamanho, vestir, ajustar, acompanhar, segurar, trocar, aqui,, se a sua cueca, no fim,\nVocabulário · Evitar: jornada, imersão, ecossistema, sinergia, DNA, patamar, desbloqueie, potencialize, elevar, alavancar, viabilizar, em última análise, vale ressaltar, no mundo atual, mais do que nunca, diante desse contexto, não é apenas X, é Y, mais do que X, é Y, em um mundo onde, revolucionário, máximo conforto, experiência premium, seja parte da família, nós nos importamos profundamente, sinceras desculpas pelo inconveniente, agradecemos sua compreensão, garanta já, últimas unidades, correndo, cuequinha, barriguinha, estaremos enviando, encomenda\n\n## 05 · Review dos Anúncios\nScore geral: 10.0/10\nHero Boxers' Meta campaign is completely inactive (0 ads, 0 reach 30d, 399 total historical reach) despite 2462 monthly shop visits. Last 5 ads ran Sept 2025, all now inactive. Historical data reveals critical failures: product-market mismatch (ads promoted non-existent hoodie to Ireland), null audience targeting, missing conversion tracking, and micro social presence (4 FB likes, 13 IG followers). Strengths: testimonial copy and format diversity. Immediate action required: consolidate to bamboo boxers category, implement Conversions API, rebuild audience targeting to US 25-55, test creative library, and restart with 50-100 USD daily budget to validate demand before scaling.\nSub-notas:\nEstratégia: 10.0/10\nCriativos: 10.0/10\nSegmentação: 10.0/10\nDiversificação: 10.0/10\nTracking & dados: 10.0/10\nPontos fortes:\n- Consistent brand-product alignment: All inactive ads point to bamboo boxer shorts or related merchandise, matching top products ranked 1-4 at 59.9 USD. Despite 0 live ads, the advertiser maintained thematic consistency across 5 historical creatives.\n- Testimonial-driven copy structure: 3 of 5 ads use customer testimonials (Jeff C., James W.) with specific benefits (83% more resistant, no chafing). This PAS-style hook shows some creative sophistication, though execution lacks reach.\n- Multi-format experimentation: Ad set includes 1 video and 4 images. Format diversity indicates willingness to test, even if total reach was minimal (399 total reach across all ads).\n- Urgency and guarantee messaging: CTAs include scarcity triggers (Buy 5 & Get 5 FREE, Offer Ends Soon) and 45-Day Money Back Guarantee, applying classic conversion copywriting tactics.\nOportunidades:\n- Restart campaign with traffic baseline: Shop receives 2462 monthly visits with volatile history (peaked at 6354 in May 2026, then -61% to 2890 in June). 0 active ads means 0 reach contribution. Relaunch targeting US market (99.99% of traffic) with budget sufficient to test product-market fit before scaling.\n- Eliminate product-market mismatch: First 2 historical ads promoted hoodie/backpack (Travel Smarter copy) to Ireland audience, completely misaligned with shop catalog (bamboo boxers + socks). Last 3 ads corrected to boxers. Consolidate to bamboo intimates category only; remove unrelated products.\n- Build segmented retargeting funnel: Currently 0 active ads means no retargeting. Implement pixel-based audiences: cart abandoners (60% of visits likely exit without purchase), product page visitors, and past customers for repeat upsell on premium socks (31.98 USD).\n- Expand creative library systematically: All video/image assets are static or low-production. Test UGC (user-generated content) testimonials, lifestyle shots, or product-in-context reels to diversify hooks beyond text-heavy testimonials. Current 399 total reach suggests creative fatigue despite low spend.\n- Geo-targeting precision correction: Last 3 historical ads had null audience targeting; first 2 targeted IE (Ireland) despite 99.99% shop traffic from US. Relaunch with US age 25-55, household income 50k+, interest in mens health/wellness or premium apparel. Test lookalike audiences from existing customers.\n- Landing page consolidation: All 5 ads point to 2 LPs: hoodie (misaligned) and bamboo boxers product page. Create dedicated hero page with bundle offer (boxers + socks), social proof carousel, and money-back guarantee messaging to improve conversion clarity.\n- Establish baseline conversion tracking: No mention of Facebook Pixel, Conversions API, or Shopify integration data. Implement Conversions API before relaunch to measure purchase events, add-to-cart, and AOV. Essential for campaign optimization.\n- Leverage high-engagement offer: Buy 5 & Get 5 FREE offer (100% incentive) generated attention despite low spend. A/B test against lesser discounts (20-30% off) to identify true demand elasticity while protecting margin.\nRiscos a monitorar:\n- Complete campaign shutdown with no backup: 0 active ads, 0 reach 30d, 0 live ads. All 5 historical creatives marked inactive. No active prospecting or retargeting means 100% traffic dependency on organic search or direct. Risk of traffic cliff if SEO drops or brand awareness erodes.\n- Severe product-market confusion: First 2 ads promoted backpack hoodie (non-existent in catalog) to Ireland. This indicates either account mismanagement, failed product pivot, or creative reuse from different brand. Wastes spend on conversion-hostile messaging.\n- Volatile traffic with no paid cushion: Shop traffic spiked to 6354 (May), then crashed -61% to 2890 (June), stabilized at 2462 (July). With 0 active ads, cannot re-stimulate demand if organic traffic drops further. No paid media buffer creates revenue vulnerability.\n- Micro-audience social media presence: Hero Boxers Facebook page has 4 likes, Instagram 13 followers, total reach 399. No Meta Pages linked. Severe brand credibility gap. Organic social amplification impossible; retargeting pools will be extremely shallow.\n- Undifferentiated value proposition in copy: Testimonials emphasize fit, softness, durability. No competitive differentiation vs. Calvin Klein or other premium boxer brands. Risk of high CAC due to generic benefits without unique selling angle (USP).\n- Audience targeting defaults to broad demographic: Last 3 ads have null country/age targeting. If relaunched with platform defaults (18-65, no geo refinement), will hit massive irrelevant audience, burning budget on low-intent users far outside target demographic.\nÚltima análise: 01/09/2026"
+          }
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "BRIEFING",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "BRIEFING": {
+      "main": [
+        [
+          {
+            "node": "EMAILS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "EMAILS": {
+      "main": [
+        [
+          {
+            "node": "SEPARADOR DE FLOWS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SEPARADOR DE FLOWS": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [],
+        [
+          {
+            "node": "CONTEXTO DA COPY",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CONTEXTO DA COPY": {
+      "main": [
+        [
+          {
+            "node": "FAZEDOR DE COPY",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FAZEDOR DE COPY": {
+      "main": [
+        [
+          {
+            "node": "GERADOR DE ASSUNTO",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter · Copy": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "FAZEDOR DE COPY",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parser · Copy": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "FAZEDOR DE COPY",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GERADOR DE ASSUNTO": {
+      "main": [
+        [
+          {
+            "node": "MONTADOR",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter · Assunto": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "GERADOR DE ASSUNTO",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parser · Assunto": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "GERADOR DE ASSUNTO",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MONTADOR": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "1db6610f-9ca4-492b-a18d-e02722b74f36",
+  "meta": {
+    "instanceId": "1b6369260993c27de5898866c8d444282d7c071a4d0226c51a5887b581419c30"
+  },
+  "id": "LXBmbxZkW5zwf7h7",
+  "tags": []
+}

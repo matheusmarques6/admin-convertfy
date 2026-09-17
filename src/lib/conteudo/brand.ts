@@ -54,6 +54,9 @@ export const CT_MOLDE_COR: Record<MoldeKey, string> = {
   Benchmark: "#0E7490",
   Lista: "#B45309",
   Bastidor: "#374151",
+  Post: "#0D0D0D",
+  Manchete: "#3355FF",
+  Thread: "#111111",
 }
 
 export const CT_PILAR_COR: Record<Pilar, string> = {
