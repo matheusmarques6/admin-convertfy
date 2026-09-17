@@ -23,9 +23,10 @@
  * daqui.
  */
 
-import { aceitaCampoOpcional, preservarCamposOpcionais } from "./campos"
+import { CAMPOS_OPCIONAIS, aceitaCampoOpcional, desenhaOpcionais, preservarCamposOpcionais, type DesenhoDosOpcionais } from "./campos"
 import { camposPost } from "./formato-post"
 import { camposThread } from "./formato-thread"
+import { camposTweet } from "./formato-tweet"
 import { camposDoTipo } from "./templates"
 import type { Campo, DocFrame, FrameTipo } from "./types"
 
@@ -42,9 +43,11 @@ const TEXTO_LONGO: Campo[] = ["corpo", "subtitulo"]
 export interface DesenhoDeCampos {
   cartaoPerfil: boolean
   cartaoThread: boolean
+  cartaoTweet: boolean
 }
 
 export function camposDaIdentidade(desenho: DesenhoDeCampos, tipo: FrameTipo): Campo[] {
+  if (desenho.cartaoTweet) return camposTweet(tipo)
   if (desenho.cartaoThread) return camposThread(tipo)
   return desenho.cartaoPerfil ? camposPost(tipo) : camposDoTipo(tipo)
 }
@@ -63,8 +66,23 @@ export interface CamposReconciliados {
  * o desenha — o campo fantasma que `camposOpcionaisDaPeca` fecha no painel,
  * entrando pela outra porta. Chamada nova é obrigada a decidir.
  */
-export interface DesenhoDaIdentidade {
-  caixaDeDestaque: boolean
+export type DesenhoDaIdentidade = DesenhoDosOpcionais
+
+/**
+ * O recorte de opcionais da identidade, tirado do traço dela.
+ *
+ * Existe para os três call sites não montarem o objeto à mão: eram
+ * `{ caixaDeDestaque: tr.caixaDeDestaque }` escritos em três arquivos, e um
+ * campo novo no recorte ficava de fora de algum deles — o modo de falha que
+ * `FAMILIA_OPCOES` e `ehFamilia` já pagaram, com a lista escrita à mão.
+ */
+export function desenhoDaIdentidade(traco: DesenhoDosOpcionais): DesenhoDaIdentidade {
+  return {
+    caixaDeDestaque: traco.caixaDeDestaque,
+    cartaoPerfil: traco.cartaoPerfil,
+    cartaoThread: traco.cartaoThread,
+    cartaoTweet: traco.cartaoTweet,
+  }
 }
 
 /**
@@ -95,7 +113,21 @@ export function reconciliarCampos(
   }
 
   const r = preservarCamposOpcionais(frame, frame.tipo, campos, textos)
+  // A identidade que simula uma rede não desenha opcional NENHUM: guardar o
+  // texto e tirar os três da lista é o mesmo gesto da caixa de destaque,
+  // aplicado ao conjunto inteiro.
+  if (!desenhaOpcionais(desenho)) return semOpcionais(frame, r)
   return desenho.caixaDeDestaque ? reporCaixaDeDestaque(frame, r) : semCaixaDeDestaque(frame, r)
+}
+
+/** Tira todos os opcionais da lista, preservando o que estiver escrito. */
+function semOpcionais(frame: Pick<DocFrame, "textos">, r: CamposReconciliados): CamposReconciliados {
+  const textos = { ...r.textos }
+  for (const c of CAMPOS_OPCIONAIS) {
+    const guardado = r.textos[c] ?? frame.textos[c]
+    if (guardado !== undefined) textos[c] = guardado
+  }
+  return { campos: r.campos.filter((c) => c !== "gancho" && c !== "anotacao" && c !== "destaque"), textos }
 }
 
 /** Guarda o texto e tira o campo da lista. */

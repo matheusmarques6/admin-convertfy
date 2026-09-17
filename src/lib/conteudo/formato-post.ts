@@ -231,6 +231,12 @@ export interface CoresDoPost {
   link: string
   /** Fundo do círculo do avatar quando não há foto. */
   avatarVazio: string
+  /**
+   * Moldura do cartão e filete da barra de contadores (`--tweet-border`).
+   * Só o cartão COMPLETO (identidade `tweet`) a desenha: nas famílias de
+   * print a peça é um recorte e não tem moldura.
+   */
+  borda: string
 }
 
 export const TEMAS_DO_X: Record<TemaDoPost, CoresDoPost> = {
@@ -242,6 +248,7 @@ export const TEMAS_DO_X: Record<TemaDoPost, CoresDoPost> = {
     selo: "#1D9BF0",
     link: "#6BC9FB",
     avatarVazio: "#2A2A2A",
+    borda: "#2F3336",
   },
   claro: {
     fundo: "#FFFFFF",
@@ -250,6 +257,7 @@ export const TEMAS_DO_X: Record<TemaDoPost, CoresDoPost> = {
     selo: "#1D9BF0",
     link: "#006FD6",
     avatarVazio: "#CFD9DE",
+    borda: "#CFD9DE",
   },
   // "Dim": o escuro azulado do X.
   dim: {
@@ -259,6 +267,7 @@ export const TEMAS_DO_X: Record<TemaDoPost, CoresDoPost> = {
     selo: "#1D9BF0",
     link: "#6BC9FB",
     avatarVazio: "#38444D",
+    borda: "#425364",
   },
   // "Lights out": o preto puro do X.
   escuro: {
@@ -268,6 +277,7 @@ export const TEMAS_DO_X: Record<TemaDoPost, CoresDoPost> = {
     selo: "#1D9BF0",
     link: "#6BC9FB",
     avatarVazio: "#2F3336",
+    borda: "#2F3336",
   },
 }
 

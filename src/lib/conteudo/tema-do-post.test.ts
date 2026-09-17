@@ -73,9 +73,9 @@ describe("tema do print de tweet", () => {
     expect(custom.cta.fundo).toBe("#00FF00")
   })
 
-  it("todo tema declara as seis cores", () => {
+  it("todo tema declara as sete cores", () => {
     for (const [nome, t] of Object.entries(TEMAS_DO_X)) {
-      for (const chave of ["fundo", "texto", "handle", "selo", "link", "avatarVazio"] as const) {
+      for (const chave of ["fundo", "texto", "handle", "selo", "link", "avatarVazio", "borda"] as const) {
         expect(t[chave], `${nome}.${chave}`).toMatch(/^#[0-9A-F]{6}$/i)
       }
     }

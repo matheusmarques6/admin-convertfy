@@ -62,6 +62,26 @@ export function camposOpcionaisDoTipo(tipo: FrameTipo): CampoOpcional[] {
 }
 
 /**
+ * O que a identidade desenha entre os opcionais.
+ *
+ * `opcionais: false` é o caso das identidades que simulam uma REDE (os dois
+ * prints, o cartão de thread e o cartão completo do X): o renderer delas tem
+ * UM desenho — cabeçalho, texto, foto — e não desenha gancho, anotação nem
+ * caixa em lugar nenhum. Oferecê-los ali era o campo fantasma deste módulo,
+ * pela outra porta e desde antes da caixa existir.
+ */
+export interface DesenhoDosOpcionais {
+  caixaDeDestaque: boolean
+  cartaoPerfil: boolean
+  cartaoThread: boolean
+  cartaoTweet: boolean
+}
+
+export function desenhaOpcionais(traco: DesenhoDosOpcionais): boolean {
+  return !traco.cartaoPerfil && !traco.cartaoThread && !traco.cartaoTweet
+}
+
+/**
  * Os opcionais que ESTE slide, NESTA identidade, sabe desenhar.
  *
  * O recorte por tipo não basta desde que a caixa de destaque entrou: ela é
@@ -69,7 +89,8 @@ export function camposOpcionaisDoTipo(tipo: FrameTipo): CampoOpcional[] {
  * campo fantasma que este módulo existe para impedir — o operador escreve,
  * o texto é gravado e nunca aparece na tela.
  */
-export function camposOpcionaisDaPeca(tipo: FrameTipo, traco: { caixaDeDestaque: boolean }): CampoOpcional[] {
+export function camposOpcionaisDaPeca(tipo: FrameTipo, traco: DesenhoDosOpcionais): CampoOpcional[] {
+  if (!desenhaOpcionais(traco)) return []
   return camposOpcionaisDoTipo(tipo).filter((c) => c !== "destaque" || traco.caixaDeDestaque)
 }
 

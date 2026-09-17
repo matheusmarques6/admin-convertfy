@@ -21,7 +21,7 @@ import { THREAD_CORES } from "./formato-thread"
 import { MANCHETE_CORES } from "./formato-manchete"
 import { paletaDeUmaCor, tintaSobre, type Paleta } from "./paleta"
 import type { Documento, FamiliaVisual, FrameTipo, Gradiente } from "./types"
-import { camposDaIdentidade, reconciliarCampos } from "./campos-da-identidade"
+import { camposDaIdentidade, desenhoDaIdentidade, reconciliarCampos } from "./campos-da-identidade"
 
 export type { FamiliaVisual }
 
@@ -141,6 +141,13 @@ export interface TracoFamilia {
    * mesmo tempo. Medidas em `formato-thread.ts`.
    */
   cartaoThread: boolean
+  /**
+   * O slide é o CARTÃO COMPLETO do X: moldura, logo no canto, linha de
+   * `hora · data · visualizações` e barra de contadores. O `cartaoPerfil` é
+   * o RECORTE do mesmo cartão — os dois simulam a mesma rede e são
+   * exclusivos entre si. Medidas em `formato-tweet.ts`.
+   */
+  cartaoTweet: boolean
 }
 
 export interface Familia {
@@ -236,6 +243,7 @@ export function alternadoDaPaleta(p: Paleta): Omit<Familia, "key" | "nome" | "de
       alternaFundo: true,
       cartaoPerfil: false,
       cartaoThread: false,
+      cartaoTweet: false,
       assinaturaNoSlide: true,
       reguaSobCorpo: false,
       respiroEscuro: false,
@@ -278,6 +286,7 @@ export const FAMILIAS: Record<FamiliaVisual, Familia> = {
       alternaFundo: false,
       cartaoPerfil: false,
       cartaoThread: false,
+      cartaoTweet: false,
       assinaturaNoSlide: true,
       reguaSobCorpo: false,
       respiroEscuro: false,
@@ -326,6 +335,7 @@ export const FAMILIAS: Record<FamiliaVisual, Familia> = {
       alternaFundo: false,
       cartaoPerfil: false,
       cartaoThread: false,
+      cartaoTweet: false,
       assinaturaNoSlide: true,
       reguaSobCorpo: false,
       respiroEscuro: false,
@@ -378,6 +388,7 @@ export const FAMILIAS: Record<FamiliaVisual, Familia> = {
       alternaFundo: false,
       cartaoPerfil: false,
       cartaoThread: true,
+      cartaoTweet: false,
       assinaturaNoSlide: false,
       reguaSobCorpo: false,
       respiroEscuro: false,
@@ -425,6 +436,7 @@ export const FAMILIAS: Record<FamiliaVisual, Familia> = {
       alternaFundo: false,
       cartaoPerfil: true,
       cartaoThread: false,
+      cartaoTweet: false,
       assinaturaNoSlide: true,
       reguaSobCorpo: false,
       respiroEscuro: false,
@@ -470,6 +482,7 @@ export const FAMILIAS: Record<FamiliaVisual, Familia> = {
       alternaFundo: false,
       cartaoPerfil: true,
       cartaoThread: false,
+      cartaoTweet: false,
       assinaturaNoSlide: true,
       reguaSobCorpo: false,
       respiroEscuro: false,
@@ -478,6 +491,57 @@ export const FAMILIAS: Record<FamiliaVisual, Familia> = {
       tituloDestacado: false,
       logoNoTopo: false,
       estiloPost: "post-largo",
+    },
+  },
+  tweet: {
+    key: "tweet",
+    nome: "Card do X",
+    descricao: "O cartão completo do X: moldura, logo no canto, hora, data e a barra de contadores — tudo editável. Use com o molde Card do X.",
+    cores: {
+      hook: POST_CORES.texto,
+      destaque: POST_CORES.selo,
+      metadado: POST_CORES.handle,
+      "fundo-bloco": POST_CORES.fundo,
+    },
+    // Como na `post`, o gradiente existe porque o tipo pede e o formato não
+    // o usa: o fundo é o mesmo em todo slide, e o que separa o cartão dele
+    // é a MOLDURA — que é como o X faz, e é o que permite tema claro sem o
+    // cartão sumir na página.
+    gradiente: { de: POST_CORES.fundo, meio: POST_CORES.fundo, ate: POST_CORES.fundo, angulo: 160 },
+    fundoClaro: POST_CORES.fundo,
+    fundoEscuro: POST_CORES.fundo,
+    cta: { fundo: "#FFFFFF", cor: POST_CORES.fundo },
+    traco: {
+      fonteTitulo: FONTE_POST,
+      fonteGancho: FONTE_POST,
+      fonteCorpo: FONTE_POST,
+      fonteMeta: FONTE_POST,
+      fonteAnotacao: FONTE_MANUSCRITA,
+      tituloCaixaAlta: false,
+      // O X não tem negrito no texto do post: os dois parágrafos saem no
+      // mesmo peso, e é o peso do embed (`--tweet-body-font-weight: 400`).
+      tituloPeso: 400,
+      tituloTracking: "0",
+      tituloEntrelinha: 24 / 20,
+      corpoItalico: false,
+      cta: "pilula",
+      raio: 22,
+      anotacaoRotacao: -3,
+      ganchoFator: 1,
+      ganchoCor: "tinta",
+      barraTopo: false,
+      barraProgresso: false,
+      alternaFundo: false,
+      cartaoPerfil: false,
+      cartaoThread: false,
+      cartaoTweet: true,
+      assinaturaNoSlide: false,
+      reguaSobCorpo: false,
+      respiroEscuro: false,
+      escadaNoTitulo: false,
+      caixaDeDestaque: false,
+      tituloDestacado: false,
+      logoNoTopo: false,
     },
   },
   manchete: {
@@ -525,6 +589,7 @@ export const FAMILIAS: Record<FamiliaVisual, Familia> = {
       alternaFundo: false,
       cartaoPerfil: false,
       cartaoThread: false,
+      cartaoTweet: false,
       // O ícone pequeno no topo substitui a assinatura completa: a peça
       // parece um editorial, e avatar com nome e handle a devolveria para
       // a cara de post de rede social.
@@ -597,6 +662,10 @@ export function fundoPadraoDaFamilia(
   // quatro parecerem capturas da mesma tela. Gradiente na capa quebraria a
   // ilusão no primeiro slide.
   if (f.traco.cartaoPerfil) return f.fundoClaro
+  // Cartão COMPLETO do X: o fundo é a "página" atrás do cartão e é o mesmo
+  // em todo slide — quem separa os dois é a moldura. Gradiente aqui poria
+  // um degradê onde o X tem cor chapada.
+  if (f.traco.cartaoTweet) return f.fundoClaro
   // Cartão de thread: todo slide é o MESMO branco — é o que faz os oito
   // parecerem a mesma peça — e o FECHO é preto. Na referência ele é o
   // único slide escuro, e é o contraste que o marca como fim do fio.
@@ -771,9 +840,12 @@ export function aplicarFamilia(doc: Documento, nova: FamiliaVisual): Documento {
   // A caixa de destaque entra na mesma conta: ela é opcional e só UMA
   // família a desenha, então trocar de identidade pode ter de tirá-la (ou
   // devolvê-la) mesmo quando o cartão de perfil não muda.
-  const desenho = { caixaDeDestaque: para.traco.caixaDeDestaque }
+  const desenho = desenhoDaIdentidade(para.traco)
   const mesmoConjunto =
-    de.traco.cartaoPerfil === para.traco.cartaoPerfil && de.traco.cartaoThread === para.traco.cartaoThread && de.traco.caixaDeDestaque === para.traco.caixaDeDestaque
+    de.traco.cartaoPerfil === para.traco.cartaoPerfil &&
+    de.traco.cartaoThread === para.traco.cartaoThread &&
+    de.traco.cartaoTweet === para.traco.cartaoTweet &&
+    de.traco.caixaDeDestaque === para.traco.caixaDeDestaque
   const frames = mesmoConjunto
     ? doc.frames
     : doc.frames.map((f) => ({ ...f, ...reconciliarCampos(f, camposDaIdentidade(para.traco, f.tipo), desenho) }))

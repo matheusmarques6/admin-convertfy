@@ -7,6 +7,7 @@
 import { limitePost } from "./formato-post"
 import { LIMITES_THREAD } from "./formato-thread"
 import { LIMITES_MANCHETE } from "./formato-manchete"
+import { LIMITES_TWEET } from "./formato-tweet"
 import { textoLimpo } from "./rich"
 import type { Campo, DocFrame, FamiliaVisual, FrameTipo, Limites } from "./types"
 
@@ -44,6 +45,13 @@ export function limiteDe(tipo: FrameTipo, campo: Campo, familia?: FamiliaVisual 
   if (f === "thread") {
     const lt = LIMITES_THREAD[campo]
     if (typeof lt === "number") return lt
+  }
+  // O cartão do X carrega o limite da PLATAFORMA (280 caracteres por post,
+  // aqui divididos entre os dois parágrafos): texto maior que o que o X
+  // aceita é a primeira coisa que denuncia a peça como montada.
+  if (f === "tweet") {
+    const lw = LIMITES_TWEET[campo]
+    if (typeof lw === "number") return lw
   }
   if (f === "manchete") {
     const lim = LIMITES_MANCHETE[campo]

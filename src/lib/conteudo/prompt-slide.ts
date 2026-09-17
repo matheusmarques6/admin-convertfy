@@ -23,6 +23,7 @@
 
 import { SLIDE, fundoEscuro } from "./brand"
 import { coresDoPost, medidasPost, posePost } from "./formato-post"
+import { CONTADOR_LABEL, TWEET, contadoresDoTweet, infoDoTweet, mostrarInfo, mostrarMetricas } from "./formato-tweet"
 import { MANCHETE } from "./formato-manchete"
 import { FAMILIAS, familiaDe, tracoDe, type TracoFamilia } from "./familias"
 import type { PapelFrame } from "./editorial/papeis"
@@ -199,7 +200,7 @@ const ESTILO_BASE = "Estética editorial premium, fotografia real ou 3D fotorrea
  * fotografia, é uma captura de tela". As duas no mesmo prompt são uma
  * contradição direta, e o modelo obedece a uma das duas ao acaso.
  */
-const ESTILO_SUBSTITUI: Partial<Record<FamiliaVisual, true>> = { post: true }
+const ESTILO_SUBSTITUI: Partial<Record<FamiliaVisual, true>> = { post: true, tweet: true }
 
 /**
  * Cena PRÓPRIA da família, quando o meio dela não é fotografia.
@@ -212,6 +213,9 @@ const ESTILO_SUBSTITUI: Partial<Record<FamiliaVisual, true>> = { post: true }
  */
 const CENA_DA_FAMILIA: Partial<Record<FamiliaVisual, string>> = {
   post: "a tela que o post comenta — uma página, um painel ou um app, enquadrado de frente, nítido e com o conteúdo plausível",
+  // O cartão completo do X é o MESMO meio da `post`: o anexo de um post é
+  // uma captura, não uma cena fotografada.
+  tweet: "a tela que o post comenta — uma página, um painel ou um app, enquadrado de frente, nítido e com o conteúdo plausível",
 }
 
 export function cenaDoSlide(familia: FamiliaVisual, papel: PapelFrame | null, tipo: FrameTipo): string {
@@ -250,6 +254,9 @@ const ESTILO_POR_FAMILIA: Record<FamiliaVisual, string> = {
   // A peça alterna preto e branco e a foto é um CARD entre margens largas,
   // nunca o fundo do slide. Na referência ela é editorial: uma pessoa real
   // em cena, alto contraste, sem cara de banco de imagens.
+  // O cartão completo do X tem o mesmo meio da `post` — o que entra no
+  // cartão é o ANEXO do post, e anexo de post é captura de tela.
+  tweet: "A imagem é uma CAPTURA DE TELA nítida (página, painel ou app) sobre fundo claro, com as bordas retas e o conteúdo legível — não é fotografia. Sem cena, sem pessoas, sem objeto físico.",
   manchete:
     "Foto editorial de alto contraste, pessoa ou objeto real em cena, luz dura e recorte limpo — ela entra como um card entre margens largas, não como fundo do slide. Nada de moldura desenhada, nada de texto na imagem, nada de colagem de banco de imagens.",
 }
@@ -338,10 +345,50 @@ function anatomiaCartaoPerfil(ctx: ContextoPrompt, tr: TracoFamilia): string[] {
   return linhas
 }
 
+/**
+ * Anatomia do cartão COMPLETO do X: moldura, logo no canto, hora e a barra
+ * de contadores.
+ *
+ * Ela é diferente da do `cartaoPerfil` porque a peça é diferente: lá a
+ * captura é RECORTADA (sem moldura, sem hora, sem número) e aqui o cartão
+ * é inteiro. Usar a mesma faria o modelo desenhar meia peça.
+ */
+function anatomiaCartaoTweet(ctx: ContextoPrompt, tr: TracoFamilia): string[] {
+  const { frame, doc } = ctx
+  const bk = doc.brandKit
+  const fonte = nomeDaFonte(tr.fonteCorpo)
+  const cx = coresDoPost(doc.temaPost)
+  const claro = cx.fundo === "#FFFFFF"
+  const tinta = claro ? "quase preto" : "branco"
+  const t = texto(frame, "titulo")
+  const c = texto(frame, "corpo")
+  const comImagem = Boolean(frame.imagens.slot1) || frame.slotsImagem > 0
+  const info = infoDoTweet(frame.tweet)
+  const linhas: string[] = [
+    `Captura de um post do X: fundo ${cx.fundo} do topo ao rodapé e, centralizado, UM cartão de ${TWEET.larguraDoCartao} px de largura, cantos de ${TWEET.raioCartao} px, moldura de ${TWEET.borda} px na cor ${cx.borda} e recuo interno de ${TWEET.recuoLateral} px.`,
+    `- Cabeçalho do cartão: foto de perfil redonda de ${TWEET.avatar} px${bk.brandName2 ? `, ao lado "${bk.brandName2}"` : ""} em ${fonte} peso 700, ${TWEET.cabecalho} px, ${tinta}${bk.verificado ? `, com selo verificado azul (${cx.selo}) ao lado` : ""}${bk.brandName ? `, e logo abaixo "${bk.brandName}" no mesmo corpo, peso normal, cinza ${cx.handle}` : ""}. No canto SUPERIOR DIREITO, o logotipo do X (o "𝕏") de ${TWEET.logo} px na cor do texto.`,
+  ]
+  const corpo = [t, c].filter(Boolean).join("\n\n")
+  if (corpo) linhas.push(`- ${TWEET.gapCabecalho} px abaixo, o texto do post em ${fonte} peso normal, ${TWEET.texto} px, entrelinha ${TWEET.textoEntrelinha.toFixed(2).replace(".", ",")}, ${tinta}, alinhado à esquerda, SEM negrito: "${corpo}"`)
+  if (comImagem) linhas.push(`- ${TWEET.gapImagem} px abaixo do texto, a captura anexada ao post: ocupa a largura interna do cartão, cantos de ${TWEET.raioImagem} px e moldura fina ${cx.borda}.`)
+  if (!info.vazia && mostrarInfo(frame.tweet)) {
+    linhas.push(`- Abaixo, em cinza ${cx.handle}, ${TWEET.info} px: ${[info.hora, info.data, info.visualizacoes && `${info.visualizacoes} Visualizações`].filter(Boolean).join(" · ")}.`)
+  }
+  if (mostrarMetricas(frame.tweet)) {
+    const linha = contadoresDoTweet(frame.tweet)
+      .map((x) => `${CONTADOR_LABEL[x.chave].toLowerCase()}${x.valor ? ` ${x.valor}` : ""}`)
+      .join(", ")
+    linhas.push(`- Um filete ${cx.borda} de ponta a ponta e, embaixo dele, a fileira de ícones do X distribuída na largura (${linha}), em cinza ${cx.handle} a ${TWEET.contador} px, TODOS em contorno (ícone preenchido no X significa "eu interagi", não "o post tem muito").`)
+  }
+  linhas.push(`- SEM rodapé de marca, SEM contador de slides, SEM filete da casa: a peça imita uma captura de tela.`)
+  return linhas
+}
+
 /** Anatomia do tipo de frame, para o modelo desenhar o slide como o renderer desenharia. */
 function anatomia(ctx: ContextoPrompt): string[] {
   const { frame, doc, indice, total } = ctx
   const tr = tracoDe(familiaDe(doc))
+  if (tr.cartaoTweet) return anatomiaCartaoTweet(ctx, tr)
   if (tr.cartaoPerfil) return anatomiaCartaoPerfil(ctx, tr)
   const titulo = `${nomeDaFonte(tr.fonteTitulo)}${tr.tituloCaixaAlta ? "" : " (caixa normal, não caixa alta)"}`
   const apoio = nomeDaFonte(tr.fonteGancho)

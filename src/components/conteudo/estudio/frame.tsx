@@ -20,6 +20,7 @@ import type { CSSProperties, MouseEvent as ReactMouseEvent, PointerEvent as Reac
 import { SLIDE, clarear, fundoEscuro, gradienteCss, hex6 } from "@/lib/conteudo/brand"
 import { familiaDe, tracoDe } from "@/lib/conteudo/familias"
 import { coresDoPost, medidasPost, posePost, subidaOptica } from "@/lib/conteudo/formato-post"
+import { TWEET, contadoresDoTweet, infoDoTweet, mostrarInfo, mostrarMetricas } from "@/lib/conteudo/formato-tweet"
 import { THREAD, THREAD_CORES, THREAD_PESO_CORPO, temBarraDeMetadados } from "@/lib/conteudo/formato-thread"
 import { MANCHETE, corDoTituloManchete, fatoresDaEscada, linhasDoTitulo } from "@/lib/conteudo/formato-manchete"
 import { fitFactor, limiteDe } from "@/lib/conteudo/limites"
@@ -142,6 +143,51 @@ const IconSelo = ({ s, cor }: { s: number; cor: string }) => (
     <path fill="#FFFFFF" d="M10.54 16.2 6.8 12.46l1.41-1.42 2.26 2.26 4.8-5.23 1.47 1.36-6.2 6.77z" />
   </svg>
 )
+/**
+ * Ícones do X, com os traçados da própria plataforma.
+ *
+ * O logotipo e os dois primeiros foram lidos do pacote `react-tweet`, que
+ * é o embed oficial; os três de baixo são os do aplicativo. Desenhá-los
+ * "parecidos" é o que faz um print falso ser reconhecido de longe.
+ */
+const IconX = ({ s }: { s: number }) => (
+  <svg width={s} height={s} viewBox="0 0 24 24" fill="currentColor" style={{ display: "block" }}>
+    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+  </svg>
+)
+
+/**
+ * Os cinco traçados são os do APLICATIVO, em contorno — não os do embed.
+ *
+ * O `react-tweet` desenha resposta e curtida PREENCHIDAS (no embed elas são
+ * botões), e no print elas saíam como manchas sólidas ao lado de três
+ * ícones em contorno. Foi o render que mostrou: nenhum teste pega peso de
+ * ícone. No X, preenchido é o estado "eu interagi"; o print de um post de
+ * terceiro — que é o que a peça imita — tem os cinco em cinza e contorno.
+ */
+const TRACADOS_DA_BARRA = {
+  respostas:
+    "M1.751 10c0-4.42 3.584-8 8.005-8h4.366c4.49 0 8.129 3.64 8.129 8.13 0 2.96-1.607 5.68-4.196 7.11l-8.054 4.46v-3.69h-.067c-4.49.1-8.183-3.51-8.183-8.01zm8.005-6c-3.317 0-6.005 2.69-6.005 6 0 3.37 2.77 6.08 6.138 6.01l.351-.01h1.761v2.3l5.087-2.81c1.951-1.08 3.163-3.13 3.163-5.36 0-3.39-2.744-6.13-6.129-6.13H9.756z",
+  reposts:
+    "M4.5 3.88l4.432 4.14-1.364 1.46L5.5 7.55V16c0 1.1.896 2 2 2H13v2H7.5c-2.209 0-4-1.79-4-4V7.55L1.432 9.48.068 8.02 4.5 3.88zM16.5 6H11V4h5.5c2.209 0 4 1.79 4 4v8.45l2.068-1.93 1.364 1.46-4.432 4.14-4.432-4.14 1.364-1.46 2.068 1.93V8c0-1.1-.896-2-2-2z",
+  curtidas:
+    "M16.697 5.5c-1.222-.06-2.679.51-3.89 2.16l-.805 1.09-.806-1.09C9.984 6.01 8.526 5.44 7.304 5.5c-1.243.07-2.349.78-2.91 1.91-.552 1.12-.633 2.78.479 4.82 1.074 1.97 3.257 4.27 7.129 6.61 3.87-2.34 6.052-4.64 7.126-6.61 1.111-2.04 1.03-3.7.477-4.82-.561-1.13-1.666-1.84-2.908-1.91zm4.187 7.69c-1.351 2.48-4.001 5.12-8.379 7.67l-.503.3-.504-.3c-4.379-2.55-7.029-5.19-8.382-7.67-1.36-2.5-1.41-4.86-.514-6.67.887-1.79 2.647-2.91 4.601-3.01 1.651-.09 3.368.56 4.798 2.01 1.429-1.45 3.146-2.1 4.796-2.01 1.954.1 3.714 1.22 4.601 3.01.896 1.81.846 4.17-.514 6.67z",
+  visualizacoes: "M8.75 21V3h2v18h-2zM18 21V8.5h2V21h-2zM4 21l.004-10h2L6 21H4zm9.248 0v-7h2v7h-2z",
+  salvos: "M4 4.5C4 3.12 5.119 2 6.5 2h11C18.881 2 20 3.12 20 4.5v18.44l-8-5.71-8 5.71V4.5zM6.5 4c-.276 0-.5.22-.5.5v14.56l6-4.29 6 4.29V4.5c0-.28-.224-.5-.5-.5h-11z",
+} as const
+
+const IconBarra = ({ s, d }: { s: number; d: string }) => (
+  <svg width={s} height={s} viewBox="0 0 24 24" fill="currentColor" style={{ display: "block" }}>
+    <path d={d} />
+  </svg>
+)
+
+const IconCompartilhar = ({ s }: { s: number }) => (
+  <svg width={s} height={s} viewBox="0 0 24 24" fill="currentColor" style={{ display: "block" }}>
+    <path d="M12 2.59l5.7 5.7-1.41 1.42L13 6.41V16h-2V6.41l-3.3 3.3-1.41-1.42L12 2.59zM21 15l-.02 3.51c0 1.38-1.12 2.49-2.5 2.49H5.5C4.11 21 3 19.88 3 18.5V15h2v3.5c0 .28.22.5.5.5h12.98c.28 0 .5-.22.5-.5L19 15h2z" />
+  </svg>
+)
+
 const IconInbox = ({ s }: { s: number }) => (
   <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
@@ -185,7 +231,7 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
   // identidades que simulam a rede o consultam; nas demais é `undefined` e
   // o texto não ganha cor de link nenhuma.
   const coresX = coresDoPost(doc.temaPost)
-  const corLinkDoX = tr.cartaoPerfil || tr.cartaoThread ? coresX.link : undefined
+  const corLinkDoX = tr.cartaoPerfil || tr.cartaoThread || tr.cartaoTweet ? coresX.link : undefined
   // Margem lateral da IDENTIDADE. A casa usa 80; a Manchete respira mais
   // (135 medidos na referência), e é essa folga que faz a peça ler como
   // editorial em vez de card cheio até a borda.
@@ -763,6 +809,148 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
         )}
       </>
     )
+  } else if (tr.cartaoTweet) {
+    // Cartão COMPLETO do X: moldura, logo no canto, texto, foto, a linha de
+    // `hora · data · visualizações` e a barra de contadores. Ele não tem
+    // pose: o cartão cresce com o conteúdo e fica centrado no slide, que é
+    // como um print de post aparece.
+    const comImagem = Boolean(img) || f.slotsImagem > 0
+    const img2 = f.imagens.slot2
+    const galeria = Boolean(img2)
+    const info = infoDoTweet(f.tweet)
+    const temInfo = mostrarInfo(f.tweet)
+    const temBarra = mostrarMetricas(f.tweet)
+    const t1 = (f.textos.titulo ?? "").trim().length > 0
+    const t2 = (f.textos.corpo ?? "").trim().length > 0
+    const textoBase = { fontFamily: tr.fonteCorpo, fontWeight: 400, fontSize: TWEET.texto, color: coresX.texto, lineHeight: TWEET.textoEntrelinha }
+    body = (
+      <div style={{ position: "absolute", left: S(TWEET.margemDoSlide), right: S(TWEET.margemDoSlide), top: "50%", transform: "translateY(-50%)" }}>
+        <div
+          style={{
+            background: coresX.fundo,
+            border: `${Math.max(1, S(TWEET.borda))}px solid ${coresX.borda}`,
+            borderRadius: S(TWEET.raioCartao),
+            padding: `${S(TWEET.recuoVertical)}px ${S(TWEET.recuoLateral)}px`,
+          }}
+        >
+          {/* Cabeçalho: avatar · nome com selo sobre o `@handle` · logo do X.
+              O nome e o handle ficam EMPILHADOS (é o que o X faz) e a
+              coluna centraliza na altura do avatar. */}
+          <div style={{ display: "flex", alignItems: "stretch", paddingBottom: S(TWEET.gapCabecalho), fontSize: S(TWEET.cabecalho), lineHeight: TWEET.cabecalhoEntrelinha, fontFamily: tr.fonteMeta }}>
+            {!oc.avatar &&
+              (bk.avatar ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={bk.avatar} alt="" crossOrigin="anonymous" style={{ width: S(TWEET.avatar), height: S(TWEET.avatar), borderRadius: "50%", objectFit: "cover", flexShrink: 0, display: "block" }} />
+              ) : (
+                <span
+                  style={{
+                    width: S(TWEET.avatar),
+                    height: S(TWEET.avatar),
+                    borderRadius: "50%",
+                    background: coresX.avatarVazio,
+                    color: coresX.handle,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: S(TWEET.avatar * 0.42),
+                    fontWeight: 700,
+                    flexShrink: 0,
+                  }}
+                >
+                  {(bk.brandName2 || bk.brandName || "?").replace("@", "").charAt(0).toUpperCase()}
+                </span>
+              ))}
+            <span style={{ display: "flex", flexDirection: "column", justifyContent: "center", margin: `0 ${S(TWEET.gapAutor)}px`, minWidth: 0 }}>
+              {!oc.brandName2 && (
+                <span style={{ display: "flex", alignItems: "center", gap: S(TWEET.cabecalho * 0.2) }}>
+                  <span style={{ fontWeight: 700, color: coresX.texto, whiteSpace: "nowrap" }}>{bk.brandName2}</span>
+                  {bk.verificado && !oc.verificado && (
+                    <span style={{ display: "inline-flex", flexShrink: 0 }}>
+                      <IconSelo s={S(TWEET.selo)} cor={coresX.selo} />
+                    </span>
+                  )}
+                </span>
+              )}
+              {!oc.brandName && <span style={{ color: coresX.handle, whiteSpace: "nowrap" }}>{bk.brandName}</span>}
+            </span>
+            <span style={{ marginLeft: "auto", color: coresX.texto, display: "flex", alignItems: "flex-start", flexShrink: 0 }}>
+              <IconX s={S(TWEET.logo)} />
+            </span>
+          </div>
+
+          {/* O texto do post: dois parágrafos no MESMO peso — o X não tem
+              negrito. A divisão existe para a foto poder entrar no meio. */}
+          {t1 && T("titulo", textoBase)}
+          {t2 && T("corpo", { ...textoBase, marginTop: t1 ? S(TWEET.gapParagrafo) : 0 })}
+
+          {comImagem && (
+            <div style={{ display: "flex", gap: S(TWEET.gapGaleria), height: S(TWEET.alturaImagem), marginTop: S(TWEET.gapImagem), borderRadius: S(TWEET.raioImagem), overflow: "hidden", border: `${Math.max(1, S(TWEET.borda))}px solid ${coresX.borda}` }}>
+              <div style={{ flex: 1, position: "relative" }}>{imgSlot({ inset: 0 })}</div>
+              {galeria && img2 && (
+                <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={img2.url}
+                    alt=""
+                    crossOrigin="anonymous"
+                    onClick={interactive ? (ev) => { ev.stopPropagation(); onSelImg?.({ frameId: f.frameId, slot: 2 }) } : undefined}
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "cover",
+                      display: "block",
+                      cursor: interactive ? "pointer" : "default",
+                      transform: `translate(${S(img2.x)}px, ${S(img2.y)}px) scale(${img2.zoom / 100})`,
+                      outline: imgSel && imgSel.frameId === f.frameId && imgSel.slot === 2 ? `${Math.max(1, S(3))}px dashed ${SLIDE.selecao}` : "none",
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          {temInfo && (
+            <div style={{ marginTop: S(TWEET.gapInfo), color: coresX.handle, fontSize: S(TWEET.info), lineHeight: TWEET.infoEntrelinha, fontFamily: tr.fonteMeta, whiteSpace: "nowrap", overflow: "hidden" }}>
+              {[info.hora, info.data].filter(Boolean).join(" · ")}
+              {info.visualizacoes && (
+                <>
+                  {(info.hora || info.data) && " · "}
+                  <span style={{ fontWeight: 700, color: coresX.texto }}>{info.visualizacoes}</span> Visualizações
+                </>
+              )}
+            </div>
+          )}
+
+          {temBarra && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginTop: S(TWEET.gapBarra),
+                paddingTop: S(TWEET.recuoBarra),
+                borderTop: `${Math.max(1, S(TWEET.borda))}px solid ${coresX.borda}`,
+                color: coresX.handle,
+                fontFamily: tr.fonteMeta,
+                fontSize: S(TWEET.contador),
+                lineHeight: TWEET.contadorEntrelinha,
+                fontWeight: 700,
+              }}
+            >
+              {contadoresDoTweet(f.tweet).map((x) => (
+                <span key={x.chave} style={{ display: "flex", alignItems: "center", gap: S(TWEET.gapIcone), color: coresX.handle }}>
+                  <IconBarra s={S(TWEET.iconeContador)} d={TRACADOS_DA_BARRA[x.chave]} />
+                  {x.valor && <span style={{ fontVariantNumeric: "tabular-nums" }}>{x.valor}</span>}
+                </span>
+              ))}
+              <span style={{ display: "flex", alignItems: "center", color: coresX.handle }}>
+                <IconCompartilhar s={S(TWEET.iconeContador)} />
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+    )
   } else if (tr.cartaoPerfil) {
     // Print de tweet: UM desenho para todo tipo de frame. A pose vem da
     // imagem (com print abre no topo, só texto fica no centro óptico), e as
@@ -1091,7 +1279,7 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
       {/* O rodapé de marca é das famílias da casa. Na Manchete quem carrega
           a marca é o ícone no topo, e repetir handle e copyright embaixo
           devolveria a peça para a cara de card de rede social. */}
-      {!slideInteiro && !tr.cartaoPerfil && !tr.cartaoThread && !tr.logoNoTopo && brandRow}
+      {!slideInteiro && !tr.cartaoPerfil && !tr.cartaoThread && !tr.cartaoTweet && !tr.logoNoTopo && brandRow}
       {!slideInteiro && logoTopo(f.tipo === "capa")}
       {zonas && (
         <>
@@ -1103,7 +1291,7 @@ export function Frame({ doc, ix, scale = 1, sel, imgSel, interactive, zonas, onS
           </div>
         </>
       )}
-      {tr.cartaoPerfil || tr.cartaoThread || tr.logoNoTopo ? null : tr.barraProgresso ? (
+      {tr.cartaoPerfil || tr.cartaoThread || tr.cartaoTweet || tr.logoNoTopo ? null : tr.barraProgresso ? (
         !slideInteiro && progresso
       ) : (
         <span style={{ position: "absolute", bottom: S(off + 52), right: S(80), fontSize: S(22), color: numeroClaro ? "rgba(255,255,255,0.65)" : meta, fontFamily: tr.fonteMeta, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>

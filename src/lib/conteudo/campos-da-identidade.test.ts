@@ -4,13 +4,14 @@ import { aplicarFamilia } from "./familias"
 import { novoDocumento, trocarTipoFrame } from "./documento"
 import type { DocFrame, Documento } from "./types"
 
-/** Identidade que NÃO desenha a caixa de destaque (todas menos a Manchete). */
-const CASA = { caixaDeDestaque: false }
-/** Desenhos de campo: cartão de perfil, cartão de thread e o da casa. */
-const POST = { cartaoPerfil: true, cartaoThread: false }
-const CASA_D = { cartaoPerfil: false, cartaoThread: false }
-const THREAD_D = { cartaoPerfil: false, cartaoThread: true }
-const COM_CAIXA = { caixaDeDestaque: true }
+/** Desenhos de campo: cartão de perfil, de thread, do X e o da casa. */
+const POST = { cartaoPerfil: true, cartaoThread: false, cartaoTweet: false }
+const CASA_D = { cartaoPerfil: false, cartaoThread: false, cartaoTweet: false }
+const THREAD_D = { cartaoPerfil: false, cartaoThread: true, cartaoTweet: false }
+const TWEET_D = { cartaoPerfil: false, cartaoThread: false, cartaoTweet: true }
+/** Identidade da casa que NÃO desenha a caixa de destaque (todas menos a Manchete). */
+const CASA = { ...CASA_D, caixaDeDestaque: false }
+const COM_CAIXA = { ...CASA_D, caixaDeDestaque: true }
 
 const frame = (o: Partial<DocFrame> = {}): DocFrame => ({
   frameId: "f1",

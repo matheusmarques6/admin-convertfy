@@ -241,7 +241,7 @@ export type Campo = "titulo" | "subtitulo" | "corpo" | "botao" | "gancho" | "ano
  * molde decide a sequência dos slides; a família decide como eles são
  * desenhados. Ausente = "padrao" (a identidade azul da casa).
  */
-export type FamiliaVisual = "padrao" | "editorial" | "alternado" | "post" | "post-largo" | "manchete" | "thread"
+export type FamiliaVisual = "padrao" | "editorial" | "alternado" | "post" | "post-largo" | "manchete" | "thread" | "tweet"
 
 /**
  * Tema das identidades que simulam o X. `print` é o medido na referência
@@ -360,6 +360,32 @@ export interface DocFrame {
    * renderer mostra a imagem full-bleed e não escreve nada por cima.
    */
   imagemModo?: ModoImagem
+  /**
+   * As "informações" do cartão do X (identidade `tweet`): hora, data e os
+   * cinco contadores. Ausente = cartão sem número — o que o X mostra num
+   * post recém-publicado, e o único estado que não inventa engajamento.
+   *
+   * Fica FORA de `campos`/`textos` de propósito: `Campo` é o conjunto de
+   * copy — o que a IA escreve, o que `ST_LIMITES` limita e o que o auto-fit
+   * encolhe. Contador não é copy: tem painel próprio, formato próprio e
+   * não entra na régua de caracteres.
+   */
+  tweet?: TweetMeta
+}
+
+/** Hora, data e contadores de um cartão do X. Tudo texto livre: a peça vira PNG. */
+export interface TweetMeta {
+  hora?: string
+  data?: string
+  visualizacoes?: string
+  respostas?: string
+  reposts?: string
+  curtidas?: string
+  salvos?: string
+  /** `false` esconde a linha `hora · data · visualizações` neste slide. */
+  mostrarInfo?: boolean
+  /** `false` esconde a barra de contadores neste slide. */
+  mostrarMetricas?: boolean
 }
 
 /** Como a imagem gerada entra no slide (via B). */

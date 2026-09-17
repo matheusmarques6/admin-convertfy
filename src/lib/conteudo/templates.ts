@@ -86,6 +86,26 @@ export const ST_TEMPLATES: Template[] = [
     ],
   },
   {
+    id: "molde-tweet",
+    nome: "Card do X",
+    etapaFunil: "topo",
+    descricao: "O cartão completo do X em cada slide — moldura, logo, hora e contadores. Edite foto, texto e as informações. Use com a identidade Card do X.",
+    cor: "#1D9BF0",
+    familia: "tweet",
+    frames: [
+      // Cada slide é UM cartão, como quem tira print de cada post de um
+      // fio. O primeiro carrega o anexo (a captura que o post comenta);
+      // os demais são só texto, que é o mais comum.
+      fr("f1", "capa", "Post de abertura", 1, TC),
+      fr("f2", "texto", "Post 2", 0, TC),
+      fr("f3", "texto", "Post 3", 0, TC),
+      fr("f4", "texto", "Post 4", 0, TC),
+      // O fecho é o próprio texto do post: o cartão do X não tem botão, e
+      // um botão ali seria o primeiro elemento a denunciar a peça.
+      fr("f5", "cta", "Post de fecho", 0, TC),
+    ],
+  },
+  {
     id: "molde-thread",
     nome: "Thread comentada",
     etapaFunil: "meio",
@@ -179,9 +199,23 @@ export const ST_VARIANTES: Partial<Record<FrameTipo, Array<[VarianteLayout, stri
  * topo ou bloco no centro óptico —, e o padrão é decidido pela foto. Os
  * rótulos da casa ("Texto embaixo") descreviam um desenho que ali não
  * existe, então o operador escolhia no escuro.
+ *
+ * O booleano é a assinatura antiga (`cartaoPerfil`) e continua valendo,
+ * pela mesma razão do `limiteDe`: trocar os dois sentidos de uma vez faria
+ * um chamador esquecido passar `true` e receber outra lista, em silêncio.
  */
-export function variantesDoTipo(tipo: FrameTipo, cartaoPerfil = false): Array<[VarianteLayout, string]> | undefined {
-  if (!cartaoPerfil) return ST_VARIANTES[tipo]
+export interface DesenhoDasVariantes {
+  cartaoPerfil: boolean
+  cartaoTweet: boolean
+}
+
+export function variantesDoTipo(tipo: FrameTipo, desenho: boolean | DesenhoDasVariantes = false): Array<[VarianteLayout, string]> | undefined {
+  const d: DesenhoDasVariantes = typeof desenho === "boolean" ? { cartaoPerfil: desenho, cartaoTweet: false } : desenho
+  // O cartão COMPLETO do X não tem variante: ele cresce com o conteúdo e
+  // fica centrado, sempre. Oferecer o seletor da casa ali é controle que o
+  // operador mexe e não muda nada na tela.
+  if (d.cartaoTweet) return undefined
+  if (!d.cartaoPerfil) return ST_VARIANTES[tipo]
   if (tipo === "capa" || tipo === "texto" || tipo === "prova" || tipo === "lista" || tipo === "mec") {
     return [
       ["a", "Automático (pela foto)"],
@@ -208,6 +242,7 @@ export const ST_MOLDE_KEY: Record<string, MoldeKey> = {
   Bastidor: "Bastidor",
   "Print de post": "Post",
   "História em posts": "Post",
+  "Card do X": "Post",
   "Tese em manchete": "Manchete",
 }
 

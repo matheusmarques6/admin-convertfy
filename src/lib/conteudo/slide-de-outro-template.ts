@@ -31,7 +31,7 @@
 
 import { comHistorico, novoId, textosGuia, trocarTipoFrame } from "./documento"
 import { FAMILIAS, familiaDe, ritmoDeFundos, tracoDe } from "./familias"
-import { camposDaIdentidade, reconciliarCampos, type DesenhoDeCampos } from "./campos-da-identidade"
+import { camposDaIdentidade, desenhoDaIdentidade, reconciliarCampos, type DesenhoDeCampos } from "./campos-da-identidade"
 import { tipoDesenhaImagem } from "./referencia-para-documento"
 import { ST_TEMPLATES } from "./templates"
 import type { DocFrame, Documento, FrameTipo, Template } from "./types"
@@ -139,7 +139,7 @@ export function aplicarSlideNoFrame(doc: Documento, i: number, s: SlideImportave
   const comTipo = atual.tipo === s.tipo ? doc : trocarTipoFrame(doc, i, s.tipo)
   const f = comTipo.frames[i]
   const trDoc = tracoDe(familiaDe(doc))
-  const { campos, textos } = reconciliarCampos(f, camposDaIdentidade(trDoc, s.tipo), { caixaDeDestaque: trDoc.caixaDeDestaque })
+  const { campos, textos } = reconciliarCampos(f, camposDaIdentidade(trDoc, s.tipo), desenhoDaIdentidade(trDoc))
   const slot = (s.slotsImagem && tipoDesenhaImagem(s.tipo) ? 1 : 0) as 0 | 1
   return comHistorico(
     {

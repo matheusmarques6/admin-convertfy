@@ -9,7 +9,7 @@
 
 import { brandKitPadrao, CORES_PADRAO, GRADIENTE_PADRAO, SLIDE } from "./brand"
 import { preservarCamposOpcionais } from "./campos"
-import { camposDaIdentidade, reconciliarCampos } from "./campos-da-identidade"
+import { camposDaIdentidade, desenhoDaIdentidade, reconciliarCampos } from "./campos-da-identidade"
 import { aplicarFamilia, FAMILIAS, familiaDe, fundoPadraoDaFamilia, ritmoDeFundos, tracoDe } from "./familias"
 import { aceitaHibrido } from "./prompt-slide"
 import { camposDoTipo, getTemplate, TEMPLATE_PADRAO_ID } from "./templates"
@@ -430,7 +430,7 @@ export function trocarTipoFrame(doc: Documento, i: number, tipo: FrameTipo): Doc
   const tr = tracoDe(familiaDe(doc))
   const base = camposDaIdentidade(tr, tipo)
   const guia = textosGuia(tipo, base)
-  const { campos, textos: preservados } = reconciliarCampos({ ...o, tipo }, base, { caixaDeDestaque: tr.caixaDeDestaque })
+  const { campos, textos: preservados } = reconciliarCampos({ ...o, tipo }, base, desenhoDaIdentidade(tr))
   const textos = Object.fromEntries(campos.map((c) => [c, (preservados[c] ?? "").trim() ? preservados[c] : (guia[c] ?? preservados[c] ?? "")]))
   return comHistorico(
     { ...doc, frames: doc.frames.map((f, j) => (j === i ? { ...f, tipo, campos, textos } : f)) },

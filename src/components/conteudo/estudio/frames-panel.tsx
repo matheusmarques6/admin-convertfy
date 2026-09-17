@@ -79,7 +79,8 @@ function AdicionarSlide({ api, onFeito }: { api: EditorApi; onFeito: () => void 
 
 export function FramesPanel({ api }: { api: EditorApi }) {
   const { doc, ativo, modoTemplate } = api
-  const cartaoPerfil = tracoDe(familiaDe(doc)).cartaoPerfil
+  const tracoDoDoc = tracoDe(familiaDe(doc))
+  const cartaoPerfil = tracoDoDoc.cartaoPerfil
   const [aba, setAba] = useState<"frames" | "legenda">("frames")
   const [trocar, setTrocar] = useState<string | null>(null)
   const [adicionar, setAdicionar] = useState(false)
@@ -184,7 +185,7 @@ export function FramesPanel({ api }: { api: EditorApi }) {
       <div className={cn("grid grid-cols-2 gap-2", aba !== "frames" && "hidden")}>
         {doc.frames.map((x, i) => {
           const on = i === ativo
-          const variantes = variantesDoTipo(x.tipo, cartaoPerfil)
+          const variantes = variantesDoTipo(x.tipo, tracoDoDoc)
           const formatos = on ? formatosParaOTipo(doc.templateId, x.tipo) : []
           return (
             <div

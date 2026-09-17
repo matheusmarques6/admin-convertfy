@@ -16,6 +16,7 @@ import { slotDeUrl, uploadImagem } from "@/lib/conteudo/data"
 import { CAMPO_OPCIONAL_GUIA, CAMPO_OPCIONAL_LABEL, camposOpcionaisDaPeca } from "@/lib/conteudo/campos"
 import { FAMILIAS, FAMILIA_OPCOES, aplicarCorPrimaria, aplicarFamilia, corPrimariaDe, familiaDe, tracoDe } from "@/lib/conteudo/familias"
 import { TEMAS_DO_X, TEMA_PADRAO_DO_POST, TEMA_ROTULOS, aplicarTemaDoPost, medidasPost, type TemaDoPost } from "@/lib/conteudo/formato-post"
+import { CONTADOR_EXEMPLO, CONTADOR_LABEL, carimboDeAgora, mostrarInfo, mostrarMetricas, type ContadorDoTweet } from "@/lib/conteudo/formato-tweet"
 import { camposDeMarca, handleComArroba, seloDeVerificado } from "@/lib/conteudo/rotulos-de-marca"
 import { aceitaImagem, aplicarPerfil, aplicarPropostas, propostasDeLinhas, setTexto as setTextoDoc, slotsDeImagem, trocarTemplate } from "@/lib/conteudo/documento"
 import { chamarIA, gerarImagemIA } from "@/lib/conteudo/ia/client"
@@ -467,6 +468,98 @@ function CamposOpcionais({ api }: { api: EditorApi }) {
   )
 }
 
+/**
+ * As "informações" do cartão do X: hora, data e os cinco contadores.
+ *
+ * Elas não são copy — não entram em `campos`/`textos`, não têm limite de
+ * caracteres e o auto-fit não as encolhe —, então precisam de um lugar
+ * PRÓPRIO na tela. Sem ele o cartão teria uma barra de números que ninguém
+ * descobriria como editar.
+ *
+ * Nenhum valor nasce preenchido: número semeado por nós seria engajamento
+ * inventado impresso na peça. O exemplo fica no `placeholder`.
+ */
+function InfoDoCartaoX({ api }: { api: EditorApi }) {
+  const { doc, ativo } = api
+  const f = doc.frames[ativo]
+  if (!f || !tracoDe(familiaDe(doc)).cartaoTweet) return null
+  const meta = f.tweet ?? {}
+  const patch = (p: Partial<NonNullable<DocFrame["tweet"]>>, rotulo: string) =>
+    api.set((d) => ({ ...d, frames: d.frames.map((x, j) => (j === ativo ? { ...x, tweet: { ...(x.tweet ?? {}), ...p } } : x)) }), rotulo)
+  // "Usar em todos" existe porque o carrossel simula um FIO: digitar cinco
+  // números em cinco slides é o atrito que faria a barra ficar vazia.
+  const emTodos = () =>
+    api.set((d) => ({ ...d, frames: d.frames.map((x) => ({ ...x, tweet: { ...(x.tweet ?? {}), ...meta } })) }), "Informações do post em todos os slides")
+  const campo = (chave: ContadorDoTweet) => (
+    <div key={chave}>
+      {label(CONTADOR_LABEL[chave])}
+      <input
+        value={meta[chave] ?? ""}
+        placeholder={CONTADOR_EXEMPLO[chave]}
+        onChange={(ev) => patch({ [chave]: ev.target.value }, `${CONTADOR_LABEL[chave]} · ${f.label}`)}
+        className={cn(inputCls, "h-7 text-[11.5px]")}
+      />
+    </div>
+  )
+  return (
+    <div className="rounded-[10px] border border-[var(--ops-border)] px-2.5 py-2.5">
+      <CtLabel>Informações do post · {f.label}</CtLabel>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          {label("Hora")}
+          <input value={meta.hora ?? ""} placeholder="14:32" onChange={(ev) => patch({ hora: ev.target.value }, `Hora · ${f.label}`)} className={cn(inputCls, "h-7 text-[11.5px]")} />
+        </div>
+        <div>
+          {label("Data")}
+          <input value={meta.data ?? ""} placeholder="17 de set de 2026" onChange={(ev) => patch({ data: ev.target.value }, `Data · ${f.label}`)} className={cn(inputCls, "h-7 text-[11.5px]")} />
+        </div>
+        {campo("visualizacoes")}
+        {campo("respostas")}
+        {campo("reposts")}
+        {campo("curtidas")}
+        {campo("salvos")}
+      </div>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        <Ghost
+          onClick={() => {
+            const c = carimboDeAgora()
+            patch({ hora: c.hora, data: c.data }, `Carimbo de agora · ${f.label}`)
+          }}
+        >
+          Usar agora
+        </Ghost>
+        <Ghost onClick={emTodos}>Usar em todos os slides</Ghost>
+      </div>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        <Alternar ligado={mostrarInfo(meta)} onClick={() => patch({ mostrarInfo: !(meta.mostrarInfo !== false) }, `Linha de hora · ${f.label}`)}>
+          Linha de hora e data
+        </Alternar>
+        <Alternar ligado={mostrarMetricas(meta)} onClick={() => patch({ mostrarMetricas: !(meta.mostrarMetricas !== false) }, `Barra de contadores · ${f.label}`)}>
+          Barra de contadores
+        </Alternar>
+      </div>
+      <div className="mt-1.5 text-[10px] leading-relaxed text-[var(--ops-mut)]">
+        Campo vazio deixa o ícone SEM número — que é como o X mostra um post recém-publicado. Nada é preenchido sozinho: o número que aparecer na peça é o que você escrever aqui.
+      </div>
+    </div>
+  )
+}
+
+function Alternar({ ligado, onClick, children }: { ligado: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "inline-flex h-[30px] items-center gap-1 rounded-lg border px-[11px] text-[11.5px] font-medium",
+        ligado ? "border-[var(--ops-accent)] text-[var(--ops-title)]" : "border-[var(--ops-border)] text-[var(--ops-mut)] hover:bg-[var(--ops-hover)]",
+      )}
+    >
+      {ligado ? "−" : "+"} {children}
+    </button>
+  )
+}
+
 export function PainelTexto({ api }: { api: EditorApi }) {
   const { doc, sel } = api
   if (!sel) {
@@ -477,6 +570,7 @@ export function PainelTexto({ api }: { api: EditorApi }) {
           <div className="mt-1.5 text-[10.5px] text-[var(--ops-mut)]">Posição vertical, tamanho, peso, alinhamento e cor. Nada sai da grade do template.</div>
         </div>
         <CamposOpcionais api={api} />
+        <InfoDoCartaoX api={api} />
       </div>
     )
   }
@@ -543,6 +637,7 @@ export function PainelTexto({ api }: { api: EditorApi }) {
         Voltar ao padrão do template
       </button>
       <CamposOpcionais api={api} />
+      <InfoDoCartaoX api={api} />
     </div>
   )
 }
@@ -760,7 +855,7 @@ export function PainelFamilia({ api }: { api: EditorApi }) {
           </button>
         )
       })}
-      {tracoDe(atual).cartaoPerfil || tracoDe(atual).cartaoThread ? (
+      {tracoDe(atual).cartaoPerfil || tracoDe(atual).cartaoThread || tracoDe(atual).cartaoTweet ? (
         <div className="rounded-[10px] border border-[var(--ops-border)] px-2.5 py-2.5">
           <CtLabel>Tema do X</CtLabel>
           <div className="flex flex-col gap-1.5">

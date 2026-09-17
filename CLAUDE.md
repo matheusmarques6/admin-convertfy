@@ -8243,6 +8243,67 @@ preto" numa peça no tema claro faria o modelo desenhar o oposto do que o
 renderer mostra. Documentação:
 `docs/conteudo/formatos/post-print-de-tweet.md`.
 
+## Estúdio — "Card do X": o cartão completo, com as informações editáveis (17/09)
+
+Pedido, depois de eu ter deixado as métricas de fora de propósito:
+*"faça ficar idêntico literalmente mesmo que algo não fique funcional pois
+vai virar png … para eu só editar img, texto e informações"*. Reafirmado o
+pedido, a decisão é do dono: entrou a identidade `tweet` + o molde
+`molde-tweet`, com moldura, logo do X no canto, linha de
+`hora · data · visualizações` e a barra de contadores. De/para completo em
+`docs/conteudo/formatos/card-do-x.md`.
+
+**As medidas são LIDAS do embed oficial** (`react-tweet`, o que o Spell UI
+usa por baixo), não medidas a olho: cartão de 550 px → 1000 px na base
+1080, e todo valor é `medida_do_embed × 1,818`, gravado já convertido.
+Conferido renderizando: cartão de 1000 px em x=40, texto de 36 px com
+entrelinha de 43,2 px, ícones de 32 px, selo de 33 px, logo de 43 px.
+
+**A peça é híbrida, e isso é declarado**: moldura, raio, logo e tipografia
+vêm do embed; a fileira de MÉTRICAS embaixo vem do aplicativo — o embed tem
+Curtir · Responder · Copiar link, que não tem número nenhum para editar.
+
+**Três regras que erram em silêncio.** (1) **Nenhum contador nasce
+preenchido** — cartão sem número é o que o X mostra num post recém-publicado,
+e número semeado por nós seria engajamento inventado impresso na peça; o
+exemplo fica no `placeholder`. (2) **Contador vazio FICA na barra**: tirá-lo
+mudaria o espaçamento dos outros e a barra deixaria de ser a do X justamente
+no slide sem número. (3) **Os cinco ícones saem em cinza e em contorno** —
+no X, preenchido e colorido quer dizer "eu interagi", não "tem muita
+curtida". A primeira versão pintava o coração de rosa ao ver um número, o
+que conflata as duas coisas; foi o RENDER que mostrou, porque os traçados de
+resposta e curtida vinham do embed (lá são botões, portanto preenchidos) e
+saíam como manchas sólidas ao lado de três ícones em contorno. Nenhum teste
+pega peso de ícone.
+
+**As informações moram FORA de `campos`/`textos`** (`DocFrame.tweet`):
+`Campo` é o conjunto de COPY — o que a IA escreve, o que `ST_LIMITES` limita
+e o que o auto-fit encolhe —, e contador não é copy. Painel próprio em
+Ajustes → Texto, por slide, com "Usar agora" (carimbo pt-BR) e "Usar em
+todos os slides" — o carrossel simula um fio, e digitar cinco números em
+cinco slides é o atrito que deixaria a barra vazia.
+
+`titulo` e `corpo` são o 1º e o 2º PARÁGRAFO, mesmo corpo e mesmo peso (o X
+não tem negrito no post); a divisão é a mesma do cartão de thread e é o que
+deixa a foto entrar no meio. **Não há `botao`** — o cartão do X não tem, e o
+fecho é o próprio texto. O limite é o da PLATAFORMA (280 divididos entre os
+dois), não o do tipo de slide.
+
+**Um campo fantasma pré-existente caiu junto**: `camposOpcionaisDaPeca`
+oferecia gancho e anotação nas identidades que simulam uma rede (`post`,
+`post-largo`, `thread`), onde o renderer tem UM desenho e não os desenha em
+lugar nenhum — o operador escrevia, o texto era gravado e nunca aparecia.
+`desenhaOpcionais` fecha os quatro, `reconciliarCampos` GUARDA o texto ao
+tirá-los da lista (quem volta à identidade que os desenha recebe de volta
+escrito), e `desenhoDaIdentidade(traco)` substituiu os três
+`{ caixaDeDestaque: tr.caixaDeDestaque }` escritos à mão — era a mesma
+lista-escrita-à-mão que `FAMILIA_OPCOES` e `ehFamilia` já pagaram.
+`aplicarFamilia` passou a comparar `cartaoTweet` no `mesmoConjunto`: sem
+isso, ir da casa para o X não reconciliaria os campos e o subtítulo da capa
+ficaria no documento, invisível. **Sem variantes de layout**
+(`variantesDoTipo` devolve `undefined`): o cartão cresce com o conteúdo e
+fica centrado, sempre.
+
 ---
 
 *Última atualização: Setembro 2026*
