@@ -24,7 +24,16 @@ const ANTERIOR = {
     { ref: "c", type: "email", label: "Email" },
   ],
   endings: [
-    { ref: "ok", title: "Recebemos, {{nome}}" },
+    {
+      ref: "ok",
+      title: "Recebemos, {{nome}}",
+      destino: {
+        tipo: "whatsapp",
+        numero: "+5511999998888",
+        mensagem: "Oi! Vim do diagnóstico.",
+        automatico: true,
+      },
+    },
     { ref: "fora", title: "Ainda não", disqualified: true },
   ],
 }
@@ -37,6 +46,20 @@ describe("montarVersao", () => {
     expect(r.schema.settings?.welcome?.title).toBe("Bem-vindo")
     expect(r.schema.settings?.rotulo_avancar).toBe("Seguir")
     expect(r.regras_descartadas).toEqual([])
+  })
+
+  it("o DESTINO do final sobrevive ao republicar", () => {
+    // O normalizador descarta todo campo que não conhece, e ele roda
+    // dentro da publicação: sem `destino` na lista, o WhatsApp
+    // configurado no editor sumiria no primeiro clique em Publicar, sem
+    // erro nenhum — ninguém descobriria até um lead reclamar.
+    const r = montarVersao(CAMPOS, ANTERIOR, { display_mode: "conversational", version: 2 })
+    expect(r.schema.endings?.find((e) => e.ref === "ok")?.destino).toMatchObject({
+      tipo: "whatsapp",
+      numero: "+5511999998888",
+      mensagem: "Oi! Vim do diagnóstico.",
+      automatico: true,
+    })
   })
 
   it("o texto novo da pergunta vence o da versão antiga", () => {

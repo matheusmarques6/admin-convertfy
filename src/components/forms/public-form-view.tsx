@@ -343,7 +343,10 @@ export function PublicFormView({ slug, payload, utm, clickIds, preview = false, 
                 marginTop: 20,
                 padding: "11px 22px",
                 borderRadius: t.buttonRadius,
-                background: t.primary,
+                // `buttonFill`, não `t.primary`: o gradiente configurado
+                // no tema vale para o botão de enviar e tem de valer para
+                // este, senão a tela de sucesso destoa da que veio antes.
+                background: buttonFill,
                 color: t.buttonTextColor,
                 fontWeight: 600,
                 fontSize: 13.5,
