@@ -8453,10 +8453,35 @@ contato → concluíram, e por pergunta quantos VIRAM contra quantos
 RESPONDERAM. A diferença é a pergunta que faz desistir, e é o número que o
 módulo inteiro existe para produzir.
 
-**Ficou de fora, de propósito**: o editor visual do conversacional (o
-schema de `/forms/diagnostico` foi publicado por SQL — editar perguntas
-hoje é por lá), o embed sem iframe com Shadow DOM, e o teste A/B. A
-coluna `ab_variant` e o `form_versions` já existem para os dois.
+### Publicar é passo explícito, e a lógica atravessa
+
+O editor grava em `crm_form_fields`; o conversacional lê
+`form_versions`. Sem um passo de publicação, salvar mostrava "salvo" e
+**não mudava nada** para quem responde — pior que não ter editor.
+
+`POST /api/crm/forms/[id]/publish` monta a versão a partir dos campos de
+hoje e TRANSPORTA lógica, finais e tela de abertura da anterior, casando
+por `ref`. Como o PATCH preserva os ids dos campos, os saltos sobrevivem
+a renomear pergunta, trocar placeholder e reordenar. O `alias` também vem
+de lá — ele não existe na tabela de campos, e sem isso todo `{{nome}}`
+quebraria ao publicar.
+
+Regra que aponta para campo ou final apagado é **descartada**: mantê-la
+daria `destino_inexistente` em produção, com a pessoa presa numa tela
+morta. E cai INTEIRA quando uma condição perde o alvo — descartar só a
+condição mudaria o sentido (um `and` de duas viraria de uma).
+
+A versão é imutável e numerada: quem está no meio do preenchimento
+continua na que abriu. Publicar não é efeito colateral do salvar —
+trocar o formulário no meio da campanha é decisão de quem opera. O GET
+da mesma rota devolve o diagnóstico sem publicar, e é o que o painel
+mostra antes do clique.
+
+**Ficou de fora, de propósito**: o editor VISUAL da lógica de salto e dos
+finais (o `form_versions.schema` do diagnóstico foi escrito por SQL;
+mexer nos saltos hoje é por lá, e a publicação os preserva), o embed sem
+iframe com Shadow DOM, e o teste A/B. A coluna `ab_variant` e o
+`form_versions` já existem para os dois.
 
 ---
 
