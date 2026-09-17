@@ -24,12 +24,10 @@ import {
   buildProtocoloBlock,
   buildSecaoNotasBlock,
   momentoDoEmail,
-  renderIndiceDoVault,
   renderUsageCounts,
   type AprendizadoResumo,
   type CuradorVaultKnowledge,
   type EstruturaRefResumo,
-  type IndiceDoVault,
   type AprendizadosPorToque,
 } from "./curador-vault"
 import {
@@ -659,12 +657,7 @@ Responda APENAS o objeto JSON, sem markdown:
  * Nenhuma var nem texto mudou de conteúdo — só de lugar. Um bloco que
  * mudasse de posição sem a marca zeraria a leitura dos seguintes.
  */
-export const DEFAULT_CHOOSER_VAULT_USER = `<indice_do_vault>
-Pastas do Obsidian sincronizadas (consulta sob demanda, só se quiser conferir uma nota):
-{{indice_vault}}
-</indice_do_vault>
-
-<intencao_do_flow>
+export const DEFAULT_CHOOSER_VAULT_USER = `<intencao_do_flow>
 {{intencao_flow}}
 </intencao_do_flow>
 
@@ -1174,8 +1167,6 @@ export interface CuradorShadowParams {
    * concorrente à decisão.
    */
   estruturadorOn?: boolean
-  /** Índice de pastas do Obsidian (consulta sob demanda). */
-  indiceDoVault?: IndiceDoVault
   /**
    * `on` = este call É o Curador: a saída volta para o pipeline. `shadow` =
    * ensaio em paralelo ao kimi, nada é consumido. Default shadow para o call
@@ -1488,7 +1479,6 @@ export async function runCuradorShadow(
         : {}),
       secoes_notas: buildSecaoNotasBlock(p.vault, p.liveSections),
       lacunas_biblioteca: lacunasBlock,
-      indice_vault: renderIndiceDoVault(p.indiceDoVault ?? { pastas: [] }),
       aprendizados: buildAprendizadosBlock(p.aprendizados),
       aprendizados_do_toque: p.aprendizadosPorToque?.doToque.length
         ? buildAprendizadosBlock(p.aprendizadosPorToque.doToque)
@@ -1518,7 +1508,6 @@ export async function runCuradorShadow(
       aprendizados: { cls: "vault", rotulo: "Aprendizados — email_learnings" },
       aprendizados_do_toque: { cls: "vault", rotulo: "Aprendizados deste toque — email_learnings.frontmatter.serve_a" },
       lacunas_biblioteca: { cls: "vault", rotulo: "Lacunas da biblioteca — email_vault_docs (componentes/lacunas)" },
-      indice_vault: { cls: "vault", rotulo: "Índice de pastas do Obsidian — file_path das tabelas do vault" },
     }, { parte: "user" })
     const segSystem = buildInterpolatedSegments(systemEfetivo, systemVars, {
       ...(usarLeque
@@ -1594,11 +1583,6 @@ export async function runCuradorShadow(
         rotulo: "Lacunas da biblioteca (vault)",
         cls: "vault",
         valor: p.vault.lacunas.length > 0 ? `${p.vault.lacunas.length} registrada(s) · ${lacunasBlock.startsWith("(") ? "nenhuma das seções deste email" : "servidas as das seções deste email"}` : "(nenhuma registrada)",
-      },
-      {
-        rotulo: "Índice do vault (Obsidian)",
-        cls: "vault",
-        valor: `${(p.indiceDoVault?.pastas ?? []).length} pasta(s) · notas das finalistas carregadas em lote`,
       },
       ...(p.baseInputSummary ?? []),
     ]

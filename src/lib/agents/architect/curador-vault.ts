@@ -678,32 +678,17 @@ export function buildLacunasBlock(
   return blocos.join("\n\n")
 }
 
-// ── Índice de pastas do Obsidian (consulta sob demanda, 02/09) ──────────
+// ── Resumo de uma nota do vault ───────────────────────────────────────
 //
-// 09/09: o índice deixou de ser só contagem. "componentes/variantes/hero/
-// (12 notas)" não diz ao Curador QUAL nota abrir — e `consultou_vault` era
-// 3/8 runs justamente porque abrir uma nota às cegas raramente muda a
-// decisão. Agora cada pasta lista `slug — primeira frase`, que é o que o
-// Advisor Max recebe do catálogo de títulos dele e o que faz a consulta
-// sob demanda valer a chamada.
-
-export interface IndiceDoVault {
-  /** pasta relativa à base do vault → nº de notas sincronizadas + resumo por nota. */
-  pastas: Array<{
-    pasta: string
-    notas: number
-    /** `slug — primeira frase` por nota (aditivo; vazio em índice antigo). */
-    resumos?: Array<{ slug: string; resumo: string | null }>
-  }>
-}
-
-/** Entrada do índice: só o caminho, ou o caminho com o corpo para o resumo. */
-export type IndiceDoVaultEntrada = string | { file_path: string; body_md?: string | null }
+// `primeiraFrase` nasceu para o índice de pastas do Obsidian (02/09), que
+// saiu do prompt em 17/09: as ferramentas de consulta sob demanda
+// (`listar_pasta`/`ler_nota`) foram removidas em 16/09 e nunca tiveram
+// importador de produção, então o índice descrevia pastas que ninguém
+// podia abrir. A função ficou: é ela que monta o resumo de cada nota de
+// doutrina em `emails[].doutrina`, o bloco que vai ao redator no n8n.
 
 /** Corte do resumo por nota — uma linha de leitura. */
 const PRIMEIRA_FRASE_MAX = 160
-/** Teto do índice renderizado — passa disso, as pastas mais cheias perdem o resumo. */
-const INDICE_MAX_CHARS = 12_000
 
 /**
  * A primeira linha de prosa de uma nota (puro): pula título, tabela, lista,
@@ -737,91 +722,6 @@ export function primeiraFrase(bodyMd: string | null | undefined): string | null 
     return `${limpa.slice(0, corte > 60 ? corte : PRIMEIRA_FRASE_MAX).trimEnd()}…`
   }
   return null
-}
-
-/** Árvore de pastas derivada dos `file_path` sincronizados, com resumo por nota (puro). */
-export function buildIndiceDoVault(entradas: ReadonlyArray<IndiceDoVaultEntrada>): IndiceDoVault {
-  const porPasta = new Map<string, Array<{ slug: string; resumo: string | null }>>()
-  for (const e of entradas) {
-    const raw = typeof e === "string" ? e : e.file_path
-    const p = (raw ?? "").replace(/^\/+/, "")
-    const partes = p.split("/")
-    if (partes.length < 2) continue
-    const pasta = partes.slice(0, -1).join("/")
-    const slug = partes[partes.length - 1].replace(/\.md$/i, "")
-    const resumo = typeof e === "string" ? null : primeiraFrase(e.body_md)
-    const arr = porPasta.get(pasta) ?? []
-    arr.push({ slug, resumo })
-    porPasta.set(pasta, arr)
-  }
-  return {
-    pastas: Array.from(porPasta.entries())
-      .map(([pasta, resumos]) => ({
-        pasta,
-        notas: resumos.length,
-        resumos: [...resumos].sort((a, b) => a.slug.localeCompare(b.slug)),
-      }))
-      .sort((a, b) => a.pasta.localeCompare(b.pasta)),
-  }
-}
-
-/**
- * Render: pasta com contagem e, embaixo, uma linha por nota. Acima do teto
- * de 12k as pastas mais cheias voltam a só contagem (o que já era o índice
- * até 09/09) — a mais cheia é a que mais custa e menos precisa do resumo,
- * porque o Curador já recebe o catálogo das variantes por outra var.
- */
-export function renderIndiceDoVault(indice: IndiceDoVault): string {
-  if (indice.pastas.length === 0) return "(vault não sincronizado — nada a consultar)"
-  const linhaPasta = (p: IndiceDoVault["pastas"][number]) =>
-    `- ${p.pasta}/ (${p.notas} nota${p.notas === 1 ? "" : "s"})`
-  const linhasNotas = (p: IndiceDoVault["pastas"][number]) =>
-    (p.resumos ?? []).map((n) => `  · ${n.slug} — ${n.resumo ?? "(sem resumo)"}`)
-
-  const comResumo = new Set(indice.pastas.filter((p) => (p.resumos?.length ?? 0) > 0).map((p) => p.pasta))
-  const render = () =>
-    indice.pastas
-      .map((p) => (comResumo.has(p.pasta) ? [linhaPasta(p), ...linhasNotas(p)].join("\n") : linhaPasta(p)))
-      .join("\n")
-
-  let out = render()
-  const porTamanho = [...indice.pastas].sort((a, b) => b.notas - a.notas)
-  for (const p of porTamanho) {
-    if (out.length <= INDICE_MAX_CHARS) break
-    if (!comResumo.has(p.pasta)) continue
-    comResumo.delete(p.pasta)
-    out = render()
-  }
-  return out
-}
-
-/**
- * Carrega o índice das 4 tabelas sincronizadas do vault (todas guardam
- * `file_path` e `body_md`). Fail-open → índice vazio.
- */
-export async function loadIndiceDoVault(): Promise<IndiceDoVault> {
-  try {
-    const admin = createAdminClient()
-    const tabelas = ["email_vault_docs", "email_intents", "email_structure_refs", "email_learnings"] as const
-    const resultados = await Promise.all(
-      tabelas.map((t) => admin.from(t).select("file_path, body_md").eq("is_active", true)),
-    )
-    const entradas: IndiceDoVaultEntrada[] = []
-    for (const r of resultados) {
-      if (r.error) {
-        log.warn("indice_load_failed", { error: r.error.message })
-        continue
-      }
-      for (const row of r.data ?? []) {
-        const { file_path, body_md } = row as { file_path?: string; body_md?: string | null }
-        if (typeof file_path === "string" && file_path) entradas.push({ file_path, body_md: body_md ?? null })
-      }
-    }
-    return buildIndiceDoVault(entradas)
-  } catch (err) {
-    log.warn("indice_load_threw", { error: err instanceof Error ? err.message : String(err) })
-    return { pastas: [] }
-  }
 }
 
 // ── Estruturas de referência (passo 2 do protocolo) ─────────────────────

@@ -68,7 +68,6 @@ import {
   loadEstruturaRefsResumo,
   loadVariantUsageCounts,
   momentoDoEmail,
-  loadIndiceDoVault,
   loadMontadorMode,
   type MontadorMode,
 } from "./curador-vault"
@@ -1552,10 +1551,9 @@ export async function assembleStoreReference(
   // narrowing do TS não enxerga closure — leria `null` para sempre.
   const parcialDoVault: { valor: PreferenciasDoVault | null } = { valor: null }
   if (curadorVaultMode === "on") {
-    const [aprendizadosPorToqueOn, usageCountsOn, indiceDoVault] = await Promise.all([
+    const [aprendizadosPorToqueOn, usageCountsOn] = await Promise.all([
       loadAprendizadosPorToque(input.flowType, input.emailNumber),
       loadVariantUsageCounts(input.storeId),
-      loadIndiceDoVault(),
     ])
     const aprendizadosOn = aprendizadosPorToqueOn.globais
     vaultResultado = await runCuradorShadow({
@@ -1591,10 +1589,10 @@ export async function assembleStoreReference(
       typeIndex,
       aliasIndex,
       liveSections: sections,
-      // 02/09: decisão do Estruturador (saída completa) no template, lacunas
-      // do vault e índice do Obsidian com consulta sob demanda.
+      // 02/09: decisão do Estruturador (saída completa) no template e
+       // lacunas do vault. O índice do Obsidian saiu em 17/09 — ver
+       // `curador-vault.ts`.
       estruturadorOn,
-      indiceDoVault,
       // Sem call vivo não há com o que comparar — a comparação era da fase
       // de ensaio.
       candidatasImpreenchiveis: excludedUntagged,

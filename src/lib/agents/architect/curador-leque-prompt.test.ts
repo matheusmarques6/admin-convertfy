@@ -48,12 +48,14 @@ describe("montarLequeUser", () => {
     expect(marcas(leque)).toBe(3)
   })
 
-  it("mantém o índice do vault e a sequência do e-mail no prefixo", () => {
-    // O índice foi vetado pelo dono em 14/09; a sequência é o arco, e é
-    // dela que o modelo situa a posição desta chamada.
-    expect(leque).toContain("{{indice_vault}}")
+  it("mantém a sequência do e-mail no prefixo, e não o índice do vault", () => {
+    // A sequência é o arco, e é dela que o modelo situa a posição desta
+    // chamada. O índice saiu do prompt em 17/09 — as ferramentas de
+    // consulta sob demanda nunca rodaram em produção, então ele descrevia
+    // pastas que ninguém podia abrir.
     expect(leque).toContain("<estrutura_do_email>")
     expect(leque).toContain("{{blocks_json}}")
+    expect(leque).not.toContain("{{indice_vault}}")
   })
 
   it("troca as duas frases que mandam decidir o conjunto", () => {
