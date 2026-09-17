@@ -17,11 +17,19 @@
 -- ("body 21" em duas variantes diferentes, uma de garantias e outra de
 -- brinde com cupom). Idempotente: `where dispositivo is null`.
 --
--- ── ANTES (medido) ────────────────────────────────────────────────────
---   ativas sem dispositivo: 23  (12 body · 7 products · 3 reviews · 1 hero)
--- ── DEPOIS (esperado) ─────────────────────────────────────────────────
---   ativas sem dispositivo: 0
---   `body` perde 3 (viram `offer`), `offer` ganha 3
+-- ── APLICADO em 17/09/2026 ────────────────────────────────────────────
+--   ANTES:  ativas sem dispositivo = 23  (12 body · 7 products · 3 reviews · 1 hero)
+--   DEPOIS: ativas sem dispositivo = 0
+--   `body` perdeu 3 (viraram `offer`), `offer` ganhou 3.
+--   Pool final (65 ativas, 19 combinações seção × dispositivo, nenhuma vazia):
+--     body:     tese 4 · mecanismo_visual 3 · comparacao 2 · garantias 2 · passos 2
+--     hero:     oferta_cupom 10 · apresentacao 4 · lineup 2 · pergunta 2
+--     products: grade_sem_preco 10 · galeria 4 · unico_oferta 2
+--     reviews:  3plus 4 · com_credencial 3
+--     offer:    cupom 4 · sem_cupom 2 · lembrete 1
+--     footer:   nav 3 · minimo 1
+--   Seguem SEM variante ativa (lacunas de biblioteca, não deste arquivo):
+--     `body_faq` · `products_grade_preco` · `reviews_2`
 
 -- ── 1. Mudam de SEÇÃO: body → offer ───────────────────────────────────
 -- Têm campo de cupom e são blocos de oferta. O vocabulário de `body` não

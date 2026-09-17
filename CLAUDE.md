@@ -9087,20 +9087,29 @@ geração — o loader lia `email_vault_docs`, `email_intents`,
 (`DADOS_20260917_backfill_dispositivo_23.sql`), cadastradas depois do
 backfill de 14/09. Como `conflitoDeDispositivo` é fail-open, elas concorriam
 em TODA posição da seção: é o que fez a posição de `body_tese` ver **11
-finalistas** contra 1 da de `body_garantias`. Três `body` que são oferta com
-cupom mudam de SEÇÃO para `offer` (o vocabulário de body não tem valor para
-oferta), e as duas `reviews` de um depoimento só usam
+finalistas** contra 1 da de `body_garantias`. **Aplicado em 17/09: de 23
+para 0**, com 19 combinações seção × dispositivo e nenhuma vazia. Três
+`body` que são oferta com cupom mudaram de SEÇÃO para `offer` (o
+vocabulário de body não tem valor para oferta), e as duas `reviews` de um
+depoimento só usam
 `reviews_com_credencial` — o vocabulário pula de `reviews_2` para
 `reviews_3plus` e não nomeia "um", então quem controla a quantidade nelas
 passa a ser o `n_itens` do Estruturador. Endereçado por ID, nunca por nome:
 há **nome repetido** entre duas variantes diferentes ("body 21"), e nome
 duplicado faz o `buildAliasIndex` descartar o apelido por ambiguidade.
 
-**A linha do catálogo tem duas fontes, e é isso que explica variante fraca.**
-Sete campos o código DERIVA do `output_schema` (anatomia, forma, grades,
-slots de imagem) e nove vêm do frontmatter da nota do Obsidian (objeção,
-aliviador, profundidade, registro, registro vetado, paleta, papel, itens,
-peso). O ranking decide pelos nove — então variante sem nota entra na
-disputa com todos os critérios de desempate vazios. Na run de 17/09 a
-`hero section 11` concorreu à posição 0 com ~410 chars contra ~3.000 das
-duas rivais, que tinham nota.
+**A linha do catálogo tem três fontes, e é isso que explica variante fraca.**
+Quatro campos o código DERIVA do `output_schema` (`anatomia`, `forma`,
+`grades`, `imagem` — a última com o estado da direção fotográfica); sete
+vêm do frontmatter da nota do Obsidian (`objecao`, `registro`,
+`registro_vetado`, `paleta`, `papel_na_peca`, `itens`, `peso`,
+`convivencia`); e **`aliviador` e `profundidade` são DERIVADOS por código**
+(`aliviador-bridge.ts`, de `block_type` + `objecao` + `exige`) — medido em
+17/09, das **40 notas de variante ativas, ZERO** declaram qualquer um dos
+dois, embora o frontmatter vença quando declara. O ranking decide pelos
+eixos, então variante sem nota entra na disputa com todos os critérios de
+desempate vazios: na run de 17/09 a `hero section 11` concorreu à posição 0
+com ~410 chars contra ~3.000 das duas rivais, que tinham nota. Campo vazio
+SOME da linha (`campo()` omite), menos nos três eixos do topo, onde sai
+`(não declara)` — a que declara vazio saía curta e limpa, e o modelo não
+distinguia "não se compromete" de "não se aplica".
