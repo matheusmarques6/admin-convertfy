@@ -1,47 +1,84 @@
 /**
- * Dispositivo — o eixo de SEÇÃO que faltava (Trilha B3, set/2026).
+ * Dispositivo — o que o bloco FAZ com o leitor.
  *
- * A biblioteca era classificada só por `block_type` (hero, body, products,
- * reviews, offer, footer): para o Curador, uma hero de cupom e uma hero de
- * pergunta eram "hero", e o Estruturador só podia pedir "uma hero". No
- * batch 6249aef2 ele descreveu em prosa "uma tese em 3 cards" e o Curador
- * escolheu um bloco de comparação: a prosa não filtra. O dispositivo é o
- * vocabulário FECHADO (22 valores, decisão do dono em 14/09) que os dois
- * lados passam a falar: o Estruturador pede `requisitos.dispositivo`, o
- * código elimina por ele ANTES de qualquer outro requisito, e a variante
- * carrega o seu em `email_component_variants.dispositivo`.
+ * Nasceu na Trilha B3 (14/09) como o eixo que faltava: a biblioteca era
+ * classificada só por `block_type` (hero, body, products, reviews, offer,
+ * footer), então para o Curador uma hero de cupom e uma hero de pergunta
+ * eram "hero", e o Estruturador só podia pedir "uma hero".
  *
- * O código NÃO inventa o 23º valor. O papel "varredura numerada de 3–4
- * razões" não tem dispositivo exato (o mais próximo é `body_passos`) — é
- * pergunta ao dono do vocabulário, registrada no plano.
+ * ── A redefinição de 17/09 ────────────────────────────────────────────
  *
- * Puro (zero I/O). Fonte única: o CHECK da migration 20261149 é gerado
+ * O vocabulário de 22 valores dizia TRÊS coisas ao mesmo tempo — seção,
+ * tema e mecanismo — e por isso não separava nada. Medido nas 72 variantes:
+ *
+ *  - `hero_oferta_cupom` cobria 10 das 18 heroes, juntando a que entrega o
+ *    código do opt-in, a que grita o percentual, a que emoldura a data e a
+ *    que abre com um contador: quatro trabalhos no mesmo balde.
+ *  - `products_grade_sem_preco` cobria 10 das 16 peças de produto — e
+ *    definia a variante pelo que ela NÃO tem.
+ *  - O prefixo de seção repetia a coluna `block_type` e ESCONDIA que o
+ *    mesmo mecanismo aparece em seções diferentes: o marcador que aponta um
+ *    detalhe na própria foto era `body_mecanismo_visual` numa peça e
+ *    `products_unico_oferta` em outra.
+ *  - Alguns nomes contradiziam a peça: `hero_apresentacao` numa peça com
+ *    oferta, `products_unico_oferta` numa peça sem oferta nenhuma,
+ *    `reviews_com_credencial` em depoimentos sem cargo.
+ *
+ * As regras da redefinição, que é o que este arquivo trava:
+ *
+ *  1. O dispositivo nomeia o MECANISMO, não a seção nem o tema.
+ *  2. O prefixo de seção SAI — `block_type` já é coluna, e o prefixo
+ *     impedia de ver o mesmo dispositivo cruzando seções.
+ *  3. Eixo que não separa não serve (a degradação do passo 7 do protocolo).
+ *  4. Momento e objeção não entram no nome: a posição muda o efeito do
+ *     dispositivo, e momento no nome mataria a reutilização.
+ *  5. O que nunca foi julgado não recebe mecanismo — daí
+ *     `nao_classificado`, que é valor de CONTROLE e não de uso.
+ *
+ * Puro (zero I/O). Fonte única: o CHECK da migration 20261166 é gerado
  * desta lista e um teste os compara.
  */
 
 export const DISPOSITIVOS = [
-  "hero_apresentacao",
-  "hero_oferta_cupom",
-  "hero_pergunta",
-  "hero_lineup",
-  "body_tese",
-  "body_mecanismo_visual",
-  "body_garantias",
-  "body_comparacao",
-  "body_faq",
-  "body_passos",
-  "products_grade_preco",
-  "products_grade_sem_preco",
-  "products_unico_oferta",
-  "products_galeria",
-  "reviews_2",
-  "reviews_3plus",
-  "reviews_com_credencial",
-  "offer_cupom",
-  "offer_sem_cupom",
-  "offer_lembrete",
-  "footer_nav",
-  "footer_minimo",
+  // ── Oferta e preço ──────────────────────────────────────────────────
+  "oferta_em_manchete",
+  "campanha_nomeada",
+  "oferta_condicionada",
+  "oferta_adiada",
+  "codigo_entregue",
+  "codigo_relembrado",
+  "prazo_declarado",
+  // ── Argumento ───────────────────────────────────────────────────────
+  "tese_declarada",
+  "lista_enumerada",
+  "mecanismo_apontado",
+  "antes_e_depois",
+  "comparacao_pareada",
+  "duvida_antecipada",
+  "pergunta_ao_leitor",
+  "cena_de_uso",
+  "remocao_de_risco",
+  "oferta_de_ajuda",
+  "moldura_de_genero",
+  "abertura_editorial",
+  // ── Catálogo e produto ──────────────────────────────────────────────
+  "vitrine_paralela",
+  "vitrine_narrada",
+  "produto_unico_aprofundado",
+  "galeria_de_angulos",
+  "lineup_de_colecao",
+  "catalogo_por_ocasiao",
+  "escassez_por_estoque",
+  "carrinho_dinamico",
+  // ── Prova social e fechamento ───────────────────────────────────────
+  "prova_por_autoridade",
+  "prova_por_relato",
+  "prova_por_volume",
+  "prova_com_vitrine",
+  "menu_de_saida",
+  "assinatura_minima",
+  // ── Controle ────────────────────────────────────────────────────────
+  "nao_classificado",
 ] as const
 
 export type Dispositivo = (typeof DISPOSITIVOS)[number]
@@ -49,59 +86,171 @@ export type Dispositivo = (typeof DISPOSITIVOS)[number]
 /** Seções da biblioteca (`block_type`) que o vocabulário cobre. */
 export type SecaoComDispositivo = "hero" | "body" | "products" | "reviews" | "offer" | "footer"
 
-/** Uma linha por dispositivo — o que o Estruturador lê em `<dispositivos_disponiveis>`. */
+/**
+ * Em que seções cada dispositivo aparece — mapa EXPLÍCITO.
+ *
+ * Antes isto era derivado do prefixo (`hero_oferta_cupom` → `hero`), e era
+ * justamente o que escondia o mesmo mecanismo em seções diferentes. Medido
+ * no banco em 17/09, quatro dispositivos cruzam seção de fato:
+ * `codigo_entregue` (hero 3 + offer 1), `lineup_de_colecao` (hero 2 +
+ * products 1), `mecanismo_apontado` (body 1 + products 1) e
+ * `prova_por_relato` (reviews 2 + products 1).
+ *
+ * A PRIMEIRA da lista é a seção primária — é ela que o gerador de anatomias
+ * usa para decidir o `block_type` da variante nova (ver
+ * `secaoPrimariaDoDispositivo`).
+ *
+ * `nao_classificado` sai com lista VAZIA de propósito: ele não é um lugar
+ * na peça, é a marca de que ninguém julgou a variante ainda. Lista vazia o
+ * torna impossível de pedir, por construção.
+ */
+export const SECOES_DO_DISPOSITIVO: Record<Dispositivo, readonly SecaoComDispositivo[]> = {
+  oferta_em_manchete: ["hero"],
+  campanha_nomeada: ["hero"],
+  oferta_condicionada: ["offer"],
+  oferta_adiada: ["offer"],
+  codigo_entregue: ["hero", "offer"],
+  codigo_relembrado: ["offer"],
+  prazo_declarado: ["hero"],
+  tese_declarada: ["body"],
+  lista_enumerada: ["body"],
+  mecanismo_apontado: ["body", "products"],
+  antes_e_depois: ["body"],
+  comparacao_pareada: ["body"],
+  duvida_antecipada: ["body"],
+  pergunta_ao_leitor: ["hero"],
+  cena_de_uso: ["body"],
+  remocao_de_risco: ["body"],
+  oferta_de_ajuda: ["hero"],
+  moldura_de_genero: ["hero"],
+  abertura_editorial: ["hero"],
+  vitrine_paralela: ["products"],
+  vitrine_narrada: ["products"],
+  produto_unico_aprofundado: ["products"],
+  galeria_de_angulos: ["products"],
+  lineup_de_colecao: ["products", "hero"],
+  catalogo_por_ocasiao: ["body"],
+  escassez_por_estoque: ["products"],
+  carrinho_dinamico: ["offer"],
+  prova_por_autoridade: ["reviews"],
+  prova_por_relato: ["reviews", "products"],
+  prova_por_volume: ["reviews"],
+  prova_com_vitrine: ["reviews"],
+  menu_de_saida: ["footer"],
+  assinatura_minima: ["footer"],
+  nao_classificado: [],
+}
+
+/**
+ * Valor de CONTROLE: a variante existe, nunca foi julgada, e por isso não
+ * recebe mecanismo. Fica fora de tudo que o Estruturador pode pedir —
+ * bloquear a escolha às cegas é o trabalho dele.
+ */
+export const DISPOSITIVO_NAO_CLASSIFICADO: Dispositivo = "nao_classificado"
+
+/** O que o Estruturador pode pedir — todos menos o valor de controle. */
+export const DISPOSITIVOS_PEDIVEIS: readonly Dispositivo[] = DISPOSITIVOS.filter(
+  (d) => d !== DISPOSITIVO_NAO_CLASSIFICADO,
+)
+
+/** Uma linha por dispositivo — o que o Estruturador lê em `<secoes_disponiveis>`. */
 export const DESCRICAO_DO_DISPOSITIVO: Record<Dispositivo, string> = {
-  hero_apresentacao: "abertura que apresenta a marca ou a peça sem oferta nem pergunta",
-  hero_oferta_cupom: "abertura em que a oferta (percentual/cupom) é a manchete",
-  hero_pergunta: "abertura com pergunta ao leitor (comparativa, de dúvida, 'posso ajudar?')",
-  hero_lineup: "abertura que anuncia conjunto — rotina, kit, linha, coleção",
-  body_tese: "um argumento em prosa curta: título + 1–2 parágrafos + CTA",
-  body_mecanismo_visual: "mostra COMO funciona com apoio visual (esquema, marcadores, cards de atributo)",
-  body_garantias: "selos/garantias/valores da marca em 2–4 itens curtos",
-  body_comparacao: "nós × os outros, lado a lado",
-  body_faq: "perguntas e respostas",
-  body_passos: "lista numerada de passos ou dicas",
-  products_grade_preco: "grade de produtos COM preço visível",
-  products_grade_sem_preco: "grade de produtos sem preço (nome, foto, botão)",
-  products_unico_oferta: "um produto só, com oferta/preço/prazo",
-  products_galeria: "produtos apresentados por foto grande, sem grade regular",
-  reviews_2: "dois depoimentos",
-  reviews_3plus: "três ou mais depoimentos",
-  reviews_com_credencial: "depoimentos com credencial do depoente (cargo, idade, contexto, verificado)",
-  offer_cupom: "bloco de oferta com código de cupom",
-  offer_sem_cupom: "bloco de oferta/condição comercial sem cupom",
-  offer_lembrete: "lembrete de cupom já entregue",
-  footer_nav: "rodapé com menu de navegação",
-  footer_minimo: "rodapé mínimo (legal + poucos links)",
+  oferta_em_manchete:
+    "o percentual ou o valor é o maior elemento da peça — a oferta é o argumento, não o acessório",
+  campanha_nomeada:
+    "o nome próprio da data ou da campanha emoldura a oferta; sem o nome a peça não funciona",
+  oferta_condicionada:
+    "a mecânica é o conteúdo (combo, brinde, frete, duas ofertas, valor fixo) e precisa ser lida para ser entendida",
+  oferta_adiada: "o código só aparece depois do argumento: primeiro a razão, depois o gatilho",
+  codigo_entregue:
+    "entrega um código NOVO, em texto real — é o mecanismo que cumpre o contrato do opt-in",
+  codigo_relembrado:
+    "repete um código já concedido; pressupõe um toque anterior e não pode abrir um flow",
+  prazo_declarado: "o relógio é a peça — entrega prazo com hora",
+  tese_declarada: "uma afirmação carrega o bloco: sem lista, sem prova, sem tabela",
+  lista_enumerada: "três a cinco itens com título próprio, que contam a história sozinhos",
+  mecanismo_apontado: "marcadores apontam pontos da própria foto — a prova está na imagem",
+  antes_e_depois: "duas fotos do mesmo ângulo, etiquetadas; prova por comparação temporal",
+  comparacao_pareada: "nós contra eles, critério a critério — contra a categoria, nunca contra um nome",
+  duvida_antecipada: "nomeia a dúvida antes que ela vire veto, em pergunta e resposta",
+  pergunta_ao_leitor: "abre com uma pergunta dirigida que posiciona a marca",
+  cena_de_uso: "o argumento é a cena, não o atributo — vende por afeto e contexto",
+  remocao_de_risco: "garantias como conteúdo principal, no ponto da decisão",
+  oferta_de_ajuda: "dois caminhos de suporte em escada, sem venda",
+  moldura_de_genero: "a peça se disfarça de outro formato e vende por estranhamento",
+  abertura_editorial: "foto e frase, sem oferta: apresenta conceito, coleção ou tema",
+  vitrine_paralela: "N produtos equivalentes, um destino cada, sem descrição por item",
+  vitrine_narrada: "poucos produtos, cada um com frase de uso ou benefício próprio",
+  produto_unico_aprofundado: "um produto explicado antes de precificado",
+  galeria_de_angulos: "o mesmo produto visto de vários ângulos; exige acervo por ângulo",
+  lineup_de_colecao: "o conjunto é o argumento — kit, rotina, linha — e o destino é a coleção",
+  catalogo_por_ocasiao: "navegação por ocasião, não por produto: descoberta, não decisão",
+  escassez_por_estoque: "a disponibilidade é o argumento; exige estoque integrado, ou mente",
+  carrinho_dinamico: "devolve o item abandonado, renderizado por destinatário",
+  prova_por_autoridade: "o cargo ou a credencial de quem fala é o argumento",
+  prova_por_relato: "um relato longo e específico vale mais que três genéricos",
+  prova_por_volume: "vários depoimentos curtos, ou a nota agregada — o argumento é quantidade",
+  prova_com_vitrine: "prova social que também mostra produto (por isso não convive com grade)",
+  menu_de_saida: "destinos de navegação no fim da peça",
+  assinatura_minima: "assina em vez de oferecer menu: poucos links e bloco legal",
+  nao_classificado: "a variante nunca foi julgada — valor de controle, não de uso",
 }
 
 export function ehDispositivo(x: unknown): x is Dispositivo {
   return typeof x === "string" && (DISPOSITIVOS as readonly string[]).includes(x)
 }
 
-/** `hero_oferta_cupom` → `hero`. */
-export function secaoDoDispositivo(d: Dispositivo): SecaoComDispositivo {
-  return d.split("_")[0] as SecaoComDispositivo
+/** É um dispositivo que o Estruturador pode PEDIR? (exclui o de controle) */
+export function ehDispositivoPedivel(x: unknown): x is Dispositivo {
+  return ehDispositivo(x) && x !== DISPOSITIVO_NAO_CLASSIFICADO
+}
+
+/**
+ * A seção que o gerador de anatomias usa como `block_type` da variante
+ * nova.
+ *
+ * Existe porque o gerador escreve UMA linha e a coluna aceita UM valor —
+ * mas o dispositivo pode viver em duas seções. A primária é a primeira da
+ * lista, escolhida por onde o mecanismo é mais comum na biblioteca de hoje
+ * (`lineup_de_colecao` é products porque duas das três são hero por
+ * herança do vocabulário antigo, e o conjunto é catálogo). `null` para o
+ * valor de controle: não se gera anatomia do que ninguém julgou.
+ */
+export function secaoPrimariaDoDispositivo(d: Dispositivo): SecaoComDispositivo | null {
+  return SECOES_DO_DISPOSITIVO[d][0] ?? null
 }
 
 const norm = (s: string) => s.trim().toLowerCase()
 
-/** Dispositivos de uma seção (`block_type`), na ordem do vocabulário. */
+/**
+ * Dispositivos de uma seção (`block_type`), na ordem do vocabulário.
+ *
+ * Devolve só os PEDÍVEIS: esta lista alimenta `<secoes_disponiveis>` e a
+ * capacidade por seção, e oferecer `nao_classificado` ali seria ensinar o
+ * Estruturador a pedir o que não é mecanismo. Quem cadastra variante vê o
+ * valor de controle por outro caminho (o editor o acrescenta à mão).
+ */
 export function dispositivosDaSecao(secao: string): Dispositivo[] {
   const s = norm(secao)
-  return DISPOSITIVOS.filter((d) => secaoDoDispositivo(d) === s)
+  return DISPOSITIVOS_PEDIVEIS.filter((d) =>
+    (SECOES_DO_DISPOSITIVO[d] as readonly string[]).includes(s),
+  )
 }
 
 /** O dispositivo pertence à seção da posição? Seção fora do vocabulário nunca casa. */
 export function dispositivoPertenceASecao(d: Dispositivo, secao: string): boolean {
-  return secaoDoDispositivo(d) === norm(secao)
+  return (SECOES_DO_DISPOSITIVO[d] as readonly string[]).includes(norm(secao))
 }
 
 /**
  * Conflito dispositivo pedido × dispositivo da variante. `null` = sem
- * conflito. Variante SEM dispositivo (biblioteca ainda não classificada)
- * nunca conflita — o filtro é fail-open até o backfill, e é o
+ * conflito. Variante SEM dispositivo (cadastro novo, antes da
+ * classificação) nunca conflita — o filtro é fail-open, e é o
  * `dispositivo_sem_variante` da auditoria que denuncia a lacuna.
+ *
+ * `nao_classificado` NÃO é exceção: ele é um valor como outro qualquer
+ * aqui, e como nenhuma posição consegue pedi-lo, toda posição que pede
+ * algo elimina a variante não julgada. É esse o efeito desejado.
  */
 export function conflitoDeDispositivo(
   daVariante: string | null | undefined,

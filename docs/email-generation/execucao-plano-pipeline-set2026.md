@@ -1935,3 +1935,62 @@ telemetria (6).
 `->'escolha'->>'tokens_cache_escrita'` literalmente e, com as chaves virando
 `posicao_%`, devolveria zero em silêncio — e zero é o resultado BOM esperado
 ali, então a leitura pós-deploy confirmaria a mudança por acidente.
+
+---
+
+## Executado — o dispositivo passa a nomear o MECANISMO (17/09, migration 20261166)
+
+O vocabulário da B3 (22 valores, 14/09) foi substituído por **34**, sem
+prefixo de seção. O de/para é TOTAL: as 72 variantes do banco estão
+nomeadas uma a uma na migration, endereçadas por id.
+
+**O que estava errado, medido nas 72 variantes:**
+
+| sintoma | número |
+|---|---|
+| `hero_oferta_cupom` juntava quatro trabalhos num balde | 10 das 18 heroes |
+| `products_grade_sem_preco` definia a peça pelo que ela NÃO tem | 10 das 16 de produto |
+| o prefixo repetia `block_type` e escondia o mesmo mecanismo cruzando seção | `body_mecanismo_visual` numa peça, `products_unico_oferta` em outra |
+| o nome contradizia a peça | `hero_apresentacao` com oferta; `reviews_com_credencial` sem cargo |
+
+As cinco regras da redefinição estão no cabeçalho de
+`shared/dispositivos.ts`; a que muda mais código é a 2 (o prefixo sai),
+porque com ela **a seção deixa de ser derivável do nome**. Quatro
+dispositivos vivem em duas seções de fato — `codigo_entregue` (hero,
+offer), `lineup_de_colecao` (products, hero), `mecanismo_apontado` (body,
+products) e `prova_por_relato` (reviews, products) —, então
+`secaoDoDispositivo` (derivada do prefixo) morreu e virou o mapa explícito
+`SECOES_DO_DISPOSITIVO`, um-para-muitos. `secaoPrimariaDoDispositivo`
+existe porque o gerador de anatomias escreve UMA linha e a coluna aceita
+UM valor.
+
+**`nao_classificado` é valor de CONTROLE, não de uso**, e a diferença
+importa: ele sai com lista de seções VAZIA, então `dispositivosDaSecao`
+nunca o devolve e nenhuma posição consegue pedi-lo — e, como toda posição
+que pede algo elimina quem realiza outro mecanismo, a variante marcada
+assim fica bloqueada por construção. Deixar a coluna em BRANCO é o
+oposto: fail-open. As duas que o recebem (body 6 e body 9) já estavam
+inativas e sem `output_schema`, então o efeito em produção é zero — é
+carimbo, não mudança de comportamento.
+
+**A ordem do deploy degrada nos dois sentidos**: código novo com banco
+velho (ou o inverso) faz nenhuma variante casar com nenhum pedido,
+`conflitoDeDispositivo` elimina tudo, `filtrarPorRequisitos` é fail-open
+no CONJUNTO e o pipeline volta ao comportamento pré-B3. Degradação, não
+queda — mas o certo é aplicar a migration na MESMA janela do deploy.
+
+**Efeito na cobertura, medido depois do de/para**: as formas sem nenhuma
+variante ativa caíram de **seis para duas** (`oferta_adiada` e
+`duvida_antecipada`), e 31 dos 33 mecanismos pedíveis têm variante ativa.
+Não é cadastro novo: é que os nomes passaram a descrever o que a
+biblioteca faz, em vez de nomear formas que ninguém tinha. A
+contrapartida honesta é que **catorze deles têm UMA variante só**, e ali
+não há escolha a fazer — o Curador recebe uma candidata e a devolve.
+
+Docs que acompanharam: seção 6 do `guia-de-cadastro-de-variante.md`
+(tabela, chaves canônicas, consulta de lacunas) e as fichas de
+`handoff-heroes-15-09.md`. **Não** foram reescritos, de propósito:
+`prompt-catalogar-variantes-set26.md` e `DIAGNOSTICO_ofuscamento.sql` são
+retratos datados, e `docs/n8n/email-copy.workflow.json` é um export da
+ferramenta externa — o dispositivo aparece lá só como dado de amostra
+pinado, sem nenhuma regra lendo.

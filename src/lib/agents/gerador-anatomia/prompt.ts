@@ -25,28 +25,74 @@ export type DensidadeDaAnatomia = "minimal" | "balanced" | "rich"
  * `seal_N_*`, `*_item_N`, `cta_*`, `*_price`, `*_coupon_code`, `review_N_role`.
  */
 export const REQUISITOS_DO_DISPOSITIVO: Record<Dispositivo, string> = {
-  hero_apresentacao: "1 CTA (chave cta_label + cta_url); SEM cupom, SEM pergunta na headline; logo no topo ({{LOGO}} via campo image `logo`); 1 imagem de fundo ou de produto.",
-  hero_oferta_cupom: "a oferta é a manchete: campo `discount_headline`, `coupon_code` visível num selo, 1 CTA; imagem de fundo.",
-  hero_pergunta: "headline é uma PERGUNTA ao leitor (campo `headline_question`); 1 CTA; SEM cupom.",
-  hero_lineup: "anuncia um conjunto (rotina/kit/coleção): headline + 3 a 4 miniaturas `lineup_N_image`/`lineup_N_label`; 1 CTA.",
-  body_tese: "título + 1 a 2 parágrafos (`paragraph_1`, `paragraph_2`) + 1 CTA; SEM grade de itens.",
-  body_mecanismo_visual: "mostra COMO funciona: 1 imagem central + 2 a 4 marcadores `marker_N_title`/`marker_N_text`.",
-  body_garantias: "2 a 4 selos `seal_N_label`/`seal_N_text` (cada um com `seal_N_icon` image); SEM cupom.",
-  body_comparacao: "nós × os outros, lado a lado: cabeçalhos `us_title`/`them_title` + 3 a 5 linhas `us_item_N`/`them_item_N`.",
-  body_faq: "3 a 5 perguntas `question_item_N` com `answer_item_N`.",
-  body_passos: "3 a 5 passos numerados `step_item_N` (título) com `step_text_item_N`.",
-  products_grade_preco: "grade de 2 a 4 produtos: `product_N_image`, `product_N_name`, `product_N_price` VISÍVEL, `product_N_cta_label`/`product_N_url`.",
-  products_grade_sem_preco: "grade de 2 a 4 produtos SEM preço: `product_N_image`, `product_N_name`, `product_N_url`, botão opcional.",
-  products_unico_oferta: "UM produto: `product_1_image`, `product_1_name`, `product_1_price`, `product_1_old_price` opcional, `deadline` opcional, 1 CTA.",
-  products_galeria: "2 a 3 fotos grandes `panel_N_image` com legenda `panel_N_label`; sem grade regular, sem preço.",
-  reviews_2: "EXATAMENTE 2 depoimentos: `review_N_quote`, `review_N_name`, `review_N_rating`; sem credencial.",
-  reviews_3plus: "3 ou mais depoimentos: `review_N_quote`, `review_N_name`, `review_N_rating`.",
-  reviews_com_credencial: "1 a 3 depoimentos com credencial: `review_N_quote`, `review_N_name`, `review_N_role` (cargo/idade/contexto), `review_N_rating`.",
-  offer_cupom: "bloco de oferta com `coupon_code` em destaque, `offer_headline`, `offer_terms`, 1 CTA.",
-  offer_sem_cupom: "condição comercial sem código: `offer_headline`, `offer_text`, 1 CTA; SEM chave de cupom.",
-  offer_lembrete: "lembrete de cupom já entregue: `reminder_headline`, `coupon_code`, `deadline`, 1 CTA.",
-  footer_nav: "menu com 4 a 7 links `nav_N_label`/`nav_N_url`, linha legal `legal_text`, `unsubscribe_url`.",
-  footer_minimo: "no máximo 3 links, `legal_text`, `unsubscribe_url`; sem menu.",
+  oferta_em_manchete:
+    "o percentual/valor é o MAIOR elemento: `discount_headline` em corpo enorme, linha de apoio `offer_support`, 1 CTA; cupom opcional (`coupon_code`).",
+  campanha_nomeada:
+    "o nome da data emoldura a oferta: `campaign_name` em selo ou faixa, `campaign_headline`, 1 CTA; imagem de campanha.",
+  oferta_condicionada:
+    "a mecânica é o conteúdo: `offer_headline` + `offer_condition` (combo, brinde, frete, valor mínimo) + 1 CTA; SEM chave de cupom.",
+  oferta_adiada:
+    "argumento primeiro: 2 a 3 parágrafos `reason_paragraph_N`, DEPOIS `coupon_code` e 1 CTA.",
+  codigo_entregue:
+    "entrega um código novo: `coupon_code` em texto real e destacado, `coupon_value` no CTA ou ao lado, `coupon_instruction` de onde aplicar, 1 CTA.",
+  codigo_relembrado:
+    "repete código já concedido: `reminder_headline` que pressupõe o toque anterior, `coupon_code`, `deadline` opcional, 1 CTA.",
+  prazo_declarado:
+    "o relógio é a peça: `deadline_headline` com data e HORA, `deadline_value` grande, 1 CTA.",
+  tese_declarada:
+    "título + 1 a 2 parágrafos (`paragraph_1`, `paragraph_2`) + 1 CTA; SEM grade de itens.",
+  lista_enumerada:
+    "3 a 5 itens com título PRÓPRIO: `item_N_title` + `item_N_text` (+ `item_N_image` opcional). Os títulos contam a história sozinhos.",
+  mecanismo_apontado:
+    "1 imagem central + 2 a 4 marcadores `marker_N_title`/`marker_N_text` apontando pontos DA FOTO.",
+  antes_e_depois:
+    "duas fotos do mesmo ângulo: `before_image`/`before_label` e `after_image`/`after_label`, mais `comparison_caption`.",
+  comparacao_pareada:
+    "nós × a categoria, lado a lado: `us_title`/`them_title` + 3 a 6 linhas `us_item_N`/`them_item_N`. Nunca contra um nome próprio.",
+  duvida_antecipada:
+    "3 a 5 perguntas `question_item_N` com `answer_item_N`, nomeando a trava antes que ela vire veto.",
+  pergunta_ao_leitor:
+    "headline é uma PERGUNTA dirigida (`headline_question`) + 1 CTA; SEM cupom.",
+  cena_de_uso:
+    "a cena é o argumento: 1 a 2 fotos de uso (`scene_image`, `scene_image_2`), `scene_headline`, `scene_text`, 1 CTA.",
+  remocao_de_risco:
+    "2 a 4 garantias `guarantee_N_label`/`guarantee_N_text` (cada uma com `guarantee_N_icon` image); SEM cupom.",
+  oferta_de_ajuda:
+    "dois caminhos de suporte em escada: `help_headline`, `help_primary_label`/`help_primary_url`, `help_secondary_label`/`help_secondary_url`; SEM oferta, SEM cupom.",
+  moldura_de_genero:
+    "a peça se disfarça de outro formato (janela de sistema, recibo, bilhete): `frame_title` e `frame_body` no vocabulário do formato imitado, 1 CTA.",
+  abertura_editorial:
+    "foto e frase: `editorial_headline`, `editorial_text` curto, 1 imagem grande, 1 CTA; SEM oferta e SEM cupom.",
+  vitrine_paralela:
+    "2 a 9 produtos EQUIVALENTES: `product_N_image`, `product_N_name`, `product_N_url`; sem descrição por item.",
+  vitrine_narrada:
+    "2 a 4 produtos, cada um com frase própria: `product_N_image`, `product_N_name`, `product_N_pitch`, `product_N_url`.",
+  produto_unico_aprofundado:
+    "UM produto explicado antes de precificado: `product_1_image`, `product_1_name`, 2 parágrafos `product_1_text_N`, `product_1_price` (+ `product_1_old_price` opcional), 1 CTA.",
+  galeria_de_angulos:
+    "o MESMO produto de vários ângulos: `product_1_image` grande + 3 miniaturas `angle_N_image` com `angle_N_label`.",
+  lineup_de_colecao:
+    "o conjunto é o argumento: `lineup_headline` + 3 a 4 miniaturas `lineup_N_image`/`lineup_N_label`; 1 CTA para a COLEÇÃO, não por item.",
+  catalogo_por_ocasiao:
+    "navegação por ocasião: 2 a 6 cartões `occasion_N_image`/`occasion_N_label`/`occasion_N_url`; sem preço e sem produto nomeado.",
+  escassez_por_estoque:
+    "a disponibilidade é o argumento: grade `variant_N_label` com `variant_N_status` (disponível/esgotado) e `variant_N_url`; exige estoque integrado.",
+  carrinho_dinamico:
+    "devolve o item abandonado: `cart_headline`, bloco dinâmico `cart_item_image`/`cart_item_name`/`cart_item_price`, 1 CTA para o checkout.",
+  prova_por_autoridade:
+    "1 a 3 depoimentos com CARGO: `review_N_quote`, `review_N_name`, `review_N_role` (cargo/credencial), `review_N_photo`.",
+  prova_por_relato:
+    "1 a 2 relatos LONGOS e específicos: `review_N_quote` extenso, `review_N_name`, `review_N_rating`; SEM cargo.",
+  prova_por_volume:
+    "3 ou mais depoimentos curtos, ou a nota agregada: `review_N_quote`, `review_N_name`, `review_N_rating`, `reviews_count` opcional.",
+  prova_com_vitrine:
+    "cada depoimento traz o produto comprado: `review_N_quote`, `review_N_name`, `review_N_product_image`, `review_N_product_name`, `review_N_url`.",
+  menu_de_saida:
+    "menu com 4 a 7 links `nav_N_label`/`nav_N_url`, linha legal `legal_text`, `unsubscribe_url`.",
+  assinatura_minima:
+    "no máximo 3 links, logo, `legal_text`, `unsubscribe_url`; sem menu.",
+  nao_classificado:
+    "valor de controle — não se gera anatomia para ele.",
 }
 
 export const CONVENCOES = `

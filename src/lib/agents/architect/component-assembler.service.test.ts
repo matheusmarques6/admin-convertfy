@@ -135,11 +135,11 @@ describe("slotMapFromSlots", () => {
   // não distinguia falta de biblioteca de recusa pela decisão.
   it("missing com motivo e dispositivo pedido viaja no slot_map", () => {
     const slots: AssemblySlot[] = [
-      { kind: "missing", section: "products", label: "Produtos", motivo: "todas_descartadas", dispositivo_pedido: "products_grade_preco" },
+      { kind: "missing", section: "products", label: "Produtos", motivo: "todas_descartadas", dispositivo_pedido: "vitrine_paralela" },
       { kind: "missing", section: "offer", label: "Oferta" },
     ]
     const map = slotMapFromSlots(slots)
-    expect(map[0]).toMatchObject({ variant_id: null, motivo: "todas_descartadas", dispositivo_pedido: "products_grade_preco" })
+    expect(map[0]).toMatchObject({ variant_id: null, motivo: "todas_descartadas", dispositivo_pedido: "vitrine_paralela" })
     expect(map[1]).not.toHaveProperty("motivo")
   })
 })

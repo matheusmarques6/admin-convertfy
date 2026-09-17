@@ -107,12 +107,12 @@ describe("computeContentChecks — a decisão entra no QA (Passo 15)", () => {
     const issues = computeContentChecks(LIMPO, {
       incentivoExiste: true,
       posicoesSemVariante: [
-        { block_index: 4, section: "products", dispositivo_pedido: "products_grade_preco", motivo: "sem_candidata" },
+        { block_index: 4, section: "products", dispositivo_pedido: "vitrine_paralela", motivo: "sem_candidata" },
       ],
     })
     expect(issues).toHaveLength(1)
     expect(issues[0]).toMatchObject({ type: "posicao_sem_variante", severity: "high", no_responsavel: "biblioteca", location: "block:4:products" })
-    expect(issues[0].message).toContain("products_grade_preco")
+    expect(issues[0].message).toContain("vitrine_paralela")
   })
 
   it("cupom sem tradução é aviso medium, dono loja", () => {

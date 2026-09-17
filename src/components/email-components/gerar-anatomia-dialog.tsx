@@ -11,7 +11,7 @@ import { Loader2, Sparkles, X } from "lucide-react"
 import { toast } from "@/lib/hooks/use-toast"
 import { C, F } from "@/components/email-generation/ui/eg-theme"
 import { EGBadge, EGBtn, EGInput, EGLabel, EGNotice, EGSelect } from "@/components/email-generation/ui/eg-atoms"
-import { DESCRICAO_DO_DISPOSITIVO, DISPOSITIVOS, type Dispositivo } from "@/lib/agents/shared/dispositivos"
+import { DESCRICAO_DO_DISPOSITIVO, DISPOSITIVOS_PEDIVEIS, type Dispositivo } from "@/lib/agents/shared/dispositivos"
 import { DENSITY_LABELS_PT } from "@/lib/agents/shared/component-dimensions"
 
 interface Info {
@@ -55,7 +55,7 @@ export function GerarAnatomiaDialog({
   dispositivoInicial?: Dispositivo | null
 }) {
   const [info, setInfo] = useState<Info | null>(null)
-  const [dispositivo, setDispositivo] = useState<string>(dispositivoInicial ?? "body_tese")
+  const [dispositivo, setDispositivo] = useState<string>(dispositivoInicial ?? "tese_declarada")
   const [variante, setVariante] = useState("a")
   const [densidade, setDensidade] = useState("balanced")
   const [idioma, setIdioma] = useState("pt-BR")
@@ -166,7 +166,7 @@ export function GerarAnatomiaDialog({
               <EGSelect
                 value={dispositivo}
                 onChange={setDispositivo}
-                options={DISPOSITIVOS.map((d) => ({
+                options={DISPOSITIVOS_PEDIVEIS.map((d) => ({
                   value: d,
                   label: `${d} — ${DESCRICAO_DO_DISPOSITIVO[d]} · ${cob[d]?.ativas ?? 0} ativa(s)${(cob[d]?.geradas_aguardando ?? 0) > 0 ? ` · ${cob[d].geradas_aguardando} gerada(s) aguardando` : ""}`,
                 }))}

@@ -35,8 +35,8 @@ const SCHEMA_TESE = [
 ]
 
 describe("validarAnatomia", () => {
-  it("anatomia body_tese correta passa, com contrato e cobertura medidos", () => {
-    const r = validarAnatomia({ html: TESE, output_schema: SCHEMA_TESE, dispositivo: "body_tese" })
+  it("anatomia tese_declarada correta passa, com contrato e cobertura medidos", () => {
+    const r = validarAnatomia({ html: TESE, output_schema: SCHEMA_TESE, dispositivo: "tese_declarada" })
     expect(r.erros).toEqual([])
     expect(r.ok).toBe(true)
     expect(r.contrato.tem_cta).toBe(true)
@@ -47,19 +47,19 @@ describe("validarAnatomia", () => {
   it("reprova hex literal, font-family literal, url sem {{TAG}}, example que não está no HTML e dispositivo errado", () => {
     const html = TESE.replace("background-color:{{COR_PRINCIPAL}}", "background-color:#111111").replace("font-family:{{FONTE_CORPO}}", "font-family:Arial,sans-serif")
     const schema = [...SCHEMA_TESE.slice(0, 2), { ...SCHEMA_TESE[2], example: "Comprar agora" }, { ...SCHEMA_TESE[3], key: "shop_url" }]
-    const r = validarAnatomia({ html, output_schema: schema, dispositivo: "products_grade_preco" })
+    const r = validarAnatomia({ html, output_schema: schema, dispositivo: "vitrine_paralela" })
     expect(r.ok).toBe(false)
     const texto = r.erros.join("\n")
     expect(texto).toContain("#111111")
     expect(texto).toContain("font-family literal")
     expect(texto).toContain('"shop_url" precisa aparecer no HTML como {{SHOP_URL}}')
     expect(texto).toContain('campo "cta_label" não ancora')
-    expect(texto).toContain("contrato products_grade_preco")
+    expect(texto).toContain("contrato vitrine_paralela")
   })
 
   it("lorem ipsum e src vazio são bloqueantes do lint; o pós-processador entra no html devolvido", () => {
     const html = TESE.replace("Cada peça passa por três provas de resistência antes de sair da fábrica.", "Lorem ipsum dolor sit amet consectetur").replace('<tr><td align="center" style="padding:28px 0 40px;">', '<tr><td><img src="" alt=""></td></tr><tr><td align="center" style="padding:28px 0 40px;">')
-    const r = validarAnatomia({ html, output_schema: SCHEMA_TESE, dispositivo: "body_tese" })
+    const r = validarAnatomia({ html, output_schema: SCHEMA_TESE, dispositivo: "tese_declarada" })
     expect(r.ok).toBe(false)
     expect(r.lint.bloqueantes).toContain("texto_de_example")
     // <img src=""> some no pós-processador (auto-fix) e o html devolvido é o processado.
@@ -76,8 +76,9 @@ describe("validarAnatomia", () => {
 
 describe("prompt do gerador", () => {
   it("montarVars serve contrato, convenções e referências; parseSaida separa os dois blocos", () => {
-    const vars = montarVars({ dispositivo: "reviews_2", variante: "a", densidade: "balanced", idioma: "pt-BR", referencias: [], correcoes: ["lint x"] })
-    expect(vars.requisitos).toContain("EXATAMENTE 2")
+    const vars = montarVars({ dispositivo: "antes_e_depois", variante: "a", densidade: "balanced", idioma: "pt-BR", referencias: [], correcoes: ["lint x"] })
+    expect(vars.requisitos).toContain("before_image")
+    expect(vars.descricao_do_dispositivo).toContain("duas fotos")
     expect(vars.convencoes).toContain("{{COR_PRINCIPAL}}")
     expect(vars.referencias).toContain("nenhuma anatomia")
     expect(vars.correcoes).toContain("- lint x")

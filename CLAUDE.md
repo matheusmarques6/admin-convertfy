@@ -9362,3 +9362,72 @@ orçamento → final de aprovação, com `{{nome}}` e `{{loja}}` resolvidos),
 e o editor renderizado para conferir o arrasto nos dois sentidos (a
 região entrou na tela da loja: 6 telas → 5; o WhatsApp saiu da tela 1
 pela faixa: 6 → 7) e a aba Estilo sem Templates.
+
+## O dispositivo passa a nomear o MECANISMO (17/09, migration 20261166)
+
+O vocabulário fechado da B3 (22 valores) virou **34**, e o de/para é TOTAL:
+as 72 variantes do banco estão nomeadas uma a uma na migration, endereçadas
+por **id** — há nome REPETIDO na biblioteca ("body 21" aparece duas vezes) e
+casar por nome reclassificaria a variante errada em silêncio.
+
+**O eixo não separava nada porque dizia três coisas ao mesmo tempo** (seção,
+tema e mecanismo). Medido nas 72: `hero_oferta_cupom` cobria **10 das 18
+heroes**, juntando a que entrega o código do opt-in, a que grita o
+percentual, a que emoldura a data e a que abre com um contador;
+`products_grade_sem_preco` cobria **10 das 16** de produto — e definia a peça
+pelo que ela NÃO tem. Alguns nomes contradiziam a peça (`hero_apresentacao`
+numa peça com oferta, `reviews_com_credencial` em depoimento sem cargo).
+
+**O prefixo de seção SAI, e é a regra que mais mexe em código**: `block_type`
+já é coluna, e o prefixo escondia o mesmo mecanismo cruzando seções — o
+marcador que aponta um detalhe na própria foto era `body_mecanismo_visual`
+numa peça e `products_unico_oferta` em outra. Com ele fora, **a seção deixa
+de ser derivável do nome**: `secaoDoDispositivo` (um `split("_")[0]`) morreu
+e virou `SECOES_DO_DISPOSITIVO`, mapa EXPLÍCITO um-para-muitos. Quatro
+cruzam de fato — `codigo_entregue` (hero, offer), `lineup_de_colecao`
+(products, hero), `mecanismo_apontado` (body, products), `prova_por_relato`
+(reviews, products). `secaoPrimariaDoDispositivo` existe porque o gerador de
+anatomias escreve UMA linha e a coluna aceita UM valor.
+
+**`nao_classificado` é valor de CONTROLE, não de uso**, e a diferença entre
+ele e a coluna em BRANCO é de comportamento, não de gosto: ele sai com lista
+de seções VAZIA, então `dispositivosDaSecao` nunca o devolve, nenhuma posição
+consegue pedi-lo e — como toda posição que pede algo elimina quem realiza
+outro mecanismo — a variante marcada assim fica bloqueada **por construção**.
+Em branco é fail-open (concorre em toda posição da seção e paga 75 no
+desempate do resgate). O editor oferece os dois, com o efeito escrito no
+rótulo; o gerador de anatomias só enxerga `DISPOSITIVOS_PEDIVEIS`, porque não
+se gera anatomia do que ninguém julgou. As duas que o recebem (body 6 e body
+9) já estavam inativas e sem `output_schema`: efeito zero em produção, é
+carimbo.
+
+**A ordem do deploy degrada nos dois sentidos**: código novo com banco velho
+(ou o inverso) faz nenhuma variante casar com nenhum pedido,
+`conflitoDeDispositivo` elimina tudo, `filtrarPorRequisitos` é fail-open no
+CONJUNTO (zerou a seção, devolve todas) e o pipeline volta ao comportamento
+pré-B3. Degradação, não queda — mas o certo é aplicar a migration na MESMA
+janela do deploy.
+
+**Efeito na cobertura**: as formas sem nenhuma variante ativa caíram de
+**seis para duas** (`oferta_adiada` em offer, `duvida_antecipada` em body) e
+31 dos 33 mecanismos pedíveis têm variante ativa. Não é cadastro novo — é que
+os nomes passaram a descrever o que a biblioteca faz, em vez de nomear formas
+que ninguém tinha. A contrapartida honesta: **catorze têm UMA variante só**, e
+ali não existe escolha a fazer.
+
+A régua por mecanismo (`contratoDoDispositivo`) foi reescrita junto, e duas
+entradas dizem o que o vocabulário antigo confundia: `oferta_condicionada`
+proíbe cupom (com código a peça vira entrega de código, que é outro
+dispositivo) e `prova_por_relato`/`prova_por_volume` proíbem credencial —
+**credencial é CARGO, não carimbo de verificado**, e foi confundi-los que fez
+a review 10 ocupar o lugar da prova técnica. `moldura_de_genero` não obriga
+nada: a forma dela É o estranhamento, e amarrá-la a uma anatomia mataria o
+mecanismo.
+
+Docs que acompanharam: seção 6 do `guia-de-cadastro-de-variante.md` (tabela
+por grupo, chaves canônicas e a consulta de lacunas) e as fichas de
+`handoff-heroes-15-09.md`. **Não** foram reescritos, de propósito:
+`prompt-catalogar-variantes-set26.md` e `DIAGNOSTICO_ofuscamento.sql` são
+retratos datados, e `docs/n8n/email-copy.workflow.json` é um export da
+ferramenta externa, onde o dispositivo aparece só como dado de amostra
+pinado, sem nenhuma regra lendo.

@@ -8,12 +8,12 @@ import { custoAteDivergencia, montarConformidade, type PosicaoCrua } from "./con
 const schema = (...keys: string[]) => keys.map((key) => ({ key, type: "text_short" }))
 /** Contratos das variantes REAIS entregues no batch 6249aef2 (ids do banco). */
 const CONTRATOS = new Map<string, ContratoResumo>([
-  ["3e241d7f-5f84-4017-a553-880736a450dc", { ...resumirContrato(schema("hero_headline", "hero_subhead", "coupon_line", "cta_label", "hero_image")), dispositivo: "hero_pergunta" }], // hero 2 (pergunta, cupom no HTML)
-  ["4e9726d1-40fe-40ce-aa81-c2a33b062603", { ...resumirContrato(schema("headline", "feature_1_title", "feature_2_title", "feature_3_title", "cta_label")), dispositivo: "body_garantias" }], // body 3 (3 selos)
-  ["63736c6c-7d1b-4c7c-83ea-bae15599f1d7", { ...resumirContrato(schema("headline", "feature_1_title", "feature_2_title", "feature_3_title", "cta_label")), dispositivo: "body_comparacao" }], // body 4
-  ["7dafa6ca-65de-4907-b52c-dad83ecd63a4", { ...resumirContrato(schema("review_1_quote", "review_1_name", "review_1_rating", "review_2_quote", "review_2_name")), dispositivo: "reviews_com_credencial" }], // review 2
-  ["cee34b0a-030c-43df-93b6-c54de6f00569", { ...resumirContrato(schema("panel_1_title", "panel_1_cta", "panel_2_title", "panel_2_cta")), dispositivo: "products_galeria" }], // produtos 7 (galeria, sem preço)
-  ["35b5d8fd-59b5-4e0f-92ab-a180745242e0", { ...resumirContrato(schema("footer_nav", "footer_support")), dispositivo: "footer_nav" }], // footer 1
+  ["3e241d7f-5f84-4017-a553-880736a450dc", { ...resumirContrato(schema("hero_headline", "hero_subhead", "coupon_line", "cta_label", "hero_image")), dispositivo: "pergunta_ao_leitor" }], // hero 2 (pergunta, cupom no HTML)
+  ["4e9726d1-40fe-40ce-aa81-c2a33b062603", { ...resumirContrato(schema("headline", "feature_1_title", "feature_2_title", "feature_3_title", "cta_label")), dispositivo: "remocao_de_risco" }], // body 3 (3 selos)
+  ["63736c6c-7d1b-4c7c-83ea-bae15599f1d7", { ...resumirContrato(schema("headline", "feature_1_title", "feature_2_title", "feature_3_title", "cta_label")), dispositivo: "comparacao_pareada" }], // body 4
+  ["7dafa6ca-65de-4907-b52c-dad83ecd63a4", { ...resumirContrato(schema("review_1_quote", "review_1_name", "review_1_rating", "review_2_quote", "review_2_name")), dispositivo: "prova_por_relato" }], // review 2
+  ["cee34b0a-030c-43df-93b6-c54de6f00569", { ...resumirContrato(schema("panel_1_title", "panel_1_cta", "panel_2_title", "panel_2_cta")), dispositivo: "galeria_de_angulos" }], // produtos 7 (galeria, sem preço)
+  ["35b5d8fd-59b5-4e0f-92ab-a180745242e0", { ...resumirContrato(schema("footer_nav", "footer_support")), dispositivo: "menu_de_saida" }], // footer 1
 ])
 const IDS = Array.from(CONTRATOS.keys())
 
@@ -38,13 +38,13 @@ describe("montarConformidade — batch 6249aef2, retroativo", () => {
     expect(linhas[0].estado).toBe("divergente")
     expect(linhas[0].no_responsavel).toBe("assembler_chooser")
     expect(linhas[0].violacoes.map((v) => [v.tipo, v.origem])).toEqual([["requisito_violado", "retroativa"]])
-    expect(linhas[0].violacoes[0].evidencia).toBe("dispositivo hero_pergunta e a decisão pede hero_apresentacao")
+    expect(linhas[0].violacoes[0].evidencia).toBe("dispositivo pergunta_ao_leitor e a decisão pede abertura_editorial")
   })
 
-  it("as três inversões do batch aparecem pelo DISPOSITIVO: body 3 (garantias) onde se pediu tese, body 4 (comparação) onde se pediu garantias, produtos 7 (galeria) onde se pediu grade com preço", () => {
-    expect(linhas[1].violacoes[0].evidencia).toBe("dispositivo body_garantias e a decisão pede body_tese")
-    expect(linhas[2].violacoes[0].evidencia).toBe("dispositivo body_comparacao e a decisão pede body_garantias")
-    expect(linhas[4].violacoes[0].evidencia).toBe("dispositivo products_galeria e a decisão pede products_grade_preco")
+  it("as três inversões do batch aparecem pelo DISPOSITIVO: body 3 (remoção de risco) onde se pediu lista, body 4 (comparação) onde se pediu remoção de risco, produtos 7 (galeria de ângulos) onde se pediu vitrine paralela", () => {
+    expect(linhas[1].violacoes[0].evidencia).toBe("dispositivo remocao_de_risco e a decisão pede lista_enumerada")
+    expect(linhas[2].violacoes[0].evidencia).toBe("dispositivo comparacao_pareada e a decisão pede remocao_de_risco")
+    expect(linhas[4].violacoes[0].evidencia).toBe("dispositivo galeria_de_angulos e a decisão pede vitrine_paralela")
     for (const i of [1, 2, 4]) expect(linhas[i]).toMatchObject({ estado: "divergente", no_responsavel: "assembler_chooser" })
   })
 

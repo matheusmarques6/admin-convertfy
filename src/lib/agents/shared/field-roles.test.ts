@@ -279,18 +279,18 @@ describe("conflitoDeContrato — cena decidida × direção fotográfica (15/09)
 
 describe("capacidadePorSecao — com imagem gerada (15/09)", () => {
   const lib = [
-    { block_type: "hero", output_schema: HERO_3, dispositivo: "hero_oferta_cupom" },
-    { block_type: "hero", output_schema: HERO_9, dispositivo: "hero_apresentacao" },
-    { block_type: "body", output_schema: BODY_4, dispositivo: "body_comparacao" },
-    { block_type: "body", output_schema: campos("section_title section_copy cta_label"), dispositivo: "body_tese" },
-    { block_type: "body", output_schema: campos("glass_title glass_subtitle glass_cta_label glass_composition_image:image"), dispositivo: "body_tese" },
+    { block_type: "hero", output_schema: HERO_3, dispositivo: "oferta_em_manchete" },
+    { block_type: "hero", output_schema: HERO_9, dispositivo: "abertura_editorial" },
+    { block_type: "body", output_schema: BODY_4, dispositivo: "comparacao_pareada" },
+    { block_type: "body", output_schema: campos("section_title section_copy cta_label"), dispositivo: "tese_declarada" },
+    { block_type: "body", output_schema: campos("glass_title glass_subtitle glass_cta_label glass_composition_image:image"), dispositivo: "tese_declarada" },
   ]
   it("conta por seção e por dispositivo", () => {
     const cap = capacidadePorSecao(lib)
     expect(cap.hero.com_imagem).toBe(2)
-    expect(cap.hero.com_imagem_por_dispositivo).toEqual({ hero_oferta_cupom: 1, hero_apresentacao: 1 })
+    expect(cap.hero.com_imagem_por_dispositivo).toEqual({ oferta_em_manchete: 1, abertura_editorial: 1 })
     expect(cap.body.com_imagem).toBe(2)
-    expect(cap.body.com_imagem_por_dispositivo).toEqual({ body_comparacao: 1, body_tese: 1 })
+    expect(cap.body.com_imagem_por_dispositivo).toEqual({ comparacao_pareada: 1, tese_declarada: 1 })
   })
   it("o render diz onde a cena é obrigatória; seção sem imagem não fala disso", () => {
     const txt = renderCapacidade(capacidadePorSecao([...lib, { block_type: "footer", output_schema: campos("legal") }]))
@@ -301,9 +301,9 @@ describe("capacidadePorSecao — com imagem gerada (15/09)", () => {
 
 // ── Faixa de itens POR DISPOSITIVO (15/09) ─────────────────────────────
 //
-// A Innova reprovou porque `reviews_3plus` foi pedido com no máximo 2
+// A Innova reprovou porque `prova_por_volume` foi pedido com no máximo 2
 // itens: a faixa da SEÇÃO ia de 2 a 4 (por causa das variantes de
-// `reviews_com_credencial`), então nada acusou, e o filtro eliminou as sete
+// `prova_por_autoridade`), então nada acusou, e o filtro eliminou as sete
 // variantes de reviews. A faixa por forma é o dado que faltava nos dois
 // lados — no prompt, para o pedido não nascer; na auditoria, para não passar.
 describe("capacidadePorSecao — faixa de itens por dispositivo (15/09)", () => {
@@ -311,18 +311,18 @@ describe("capacidadePorSecao — faixa de itens por dispositivo (15/09)", () => 
   const quatroItens = campos("review_1_body review_2_body review_3_body review_4_body")
   const doisItens = campos("review_1_body review_2_body")
   const lib = [
-    { block_type: "reviews", output_schema: tresItens, dispositivo: "reviews_3plus" },
-    { block_type: "reviews", output_schema: quatroItens, dispositivo: "reviews_3plus" },
-    { block_type: "reviews", output_schema: doisItens, dispositivo: "reviews_com_credencial" },
+    { block_type: "reviews", output_schema: tresItens, dispositivo: "prova_por_volume" },
+    { block_type: "reviews", output_schema: quatroItens, dispositivo: "prova_por_volume" },
+    { block_type: "reviews", output_schema: doisItens, dispositivo: "prova_por_autoridade" },
     // Sem grade nenhuma: fica FORA do mapa de faixas, não vira {0,0}.
-    { block_type: "reviews", output_schema: campos("reviews_headline reviews_cta_label"), dispositivo: "reviews_com_credencial" },
+    { block_type: "reviews", output_schema: campos("reviews_headline reviews_cta_label"), dispositivo: "prova_por_autoridade" },
   ]
   it("a faixa da seção esconde o que a faixa da forma revela", () => {
     const cap = capacidadePorSecao(lib)
     expect(cap.reviews.itens).toEqual({ min: 2, max: 4 })
     expect(cap.reviews.itens_por_dispositivo).toEqual({
-      reviews_3plus: { min: 3, max: 4 },
-      reviews_com_credencial: { min: 2, max: 2 },
+      prova_por_volume: { min: 3, max: 4 },
+      prova_por_autoridade: { min: 2, max: 2 },
     })
   })
   it("variante sem dispositivo não entra no mapa por forma", () => {
@@ -332,15 +332,15 @@ describe("capacidadePorSecao — faixa de itens por dispositivo (15/09)", () => 
   })
   it("o render cola a faixa no dispositivo — é o que o Estruturador lê antes de pedir", () => {
     const txt = renderCapacidade(capacidadePorSecao(lib))
-    expect(txt).toContain("reviews_3plus (2, 3–4 itens)")
-    expect(txt).toContain("reviews_com_credencial (2, 2 itens)")
+    expect(txt).toContain("prova_por_volume (2, 3–4 itens)")
+    expect(txt).toContain("prova_por_autoridade (2, 2 itens)")
   })
   it("dispositivo sem grade sai sem faixa, e não como zero", () => {
     const txt = renderCapacidade(
-      capacidadePorSecao([{ block_type: "hero", output_schema: campos("title"), dispositivo: "hero_pergunta" }]),
+      capacidadePorSecao([{ block_type: "hero", output_schema: campos("title"), dispositivo: "pergunta_ao_leitor" }]),
     )
-    expect(txt).toContain("hero_pergunta (1)")
-    expect(txt).not.toContain("hero_pergunta (1, 0")
+    expect(txt).toContain("pergunta_ao_leitor (1)")
+    expect(txt).not.toContain("pergunta_ao_leitor (1, 0")
   })
 })
 

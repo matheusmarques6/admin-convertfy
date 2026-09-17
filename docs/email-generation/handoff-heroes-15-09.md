@@ -23,9 +23,11 @@ outras 37 variantes da biblioteca tinham as duas coisas. O cadastro em si
 está bom: todas passam no `variantIsFillable`, o HTML está em 600px e o
 schema casa com ele.
 
-O dispositivo já foi corrigido no banco no mesmo dia:
-`hero_oferta_cupom` para 11, 12, 13, 14 e 15; `hero_apresentacao` para 16,
-17 e 18 — que deixou de ser um dispositivo sem nenhuma variante ativa.
+O dispositivo já foi corrigido no banco no mesmo dia. Em 17/09 o
+vocabulário inteiro foi redefinido — o nome passou a ser o MECANISMO, sem
+prefixo de seção (migration 20261166) —, e as fichas abaixo já trazem o
+nome novo: `oferta_em_manchete` (11 e 14), `prazo_declarado` (12),
+`campanha_nomeada` (13 e 15), `abertura_editorial` (16, 17 e 18).
 
 **Seis das oito são o e-mail INTEIRO**, não uma abertura: as descrições dizem
 isso com todas as letras ("E-mail inteiro de último dia…"). Só a 17 e a 18
@@ -115,7 +117,7 @@ paleta: []        # preencher
 ```
 
 - caminho: `componentes/variantes/hero/<slug>.md`
-- dispositivo no banco: `hero_oferta_cupom` (não vai na nota)
+- dispositivo no banco: `oferta_em_manchete` (não vai na nota)
 - forma: 7 campos · 2 imagens · logo
 - anatomia: cupom, cta
 - campos: `bogo_headline_1, bogo_headline_2, bogo_subline, bogo_coupon_label, bogo_coupon_code, bogo_body, bogo_cta_label, bogo_background_image, bogo_logo_image`
@@ -141,7 +143,7 @@ paleta: []        # preencher
 ```
 
 - caminho: `componentes/variantes/hero/<slug>.md`
-- dispositivo no banco: `hero_oferta_cupom` (não vai na nota)
+- dispositivo no banco: `prazo_declarado` (não vai na nota)
 - forma: 8 campos · 2 imagens · prazo · logo
 - anatomia: cta
 - campos: `countdown_benefit_line, countdown_eyebrow, countdown_offer_main, countdown_offer_symbol, countdown_offer_suffix, countdown_subline, countdown_body, countdown_cta_label, countdown_background_image, countdown_logo_image`
@@ -149,7 +151,7 @@ paleta: []        # preencher
 Descrição do cadastro (prevalece sobre a sua):
 > E-mail inteiro de último dia, para quando a urgência é o argumento principal e precisa aparecer antes de qualquer outra coisa. Abre com um contador regressivo ocupando a tela inteira e só depois entrega a oferta e o botão.
 
-Atenção: É o E-MAIL INTEIRO. Tem percentual mas NÃO tem cupom: a urgência é o argumento, e é isso que a separa das irmãs de hero_oferta_cupom.
+Atenção: É o E-MAIL INTEIRO. Tem percentual mas NÃO tem cupom: a urgência é o argumento, e é isso que a separa das irmãs de `oferta_em_manchete`.
 
 ## hero section 13
 
@@ -167,7 +169,7 @@ paleta: []        # preencher
 ```
 
 - caminho: `componentes/variantes/hero/<slug>.md`
-- dispositivo no banco: `hero_oferta_cupom` (não vai na nota)
+- dispositivo no banco: `campanha_nomeada` (não vai na nota)
 - forma: 7 campos · 4 imagens · logo
 - anatomia: cupom, cta
 - campos: `bf_offer_line_1, bf_offer_value, bf_offer_line_3, bf_coupon_label, bf_coupon_code, bf_cta_label, bf_campaign_name, bf_offer_card_image, bf_diagonal_stripes_image, bf_background_image, bf_logo_image`
@@ -193,7 +195,7 @@ paleta: []        # preencher
 ```
 
 - caminho: `componentes/variantes/hero/<slug>.md`
-- dispositivo no banco: `hero_oferta_cupom` (não vai na nota)
+- dispositivo no banco: `oferta_em_manchete` (não vai na nota)
 - forma: 7 campos · 3 imagens · logo
 - anatomia: cta
 - campos: `lockup_eyebrow, lockup_repeat_word, lockup_value, lockup_suffix, lockup_collection_title, lockup_body, lockup_cta_label, lockup_type_image, lockup_background_image, lockup_logo_image`
@@ -219,7 +221,7 @@ paleta: []        # preencher
 ```
 
 - caminho: `componentes/variantes/hero/<slug>.md`
-- dispositivo no banco: `hero_oferta_cupom` (não vai na nota)
+- dispositivo no banco: `campanha_nomeada` (não vai na nota)
 - forma: 7 campos · 2 imagens · logo
 - anatomia: cupom, cta
 - campos: `cyber_badge_line_1, cyber_badge_line_2, cyber_eyebrow, cyber_headline, cyber_coupon_label, cyber_coupon_code, cyber_cta_label, cyber_background_image, cyber_logo_image`
@@ -245,7 +247,7 @@ paleta: []        # preencher
 ```
 
 - caminho: `componentes/variantes/hero/<slug>.md`
-- dispositivo no banco: `hero_apresentacao` (não vai na nota)
+- dispositivo no banco: `abertura_editorial` (não vai na nota)
 - forma: 4 campos · 2 imagens · logo
 - anatomia: cta
 - campos: `arch_headline_1, arch_headline_2, arch_body, arch_cta_label, arch_background_image, arch_logo_image`
@@ -271,7 +273,7 @@ paleta: []        # preencher
 ```
 
 - caminho: `componentes/variantes/hero/<slug>.md`
-- dispositivo no banco: `hero_apresentacao` (não vai na nota)
+- dispositivo no banco: `abertura_editorial` (não vai na nota)
 - forma: 4 campos · 2 imagens · logo
 - anatomia: cta
 - campos: `hero_title, hero_body_lead, hero_body, hero_cta_label, hero_background_image, hero_logo_image`
@@ -297,7 +299,7 @@ paleta: []        # preencher
 ```
 
 - caminho: `componentes/variantes/hero/<slug>.md`
-- dispositivo no banco: `hero_apresentacao` (não vai na nota)
+- dispositivo no banco: `abertura_editorial` (não vai na nota)
 - forma: 3 campos · 2 imagens · logo
 - anatomia: cta
 - campos: `hero_headline, hero_body, hero_cta_label, hero_background_image, hero_logo_image`

@@ -29,7 +29,7 @@ const HERO_13: VarianteParaFicha = {
   id: "bd4965fe-9606-49ca-bdbf-f260571acb3a",
   name: "hero section 13",
   block_type: "hero",
-  dispositivo: "hero_oferta_cupom",
+  dispositivo: "oferta_em_manchete",
   papel_na_peca: "peca-inteira",
   description: "E-mail inteiro de data comemorativa forte, quando a oferta é um percentual único.",
   output_schema: [
@@ -55,7 +55,7 @@ describe("fichaDaVariante", () => {
   })
 
   it("o dispositivo aparece marcado como fora da nota", () => {
-    expect(fichaDaVariante(HERO_13)).toContain("`hero_oferta_cupom` (não vai na nota)")
+    expect(fichaDaVariante(HERO_13)).toContain("`oferta_em_manchete` (não vai na nota)")
   })
 
   // O modo de falha que a ficha existe para impedir: sem dispositivo a

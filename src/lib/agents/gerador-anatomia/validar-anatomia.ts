@@ -59,50 +59,100 @@ export function contratoDoDispositivo(d: Dispositivo): {
   itens_exatos?: number
 } {
   switch (d) {
-    case "hero_apresentacao":
+    // ── Oferta e preço ────────────────────────────────────────────────
+    case "oferta_em_manchete":
+      // O percentual é o maior elemento; o cupom é acessório e pode faltar
+      // (a hero 7 tem desconto automático e nenhum código).
+      return { requisitos: { cta: true } }
+    case "campanha_nomeada":
+      return { requisitos: { cta: true } }
+    case "oferta_condicionada":
+      // A condição é o conteúdo — e por isso o que NÃO pode haver é código:
+      // com ele a peça vira entrega de cupom, que é outro dispositivo.
       return { requisitos: { cta: true, cupom: false } }
-    case "hero_oferta_cupom":
+    case "oferta_adiada":
       return { requisitos: { cta: true, cupom: true } }
-    case "hero_pergunta":
-      return { requisitos: { cta: true, cupom: false } }
-    case "hero_lineup":
-      return { requisitos: { cta: true, n_itens: { min: 3 } } }
-    case "body_tese":
+    case "codigo_entregue":
+      return { requisitos: { cta: true, cupom: true } }
+    case "codigo_relembrado":
+      return { requisitos: { cta: true, cupom: true } }
+    case "prazo_declarado":
+      return { requisitos: { cta: true } }
+
+    // ── Argumento ─────────────────────────────────────────────────────
+    case "tese_declarada":
       return { requisitos: { cta: true, n_itens: { max: 1 } } }
-    case "body_mecanismo_visual":
+    case "lista_enumerada":
+      return { requisitos: { n_itens: { min: 3, max: 5 } } }
+    case "mecanismo_apontado":
       return { requisitos: { n_itens: { min: 2, max: 4 } }, imagens: { min: 1 } }
-    case "body_garantias":
+    case "antes_e_depois":
+      // Duas fotos do mesmo ângulo: a prova É a imagem, e sem as duas o
+      // dispositivo não existe.
+      return { requisitos: { n_itens: { min: 2, max: 2 } }, imagens: { min: 2 } }
+    case "comparacao_pareada":
+      return { requisitos: { n_itens: { min: 3, max: 6 } } }
+    case "duvida_antecipada":
+      return { requisitos: { n_itens: { min: 3, max: 5 } } }
+    case "pergunta_ao_leitor":
+      return { requisitos: { cta: true, cupom: false } }
+    case "cena_de_uso":
+      return { requisitos: { cta: true }, imagens: { min: 1 } }
+    case "remocao_de_risco":
       return { requisitos: { cupom: false, n_itens: { min: 2, max: 4 } } }
-    case "body_comparacao":
-      return { requisitos: { n_itens: { min: 3, max: 5 } } }
-    case "body_faq":
-      return { requisitos: { n_itens: { min: 3, max: 5 } } }
-    case "body_passos":
-      return { requisitos: { n_itens: { min: 3, max: 5 } } }
-    case "products_grade_preco":
-      return { requisitos: { preco: true, n_itens: { min: 2, max: 4 } }, imagens: { min: 2 } }
-    case "products_grade_sem_preco":
-      return { requisitos: { preco: false, n_itens: { min: 2, max: 4 } }, imagens: { min: 2 } }
-    case "products_unico_oferta":
-      return { requisitos: { preco: true, cta: true, n_itens: { max: 1 } }, imagens: { min: 1 } }
-    case "products_galeria":
-      return { requisitos: { preco: false, n_itens: { min: 2, max: 3 } }, imagens: { min: 2 } }
-    case "reviews_2":
-      return { requisitos: { n_itens: { min: 2, max: 2 } }, itens_exatos: 2, credencial: false }
-    case "reviews_3plus":
+    case "oferta_de_ajuda":
+      // Suporte, não venda: cupom aqui contradiz o mecanismo.
+      return { requisitos: { cta: true, cupom: false } }
+    case "moldura_de_genero":
+      // A moldura é livre por natureza — é o único dispositivo cuja forma é
+      // o estranhamento, e amarrá-la a uma anatomia mataria o mecanismo.
+      return { requisitos: {} }
+    case "abertura_editorial":
+      return { requisitos: { cta: true, cupom: false }, imagens: { min: 1 } }
+
+    // ── Catálogo e produto ────────────────────────────────────────────
+    case "vitrine_paralela":
+      return { requisitos: { n_itens: { min: 2, max: 9 } }, imagens: { min: 2 } }
+    case "vitrine_narrada":
+      return { requisitos: { n_itens: { min: 2, max: 4 } }, imagens: { min: 2 } }
+    case "produto_unico_aprofundado":
+      return { requisitos: { cta: true, n_itens: { max: 1 } }, imagens: { min: 1 } }
+    case "galeria_de_angulos":
+      // O mesmo produto de vários ângulos: exige acervo por ângulo.
+      return { requisitos: { n_itens: { max: 2 } }, imagens: { min: 3 } }
+    case "lineup_de_colecao":
+      return { requisitos: { cta: true, n_itens: { min: 3 } } }
+    case "catalogo_por_ocasiao":
+      return { requisitos: { n_itens: { min: 2, max: 6 } }, imagens: { min: 2 } }
+    case "escassez_por_estoque":
       return { requisitos: { n_itens: { min: 3 } } }
-    case "reviews_com_credencial":
-      return { requisitos: { n_itens: { min: 1, max: 3 } }, credencial: true }
-    case "offer_cupom":
-      return { requisitos: { cupom: true, cta: true } }
-    case "offer_sem_cupom":
-      return { requisitos: { cupom: false, cta: true } }
-    case "offer_lembrete":
-      return { requisitos: { cupom: true, cta: true } }
-    case "footer_nav":
+    case "carrinho_dinamico":
+      return { requisitos: { cta: true } }
+
+    // ── Prova social e fechamento ─────────────────────────────────────
+    case "prova_por_autoridade":
+      return { requisitos: { n_itens: { max: 3 } }, credencial: true }
+    case "prova_por_relato":
+      // Credencial é CARGO, não carimbo de verificado. Confundir os dois faz
+      // o protocolo escolher esta peça quando a objeção pede autoridade
+      // técnica — foi o caso da review 10, cadastrada como "com credencial".
+      return { requisitos: { n_itens: { max: 2 } }, credencial: false }
+    case "prova_por_volume":
+      return { requisitos: { n_itens: { min: 3 } }, credencial: false }
+    case "prova_com_vitrine":
+      // Prova que também mostra produto — é por isso que não convive com
+      // grade de produtos na mesma peça.
+      return { requisitos: { n_itens: { min: 2 } }, imagens: { min: 2 } }
+    case "menu_de_saida":
       return { requisitos: {}, links: { min: 4, max: 9 } }
-    case "footer_minimo":
+    case "assinatura_minima":
       return { requisitos: {}, links: { max: 3 } }
+
+    // ── Controle ──────────────────────────────────────────────────────
+    case "nao_classificado":
+      // Não se gera anatomia do que ninguém julgou, e não se cobra
+      // contrato de quem não tem mecanismo declarado.
+      return { requisitos: {} }
   }
 }
 
@@ -190,7 +240,7 @@ export function validarAnatomia(input: {
     erros.push(`contrato ${input.dispositivo}: exige credencial do depoente (review_N_role/context)`)
   }
   if (regra.credencial === false && contrato.tem_credencial) {
-    avisos.push(`contrato ${input.dispositivo}: tem credencial — é reviews_com_credencial, não reviews_2`)
+    avisos.push(`contrato ${input.dispositivo}: tem credencial (cargo/contexto do depoente) — o mecanismo é prova_por_autoridade`)
   }
   if (regra.imagens && contrato.imagens < (regra.imagens.min ?? 0)) {
     erros.push(`contrato ${input.dispositivo}: exige ao menos ${regra.imagens.min} campo(s) de imagem (encontrei ${contrato.imagens})`)

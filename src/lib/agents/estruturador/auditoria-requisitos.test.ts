@@ -239,12 +239,12 @@ describe("custódia: os requisitos auditados são os que chegam ao Curador", () 
 
 describe("dispositivo (B3)", () => {
   const CAP_DISP: Record<string, CapacidadeDaSecao> = {
-    hero: { ...CAP.hero, por_dispositivo: { hero_pergunta: 2, hero_oferta_cupom: 5 }, classificadas: 7 },
-    body: { ...CAP.body, por_dispositivo: { body_tese: 2 }, classificadas: 2 },
+    hero: { ...CAP.hero, por_dispositivo: { pergunta_ao_leitor: 2, oferta_em_manchete: 5 }, classificadas: 7 },
+    body: { ...CAP.body, por_dispositivo: { tese_declarada: 2 }, classificadas: 2 },
     // reviews sem NENHUMA classificada: dispositivo ausente ali só avisa.
     reviews: { ...CAP.reviews },
-    products: { ...CAP.products, por_dispositivo: { products_grade_sem_preco: 5 }, classificadas: 5 },
-    footer: { ...CAP.footer, por_dispositivo: { footer_nav: 3 }, classificadas: 3 },
+    products: { ...CAP.products, por_dispositivo: { vitrine_narrada: 5 }, classificadas: 5 },
+    footer: { ...CAP.footer, por_dispositivo: { menu_de_saida: 3 }, classificadas: 3 },
   }
   const base = (estrutura: Array<Record<string, unknown>>) =>
     auditarRequisitos({
@@ -267,10 +267,10 @@ describe("dispositivo (B3)", () => {
 
   it("dispositivo sem variante ativa na seção é DURA quando a seção está classificada", () => {
     const a = base([
-      { section: "body", papel: "compara", referencia: "r", porque: "p", requisitos: { dispositivo: "body_comparacao" } },
+      { section: "body", papel: "compara", referencia: "r", porque: "p", requisitos: { dispositivo: "comparacao_pareada" } },
     ])
     expect(a.duras.map((d) => d.regra)).toEqual(["dispositivo_sem_variante"])
-    expect(a.duras[0].detalhe).toContain("tem: body_tese")
+    expect(a.duras[0].detalhe).toContain("tem: tese_declarada")
   })
 
   it("dispositivo fora do vocabulário chega como valor descartado e é DURA (campo de filtro)", () => {
@@ -285,29 +285,29 @@ describe("dispositivo (B3)", () => {
 
 // ── imagem_sem_cena (15/09, Innova Bay · Welcome 1, batch b6c478d3) ──────
 //
-// A posição da tese (body_tese) saiu com `imagem: null`; a variante
+// A posição da lista (lista_enumerada) saiu com `imagem: null`; a variante
 // escolhida tinha slot de imagem e a foto repetiu a do hero. A auditoria
 // passa a cobrar a cena onde a biblioteca tem foto gerada.
 describe("auditarRequisitos — imagem_sem_cena (15/09)", () => {
   const capComImagem: Record<string, CapacidadeDaSecao> = {
     ...CAP,
-    hero: { ...CAP.hero, com_imagem: 9, por_dispositivo: { hero_apresentacao: 2 }, classificadas: 2, com_imagem_por_dispositivo: { hero_apresentacao: 2 } },
-    // body_tese: 2 variantes, 1 com imagem → aviso; body_garantias: 1 de 1 → dura.
+    hero: { ...CAP.hero, com_imagem: 9, por_dispositivo: { abertura_editorial: 2 }, classificadas: 2, com_imagem_por_dispositivo: { abertura_editorial: 2 } },
+    // lista_enumerada: 2 variantes, 1 com imagem → aviso; remocao_de_risco: 1 de 1 → dura.
     body: {
       ...CAP.body,
       com_imagem: 2,
-      por_dispositivo: { body_tese: 2, body_garantias: 1 },
+      por_dispositivo: { lista_enumerada: 2, remocao_de_risco: 1 },
       classificadas: 3,
-      com_imagem_por_dispositivo: { body_tese: 1, body_garantias: 1 },
+      com_imagem_por_dispositivo: { lista_enumerada: 1, remocao_de_risco: 1 },
     },
   }
   it("posição sem cena onde TODA variante da forma tem foto é dura; onde só parte tem, é aviso", () => {
     const a = base({ capacidade: capComImagem })
     const duras = a.duras.filter((d) => d.regra === "imagem_sem_cena")
     const avisos = a.avisos.filter((d) => d.regra === "imagem_sem_cena")
-    // fixture: hero e products têm imagem; body_tese, body_garantias, reviews e footer não.
+    // fixture: hero e products têm imagem; lista_enumerada, remocao_de_risco, reviews e footer não.
     expect(duras.map((d) => d.section)).toEqual(["body"])
-    expect(duras[0].detalhe).toContain("body_garantias")
+    expect(duras[0].detalhe).toContain("remocao_de_risco")
     expect(duras[0].detalhe).toContain("toda variante")
     expect(avisos).toHaveLength(1)
     expect(avisos[0].detalhe).toContain("1 de 2 variantes")
@@ -322,9 +322,9 @@ describe("auditarRequisitos — imagem_sem_cena (15/09)", () => {
 
 // ── n_itens_fora_do_dispositivo: o caso REAL da Innova (15/09) ──────────
 //
-// Batch das 15:49: posição `reviews` com `dispositivo: reviews_3plus` E
-// `n_itens: {min:2, max:2}`. A biblioteca tinha três `reviews_3plus` (3, 3
-// e 4 itens) e outras de `reviews_com_credencial` com grade menor — então
+// Batch das 15:49: posição `reviews` com `dispositivo: prova_por_volume` E
+// `n_itens: {min:2, max:2}`. A biblioteca tinha três `prova_por_volume` (3, 3
+// e 4 itens) e outras de `prova_por_autoridade` com grade menor — então
 // `cap.itens` da SEÇÃO ia de 2 a 4 e a régua de capacidade não acusou nada
 // (`ok: true`, `duras: []`). O filtro então eliminou as SETE variantes de
 // reviews, a posição ficou vazia e a peça reprovou em `posicao_sem_variante`
@@ -335,11 +335,11 @@ describe("auditarRequisitos — n_itens × dispositivo", () => {
       ...CAP.reviews,
       // A seção inteira vai de 2 a 4 — é isso que escondia o erro.
       itens: { min: 2, max: 4 },
-      por_dispositivo: { reviews_3plus: 3, reviews_com_credencial: 4 },
+      por_dispositivo: { prova_por_volume: 3, prova_por_autoridade: 4 },
       classificadas: 7,
       itens_por_dispositivo: {
-        reviews_3plus: { min: 3, max: 4 },
-        reviews_com_credencial: { min: 2, max: 2 },
+        prova_por_volume: { min: 3, max: 4 },
+        prova_por_autoridade: { min: 2, max: 2 },
       },
     },
   }
@@ -357,10 +357,10 @@ describe("auditarRequisitos — n_itens × dispositivo", () => {
     })
 
   it("pedir 2 itens de um dispositivo que entrega 3–4 é DURA", () => {
-    const a = auditar({ dispositivo: "reviews_3plus", n_itens: { min: 2, max: 2 } })
+    const a = auditar({ dispositivo: "prova_por_volume", n_itens: { min: 2, max: 2 } })
     const d = a.duras.filter((x) => x.regra === "n_itens_fora_do_dispositivo")
     expect(d).toHaveLength(1)
-    expect(d[0].detalhe).toContain("reviews_3plus")
+    expect(d[0].detalhe).toContain("prova_por_volume")
     expect(d[0].detalhe).toContain("3–4")
     expect(a.ok).toBe(false)
   })
@@ -368,22 +368,22 @@ describe("auditarRequisitos — n_itens × dispositivo", () => {
   // A régua da SEÇÃO continua cega para este caso — é por isso que a nova
   // existe, e este teste é o que impede alguém de "simplificar" removendo-a.
   it("a régua da seção sozinha NÃO pegaria: 2 cabe na faixa 2–4 da seção", () => {
-    const a = auditar({ dispositivo: "reviews_3plus", n_itens: { min: 2, max: 2 } })
+    const a = auditar({ dispositivo: "prova_por_volume", n_itens: { min: 2, max: 2 } })
     expect(a.duras.some((x) => x.regra === "exige_fora_da_capacidade")).toBe(false)
   })
 
   it("faixa compatível passa", () => {
-    const a = auditar({ dispositivo: "reviews_3plus", n_itens: { min: 3, max: 3 } })
+    const a = auditar({ dispositivo: "prova_por_volume", n_itens: { min: 3, max: 3 } })
     expect(a.duras.filter((x) => x.regra === "n_itens_fora_do_dispositivo")).toEqual([])
   })
 
   it("faixa que ENCOSTA na do dispositivo passa — a interseção basta", () => {
-    const a = auditar({ dispositivo: "reviews_3plus", n_itens: { min: 2, max: 3 } })
+    const a = auditar({ dispositivo: "prova_por_volume", n_itens: { min: 2, max: 3 } })
     expect(a.duras.filter((x) => x.regra === "n_itens_fora_do_dispositivo")).toEqual([])
   })
 
   it("pedir MAIS do que a forma entrega também é dura", () => {
-    const a = auditar({ dispositivo: "reviews_com_credencial", n_itens: { min: 5, max: 6 } })
+    const a = auditar({ dispositivo: "prova_por_autoridade", n_itens: { min: 5, max: 6 } })
     const d = a.duras.filter((x) => x.regra === "n_itens_fora_do_dispositivo")
     expect(d).toHaveLength(1)
     expect(d[0].detalhe).toContain("entrega 2")
@@ -397,7 +397,7 @@ describe("auditarRequisitos — n_itens × dispositivo", () => {
     }
     const a = auditarRequisitos({
       saida: normalizarOutputDetalhado({
-        estrutura: [{ section: "reviews", papel: "p", referencia: "r", porque: "p", requisitos: { dispositivo: "reviews_3plus", n_itens: { min: 2, max: 2 } } }],
+        estrutura: [{ section: "reviews", papel: "p", referencia: "r", porque: "p", requisitos: { dispositivo: "prova_por_volume", n_itens: { min: 2, max: 2 } } }],
         descartes: [],
       }).saida,
       alvo: null, incentivo: null, capacidade: semGrade,
@@ -407,7 +407,7 @@ describe("auditarRequisitos — n_itens × dispositivo", () => {
   })
 
   it("sem n_itens não há o que contradizer", () => {
-    const a = auditar({ dispositivo: "reviews_3plus" })
+    const a = auditar({ dispositivo: "prova_por_volume" })
     expect(a.duras.filter((x) => x.regra === "n_itens_fora_do_dispositivo")).toEqual([])
   })
 })

@@ -33,7 +33,7 @@ import { aplicarTokens } from "../html/identity-tokens"
 import { paletasDeProva, type PaletaDeProva } from "../html/paletas-de-prova"
 import { EMAIL_ASSETS_BUCKET } from "../image/upload-email-asset"
 import { renderImageTemplate } from "../image/template-renderer"
-import { secaoDoDispositivo, type Dispositivo } from "../shared/dispositivos"
+import { secaoPrimariaDoDispositivo, type Dispositivo } from "../shared/dispositivos"
 import { buildSegmentedPrompt, type InputSummaryItem } from "../shared/prompt-provenance"
 import {
   DEFAULT_GERADOR_SYSTEM,
@@ -115,7 +115,15 @@ async function escolherReferencias(
     .select("id, name, block_type, dispositivo, tokens_de_identidade, html")
     .eq("is_active", true)
   if (refsIds && refsIds.length > 0) q = q.in("id", refsIds)
-  else q = q.eq("block_type", secaoDoDispositivo(dispositivo))
+  else {
+    // O dispositivo pode viver em DUAS seções (17/09: `codigo_entregue` em
+    // hero e offer, `mecanismo_apontado` em body e products). As referências
+    // saem da seção PRIMÁRIA — é a que o gerador vai escrever, e misturar
+    // as duas daria de referência uma peça de outro lugar da leitura.
+    const secao = secaoPrimariaDoDispositivo(dispositivo)
+    if (!secao) return []
+    q = q.eq("block_type", secao)
+  }
   const { data, error } = await q
   if (error) {
     log.warn("gerador.refs_failed", { error: error.message })
@@ -342,7 +350,7 @@ export async function gerarAnatomia(input: GerarAnatomiaInput): Promise<GerarAna
   const { data: inserted, error: insErr } = await admin
     .from("email_component_variants")
     .insert({
-      block_type: secaoDoDispositivo(input.dispositivo),
+      block_type: secaoPrimariaDoDispositivo(input.dispositivo),
       name: saida.name,
       html: validacao.html,
       rendered_html: null,

@@ -61,17 +61,17 @@ describe("agregarLacunas", () => {
   // ocorrência — o e-mail já reprovou por causa dela.
   it("lacuna de biblioteca (dispositivo pedido) propõe com UMA ocorrência, chaveada por flow e dispositivo", () => {
     const r = agregarLacunas([
-      run("a", "10", [], [{ section: "products", block_index: 4, dispositivo_pedido: "products_grade_preco", flow_type: "welcome", motivo: "sem_candidata" }]),
+      run("a", "10", [], [{ section: "products", block_index: 4, dispositivo_pedido: "vitrine_paralela", flow_type: "welcome", motivo: "sem_candidata" }]),
     ])
     expect(r).toHaveLength(1)
-    expect(r[0]).toMatchObject({ tipo: "lacuna_biblioteca", chave: "lacuna_biblioteca:welcome:products_grade_preco", secao: "products", ocorrencias: 1 })
-    expect(r[0].detalhe).toContain("products_grade_preco")
+    expect(r[0]).toMatchObject({ tipo: "lacuna_biblioteca", chave: "lacuna_biblioteca:welcome:vitrine_paralela", secao: "products", ocorrencias: 1 })
+    expect(r[0].detalhe).toContain("vitrine_paralela")
   })
 
   it("o mesmo dispositivo em duas lojas cai no mesmo balde", () => {
     const r = agregarLacunas([
-      run("a", "10", [], [{ section: "body", dispositivo_pedido: "body_garantias", flow_type: "welcome" }]),
-      run("b", "11", [], [{ section: "body", dispositivo_pedido: "body_garantias", flow_type: "welcome" }]),
+      run("a", "10", [], [{ section: "body", dispositivo_pedido: "remocao_de_risco", flow_type: "welcome" }]),
+      run("b", "11", [], [{ section: "body", dispositivo_pedido: "remocao_de_risco", flow_type: "welcome" }]),
     ])
     expect(r).toHaveLength(1)
     expect(r[0].ocorrencias).toBe(2)
@@ -101,10 +101,10 @@ describe("buildLacunaDraft", () => {
 
   it("rascunho da lacuna de biblioteca nomeia o dispositivo no slug e explica a reprovação", () => {
     const [agg] = agregarLacunas([
-      run("a", "10", [], [{ section: "products", dispositivo_pedido: "products_grade_preco", flow_type: "welcome" }]),
+      run("a", "10", [], [{ section: "products", dispositivo_pedido: "vitrine_paralela", flow_type: "welcome" }]),
     ])
     const d = buildLacunaDraft(agg, "2026-09-14T12:00:00Z")
-    expect(d.slug).toBe("products-lacuna-biblioteca-welcome-products-grade-preco")
+    expect(d.slug).toBe("products-lacuna-biblioteca-welcome-vitrine-paralela")
     expect(d.markdown).toContain("violacao: lacuna_biblioteca")
     expect(d.markdown).toContain("lacuna_biblioteca")
     expect(d.markdown).toContain("1 geração em 14 dias")
