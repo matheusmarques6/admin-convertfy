@@ -30,6 +30,7 @@
  * servem: o que vale é o que ela GRAVOU, não como ela terminou.
  */
 
+import { semTexto, type ConsumoPorChamada } from "./curador-telemetria-chamada"
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 import { updateGenerationRun } from "@/lib/agents/callbacks/telemetry.callback"
@@ -113,6 +114,7 @@ export function escolhasDoParsed(parsed: unknown): EscolhaDaPosicao[] {
 export async function gravarProgressoDoLeque(
   runId: string,
   escolhas: ReadonlyArray<EscolhaDaPosicao>,
+  consumo?: ConsumoPorChamada,
 ): Promise<void> {
   if (!runId) return
   const progresso: ProgressoDoLeque = {
@@ -120,5 +122,21 @@ export async function gravarProgressoDoLeque(
     parcial: true,
     atualizado_em: new Date().toISOString(),
   }
-  await updateGenerationRun(runId, { status: "running", parsedOutput: { leque: progresso } })
+  // O consumo por chamada vem JUNTO, e isso é o que o torna durável: quem
+  // o persistia era só o `finishGenerationRun`, que não roda quando o
+  // runtime mata a função — e é exatamente aí que saber o que já foi gasto
+  // mais importa. Como `updateGenerationRun` SUBSTITUI o `parsed_output`
+  // inteiro, gravar um sem o outro apagaria o outro.
+  //
+  // Sem o texto (`semTexto`): esta escrita acontece a CADA posição, e 16
+  // reescritas de um JSONB com as caudas dentro seriam ~0,5 MB de WAL por
+  // e-mail, para um dado que o fechamento regrava de qualquer jeito. O que
+  // precisa sobreviver — custo, contagem e tempo por chamada — fica.
+  await updateGenerationRun(runId, {
+    status: "running",
+    parsedOutput: {
+      leque: progresso,
+      ...(consumo ? { consumo_por_chamada: semTexto(consumo) } : {}),
+    },
+  })
 }

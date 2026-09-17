@@ -54,6 +54,14 @@ import {
   SeloExecucaoManual,
   projetarRascunho,
 } from "./execucao-manual"
+import { ArvoreDeFilhos } from "./arvore-de-filhos"
+import {
+  filhosDeChamadas,
+  filhosDeRuns,
+  type FolhaDoNo,
+  type RunFilhaRow,
+} from "@/lib/agents/studio-arvore"
+import type { ConsumoDaChamada } from "@/lib/agents/architect/curador-telemetria-chamada"
 import type { ExecutionRow, RunDetailPayload } from "./studio-data"
 import { friendlyModelError } from "@/lib/ai/convertia/model-errors"
 
@@ -78,8 +86,12 @@ function fmtWhen(iso: string): string {
 }
 
 function execDurationSec(e: ExecutionRow): number | null {
+  // Por agente vale a MAIOR duração da tentativa, não a da run
+  // representativa: os slots de imagem correm em paralelo, então a maior é
+  // o que aquele passo custou de relógio. A soma disso pelos agentes é o
+  // tempo da execução.
   const total = e.runs.reduce(
-    (s, r) => s + (r.duration_ms != null ? r.duration_ms : 0),
+    (s, r) => s + (r.duration_ms_max ?? r.duration_ms ?? 0),
     0,
   )
   return total > 0 ? total / 1000 : null
@@ -582,10 +594,33 @@ function ErroDoNo({ raw }: { raw: string }) {
   )
 }
 
+/**
+ * A chave do detalhe de uma run.
+ *
+ * Função, e não string inline, porque o leque do Curador abre um `useSWR`
+ * com a MESMA chave do painel para ler `consumo_por_chamada` sem uma rota
+ * nova — e o SWR só deduplica quando a chave é idêntica byte a byte.
+ */
+export const chaveDoDetalhe = (runId: string) => `/api/admin/email-generation-logs/${runId}`
+
+/**
+ * O que o painel está mostrando.
+ *
+ * `run` é um FILHO de imagem: ele tem `run_id` próprio e o painel o abre
+ * como abriria qualquer run. `chamada` é um filho do Curador, que não tem
+ * run própria — o que existe é `consumo_por_chamada[etapa]` dentro do pai.
+ */
+export type AlvoDoPainel =
+  | { tipo: "no" }
+  | { tipo: "run"; runId: string; rotulo: string }
+  | { tipo: "chamada"; runPai: string; etapa: string; rotulo: string }
+
 export function NodeRunPanel({
   exec,
   nodeKey,
   run,
+  alvo,
+  onVoltarAoNo,
   onClose,
   onRerun,
   rerunning,
@@ -607,19 +642,36 @@ export function NodeRunPanel({
   rascunho?: ExecutionOverrides
   onRascunho?: (ov: ExecutionOverrides) => void
   onSoEsteNo?: (node: string) => void
+  /** Ausente = o nó inteiro, como sempre. */
+  alvo?: AlvoDoPainel
+  onVoltarAoNo?: () => void
 }) {
   const [tab, setTab] = useState<"input" | "prompt" | "output">("input")
   const n = STUDIO_NODE_BY_KEY[nodeKey]
+  const alvoEfetivo: AlvoDoPainel = alvo ?? { tipo: "no" }
+  // Filho de imagem: MESMO painel, outra run. Filho do Curador: a run é a
+  // do pai, e a chamada sai de dentro do `parsed_output` dela.
+  const runIdDoDetalhe =
+    alvoEfetivo.tipo === "run"
+      ? alvoEfetivo.runId
+      : alvoEfetivo.tipo === "chamada"
+        ? alvoEfetivo.runPai
+        : run.runId
   const { data: detail } = useSWR<RunDetailPayload>(
-    run.runId ? `/api/admin/email-generation-logs/${run.runId}` : null,
+    runIdDoDetalhe ? chaveDoDetalhe(runIdDoDetalhe) : null,
     fetcher,
   )
+  const chamada =
+    alvoEfetivo.tipo === "chamada"
+      ? ((detail?.parsed_output as { consumo_por_chamada?: Record<string, ConsumoDaChamada | null> } | null)
+          ?.consumo_por_chamada?.[alvoEfetivo.etapa] ?? null)
+      : null
   if (!n) return null
   const meta = nodeMeta(n)
   const st = RUN_STYLE[run.status]
   const rerun = rerunPlanFor(nodeKey)
 
-  const hasDetail = run.runId != null
+  const hasDetail = runIdDoDetalhe != null
   const tabs: Array<["input" | "prompt" | "output", string]> = hasDetail
     ? [
         ["input", "Entrada"],
@@ -639,19 +691,35 @@ export function NodeRunPanel({
       : n.type === "output"
         ? stringify({ status: exec.email_status, email: exec.email_name })
         : "Sem run registrada para este nó nesta execução."
-    : tab === "input"
-      ? stringify(detail?.input_vars)
-      : tab === "prompt"
-        ? (detail?.rendered_prompt ?? "— sem prompt renderizado registrado —")
-        : (detail?.raw_output ?? stringify(detail?.parsed_output))
+    : alvoEfetivo.tipo === "chamada"
+      ? tab === "input"
+        ? stringify({ etapa: alvoEfetivo.etapa, ...(chamada ?? {}), cauda: undefined, saida: undefined })
+        : tab === "prompt"
+          ? // Prefixo + cauda, nesta ordem e rotulados: o prefixo é
+            // CACHEADO e vai uma vez por run; sem dizer isso, o operador lê
+            // que o Curador mandou 93 mil caracteres em cada chamada.
+            [
+              `— PREFIXO, comum às chamadas desta run (${(detail?.rendered_prompt ?? "").length} caracteres) —`,
+              detail?.rendered_prompt ?? "— sem prefixo registrado —",
+              "",
+              `— CAUDA desta chamada${chamada?.cauda_truncada ? " (cortada pela telemetria; o tamanho real está na Entrada)" : ""} —`,
+              chamada?.cauda ?? "— sem cauda registrada —",
+            ].join("\n")
+          : (chamada?.saida ?? "— sem saída registrada para esta chamada —")
+      : tab === "input"
+        ? stringify(detail?.input_vars)
+        : tab === "prompt"
+          ? (detail?.rendered_prompt ?? "— sem prompt renderizado registrado —")
+          : (detail?.raw_output ?? stringify(detail?.parsed_output))
 
   // Proveniência (migration 20261085): quando a run tem segments/summary, as
   // abas Prompt e Entrada mostram a versão marcada por origem. Ausente (runs
   // anteriores, agentes ainda não migrados) → o texto plano de sempre.
   const segments = detail?.prompt_segments ?? null
   const summary = detail?.input_summary ?? null
-  const showProvPrompt = tab === "prompt" && hasDetail && (segments?.length ?? 0) > 0
-  const showProvInput = tab === "input" && hasDetail && (summary?.length ?? 0) > 0
+  const alvoEhChamada = alvoEfetivo.tipo === "chamada"
+  const showProvPrompt = !alvoEhChamada && tab === "prompt" && hasDetail && (segments?.length ?? 0) > 0
+  const showProvInput = !alvoEhChamada && tab === "input" && hasDetail && (summary?.length ?? 0) > 0
 
   const copyJson = () => {
     const payload = hasDetail
@@ -708,11 +776,52 @@ export function NodeRunPanel({
           {meta.name.slice(0, 1)}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: C.g900, fontFamily: F.sans }}>
-            {meta.name}
+          <div
+            style={{
+              fontSize: 14,
+              fontWeight: 600,
+              color: C.g900,
+              fontFamily: F.sans,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {/* Num filho, o nome do agente vira caminho: sem ele o painel
+                abre com outro conteúdo e nada diz de onde veio. */}
+            {alvoEfetivo.tipo === "no" ? (
+              meta.name
+            ) : (
+              <>
+                <button
+                  onClick={onVoltarAoNo}
+                  style={{
+                    border: "none",
+                    background: "none",
+                    padding: 0,
+                    font: "inherit",
+                    color: C.g400,
+                    cursor: "pointer",
+                  }}
+                >
+                  {meta.name}
+                </button>
+                <span style={{ color: C.g400 }}> › </span>
+                {alvoEfetivo.rotulo}
+              </>
+            )}
           </div>
           <div style={{ fontSize: 11, color: C.g400, fontFamily: F.sans, ...TNUM }}>
-            {detail?.model ?? meta.sub}
+            {alvoEfetivo.tipo === "chamada"
+              ? [
+                  chamada?.modelo ?? detail?.model,
+                  chamada?.ms != null ? `${(chamada.ms / 1000).toFixed(1).replace(".", ",")}s` : null,
+                  chamada?.custo_usd != null && chamada.custo_usd > 0 ? usd3(chamada.custo_usd) : null,
+                  chamada ? `${fmtTok(chamada.tokens_input)} in · ${fmtTok(chamada.tokens_output)} out` : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")
+              : (detail?.model ?? meta.sub)}
           </div>
         </div>
         <span
@@ -963,6 +1072,10 @@ export function NodeRunPanel({
 export function ExecutionsTab({ positions }: { positions: Positions }) {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [nodeKey, setNodeKey] = useState<string | null>(null)
+  // O leque aberto e o filho selecionado. Um leque por vez: dois abertos em
+  // nós vizinhos se cruzam, e o canvas não tem reflow.
+  const [lequeDe, setLequeDe] = useState<string | null>(null)
+  const [alvoDoPainel, setAlvoDoPainel] = useState<AlvoDoPainel>({ tipo: "no" })
   const [rerunning, setRerunning] = useState(false)
   const [notice, setNotice] = useState<{ ok: boolean; msg: string } | null>(null)
   // Rascunho de overrides: monta-se clicando nos nós e nada acontece até
@@ -1144,6 +1257,42 @@ export function ExecutionsTab({ positions }: { positions: Positions }) {
     [runs, rascunho],
   )
 
+  // ── O leque ────────────────────────────────────────────────────────
+  //
+  // Dois casos, duas fontes. IMAGEM: N runs reais, buscadas sob demanda
+  // (fora da listagem, que o SSE refaz de 2 em 2s). CURADOR: N chamadas
+  // dentro de UMA run — vêm do detalhe que o painel já busca, com a MESMA
+  // chave, então o SWR deduplica e não há requisição a mais.
+  const runDoLeque = lequeDe ? (runs?.[lequeDe] ?? null) : null
+  const ehCurador = lequeDe === "assembler_chooser"
+  const chaveFilhos =
+    exec && lequeDe && !ehCurador && (runDoLeque?.count ?? 0) > 1
+      ? `/api/admin/agents/executions/${exec.email_id}/filhos?agent=${lequeDe}` +
+        (runDoLeque?.batchId ? `&batch=${runDoLeque.batchId}` : "") +
+        // A versão entra na chave para o leque crescer enquanto as imagens
+        // saem: o SSE mexe no agregado, a chave muda, o SWR refaz. Sem poll.
+        `&v=${runDoLeque?.count ?? 0}-${runDoLeque?.usd ?? 0}`
+      : null
+  const { data: filhosData, error: filhosErro, isLoading: filhosCarregando } = useSWR<{
+    filhos: RunFilhaRow[]
+  }>(chaveFilhos, fetcher)
+  const chaveDetalheDoLeque =
+    ehCurador && runDoLeque?.runId ? chaveDoDetalhe(runDoLeque.runId) : null
+  const { data: detalheDoCurador } = useSWR<RunDetailPayload>(chaveDetalheDoLeque, fetcher)
+
+  const folhas: FolhaDoNo[] = useMemo(() => {
+    if (!lequeDe) return []
+    if (ehCurador) {
+      const consumo = (
+        detalheDoCurador?.parsed_output as {
+          consumo_por_chamada?: Record<string, ConsumoDaChamada | null>
+        } | null
+      )?.consumo_por_chamada
+      return filhosDeChamadas(consumo)
+    }
+    return filhosDeRuns(filhosData?.filhos ?? [])
+  }, [lequeDe, ehCurador, detalheDoCurador, filhosData])
+
   return (
     <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
       <ExecList
@@ -1152,6 +1301,8 @@ export function ExecutionsTab({ positions }: { positions: Positions }) {
         onPick={(id) => {
           setActiveId(id)
           setNodeKey(null)
+          setLequeDe(null)
+          setAlvoDoPainel({ tipo: "no" })
           setNotice(null)
           setRascunho(RASCUNHO_VAZIO)
           setRecusas(null)
@@ -1270,8 +1421,58 @@ export function ExecutionsTab({ positions }: { positions: Positions }) {
           <FlowCanvas
             positions={positions}
             selected={nodeKey}
-            onSelect={setNodeKey}
+            onSelect={(k) => {
+              setNodeKey(k)
+              setAlvoDoPainel({ tipo: "no" })
+              // Clicar num nó que agrega chamadas abre o leque junto: é a
+              // pergunta que o número "11/11" levanta.
+              const r = runsNoCanvas?.[k]
+              const temLeque =
+                k === "assembler_chooser" ? r?.runId != null : (r?.count ?? 0) > 1
+              setLequeDe(temLeque ? (lequeDe === k ? null : k) : null)
+            }}
             runs={runsNoCanvas}
+            arvore={
+              lequeDe
+                ? {
+                    nodeKey: lequeDe,
+                    render: (pos) => (
+                      <ArvoreDeFilhos
+                        pos={pos}
+                        titulo={`${nodeMeta(STUDIO_NODE_BY_KEY[lequeDe]).name} · chamadas`}
+                        folhas={folhas}
+                        carregando={filhosCarregando}
+                        erro={
+                          filhosErro
+                            ? "não foi possível carregar as chamadas"
+                            : null
+                        }
+                        selecionada={
+                          alvoDoPainel.tipo === "run"
+                            ? alvoDoPainel.runId
+                            : alvoDoPainel.tipo === "chamada"
+                              ? alvoDoPainel.etapa
+                              : null
+                        }
+                        onEscolher={(f) => {
+                          setNodeKey(lequeDe)
+                          setAlvoDoPainel(
+                            f.tipo === "run"
+                              ? { tipo: "run", runId: f.runId!, rotulo: f.rotulo }
+                              : {
+                                  tipo: "chamada",
+                                  runPai: runDoLeque?.runId ?? "",
+                                  etapa: f.etapa!,
+                                  rotulo: f.rotulo,
+                                },
+                          )
+                        }}
+                        onFechar={() => setLequeDe(null)}
+                      />
+                    ),
+                  }
+                : null
+            }
             overlay={
               <div style={{ position: "absolute", top: 14, left: 16, pointerEvents: "none" }}>
                 <span
@@ -1309,7 +1510,13 @@ export function ExecutionsTab({ positions }: { positions: Positions }) {
           exec={exec}
           nodeKey={nodeKey}
           run={runs[nodeKey]}
-          onClose={() => setNodeKey(null)}
+          alvo={alvoDoPainel}
+          onVoltarAoNo={() => setAlvoDoPainel({ tipo: "no" })}
+          onClose={() => {
+            setNodeKey(null)
+            setLequeDe(null)
+            setAlvoDoPainel({ tipo: "no" })
+          }}
           onRerun={rerunExec}
           rerunning={rerunning}
           rascunho={rascunho}

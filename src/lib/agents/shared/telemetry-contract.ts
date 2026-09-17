@@ -45,6 +45,7 @@ export const TELEMETRY_CONTRACT: Record<
     empty_blocks: "posições sem finalista válido: saem do email e viram selo",
     candidates_excluded_unfillable: "variantes ativas impreenchíveis pelo pipeline (sem schema ou sem âncora de example/token no HTML) — pressão de curadoria",
     ranking_detalhado: "o mesmo ranking COM o nome da variante, a seção e o papel de cada posição: `ranking` só guarda UUID, e ninguém audita curadoria lendo uma lista de ids",
+    consumo_por_chamada: "custo, tempo, tokens, cauda e saída de CADA chamada ao modelo — o Curador é uma run só com N chamadas, e sem esta decomposição a pergunta que decide se o leque fica ligado (quantas vezes e quanto em cada) não tem resposta em lugar nenhum",
   },
   assembler: {
     escolhas: "a composição final: id e rank por posição",

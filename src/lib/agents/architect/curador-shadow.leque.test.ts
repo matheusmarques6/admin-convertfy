@@ -338,8 +338,85 @@ describe("o leque dentro do runCuradorShadow", () => {
     invokeAgent.mockImplementation(async () => chamada(respostaDe(ids.shift()!)))
     await runCuradorShadow(params())
     const consumo = telemetria().parsedOutput.consumo_por_chamada as Record<string, { tokens_output: number }>
+    // As ETAPAS não podem ganhar chave sintética (nada de `_totais`): a
+    // árvore soma no cliente. Campo novo DENTRO do item é livre.
     expect(Object.keys(consumo).sort()).toEqual(["posicao_0", "posicao_1", "posicao_2"])
     expect(consumo.posicao_1.tokens_output).toBe(50)
+  })
+
+  it("a CAUDA gravada é sufixo do user REALMENTE enviado", async () => {
+    // O teste que fecha o risco do duplo render: a cauda é renderizada de
+    // novo (não fatiada do prompt gravado, que passa por `semMarcadores`).
+    // Sem esta asserção, mudar como a cauda é anexada faria a tela mostrar
+    // um prompt que ninguém mandou.
+    const ids = ["h1", "b1", "f1"]
+    const enviados: string[] = []
+    invokeAgent.mockImplementation(async (config: unknown, vars: unknown) => {
+      const c = config as { user_template: string }
+      const v = vars as Record<string, string>
+      enviados.push(
+        c.user_template.replace(/\{\{(\w+)\}\}/g, (m, k: string) => (k in v ? v[k] : m)),
+      )
+      return chamada(respostaDe(ids.shift()!))
+    })
+    await runCuradorShadow(params())
+    const consumo = telemetria().parsedOutput.consumo_por_chamada as Record<
+      string,
+      { cauda?: string; cauda_truncada?: boolean }
+    >
+    const item = consumo.posicao_0
+    expect(item.cauda).toBeTruthy()
+    // A asserção só vale sem corte — e o teste exige que o caso SEM corte
+    // seja o exercitado, senão ele passaria sem nunca comparar nada.
+    expect(item.cauda_truncada).toBeFalsy()
+    expect(enviados[0].endsWith(item.cauda!)).toBe(true)
+  })
+
+  it("o custo REAL de cada chamada chega ao consumo", async () => {
+    // `costUsd` sempre chegou em `InvokeResult` e era descartado: só a SOMA
+    // ia para `cost_cents`, e "quanto gastou em cada vez" não tinha resposta.
+    const ids = ["h1", "b1", "f1"]
+    invokeAgent.mockImplementation(async () => chamada(respostaDe(ids.shift()!)))
+    await runCuradorShadow(params())
+    const consumo = telemetria().parsedOutput.consumo_por_chamada as Record<
+      string,
+      { custo_usd?: number; ms?: number; modelo?: string; chave?: { section?: string } }
+    >
+    expect(consumo.posicao_0.custo_usd).toBe(0.01)
+    expect(typeof consumo.posicao_0.ms).toBe("number")
+    expect(consumo.posicao_0.chave?.section).toBe("hero")
+  })
+
+  it("a SAÍDA de cada posição fica no item, não só concatenada no raw_output", async () => {
+    // O `raw_output` é cortado em 32k: com 16 posições as últimas somem.
+    const ids = ["h1", "b1", "f1"]
+    invokeAgent.mockImplementation(async () => chamada(respostaDe(ids.shift()!)))
+    await runCuradorShadow(params())
+    const consumo = telemetria().parsedOutput.consumo_por_chamada as Record<string, { saida?: string }>
+    expect(consumo.posicao_0.saida).toContain("h1")
+    expect(consumo.posicao_1.saida).toContain("b1")
+  })
+
+  it("o progresso parcial leva custo e NÃO leva texto", async () => {
+    // A escrita parcial roda a cada posição; com as caudas dentro seriam
+    // ~0,5 MB de WAL por e-mail. O que precisa sobreviver à morte do
+    // processo — custo, contagem, tempo — fica.
+    const ids = ["h1", "b1", "f1"]
+    invokeAgent.mockImplementation(async () => chamada(respostaDe(ids.shift()!)))
+    await runCuradorShadow(params())
+    const parciais = updateGenerationRun.mock.calls
+      .map((c) => (c[1] as { parsedOutput?: Record<string, unknown> }).parsedOutput)
+      .filter((p): p is Record<string, unknown> => !!p?.consumo_por_chamada)
+    expect(parciais.length).toBeGreaterThan(0)
+    const ultimo = parciais[parciais.length - 1].consumo_por_chamada as Record<
+      string,
+      { custo_usd?: number; cauda?: string; saida?: string; cauda_chars?: number }
+    >
+    const item = Object.values(ultimo)[0]
+    expect(item.custo_usd).toBe(0.01)
+    expect(item.cauda).toBeUndefined()
+    expect(item.saida).toBeUndefined()
+    expect(typeof item.cauda_chars).toBe("number")
   })
 })
 
