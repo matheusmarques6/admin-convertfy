@@ -236,3 +236,44 @@ describe("o que só existe no schema atravessa a publicação", () => {
     expect(schema.blocks[0].titulo_da_tela).toBe("Sua operação")
   })
 })
+
+describe("destino padrão da tela", () => {
+  const campos = [
+    { id: "a", field_type: "text", label: "A", position: 0 },
+    { id: "b", field_type: "text", label: "B", position: 1 },
+    { id: "c", field_type: "text", label: "C", position: 2 },
+  ]
+
+  it("sobrevive à publicação, como o alias e o agrupamento", () => {
+    const antes = {
+      blocks: [{ ref: "a", type: "text", label: "A", proximo: "c" }],
+      endings: [{ ref: "ok", title: "Fim" }],
+    }
+    const r = montarVersao(campos, antes, { display_mode: "conversational", version: 2 })
+    expect(r.schema.blocks[0].proximo).toBe("c")
+  })
+
+  it("apontar para pergunta apagada cai, como uma regra cairia", () => {
+    const antes = {
+      blocks: [{ ref: "a", type: "text", label: "A", proximo: "sumiu" }],
+      endings: [{ ref: "ok", title: "Fim" }],
+    }
+    const r = montarVersao(campos, antes, { display_mode: "conversational", version: 2 })
+    expect(r.schema.blocks[0].proximo).toBeUndefined()
+    expect(r.regras_descartadas).toContainEqual({ ref: "a", goto: "sumiu" })
+  })
+
+  it("final alcançado só pelo destino padrão não é órfão", () => {
+    // Contar só os desvios marcaria como "ninguém vai ver" justamente o
+    // final para onde a tela manda quem não cai em regra nenhuma.
+    const antes = {
+      blocks: [{ ref: "a", type: "text", label: "A", proximo: "ending:curto" }],
+      endings: [
+        { ref: "ok", title: "Fim" },
+        { ref: "curto", title: "Atalho" },
+      ],
+    }
+    const r = montarVersao(campos, antes, { display_mode: "conversational", version: 2 })
+    expect(r.finais_orfaos).toEqual([])
+  })
+})

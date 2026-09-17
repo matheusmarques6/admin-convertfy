@@ -15,11 +15,9 @@
  *
  * ── O que NÃO é medido, e por quê ────────────────────────────────────
  *
- * **Pergunta inalcançável.** Não existe: a engine cai em
- * `proximoNaOrdem` quando nenhuma regra casa, então o bloco `i` sempre
- * tem o bloco `i-1` como antecessor possível. Medir alcance aqui
- * devolveria sempre "tudo alcançável" — número que não separa nada é
- * pior que número nenhum.
+ * **Laço entre telas por destino padrão.** Duas telas apontando uma
+ * para a outra não travam: a pessoa responde e segue. O laço que trava
+ * é o encadeamento entre telas sem resposta, abaixo.
  *
  * **Laço entre perguntas.** Saltar para trás não trava: a pessoa
  * responde de novo e segue. Vira AVISO, não erro. O laço que trava é o
@@ -34,6 +32,7 @@ import type { FormBlock, FormSchema, LogicCondition, LogicRule } from "@/types/f
 import { TIPOS_DE_ESCOLHA, TIPOS_SEM_RESPOSTA } from "@/types/forms-conversational"
 import { normalizeForCompare } from "@/lib/tracking/normalizar-comparacao"
 import { blocoDoRecall, refsCitados } from "./recall"
+import { derivadosDoSchema, origemDoDerivado, type RefDerivado } from "./derivados"
 
 const PREFIXO_ENDING = "ending:"
 
@@ -44,6 +43,9 @@ const OPERADORES_DE_IGUALDADE: ReadonlySet<string> = new Set([
   "in",
   "not_in",
 ])
+
+/** Operadores de comparação aritmética — os únicos que o piso aceita. */
+const OPERADORES_NUMERICOS: ReadonlySet<string> = new Set(["gt", "gte", "lt", "lte"])
 
 /** Operadores que não fazem sentido sem um valor ao lado. */
 const OPERADORES_QUE_EXIGEM_VALOR: ReadonlySet<string> = new Set([
@@ -70,6 +72,10 @@ export type TipoDeProblema =
   | "final_orfao"
   | "sem_final"
   | "recall_da_mesma_tela"
+  | "derivado_sem_origem"
+  | "operador_incompativel"
+  | "tela_inalcancavel"
+  | "laco_de_destino_padrao"
 
 export interface ProblemaDoFluxo {
   tipo: TipoDeProblema
@@ -98,6 +104,29 @@ function telaDoBloco(visiveis: FormBlock[], ref: string): FormBlock[] {
   while (ini > 0 && visiveis[ini].mesma_tela) ini -= 1
   const out: FormBlock[] = [visiveis[ini]]
   for (let j = ini + 1; j < visiveis.length && visiveis[j].mesma_tela; j++) out.push(visiveis[j])
+  return out
+}
+
+/**
+ * O número da TELA de cada bloco visível.
+ *
+ * Quem decide se uma condição testa resposta que ainda não existe é a
+ * tela, não a posição da pergunta: com quatro campos juntos, a regra
+ * escrita na cabeça pode testar o quarto sem problema nenhum — os quatro
+ * são respondidos antes do mesmo clique em avançar. Comparar posições
+ * de bloco acusaria "só aparece depois" sobre o caso mais comum de
+ * agrupar.
+ *
+ * Bloco oculto fica FORA (indefinido): o valor dele vem da URL e está
+ * disponível desde o primeiro instante, então citá-lo nunca é adiantado.
+ */
+function telaPorRef(visiveis: FormBlock[]): Map<string, number> {
+  const out = new Map<string, number>()
+  let tela = 0
+  visiveis.forEach((b, i) => {
+    if (i > 0 && !b.mesma_tela) tela += 1
+    out.set(b.ref, tela)
+  })
   return out
 }
 
@@ -191,6 +220,31 @@ export function diagnosticarFluxo(schema: FormSchema): ProblemaDoFluxo[] {
 
   const visiveis = blocks.filter((b) => !b.hidden)
   const emLaco = new Set(lacosDeTela(blocks))
+  const daTela = telaPorRef(visiveis)
+  const derivados = new Map<string, RefDerivado>(derivadosDoSchema(schema).map((d) => [d.ref, d]))
+
+  /**
+   * "Essa resposta ainda não existe aqui" — medido por TELA.
+   *
+   * Vale para a condição direta e para o derivado (que é calculado a
+   * partir da resposta de uma pergunta, e portanto chega quando ela
+   * chega). Oculto não entra: o valor vem da URL desde o primeiro
+   * instante.
+   */
+  function avisarSePosterior(bloco: FormBlock, i: number, indice: number, refTestado: string) {
+    const telaDoTeste = daTela.get(refTestado)
+    const telaDaRegra = daTela.get(bloco.ref)
+    if (telaDoTeste === undefined || telaDaRegra === undefined) return
+    if (telaDoTeste <= telaDaRegra) return
+    const alvo = porRef.get(refTestado)
+    out.push({
+      tipo: "condicao_de_pergunta_posterior",
+      gravidade: "aviso",
+      ref: bloco.ref,
+      regra: indice,
+      mensagem: `A regra ${indice + 1} de "${rotulo(bloco, i)}" testa "${rotulo(alvo, posicao.get(refTestado))}", que só aparece depois — no caminho normal ela ainda estará sem resposta.`,
+    })
+  }
 
   blocks.forEach((bloco, i) => {
     if (emLaco.has(bloco.ref)) {
@@ -226,6 +280,25 @@ export function diagnosticarFluxo(schema: FormSchema): ProblemaDoFluxo[] {
           gravidade: "erro",
           ref: bloco.ref,
           mensagem: `"${rotulo(bloco, i)}" usa {{${chave}}}, que é respondida na MESMA tela — o texto sai vazio. Separe as duas telas ou tire o {{${chave}}}.`,
+        })
+      }
+    }
+
+    // O destino padrão cai pela mesma régua do `goto` de uma regra: quem
+    // aponta para pergunta apagada deixa a pessoa numa tela morta, e a
+    // publicação o descarta — sem aviso aqui, o operador só descobre
+    // quando o fluxo volta à ordem sozinho.
+    if (bloco.proximo) {
+      const perdido = bloco.proximo.startsWith(PREFIXO_ENDING)
+        ? Boolean(bloco.proximo.slice(PREFIXO_ENDING.length)) &&
+          !refsEndings.has(bloco.proximo.slice(PREFIXO_ENDING.length))
+        : !porRef.has(bloco.proximo)
+      if (perdido) {
+        out.push({
+          tipo: "destino_inexistente",
+          gravidade: "erro",
+          ref: bloco.ref,
+          mensagem: `"${rotulo(bloco, i)}" está configurada para seguir até algo que não existe mais. Ao publicar, o fluxo volta à ordem normal.`,
         })
       }
     }
@@ -275,6 +348,49 @@ export function diagnosticarFluxo(schema: FormSchema): ProblemaDoFluxo[] {
       }
 
       conds.forEach((cond) => {
+        // Endereço DERIVADO — o piso em real da faixa de faturamento.
+        // Ele não é uma pergunta e nunca vai estar em `porRef`; sem esta
+        // volta, a condição que sustenta o corte do funil sai como
+        // "pergunta que não existe mais", o select do construtor fica sem
+        // nada marcado, e quem for consertar o erro falso desliga o
+        // corte. Só a origem apagada é erro de verdade.
+        const derivado = derivados.get(cond.ref)
+        if (derivado || origemDoDerivado(cond.ref)) {
+          const origem = derivado?.origem ?? origemDoDerivado(cond.ref) ?? ""
+          if (!derivado) {
+            out.push({
+              tipo: "derivado_sem_origem",
+              gravidade: "erro",
+              ref: bloco.ref,
+              regra: indice,
+              mensagem: `A regra ${indice + 1} de "${rotulo(bloco, i)}" compara o valor calculado de uma pergunta que não existe mais (ou que deixou de ter faixas por moeda) — ela nunca vai casar.`,
+            })
+            return
+          }
+          if (!OPERADORES_NUMERICOS.has(cond.operator)) {
+            out.push({
+              tipo: "operador_incompativel",
+              gravidade: "erro",
+              ref: bloco.ref,
+              regra: indice,
+              mensagem: `A regra ${indice + 1} de "${rotulo(bloco, i)}" usa "${derivado.label}", que é um número, com um operador de texto. Use maior/menor que.`,
+            })
+            return
+          }
+          if (valoresDaCondicao(cond).length === 0) {
+            out.push({
+              tipo: "condicao_sem_valor",
+              gravidade: "erro",
+              ref: bloco.ref,
+              regra: indice,
+              mensagem: `A regra ${indice + 1} de "${rotulo(bloco, i)}" compara "${derivado.label}" com um valor em branco — ela nunca vai casar.`,
+            })
+            return
+          }
+          avisarSePosterior(bloco, i, indice, origem)
+          return
+        }
+
         const alvo = porRef.get(cond.ref)
         if (!alvo) {
           out.push({
@@ -318,19 +434,123 @@ export function diagnosticarFluxo(schema: FormSchema): ProblemaDoFluxo[] {
           }
         }
 
-        const pos = posicao.get(cond.ref) ?? 0
-        if (pos > i) {
-          out.push({
-            tipo: "condicao_de_pergunta_posterior",
-            gravidade: "aviso",
-            ref: bloco.ref,
-            regra: indice,
-            mensagem: `A regra ${indice + 1} de "${rotulo(bloco, i)}" testa "${rotulo(alvo, pos)}", que só aparece depois — no caminho normal ela ainda estará sem resposta.`,
-          })
-        }
+        avisarSePosterior(bloco, i, indice, cond.ref)
       })
     })
   })
+
+  /*
+   * Tela que ninguém alcança.
+   *
+   * Isto NÃO era mensurável enquanto o caminho padrão fosse a ordem
+   * crua: a tela `i` sempre tinha a `i-1` como antecessora, e a régua
+   * devolveria "tudo alcançável" — número que não separa nada é pior que
+   * número nenhum. Com o destino padrão configurável, uma tela pode ser
+   * pulada por quem vem antes e não ser alvo de nenhum desvio: as
+   * perguntas dela deixam de existir para o visitante, e nada falha.
+   *
+   * A régua é auto-limitada: sem nenhum `proximo` declarado, toda tela
+   * continua sendo o destino natural da anterior e nada dispara.
+   */
+  const cabecas = visiveis.filter((b, i) => i === 0 || !b.mesma_tela)
+  if (cabecas.length > 1) {
+    const cabecaDe = (ref: string): string | null => {
+      let k = visiveis.findIndex((b) => b.ref === ref)
+      if (k < 0) return null
+      while (k > 0 && visiveis[k].mesma_tela) k -= 1
+      return visiveis[k].ref
+    }
+    const alcancadas = new Set<string>([cabecas[0].ref])
+    cabecas.forEach((cabeca, k) => {
+      const tela = telaDoBloco(visiveis, cabeca.ref)
+      const declarado = tela.find((b) => typeof b.proximo === "string" && b.proximo)?.proximo
+      const padrao = declarado ?? cabecas[k + 1]?.ref
+      if (padrao && !padrao.startsWith(PREFIXO_ENDING)) {
+        const alvo = cabecaDe(padrao)
+        if (alvo) alcancadas.add(alvo)
+      }
+      for (const b of tela) {
+        for (const r of b.logic ?? []) {
+          const d = destinoDaRegra(r)
+          if (d.tipo !== "bloco") continue
+          const alvo = cabecaDe(d.ref)
+          if (alvo) alcancadas.add(alvo)
+        }
+      }
+    })
+    /*
+     * Laço no caminho PADRÃO — a tela que nunca termina.
+     *
+     * Isto também não existia antes: o caminho padrão era a ordem, e
+     * ordem não faz ciclo. Com o destino configurável, dá para montar em
+     * dois cliques uma tela que aponta para si mesma (responde, avança,
+     * mesma tela, para sempre) ou um par que fica trocando de lugar.
+     *
+     * Regra com destino FORA do ciclo pode quebrá-lo, mas ninguém sabe
+     * estaticamente se ela casa — então ali é AVISO. Sem nenhuma saída, é
+     * erro: não existe resposta que solte o visitante.
+     */
+    const padraoDaTela = new Map<string, string | null>()
+    cabecas.forEach((cabeca, k) => {
+      const tela = telaDoBloco(visiveis, cabeca.ref)
+      const declarado = tela.find((b) => typeof b.proximo === "string" && b.proximo)?.proximo
+      const bruto = declarado ?? cabecas[k + 1]?.ref
+      padraoDaTela.set(
+        cabeca.ref,
+        bruto && !bruto.startsWith(PREFIXO_ENDING) ? cabecaDe(bruto) : null,
+      )
+    })
+    const jaAcusadas = new Set<string>()
+    for (const inicio of cabecas) {
+      if (jaAcusadas.has(inicio.ref)) continue
+      const caminho: string[] = []
+      let atual: string | null = inicio.ref
+      while (atual && !caminho.includes(atual)) {
+        caminho.push(atual)
+        atual = padraoDaTela.get(atual) ?? null
+      }
+      if (!atual) continue
+      const ciclo = caminho.slice(caminho.indexOf(atual))
+      if (ciclo.some((r) => jaAcusadas.has(r))) continue
+      ciclo.forEach((r) => jaAcusadas.add(r))
+      const noCiclo = new Set(ciclo)
+      const temSaida = ciclo.some((r) =>
+        telaDoBloco(visiveis, r).some((b) =>
+          (b.logic ?? []).some((regra) => {
+            const d = destinoDaRegra(regra)
+            if (d.tipo === "fim") return true
+            const alvo = cabecaDe(d.ref)
+            return Boolean(alvo) && !noCiclo.has(alvo as string)
+          }),
+        ),
+      )
+      const cabeca = visiveis.find((b) => b.ref === ciclo[0])
+      const numero = cabecas.findIndex((c) => c.ref === ciclo[0]) + 1
+      out.push({
+        tipo: "laco_de_destino_padrao",
+        gravidade: temSaida ? "aviso" : "erro",
+        ref: ciclo[0],
+        mensagem:
+          ciclo.length === 1
+            ? `A tela ${numero} ("${rotulo(cabeca, posicao.get(ciclo[0]))}") está configurada para seguir para ela mesma${temSaida ? " — só sai dela quem cair num desvio." : ": quem chegar aqui responde e volta para a mesma tela, sem fim."}`
+            : `As telas ${ciclo.map((r) => cabecas.findIndex((c) => c.ref === r) + 1).join(", ")} apontam em círculo pelo caminho padrão${temSaida ? " — só sai delas quem cair num desvio." : ": quem entrar no círculo não chega ao fim do formulário."}`,
+      })
+    }
+
+    cabecas.forEach((cabeca, k) => {
+      if (alcancadas.has(cabeca.ref)) return
+      const quantas = telaDoBloco(visiveis, cabeca.ref).length
+      out.push({
+        tipo: "tela_inalcancavel",
+        gravidade: "erro",
+        ref: cabeca.ref,
+        mensagem:
+          quantas > 1
+            ? `Ninguém chega na tela ${k + 1} ("${rotulo(cabeca, posicao.get(cabeca.ref))}"): nenhuma tela leva até ela. As ${quantas} perguntas dela não vão ser respondidas por ninguém.`
+            : `Ninguém chega em "${rotulo(cabeca, posicao.get(cabeca.ref))}": nenhuma tela leva até ela, então essa pergunta não vai ser respondida por ninguém.`,
+      })
+    })
+  }
 
   // Finais: o primeiro é o desfecho de quem chega ao fim da ordem, então
   // ele nunca é órfão mesmo sem nenhuma regra apontando para ele.

@@ -149,8 +149,24 @@ export interface FormBlock {
   opcoes_por_moeda?: boolean
   /** `ref` da pergunta de região que decide a moeda das opções. */
   moeda_de?: string | null
-  /** Regras de salto. A primeira que casa vence; nenhuma → próximo na ordem. */
+  /** Regras de salto. A primeira que casa vence; nenhuma → `proximo`. */
   logic?: LogicRule[]
+  /**
+   * Destino PADRÃO da tela — para onde vai quem não caiu em desvio
+   * nenhum. Ausente = a próxima tela na ordem, que é o comportamento
+   * histórico.
+   *
+   * Mesmo vocabulário do `goto` de uma regra (`ref` de bloco ou
+   * `ending:<ref>`), porque são a mesma decisão: "depois daqui, ali". Um
+   * segundo vocabulário para o caminho padrão divergiria do dos desvios
+   * na primeira mudança.
+   *
+   * É da TELA, não da pergunta: quatro campos juntos são um passo só. O
+   * construtor grava sempre na cabeça e limpa dos demais; a engine lê o
+   * PRIMEIRO declarado entre os blocos da tela, para que reagrupar as
+   * perguntas na aba Perguntas não faça o destino sumir em silêncio.
+   */
+  proximo?: string | null
   /** Oculto: não é exibido; o valor vem da URL ou do embed. */
   hidden?: boolean
 }

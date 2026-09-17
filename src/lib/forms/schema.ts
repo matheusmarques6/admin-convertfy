@@ -197,6 +197,9 @@ function normalizarBloco(raw: unknown): FormBlock | null {
       typeof b.map_to_lead_field === "string" && b.map_to_lead_field ? b.map_to_lead_field : null,
     ...(logic && logic.length > 0 ? { logic } : {}),
     ...(b.mesma_tela === true ? { mesma_tela: true } : {}),
+    ...(typeof b.proximo === "string" && b.proximo.trim()
+      ? { proximo: b.proximo.trim() }
+      : {}),
     ...(b.opcoes_por_moeda === true ? { opcoes_por_moeda: true } : {}),
     ...(typeof b.moeda_de === "string" && b.moeda_de ? { moeda_de: b.moeda_de } : {}),
     ...(typeof b.titulo_da_tela === "string" && b.titulo_da_tela.trim()

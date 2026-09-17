@@ -75,6 +75,15 @@ export function montarVersao(
       if (!vivas.includes(r)) descartadas.push({ ref: b.ref, goto: r.goto })
     }
 
+    // O destino padrão cai pela MESMA régua das regras: apontar para
+    // pergunta apagada deixaria a pessoa numa tela morta, e voltar à
+    // ordem crua é o comportamento de quem nunca configurou nada.
+    const proximo =
+      antigo.proximo && gotoExiste(antigo.proximo, refsAtuais, refsEndings)
+        ? antigo.proximo
+        : undefined
+    if (antigo.proximo && !proximo) descartadas.push({ ref: b.ref, goto: antigo.proximo })
+
     return {
       ...b,
       // O alias é do EDITOR de schema, não da tabela de campos: se não
@@ -85,6 +94,11 @@ export function montarVersao(
       // tela de contato em quatro telas, e ninguém saberia que o clique
       // em Publicar foi o que fez isso.
       ...(antigo.mesma_tela ? { mesma_tela: true } : {}),
+      // O destino padrão da tela vive no schema também. Sem transportá-lo,
+      // publicar devolveria o fluxo à ordem crua — o desvio configurado
+      // some e o formulário passa a perguntar de novo o que alguém tinha
+      // mandado pular, sem nada em tela.
+      ...(proximo ? { proximo } : {}),
       ...(antigo.titulo_da_tela ? { titulo_da_tela: antigo.titulo_da_tela } : {}),
       // As faixas por moeda também só existem no schema. Publicar sem
       // transportá-las devolveria as faixas em REAL para quem vende em
@@ -100,6 +114,12 @@ export function montarVersao(
   for (const b of blocks) {
     for (const r of b.logic ?? []) {
       if (r.goto.startsWith(PREFIXO_ENDING)) alcancados.add(r.goto.slice(PREFIXO_ENDING.length))
+    }
+    // O destino padrão alcança tanto quanto um desvio — mais, até: ele é
+    // o caminho de quem não cai em regra nenhuma. Contar só os desvios
+    // marcaria como órfão o final para onde a tela aponta por padrão.
+    if (b.proximo?.startsWith(PREFIXO_ENDING)) {
+      alcancados.add(b.proximo.slice(PREFIXO_ENDING.length))
     }
   }
   // O primeiro final é o desfecho padrão de quem chega ao fim da ordem:
@@ -123,11 +143,15 @@ export function montarVersao(
   }
 }
 
-function alvoExiste(r: LogicRule, refs: Set<string>, endings: Set<string>): boolean {
-  if (r.goto.startsWith(PREFIXO_ENDING)) {
-    const ref = r.goto.slice(PREFIXO_ENDING.length)
+function gotoExiste(goto: string, refs: Set<string>, endings: Set<string>): boolean {
+  if (goto.startsWith(PREFIXO_ENDING)) {
+    const ref = goto.slice(PREFIXO_ENDING.length)
     // `ending:` sem ref nomeado é "termine aqui", sempre válido.
     return ref === "" || endings.has(ref)
   }
-  return refs.has(r.goto)
+  return refs.has(goto)
+}
+
+function alvoExiste(r: LogicRule, refs: Set<string>, endings: Set<string>): boolean {
+  return gotoExiste(r.goto, refs, endings)
 }

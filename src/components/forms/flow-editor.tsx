@@ -9,6 +9,13 @@
  * divergiria na primeira mudança, e quem edita não teria como saber qual
  * das duas está olhando.
  *
+ * **A unidade é a TELA, não a pergunta.** É o que a engine percorre: um
+ * grupo de quatro campos é um clique só, e a regra escrita em qualquer
+ * uma das quatro vale para as quatro. Listando blocos, o construtor
+ * mostrava 10 passos onde havia 6, anunciava "segue para Sobrenome" (um
+ * passo que nunca acontece) e não dizia em lugar nenhum que aquelas
+ * perguntas estão juntas.
+ *
  * Três decisões que a tela precisa carregar, e que nenhum teste pega:
  *
  * **O caminho padrão é desenhado, não subentendido.** Debaixo de cada
@@ -33,6 +40,7 @@ import {
   ChevronDown,
   CornerDownRight,
   Flag,
+  Layers,
   Plus,
   Trash2,
 } from "lucide-react"
@@ -50,6 +58,15 @@ import {
   opcoesDaPergunta,
   type ProblemaDoFluxo,
 } from "@/lib/forms/diagnostico-fluxo"
+import {
+  alvosDoFluxo,
+  rotuloDaTela,
+  sujeitosDaCondicao,
+  telasDoFluxo,
+  type AlvoDoFluxo,
+  type SujeitoDaCondicao,
+  type TelaDoFluxo,
+} from "@/lib/forms/mapa-do-fluxo"
 
 const PREFIXO_ENDING = "ending:"
 
@@ -69,13 +86,20 @@ const OPERADORES: Array<{ value: QualifiedOperator; label: string }> = [
 const MULTIPLOS: ReadonlySet<QualifiedOperator> = new Set(["in", "not_in"])
 const NUMERICOS: ReadonlySet<QualifiedOperator> = new Set(["gt", "gte", "lt", "lte"])
 
-/** Os destinos que o `select` oferece — a régua do "este ainda existe?". */
-function opcoesDeDestino(blocos: FormBlock[], finais: FormEnding[]): string[] {
-  return [
-    ...blocos.map((b) => b.ref),
-    ...finais.map((f) => `${PREFIXO_ENDING}${f.ref}`),
-    PREFIXO_ENDING,
-  ]
+/**
+ * O título do aviso vermelho.
+ *
+ * "regra não funciona" é a frase que faz alguém agir, e ela vale quando
+ * TODO erro é de regra. Uma tela que ninguém alcança não é uma regra:
+ * chamá-la assim manda procurar no lugar errado.
+ */
+function tituloDosErros(problemas: readonly ProblemaDoFluxo[]): string {
+  const erros = problemas.filter((p) => p.gravidade === "erro")
+  const n = erros.length
+  if (erros.every((p) => p.regra !== undefined)) {
+    return `${n} ${n === 1 ? "regra não funciona" : "regras não funcionam"}`
+  }
+  return `${n} ${n === 1 ? "problema quebra o fluxo" : "problemas quebram o fluxo"}`
 }
 
 function tituloDoBloco(b: FormBlock, i: number): string {
@@ -105,11 +129,31 @@ export function FlowEditor({
   const contagem = contarProblemas(problemas)
   const blocos = fluxo.blocks ?? []
   const finais = fluxo.endings ?? []
+  const telas = useMemo(() => telasDoFluxo(fluxo), [fluxo])
+  const alvos = useMemo(() => alvosDoFluxo(fluxo), [fluxo])
 
   const set = (patch: Partial<FormSchema>) => onChange({ ...fluxo, ...patch })
 
   const trocarBloco = (ref: string, patch: Partial<FormBlock>) =>
     set({ blocks: blocos.map((b) => (b.ref === ref ? { ...b, ...patch } : b)) })
+
+  /**
+   * O destino padrão é gravado na CABEÇA e limpo dos demais blocos da
+   * tela. A engine lê o primeiro que declarar (para reagrupar não apagar
+   * a configuração em silêncio), então deixar dois declarados faria a
+   * tela e o formulário discordarem assim que alguém mudasse a ordem.
+   */
+  const trocarProximoDaTela = (tela: TelaDoFluxo, goto: string | null) => {
+    const refs = new Set(tela.blocos.map((b) => b.ref))
+    set({
+      blocks: blocos.map((b) => {
+        if (!refs.has(b.ref)) return b
+        const copia = { ...b }
+        delete copia.proximo
+        return b.ref === tela.cabeca && goto ? { ...copia, proximo: goto } : copia
+      }),
+    })
+  }
 
   const trocarFinal = (ref: string, patch: Partial<FormEnding>) =>
     set({ endings: finais.map((e) => (e.ref === ref ? { ...e, ...patch } : e)) })
@@ -134,9 +178,9 @@ export function FlowEditor({
             }
           >
             <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-            {contagem.erros > 0
-              ? `${contagem.erros} ${contagem.erros === 1 ? "regra não funciona" : "regras não funcionam"}`
-              : `${contagem.avisos} ${contagem.avisos === 1 ? "ponto a conferir" : "pontos a conferir"}`}
+            {contagem.erros > 0 ? tituloDosErros(problemas) : null}
+            {contagem.erros === 0 &&
+              `${contagem.avisos} ${contagem.avisos === 1 ? "ponto a conferir" : "pontos a conferir"}`}
           </p>
           <ul className="mt-1.5 space-y-1">
             {problemas.slice(0, 6).map((p, i) => (
@@ -160,25 +204,27 @@ export function FlowEditor({
 
       <section>
         <Cabecalho
-          titulo="Caminho das perguntas"
-          apoio="Sem regra, a pessoa segue para a pergunta seguinte. Uma regra desvia esse caminho."
+          titulo="Caminho das telas"
+          apoio="Cada tela é um passo — perguntas agrupadas contam como uma. Sem desvio, segue para o destino padrão."
         />
-        {blocos.length === 0 ? (
+        {telas.length === 0 ? (
           <Vazio
             titulo="Nenhuma pergunta ainda"
             apoio="Adicione perguntas na aba Perguntas — o fluxo é montado sobre elas."
           />
         ) : (
           <div className="mt-2 space-y-1.5">
-            {blocos.map((bloco, i) => (
-              <BlocoDoFluxo
-                key={bloco.ref}
-                bloco={bloco}
-                indice={i}
-                blocos={blocos}
-                finais={finais}
-                problemas={problemas.filter((p) => p.ref === bloco.ref)}
-                onChange={(patch) => trocarBloco(bloco.ref, patch)}
+            {telas.map((tela) => (
+              <TelaNoFluxo
+                key={tela.cabeca}
+                tela={tela}
+                alvos={alvos}
+                sujeitos={sujeitosDaCondicao(fluxo, tela.cabeca)}
+                problemas={problemas.filter((p) =>
+                  tela.blocos.some((b) => b.ref === p.ref),
+                )}
+                onChangeBloco={trocarBloco}
+                onChangeProximo={(goto) => trocarProximoDaTela(tela, goto)}
               />
             ))}
           </div>
@@ -339,35 +385,64 @@ function Comportamento({
   )
 }
 
-// ───────────────────────────── bloco ────────────────────────────────────
+// ───────────────────────────── tela ─────────────────────────────────────
 
-function BlocoDoFluxo({
-  bloco,
-  indice,
-  blocos,
-  finais,
+const TIPO_CURTO: Record<string, string> = {
+  text: "texto",
+  textarea: "texto longo",
+  email: "e-mail",
+  phone: "telefone",
+  number: "número",
+  select: "escolha",
+  radio: "escolha",
+  checkbox: "sim/não",
+  multi_select: "múltipla",
+  date: "data",
+  url: "link",
+  cpf: "CPF",
+  cnpj: "CNPJ",
+  cep: "CEP",
+  statement: "só texto",
+}
+
+function TelaNoFluxo({
+  tela,
+  alvos,
+  sujeitos,
   problemas,
-  onChange,
+  onChangeBloco,
+  onChangeProximo,
 }: {
-  bloco: FormBlock
-  indice: number
-  blocos: FormBlock[]
-  finais: FormEnding[]
+  tela: TelaDoFluxo
+  alvos: AlvoDoFluxo[]
+  sujeitos: SujeitoDaCondicao[]
   problemas: ProblemaDoFluxo[]
-  onChange: (patch: Partial<FormBlock>) => void
+  onChangeBloco: (ref: string, patch: Partial<FormBlock>) => void
+  onChangeProximo: (goto: string | null) => void
 }) {
-  const regras = bloco.logic ?? []
-  const [aberto, setAberto] = useState(regras.length > 0)
-  const seguinte = blocos[indice + 1]
+  // Tela que AGRUPA nasce aberta: é exatamente nela que as perguntas de
+  // dentro somem da vista, que era a queixa. Tela de pergunta única já
+  // tem o rótulo dela no cabeçalho — abrir todas viraria uma parede.
+  const [aberto, setAberto] = useState(
+    tela.regras.length > 0 || Boolean(tela.proximoDeclarado) || tela.blocos.length > 1,
+  )
   const temErro = problemas.some((p) => p.gravidade === "erro")
+  const juntas = tela.blocos.length > 1
 
-  const adicionar = () => {
+  const adicionarDesvio = (ref: string) => {
+    const bloco = tela.blocos.find((b) => b.ref === ref)
+    if (!bloco) return
     const opcoes = opcoesDaPergunta(bloco)
     const cond: LogicCondition = opcoes
-      ? { ref: bloco.ref, operator: "in", value: [opcoes[0]] }
-      : { ref: bloco.ref, operator: "is_set", value: null }
-    const destino = finais[0] ? `${PREFIXO_ENDING}${finais[0].ref}` : PREFIXO_ENDING
-    onChange({ logic: [...regras, { conditions: [cond], logic: "and", goto: destino }] })
+      ? { ref, operator: "in", value: [opcoes[0]] }
+      : { ref, operator: "is_set", value: null }
+    const finalOutro = alvos.find((a) => a.tipo === "final" && a.ref)
+    onChangeBloco(ref, {
+      logic: [
+        ...(bloco.logic ?? []),
+        { conditions: [cond], logic: "and", goto: finalOutro?.goto ?? PREFIXO_ENDING },
+      ],
+    })
     setAberto(true)
   }
 
@@ -385,15 +460,21 @@ function BlocoDoFluxo({
         onClick={() => setAberto((o) => !o)}
         className="flex w-full items-center gap-2 px-2.5 py-2 text-left"
       >
-        <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-[4px] bg-slate-100 dark:bg-white/[0.07] text-[10px] font-semibold tabular-nums text-slate-600 dark:text-white/65">
-          {indice + 1}
+        <span className="inline-flex h-5 shrink-0 items-center gap-1 rounded-[4px] bg-slate-100 px-1.5 text-[10px] font-semibold uppercase tracking-wide tabular-nums text-slate-600 dark:bg-white/[0.07] dark:text-white/65">
+          {juntas && <Layers className="h-2.5 w-2.5" />}
+          Tela {tela.numero}
         </span>
         <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-slate-900 dark:text-white">
-          {tituloDoBloco(bloco, indice)}
+          {tela.titulo ?? rotuloDaTela(tela)}
         </span>
-        {regras.length > 0 && (
+        {juntas && (
+          <span className="shrink-0 text-[10.5px] text-slate-500 dark:text-white/45">
+            {tela.blocos.length} perguntas juntas
+          </span>
+        )}
+        {tela.regras.length > 0 && (
           <span className="shrink-0 rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 dark:bg-blue-400/10 dark:text-blue-300">
-            {regras.length} {regras.length === 1 ? "desvio" : "desvios"}
+            {tela.regras.length} {tela.regras.length === 1 ? "desvio" : "desvios"}
           </span>
         )}
         <ChevronDown
@@ -404,68 +485,206 @@ function BlocoDoFluxo({
         />
       </button>
 
+      {!aberto && (
+        <p className="flex items-center gap-1.5 px-2.5 pb-2 text-[11px] text-slate-500 dark:text-white/45">
+          <CornerDownRight className="h-3 w-3 shrink-0" />
+          {tela.regras.length > 0 ? "Sem desvio, vai para" : "Vai para"}{" "}
+          <RotuloDoAlvo alvo={tela.destino} />
+          {/*
+            "Em ordem" e "configurado para a tela seguinte" parecem iguais
+            e não são: inserir uma pergunta no meio muda o primeiro e não
+            muda o segundo.
+          */}
+          {tela.proximoDeclarado && (
+            <span className="shrink-0 rounded-full bg-slate-100 px-1.5 text-[9.5px] font-medium uppercase tracking-wide text-slate-500 dark:bg-white/[0.07] dark:text-white/50">
+              fixo
+            </span>
+          )}
+        </p>
+      )}
+
       {aberto && (
-        <div className="space-y-2 border-t border-slate-100 px-2.5 pb-2.5 pt-2.5 dark:border-white/[0.06]">
-          {regras.map((regra, i) => (
+        <div className="space-y-2.5 border-t border-slate-100 px-2.5 pb-2.5 pt-2.5 dark:border-white/[0.06]">
+          {/*
+            As perguntas DENTRO da tela, listadas.
+            Sem esta lista, uma tela de quatro campos aparece como uma
+            linha só e as outras três somem do fluxo — o operador conta
+            os passos certo e as perguntas errado.
+          */}
+          <div className="space-y-1">
+            {tela.blocos.map((b, i) => (
+              <div
+                key={b.ref}
+                className="flex items-center gap-2 rounded-[5px] bg-slate-50/80 px-2 py-1.5 dark:bg-white/[0.03]"
+              >
+                <span className="w-3.5 shrink-0 text-[10px] tabular-nums text-slate-400 dark:text-white/35">
+                  {i + 1}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-[11.5px] text-slate-700 dark:text-white/75">
+                  {tituloDoBloco(b, i)}
+                </span>
+                <span className="shrink-0 text-[10px] text-slate-400 dark:text-white/35">
+                  {TIPO_CURTO[b.type] ?? b.type}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => adicionarDesvio(b.ref)}
+                  className="shrink-0 text-[10.5px] font-medium text-blue-600 hover:underline dark:text-blue-400"
+                >
+                  + desvio
+                </button>
+              </div>
+            ))}
+          </div>
+
+          {tela.regras.map((r) => (
             <Regra
-              key={i}
-              regra={regra}
-              indice={i}
-              bloco={bloco}
-              blocos={blocos}
-              finais={finais}
-              problemas={problemas.filter((p) => p.regra === i)}
+              key={`${r.ref}-${r.indice}`}
+              regra={r.regra}
+              indice={r.indice}
+              deQuemParte={juntas ? r.deQuemParte : null}
+              alvos={alvos}
+              sujeitos={sujeitos}
+              padraoRef={r.ref}
+              problemas={problemas.filter((p) => p.ref === r.ref && p.regra === r.indice)}
               onChange={(nova) =>
-                onChange({ logic: regras.map((r, j) => (j === i ? nova : r)) })
+                onChangeBloco(r.ref, {
+                  logic: (tela.blocos.find((b) => b.ref === r.ref)?.logic ?? []).map((x, j) =>
+                    j === r.indice ? nova : x,
+                  ),
+                })
               }
-              onRemove={() => onChange({ logic: regras.filter((_, j) => j !== i) })}
+              onRemove={() =>
+                onChangeBloco(r.ref, {
+                  logic: (tela.blocos.find((b) => b.ref === r.ref)?.logic ?? []).filter(
+                    (_, j) => j !== r.indice,
+                  ),
+                })
+              }
             />
           ))}
 
-          <p className="flex items-center gap-1.5 pl-1 text-[11px] text-slate-500 dark:text-white/45">
-            <CornerDownRight className="h-3 w-3 shrink-0" />
-            {regras.length > 0 ? "Em qualquer outro caso, segue para" : "Segue para"}{" "}
-            <strong className="font-medium text-slate-700 dark:text-white/75">
-              {seguinte ? tituloDoBloco(seguinte, indice + 1) : finais[0]?.title || "a tela final"}
-            </strong>
-          </p>
+          {/*
+            O destino padrão deixou de ser uma frase.
+            "Segue para a próxima" era leitura, não configuração: quem
+            quisesse pular uma tela tinha de inventar um desvio com uma
+            condição que sempre casa.
+          */}
+          <div className="flex items-center gap-1.5 rounded-[5px] border border-dashed border-slate-300 px-2 py-1.5 dark:border-white/[0.12]">
+            <CornerDownRight className="h-3.5 w-3.5 shrink-0 text-slate-400 dark:text-white/40" />
+            <span className="shrink-0 text-[11px] text-slate-500 dark:text-white/50">
+              {tela.regras.length > 0 ? "Sem desvio, vai para" : "Depois desta tela"}
+            </span>
+            <select
+              value={tela.proximoDeclarado ?? ""}
+              onChange={(e) => onChangeProximo(e.target.value || null)}
+              className="crm-input min-w-0 flex-1 text-[11px]"
+            >
+              <option value="">
+                Em ordem — {rotuloCurto(tela.destino)}
+              </option>
+              <SelectDeAlvos alvos={alvos} />
+            </select>
+          </div>
 
-          <button
-            type="button"
-            onClick={adicionar}
-            className="inline-flex items-center gap-1 h-7 px-2.5 rounded-[5px] border border-black/[0.08] dark:border-white/[0.12] text-[11px] font-medium text-slate-700 dark:text-white/80 hover:bg-slate-50 dark:hover:bg-white/[0.05] transition-colors"
-          >
-            <Plus className="h-3 w-3" />
-            Adicionar desvio
-          </button>
+          {problemas
+            .filter((p) => p.regra === undefined)
+            .map((p, i) => (
+              <p
+                key={i}
+                className={
+                  "text-[11px] leading-relaxed " +
+                  (p.gravidade === "erro"
+                    ? "text-red-700 dark:text-red-300"
+                    : "text-amber-700 dark:text-amber-300")
+                }
+              >
+                {p.mensagem}
+              </p>
+            ))}
         </div>
       )}
     </div>
   )
 }
 
+/** O destino como uma frase curta: "Tela 4 · Faturamento" ou o final. */
+function rotuloCurto(alvo: AlvoDoFluxo): string {
+  if (alvo.tipo === "tela") return `Tela ${alvo.numero}`
+  if (alvo.tipo === "final") return alvo.rotulo
+  return "destino removido"
+}
+
+function RotuloDoAlvo({ alvo }: { alvo: AlvoDoFluxo }) {
+  return (
+    <strong
+      className={
+        "font-medium " +
+        (alvo.tipo === "perdido"
+          ? "text-red-600 dark:text-red-400"
+          : "text-slate-700 dark:text-white/75")
+      }
+    >
+      {alvo.tipo === "tela" ? `Tela ${alvo.numero} · ${alvo.rotulo}` : alvo.rotulo}
+    </strong>
+  )
+}
+
+/**
+ * As opções de destino, agrupadas.
+ *
+ * A tela e o final são coisas diferentes para quem monta — uma continua
+ * o formulário, a outra o termina — e misturá-las numa lista só faz
+ * alguém escolher "Obrigado!" achando que é mais uma pergunta.
+ */
+function SelectDeAlvos({ alvos }: { alvos: AlvoDoFluxo[] }) {
+  const telas = alvos.filter((a) => a.tipo === "tela")
+  const finais = alvos.filter((a) => a.tipo === "final")
+  return (
+    <>
+      <optgroup label="Ir para a tela">
+        {telas.map((a) => (
+          <option key={a.goto} value={a.goto}>
+            {a.tipo === "tela" ? `${a.numero}. ${a.rotulo}` : a.rotulo}
+          </option>
+        ))}
+      </optgroup>
+      <optgroup label="Terminar">
+        {finais.map((a) => (
+          <option key={a.goto} value={a.goto}>
+            {a.rotulo}
+          </option>
+        ))}
+      </optgroup>
+    </>
+  )
+}
+
 function Regra({
   regra,
   indice,
-  bloco,
-  blocos,
-  finais,
+  deQuemParte,
+  alvos,
+  sujeitos,
+  padraoRef,
   problemas,
   onChange,
   onRemove,
 }: {
   regra: LogicRule
   indice: number
-  bloco: FormBlock
-  blocos: FormBlock[]
-  finais: FormEnding[]
+  /** Numa tela com várias perguntas, de qual delas este desvio parte. */
+  deQuemParte: string | null
+  alvos: AlvoDoFluxo[]
+  sujeitos: SujeitoDaCondicao[]
+  padraoRef: string
   problemas: ProblemaDoFluxo[]
   onChange: (r: LogicRule) => void
   onRemove: () => void
 }) {
   const conds = regra.conditions ?? []
   const temErro = problemas.some((p) => p.gravidade === "erro")
-  const destinoPerdido = !opcoesDeDestino(blocos, finais).includes(regra.goto)
+  const destinoPerdido = !alvos.some((a) => a.goto === regra.goto)
 
   const trocarCond = (i: number, patch: Partial<LogicCondition>) =>
     onChange({ ...regra, conditions: conds.map((c, j) => (j === i ? { ...c, ...patch } : c)) })
@@ -480,8 +699,19 @@ function Regra({
       }
     >
       <div className="mb-1.5 flex items-center justify-between gap-2">
-        <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-white/45">
+        <span className="min-w-0 truncate text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-white/45">
           Desvio {indice + 1}
+          {/*
+            Numa tela de quatro campos, "Desvio 1" sozinho não diz de onde
+            ele parte — e a engine numera por PERGUNTA, então duas telas
+            podem ter dois "Desvio 1".
+          */}
+          {deQuemParte && (
+            <span className="normal-case tracking-normal text-slate-400 dark:text-white/35">
+              {" "}
+              em {deQuemParte}
+            </span>
+          )}
         </span>
         <button
           type="button"
@@ -501,8 +731,8 @@ function Regra({
             primeira={i === 0}
             juncao={regra.logic}
             onJuncao={(l) => onChange({ ...regra, logic: l })}
-            blocos={blocos}
-            padraoRef={bloco.ref}
+            sujeitos={sujeitos}
+            padraoRef={padraoRef}
             onChange={(patch) => trocarCond(i, patch)}
             onRemove={
               conds.length > 1
@@ -516,7 +746,7 @@ function Regra({
           onClick={() =>
             onChange({
               ...regra,
-              conditions: [...conds, { ref: bloco.ref, operator: "is_set", value: null }],
+              conditions: [...conds, { ref: padraoRef, operator: "is_set", value: null }],
             })
           }
           className="text-[11px] font-medium text-blue-600 hover:underline dark:text-blue-400"
@@ -542,22 +772,7 @@ function Regra({
           {destinoPerdido && (
             <option value={regra.goto}>Destino removido — escolha outro</option>
           )}
-          <optgroup label="Pergunta">
-            {blocos.map((b, i) => (
-              <option key={b.ref} value={b.ref}>
-                {i + 1}. {tituloDoBloco(b, i)}
-              </option>
-            ))}
-          </optgroup>
-          <optgroup label="Tela final">
-            {finais.map((f) => (
-              <option key={f.ref} value={`${PREFIXO_ENDING}${f.ref}`}>
-                {f.title || f.ref}
-                {f.disqualified ? " (desqualifica)" : ""}
-              </option>
-            ))}
-            <option value={PREFIXO_ENDING}>Terminar aqui</option>
-          </optgroup>
+          <SelectDeAlvos alvos={alvos} />
         </select>
       </div>
 
@@ -583,7 +798,7 @@ function Condicao({
   primeira,
   juncao,
   onJuncao,
-  blocos,
+  sujeitos,
   padraoRef,
   onChange,
   onRemove,
@@ -592,16 +807,24 @@ function Condicao({
   primeira: boolean
   juncao: "and" | "or"
   onJuncao: (l: "and" | "or") => void
-  blocos: FormBlock[]
+  sujeitos: SujeitoDaCondicao[]
   padraoRef: string
   onChange: (patch: Partial<LogicCondition>) => void
   onRemove?: () => void
 }) {
-  const alvo = blocos.find((b) => b.ref === cond.ref)
+  const sujeito = sujeitos.find((s) => s.ref === cond.ref)
+  const alvo = sujeito?.bloco
   const opcoes = opcoesDaPergunta(alvo)
+  // Valor calculado só aceita aritmética. Oferecer "é uma destas" ali
+  // deixaria montar, com dois cliques, a condição que nunca casa.
+  const soNumero = Boolean(sujeito?.numerico)
   const multiplos = MULTIPLOS.has(cond.operator)
   const chipsDeOpcao =
-    Boolean(opcoes) && multiplos && cond.operator !== "is_set" && !NUMERICOS.has(cond.operator)
+    Boolean(opcoes) &&
+    multiplos &&
+    cond.operator !== "is_set" &&
+    !NUMERICOS.has(cond.operator) &&
+    !soNumero
   const selecionados = Array.isArray(cond.value)
     ? cond.value.map(String)
     : cond.value == null || cond.value === ""
@@ -628,14 +851,35 @@ function Condicao({
         )}
         <select
           value={cond.ref}
-          onChange={(e) => onChange({ ref: e.target.value || padraoRef, value: null })}
+          onChange={(e) => {
+            const ref = e.target.value || padraoRef
+            const novo = sujeitos.find((s) => s.ref === ref)
+            // Trocar para um valor calculado com "é uma destas" no lugar
+            // deixaria a condição impossível de casar, sem nada em tela.
+            const op = novo?.numerico && !NUMERICOS.has(cond.operator) ? "gte" : cond.operator
+            onChange({ ref, operator: op, value: null })
+          }}
           className="crm-input min-w-0 flex-1 text-[11px]"
         >
-          {blocos.map((b, i) => (
-            <option key={b.ref} value={b.ref}>
-              {i + 1}. {tituloDoBloco(b, i)}
-            </option>
-          ))}
+          {/*
+            Sujeito que não está na lista precisa de uma opção para o
+            `select` pousar. Sem ela o campo fica EM BRANCO — foi assim
+            que a condição do corte do funil apareceu apontando para o
+            vazio, e quem fosse "consertar" escolhendo outra pergunta
+            desligaria o corte.
+          */}
+          {!sujeito && (
+            <option value={cond.ref}>Resposta removida — escolha outra</option>
+          )}
+          <GrupoDeSujeitos sujeitos={sujeitos} grupo="desta_tela" rotulo="Respondida nesta tela" />
+          <GrupoDeSujeitos sujeitos={sujeitos} grupo="anteriores" rotulo="Já respondida antes" />
+          <GrupoDeSujeitos sujeitos={sujeitos} grupo="calculado" rotulo="Valor calculado" />
+          <GrupoDeSujeitos sujeitos={sujeitos} grupo="oculto" rotulo="Campo oculto (vem da URL)" />
+          <GrupoDeSujeitos
+            sujeitos={sujeitos}
+            grupo="posteriores"
+            rotulo="Ainda sem resposta aqui"
+          />
         </select>
         {onRemove && (
           <button
@@ -667,7 +911,7 @@ function Condicao({
             "crm-input text-[11px] " + (chipsDeOpcao ? "w-full" : "w-[132px] shrink-0")
           }
         >
-          {OPERADORES.map((o) => (
+          {OPERADORES.filter((o) => !soNumero || NUMERICOS.has(o.value)).map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}
             </option>
@@ -676,7 +920,7 @@ function Condicao({
 
         {cond.operator !== "is_set" && !chipsDeOpcao && (
           <div className="min-w-0 flex-1">
-            {opcoes && !NUMERICOS.has(cond.operator) ? (
+            {opcoes && !NUMERICOS.has(cond.operator) && !soNumero ? (
               <select
                 value={selecionados[0] ?? ""}
                 onChange={(e) => onChange({ value: e.target.value })}
@@ -691,11 +935,11 @@ function Condicao({
               </select>
             ) : (
               <input
-                type={NUMERICOS.has(cond.operator) ? "number" : "text"}
+                type={NUMERICOS.has(cond.operator) || soNumero ? "number" : "text"}
                 value={selecionados[0] ?? ""}
                 onChange={(e) => onChange({ value: e.target.value })}
                 className="crm-input w-full text-[11px]"
-                placeholder={NUMERICOS.has(cond.operator) ? "0" : "valor"}
+                placeholder={NUMERICOS.has(cond.operator) || soNumero ? "0" : "valor"}
               />
             )}
           </div>
@@ -737,6 +981,29 @@ function Condicao({
         </div>
       )}
     </div>
+  )
+}
+
+/** Um grupo do `select` de "SE …", omitido quando está vazio. */
+function GrupoDeSujeitos({
+  sujeitos,
+  grupo,
+  rotulo,
+}: {
+  sujeitos: SujeitoDaCondicao[]
+  grupo: SujeitoDaCondicao["grupo"]
+  rotulo: string
+}) {
+  const lista = sujeitos.filter((s) => s.grupo === grupo)
+  if (lista.length === 0) return null
+  return (
+    <optgroup label={rotulo}>
+      {lista.map((s) => (
+        <option key={s.ref} value={s.ref}>
+          {s.rotulo}
+        </option>
+      ))}
+    </optgroup>
   )
 }
 
