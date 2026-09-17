@@ -25,7 +25,7 @@ import type { Cta, Faixa } from "./color-faixas"
 import { corDoBotao, type PapeisParaBotao } from "./cor-do-botao"
 import type { InventarioDeCta } from "./cta-inventario"
 import { escalaDoBotao } from "./escala-do-botao"
-import { canonicalHex, isColorLiteral } from "./color-inventory"
+import { canonicalHex, type ColorContext, isColorContext, isColorLiteral } from "./color-inventory"
 
 /**
  * Teto de faixas que uma peça pode ter repintadas.
@@ -36,6 +36,36 @@ import { canonicalHex, isColorLiteral } from "./color-inventory"
  * excedente vira registro, para a telemetria mostrar que ele quis mais.
  */
 export const TETO_DE_FAIXAS = 2
+
+/**
+ * Os verbos que uma decisão de faixa pode usar.
+ *
+ * `decisao` era string livre e a única leitura era `=== "manter"` — o resto
+ * do valor nunca foi olhado por ninguém. Medido em 30 dias de produção, o
+ * modelo devolveu `"manter cor mas remapear"`: não é `manter`, portanto
+ * emite a troca (o que estava certo), mas também não é verbo nenhum do
+ * contrato, e toda contagem de "quantas faixas ele quis mexer" passou a
+ * medir prosa.
+ *
+ * O vocabulário fechado não DESCARTA a decisão — quem manda é o campo
+ * `fundo`, que é dado. Verbo fora da lista vira registro em `ajustes`, e a
+ * troca segue: perder uma troca boa por causa da palavra escolhida seria
+ * caro, e o teto de 2 faixas já limita o estrago de um plano ruim.
+ */
+export const DECISOES_DE_FAIXA = ["manter", "escurecer", "clarear", "recolorir"] as const
+export type VerboDeFaixa = (typeof DECISOES_DE_FAIXA)[number]
+
+/**
+ * O verbo, comparável.
+ *
+ * Caixa e pontuação final não podem decidir se uma faixa muda de cor:
+ * `"Manter"` e `"manter."` são a mesma intenção que `"manter"`, e com a
+ * comparação crua de antes as duas escapavam do veto, viravam `set_fundo`
+ * para a cor que a faixa já tinha e gastavam uma das duas vagas do teto.
+ */
+export function verboDaFaixa(decisao: string | undefined): string {
+  return (decisao ?? "").trim().toLowerCase().replace(/[.!;,\s]+$/, "")
+}
 
 /** Onde um botão novo pode apontar. Enum fechado: o modelo não digita URL. */
 export const DESTINOS = ["produto_do_bloco", "cta_principal", "loja"] as const
@@ -241,7 +271,8 @@ export function planoParaOps(plano: PlanoDeCor, ctx: ContextoDoPlano): TraducaoD
       descartes.push({ o_que: alvo, motivo: "não existe no documento" })
       continue
     }
-    if (d.decisao === "manter" || !d.fundo) continue
+    const verbo = verboDaFaixa(d.decisao)
+    if (verbo === "manter" || !d.fundo) continue
     if (!isColorLiteral(d.fundo)) {
       descartes.push({ o_que: alvo, motivo: `fundo "${d.fundo}" não é cor` })
       continue
@@ -254,9 +285,28 @@ export function planoParaOps(plano: PlanoDeCor, ctx: ContextoDoPlano): TraducaoD
       descartes.push({ o_que: alvo, motivo: "pousa no canvas: não há declaração para trocar" })
       continue
     }
+    // A faixa já está na cor pedida.
+    //
+    // Antes do teto, de propósito: uma op que não muda um pixel não pode
+    // consumir uma das DUAS vagas de `TETO_DE_FAIXAS` — a faixa seguinte,
+    // que muda de verdade, seria descartada por excesso. É o custo escondido
+    // do verbo livre: qualquer decisão que não seja exatamente `manter`,
+    // ecoando o fundo atual em `fundo`, queimava uma vaga em silêncio.
+    if (faixa.fundo && isColorLiteral(faixa.fundo) && canonicalHex(faixa.fundo) === canonicalHex(d.fundo)) {
+      descartes.push({ o_que: alvo, motivo: `já está em ${canonicalHex(d.fundo)}` })
+      continue
+    }
     if (pintadas >= TETO_DE_FAIXAS) {
       descartes.push({ o_que: alvo, motivo: `acima do teto de ${TETO_DE_FAIXAS} faixas por peça` })
       continue
+    }
+    if (!(DECISOES_DE_FAIXA as readonly string[]).includes(verbo)) {
+      ajustes.push({
+        o_que: alvo,
+        de: faixa.fundo ?? "?",
+        para: d.fundo,
+        motivo: `decisão "${d.decisao}" fora do vocabulário — a troca seguiu pelo campo fundo`,
+      })
     }
     ops.push({ action: "set_fundo", bloco: faixa.bloco, para: d.fundo })
     fundoDecidido.set(faixa.bloco, d.fundo)
@@ -460,19 +510,34 @@ export function planoParaOps(plano: PlanoDeCor, ctx: ContextoDoPlano): TraducaoD
       descartes.push({ o_que: `valor ${d.de} → ${d.para}`, motivo: "de/para não é cor" })
       continue
     }
-    const onde = d.onde
+    // O escopo vem de `isColorContext`, a MESMA régua do inventário e do
+    // aplicador — não de uma lista repetida aqui. A cópia à mão que existia
+    // nascia com seis contextos e envelheceu no dia em que `gradiente` virou
+    // o sétimo (17/09): o prompt passou a prometer `onde: "gradiente"`,
+    // `applyRecolor` já sabia filtrar por ele, e era este `if` que jogava o
+    // `where` fora — a op virava recolor GLOBAL, trocando aquele valor no
+    // documento inteiro em vez de só nas paradas do gradiente.
+    //
+    // Contexto que não existe DESCARTA a op, em vez de virar global: o
+    // agente pediu escopo, e servir uma troca mais ampla do que a pedida é
+    // pior do que não trocar — é o tratamento que `invalid_ids` recebe no
+    // Curador, e o motivo fica na telemetria em vez de sumir.
+    let where: ColorContext | undefined
+    if (d.onde != null) {
+      if (!isColorContext(d.onde)) {
+        descartes.push({
+          o_que: `valor ${d.de} → ${d.para}`,
+          motivo: `onde "${d.onde}" não é um contexto de cor`,
+        })
+        continue
+      }
+      where = d.onde
+    }
     ops.push({
       action: "recolor",
       from: d.de,
       to: d.para,
-      ...(onde === "background" ||
-      onde === "color" ||
-      onde === "border" ||
-      onde === "bgcolor" ||
-      onde === "css-var" ||
-      onde === "outro"
-        ? { where: onde }
-        : {}),
+      ...(where ? { where } : {}),
     })
   }
 

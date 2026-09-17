@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest"
 
+import { OUTPUT_CONTRATO } from "../chains/color-guia"
 import type { Cta, Faixa, GradienteDaFaixa } from "./color-faixas"
+import { COLOR_CONTEXTS } from "./color-inventory"
 import {
+  DECISOES_DE_FAIXA,
   parsePlanoDeCor,
   planoParaOps,
   recusaDoLabel,
@@ -428,5 +431,76 @@ describe("parsePlanoDeCor — gradiente", () => {
     const p = parsePlanoDeCor('{"faixas":[{"ordem":2,"gradiente":"#034326"}]}')
     expect(p.faixas?.[0]?.gradiente).toBeUndefined()
     expect(p.faixas?.[0]?.ordem).toBe(2)
+  })
+})
+
+describe("planoParaOps — o vocabulário de decisão e a vaga do teto", () => {
+  it("pedir a cor que a faixa já tem não vira op", () => {
+    const r = planoParaOps({ faixas: [{ ordem: 2, decisao: "clarear", fundo: "#ffffff" }] }, CTX)
+    expect(r.ops).toEqual([])
+    expect(r.descartes[0].motivo).toMatch(/já está em/)
+  })
+
+  it("o no-op NÃO gasta vaga: a faixa que muda de verdade ainda entra", () => {
+    const r = planoParaOps(
+      {
+        faixas: [
+          { ordem: 2, decisao: "clarear", fundo: "#FFFFFF" }, // no-op
+          { ordem: 3, decisao: "escurecer", fundo: "#111111" },
+          { ordem: 4, decisao: "escurecer", fundo: "#222222" },
+        ],
+      },
+      CTX,
+    )
+    expect(r.ops).toHaveLength(TETO_DE_FAIXAS)
+    expect(r.descartes.some((d) => /teto/.test(d.motivo))).toBe(false)
+  })
+
+  it('"Manter." é manter — caixa e ponto não podem decidir a cor de uma faixa', () => {
+    const r = planoParaOps({ faixas: [{ ordem: 2, decisao: "Manter.", fundo: "#111111" }] }, CTX)
+    expect(r.ops).toEqual([])
+  })
+
+  it("verbo fora do vocabulário não perde a troca — vira registro em ajustes", () => {
+    const r = planoParaOps(
+      { faixas: [{ ordem: 2, decisao: "manter cor mas remapear", fundo: "#111111" }] },
+      CTX,
+    )
+    expect(r.ops).toEqual([{ action: "set_fundo", bloco: 1, para: "#111111" }])
+    expect(r.ajustes[0].motivo).toMatch(/fora do vocabulário/)
+  })
+
+  it("o vocabulário do código é o mesmo que o prompt declara", () => {
+    for (const verbo of DECISOES_DE_FAIXA) expect(OUTPUT_CONTRATO).toContain(verbo)
+  })
+})
+
+describe("planoParaOps — o escopo do recolor", () => {
+  it('onde: "gradiente" chega ao aplicador — sem ele a troca seria global', () => {
+    const r = planoParaOps(
+      { valores: [{ de: "#000000", para: "#034326", onde: "gradiente" }] },
+      CTX,
+    )
+    expect(r.ops).toEqual([
+      { action: "recolor", from: "#000000", to: "#034326", where: "gradiente" },
+    ])
+  })
+
+  it("todo contexto do inventário é aceito — a régua é uma só", () => {
+    for (const onde of COLOR_CONTEXTS) {
+      const r = planoParaOps({ valores: [{ de: "#000000", para: "#111111", onde }] }, CTX)
+      expect(r.ops[0]).toMatchObject({ where: onde })
+    }
+  })
+
+  it("contexto inventado descarta a op em vez de virar recolor global", () => {
+    const r = planoParaOps({ valores: [{ de: "#000000", para: "#111111", onde: "fundo" }] }, CTX)
+    expect(r.ops).toEqual([])
+    expect(r.descartes[0].motivo).toMatch(/não é um contexto de cor/)
+  })
+
+  it("sem onde o recolor segue global, como sempre foi", () => {
+    const r = planoParaOps({ valores: [{ de: "#000000", para: "#111111" }] }, CTX)
+    expect(r.ops).toEqual([{ action: "recolor", from: "#000000", to: "#111111" }])
   })
 })

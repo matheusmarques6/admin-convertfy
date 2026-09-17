@@ -9431,3 +9431,49 @@ por grupo, chaves canônicas e a consulta de lacunas) e as fichas de
 retratos datados, e `docs/n8n/email-copy.workflow.json` é um export da
 ferramenta externa, onde o dispositivo aparece só como dado de amostra
 pinado, sem nenhuma regra lendo.
+
+## Cores & Botões: a lista escrita à mão e a vaga queimada (17/09)
+
+Dois defeitos no `color_format`, os dois achados medindo a spec de transições
+antes de aceitá-la, os dois **ativos em produção** com `color_plano_mode =
+'on'`. Nenhum aparece como erro: os dois entregam uma peça plausível.
+
+**1. `onde: "gradiente"` era prometido e descartado.** O `OUTPUT_CONTRATO`
+diz ao agente que `onde` aceita sete contextos, `isColorContext` os conhece e
+`applyRecolor` sabe filtrar por qualquer um deles — mas `planoParaOps`
+repetia a lista **à mão**, com seis. A cópia nasceu certa e envelheceu no dia
+em que `gradiente` virou o sétimo (também 17/09): o `where` era jogado fora
+em silêncio e a op virava **recolor GLOBAL**, trocando aquele valor no
+documento inteiro em vez de só nas paradas do gradiente. É a família de
+defeito que este repo já pagou em `FAMILIA_OPCOES`, `ehFamilia`,
+`MOLDE_KEYS` e `ETAPA_AGUARDANDO` — lista repetida que só uma das cópias
+recebe a novidade. A régua agora é `isColorContext`, e contexto que não
+existe **descarta a op** em vez de virar global: o agente pediu escopo, e
+servir uma troca mais ampla do que a pedida é pior que não trocar.
+
+**2. `decisao` era string livre, e o teto de faixas pagava a conta.** O tipo
+é `decisao?: string` e a única leitura era `=== "manter"`. Medido em 30 dias:
+o modelo devolveu **`"manter cor mas remapear"`**. Ali a troca era legítima
+(o `fundo` pedido diferia), mas a comparação crua abre um buraco caro:
+qualquer variação de manter — `"Manter"`, `"manter."` — escapa do veto,
+ecoa o fundo ATUAL em `fundo`, vira `set_fundo` para a cor que já está lá e
+**gasta uma das DUAS vagas de `TETO_DE_FAIXAS`**. A faixa seguinte, que muda
+de verdade, é descartada por excesso. Agora `verboDaFaixa` normaliza caixa e
+pontuação, e o **no-op é recusado ANTES do teto** — cor pedida igual à atual
+não consome vaga. `DECISOES_DE_FAIXA` declara o vocabulário (manter,
+escurecer, clarear, recolorir) no código e no prompt, com um teste que
+compara os dois; verbo fora dele **não perde a troca** (quem manda é o
+`fundo`, que é dado) — vira registro em `ajustes`. Perder uma troca boa por
+causa da palavra escolhida seria o remédio pior que a doença.
+
+**O que a medição desfez da spec**: o repo NÃO está divergente de produção —
+`color-format.chain.ts` tem os seis blocos, `extrairFaixas`/`extrairCtas`
+existem, e a R4 já está partida ao meio (repintar gradiente que existe é do
+agente desde hoje; INSERIR onde não há segue lacuna). A conservadoria medida
+é **68,2% de `manter`**, não "quase todas". E `registro da loja` — o eixo em
+que a spec baseia a escolha da forma de transição — **não existe**: não é
+coluna, não é derivação, e não está entre as vars que o agente recebe. Ele é
+eixo do vault das VARIANTES. Avaliação completa, com as outras lacunas
+(família `scrim` sem op, `divider` estourando o guard de tabelas,
+`DOUTRINA_MAX_NOTAS = 3` cortando a 4ª nota, e o `color_format` sendo pulado
+em loja com blocos tokenizados) em `.claude/plans`.
