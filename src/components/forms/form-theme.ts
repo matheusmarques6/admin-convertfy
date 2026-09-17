@@ -61,6 +61,8 @@ export interface FormTheme {
   cardPadding?: number // padding interno do card em px (default: 28)
   fieldGap?: number // espacamento entre campos em px (default: 14)
   hideTitle?: boolean
+  /** Sem logo nenhuma. Sem isto, a ausência de `logo_url` vira a da casa. */
+  hideLogo?: boolean
   hideLabels?: boolean
   hidePoweredBy?: boolean
 

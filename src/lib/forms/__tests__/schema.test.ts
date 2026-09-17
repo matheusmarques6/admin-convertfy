@@ -149,3 +149,33 @@ describe("camposDoSchema", () => {
     expect(camposDoSchema(s).map((c) => c.id)).toEqual(["e"])
   })
 })
+
+describe("a primeira tela sempre tem cabeça", () => {
+  it("mesma_tela no primeiro bloco visível é limpo — não há anterior", () => {
+    const s = normalizarSchema({
+      blocks: [
+        { ref: "a", type: "text", label: "A", mesma_tela: true },
+        { ref: "b", type: "text", label: "B", mesma_tela: true },
+      ],
+    })
+    expect(s.blocks[0].mesma_tela).toBeUndefined()
+    expect(s.blocks[1].mesma_tela).toBe(true)
+  })
+
+  it("oculto antes do primeiro visível não faz dele uma cabeça", () => {
+    const s = normalizarSchema({
+      blocks: [
+        { ref: "h", type: "text", label: "utm", hidden: true },
+        { ref: "a", type: "text", label: "A", mesma_tela: true },
+      ],
+    })
+    expect(s.blocks[1].mesma_tela).toBeUndefined()
+  })
+
+  it("titulo_da_tela em branco não vira string vazia no schema", () => {
+    const s = normalizarSchema({
+      blocks: [{ ref: "a", type: "text", label: "A", titulo_da_tela: "   " }],
+    })
+    expect(s.blocks[0].titulo_da_tela).toBeUndefined()
+  })
+})

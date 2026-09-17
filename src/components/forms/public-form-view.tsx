@@ -9,6 +9,7 @@ import {
   type FormTracking,
   type SubmitTracking,
 } from "./form-pixels"
+import { logoDoFormulario } from "@/lib/forms/logo"
 import { defaults, gradientCss, shadowCss, type FormTheme } from "./form-theme"
 import {
   mascaraDeTelefone,
@@ -79,6 +80,16 @@ export function PublicFormView({ slug, payload, utm, clickIds, preview = false, 
   const { form, fields } = payload
   const theme = form.theme ?? {}
   const t = defaults(theme)
+  /**
+   * A logo da casa entra só no formulário STANDALONE.
+   *
+   * Embutido, a página que hospeda já carrega a marca dela, e uma
+   * segunda logo dentro do card parece erro de montagem. Logo própria
+   * (`logo_url`) continua aparecendo nos dois — ali alguém escolheu.
+   */
+  const logo = embed
+    ? { url: (form.logo_url ?? "").trim() || null, daCasa: false }
+    : logoDoFormulario({ logoUrl: form.logo_url, ocultar: theme.hideLogo, modo: theme.mode })
   const dark = t.mode === "dark"
 
   // ID unico por instancia, usado pra escopar o CSS reset (isola estilos
@@ -330,17 +341,17 @@ export function PublicFormView({ slug, payload, utm, clickIds, preview = false, 
         }}
       >
         {/* Header */}
-        {(form.logo_url ||
+        {(logo.url ||
           theme.badge ||
           (!theme.hideTitle && (theme.headline || form.name)) ||
           theme.subheadline ||
           form.description) && (
           <div style={{ marginBottom: t.fieldGap + 6 }}>
-            {form.logo_url && (
+            {logo.url && (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={form.logo_url}
-                alt={form.name}
+                src={logo.url}
+                alt={logo.daCasa ? "Convertfy" : form.name}
                 style={{ height: 40, width: "auto", marginBottom: 12, objectFit: "contain" }}
               />
             )}

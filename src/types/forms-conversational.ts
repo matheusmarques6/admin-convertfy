@@ -100,6 +100,32 @@ export interface FormBlock {
   }
   /** Campo do lead que esta resposta preenche (name, email, phone…). */
   map_to_lead_field?: string | null
+  /**
+   * Esta pergunta divide a TELA com a anterior.
+   *
+   * É o que faz o primeiro passo pedir nome, telefone e email de uma vez
+   * — e só depois passar a uma pergunta por vez. A grade é a mesma do
+   * formato de página única; o que muda é onde ela termina.
+   *
+   * Duas consequências que a engine é obrigada a respeitar, senão a
+   * pessoa vê meia tela: um salto que aponta para uma pergunta agrupada
+   * pousa no INÍCIO da tela dela, e o Voltar também.
+   *
+   * O `ref` continua sendo o `crm_form_fields.id` de cada pergunta —
+   * agrupar é decisão de apresentação e não pode mexer no endereço da
+   * resposta, senão a regra do evento qualificado deixa de casar.
+   */
+  mesma_tela?: boolean
+  /**
+   * Título acima da tela. Só é lido no bloco que ABRE a tela.
+   *
+   * Com várias perguntas juntas, o rótulo de cada campo fica pequeno e
+   * sobra a pergunta de por que elas estão ali — é o que este texto
+   * responde ("seus dados de contato"). Numa tela de pergunta única ele
+   * seria um segundo título competindo com o primeiro: ali o rótulo já
+   * é a pergunta.
+   */
+  titulo_da_tela?: string | null
   /** Regras de salto. A primeira que casa vence; nenhuma → próximo na ordem. */
   logic?: LogicRule[]
   /** Oculto: não é exibido; o valor vem da URL ou do embed. */

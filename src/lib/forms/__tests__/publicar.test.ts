@@ -162,3 +162,24 @@ describe("o rascunho é a saída da própria montagem", () => {
     expect(r.schema.blocks[0].logic?.[0].goto).toBe("ending:fora")
   })
 })
+
+describe("o agrupamento atravessa a publicação", () => {
+  it("mesma_tela e titulo_da_tela vêm da versão anterior, como a lógica", () => {
+    const campos = [
+      { id: "f1", field_type: "text", label: "Nome", position: 0 },
+      { id: "f2", field_type: "email", label: "Email", position: 1 },
+    ]
+    const anterior = {
+      blocks: [
+        { ref: "f1", type: "text", label: "Nome", titulo_da_tela: "Seus dados" },
+        { ref: "f2", type: "email", label: "Email", mesma_tela: true },
+      ],
+    }
+    const { schema } = montarVersao(campos, anterior, {
+      display_mode: "conversational",
+      version: 2,
+    })
+    expect(schema.blocks[0].titulo_da_tela).toBe("Seus dados")
+    expect(schema.blocks[1].mesma_tela).toBe(true)
+  })
+})

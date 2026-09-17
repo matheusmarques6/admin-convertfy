@@ -33,6 +33,7 @@
 import type { FormBlock, FormSchema, LogicCondition, LogicRule } from "@/types/forms-conversational"
 import { TIPOS_DE_ESCOLHA, TIPOS_SEM_RESPOSTA } from "@/types/forms-conversational"
 import { normalizeForCompare } from "@/lib/tracking/normalizar-comparacao"
+import { blocoDoRecall, refsCitados } from "./recall"
 
 const PREFIXO_ENDING = "ending:"
 
@@ -68,6 +69,7 @@ export type TipoDeProblema =
   | "salto_para_tras"
   | "final_orfao"
   | "sem_final"
+  | "recall_da_mesma_tela"
 
 export interface ProblemaDoFluxo {
   tipo: TipoDeProblema
@@ -77,6 +79,26 @@ export interface ProblemaDoFluxo {
   /** Índice da regra dentro do bloco, que é como a tela a endereça. */
   regra?: number
   mensagem: string
+}
+
+/**
+ * Os blocos que dividem a tela com `ref`.
+ *
+ * Roda sobre os VISÍVEIS, como a engine: um campo oculto no meio do
+ * grupo não é parte da tela — o valor dele vem da URL e está disponível
+ * desde o primeiro instante, então citá-lo num `{{}}` funciona.
+ *
+ * Reimplementa `blocosDaTela` de propósito: aqui o schema pode estar
+ * pela metade (é o rascunho do editor). A régua é a mesma — anda para
+ * trás enquanto `mesma_tela`, para frente idem.
+ */
+function telaDoBloco(visiveis: FormBlock[], ref: string): FormBlock[] {
+  let ini = visiveis.findIndex((b) => b.ref === ref)
+  if (ini < 0) return []
+  while (ini > 0 && visiveis[ini].mesma_tela) ini -= 1
+  const out: FormBlock[] = [visiveis[ini]]
+  for (let j = ini + 1; j < visiveis.length && visiveis[j].mesma_tela; j++) out.push(visiveis[j])
+  return out
 }
 
 function rotulo(b: FormBlock | undefined, i?: number): string {
@@ -167,6 +189,7 @@ export function diagnosticarFluxo(schema: FormSchema): ProblemaDoFluxo[] {
   const refsEndings = new Set(endings.map((e) => e.ref))
   const out: ProblemaDoFluxo[] = []
 
+  const visiveis = blocks.filter((b) => !b.hidden)
   const emLaco = new Set(lacosDeTela(blocks))
 
   blocks.forEach((bloco, i) => {
@@ -177,6 +200,34 @@ export function diagnosticarFluxo(schema: FormSchema): ProblemaDoFluxo[] {
         ref: bloco.ref,
         mensagem: `"${rotulo(bloco, i)}" avança sozinha e volta para si mesma — quem chegar aqui trava numa tela.`,
       })
+    }
+
+    // Recall de uma resposta que está sendo digitada NESTE momento.
+    //
+    // `{{nome}}` só tem valor depois que a pessoa responde e avança. Com
+    // as duas perguntas na mesma tela, o texto sai VAZIO — "Prazer, .
+    // Para onde mando?" — e nada acusa: o recall devolve o fallback
+    // declarado, que quase nunca existe. É o preço de agrupar, e quem
+    // agrupa precisa vê-lo no momento em que agrupa.
+    if (bloco.mesma_tela || blocks[i + 1]?.mesma_tela) {
+      const daTela = new Set(telaDoBloco(visiveis, bloco.ref).map((b) => b.ref))
+      const citados = [
+        ...refsCitados(bloco.label),
+        ...refsCitados(bloco.description),
+        ...refsCitados(bloco.titulo_da_tela),
+      ]
+      const jaAvisado = new Set<string>()
+      for (const chave of citados) {
+        const alvo = blocoDoRecall(chave, blocks)
+        if (!alvo || !daTela.has(alvo.ref) || jaAvisado.has(alvo.ref)) continue
+        jaAvisado.add(alvo.ref)
+        out.push({
+          tipo: "recall_da_mesma_tela",
+          gravidade: "erro",
+          ref: bloco.ref,
+          mensagem: `"${rotulo(bloco, i)}" usa {{${chave}}}, que é respondida na MESMA tela — o texto sai vazio. Separe as duas telas ou tire o {{${chave}}}.`,
+        })
+      }
     }
 
     ;(bloco.logic ?? []).forEach((regra, indice) => {

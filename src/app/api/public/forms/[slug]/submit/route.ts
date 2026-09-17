@@ -35,7 +35,7 @@ import {
 import { metaEventName } from "@/lib/tracking/meta-event-name"
 import { buildCrmFormUrl } from "@/lib/utils/form-url"
 import { concluirSessao } from "@/lib/services/form-session.service"
-import { caminhoAte, ultimoAlcancavel } from "@/lib/forms/engine"
+import { caminhoAte, refsDoCaminho, ultimoAlcancavel } from "@/lib/forms/engine"
 import { normalizarSchema } from "@/lib/forms/schema"
 import { verificarTokenSessao } from "@/lib/forms/session-token"
 
@@ -795,7 +795,10 @@ async function lerDoSchema(
     const fim = ultimoAlcancavel(schema, ctx)
     if (!fim) return { refs: null, desqualificado }
     const { caminho } = caminhoAte(schema, fim, ctx)
-    return { refs: new Set(caminho), desqualificado }
+    // O caminho vem em TELAS. Sem expandir, a 2ª pergunta em diante de um
+    // grupo ficaria fora do conjunto e o `required` dela deixaria de ser
+    // cobrado — dá para enviar sem o email que a tela exigia.
+    return { refs: new Set(refsDoCaminho(schema, caminho)), desqualificado }
   } catch {
     return { refs: null, desqualificado: false }
   }

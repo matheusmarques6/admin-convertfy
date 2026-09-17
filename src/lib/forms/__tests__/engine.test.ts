@@ -306,3 +306,130 @@ describe("obrigatório vale só no caminho percorrido", () => {
     expect(caminho).toEqual(["a", "b", "c"])
   })
 })
+
+// ─────────────────── perguntas que dividem a tela ────────────────────────
+
+/**
+ * A primeira tela pede contato inteiro — nome, email e telefone juntos —
+ * e só depois o formulário volta a uma pergunta por vez. É o formato do
+ * Typeform que o operador pediu, e é onde a engine mais tem como errar:
+ * cada função que navega precisa pensar em TELA, não em pergunta.
+ */
+const COM_GRUPO: FormSchema = {
+  version: 1,
+  display_mode: "conversational",
+  locale: "pt-BR",
+  blocks: [
+    { ref: "nome", type: "text", label: "Nome", required: true, titulo_da_tela: "Seus dados" },
+    { ref: "email", type: "email", label: "Email", required: true, mesma_tela: true },
+    { ref: "fone", type: "phone", label: "WhatsApp", required: true, mesma_tela: true },
+    {
+      ref: "fat",
+      type: "radio",
+      label: "Faturamento?",
+      required: true,
+      options: [
+        { label: "Até 100k", value: "ate" },
+        { label: "Acima", value: "acima" },
+      ],
+      logic: [
+        { conditions: [{ ref: "fat", operator: "equals", value: "ate" }], logic: "and", goto: "ending:fora" },
+      ],
+    },
+    { ref: "site", type: "url", label: "Site", required: true },
+  ],
+  endings: [
+    { ref: "ok", title: "Recebemos" },
+    { ref: "fora", title: "Ainda não é para você", disqualified: true },
+  ],
+}
+
+describe("telas que agrupam perguntas", () => {
+  it("o avanço pula a tela inteira, não o campo seguinte", () => {
+    const r = proximoPasso(COM_GRUPO, "nome", { answers: {} })
+    expect(r.destino).toEqual({ tipo: "bloco", ref: "fat" })
+  })
+
+  it("avançar a partir de um campo do meio do grupo dá no mesmo", () => {
+    expect(proximoPasso(COM_GRUPO, "email", { answers: {} }).destino).toEqual({
+      tipo: "bloco",
+      ref: "fat",
+    })
+  })
+
+  it("o caminho conta TELAS: o grupo de três é um passo", () => {
+    const { caminho } = caminhoAte(COM_GRUPO, "site", { answers: { fat: "acima" } })
+    expect(caminho).toEqual(["nome", "fat", "site"])
+  })
+
+  it("voltar de 'fat' pousa na cabeça do grupo, nunca no meio dele", () => {
+    expect(passoAnterior(COM_GRUPO, "fat", { answers: {} })).toBe("nome")
+  })
+
+  it("a lógica escrita numa pergunta do grupo vale para a tela", () => {
+    const comLogicaNoMeio: FormSchema = {
+      ...COM_GRUPO,
+      blocks: COM_GRUPO.blocks.map((b) =>
+        b.ref === "email"
+          ? {
+              ...b,
+              logic: [
+                {
+                  conditions: [{ ref: "email", operator: "contains", value: "@convertfy" }],
+                  logic: "and" as const,
+                  goto: "site",
+                },
+              ],
+            }
+          : b,
+      ),
+    }
+    const r = proximoPasso(comLogicaNoMeio, "nome", { answers: { email: "bruno@convertfy.me" } })
+    expect(r.destino).toEqual({ tipo: "bloco", ref: "site" })
+  })
+
+  it("salto que aponta para o meio de um grupo pousa no começo dele", () => {
+    const apontaPraDentro: FormSchema = {
+      ...COM_GRUPO,
+      blocks: [
+        { ref: "abre", type: "statement" as const, label: "Oi", logic: [] },
+        ...COM_GRUPO.blocks,
+      ].map((b) =>
+        b.ref === "abre"
+          ? {
+              ...b,
+              logic: [{ conditions: [{ ref: "x", operator: "is_set" }], logic: "and" as const, goto: "fone" }],
+            }
+          : b,
+      ),
+    }
+    const r = proximoPasso(apontaPraDentro, "abre", { answers: { x: "1" } })
+    expect(r.destino).toEqual({ tipo: "bloco", ref: "nome" })
+  })
+
+  it("a resposta de um campo agrupado NÃO é órfã — ela foi pedida", () => {
+    const orfas = respostasForaDoCaminho(
+      COM_GRUPO,
+      { answers: { nome: "Bruno", email: "b@x.com", fone: "+5511999998888", fat: "acima" } },
+      null,
+    )
+    expect(orfas).toEqual([])
+  })
+
+  it("conta as respostas do grupo, não só a da cabeça", () => {
+    expect(
+      totalRespondido(COM_GRUPO, { answers: { nome: "Bruno", email: "b@x.com" } }),
+    ).toBe(2)
+  })
+
+  it("parar no 2º campo do grupo é parar NAQUELA tela", () => {
+    const b = blocoDoAbandono(COM_GRUPO, { answers: { nome: "Bruno" } }, null)
+    expect(b?.ref).toBe("nome")
+  })
+
+  it("o progresso do grupo é um passo, não três", () => {
+    const p = calcularProgresso(COM_GRUPO, "nome", { answers: {} })
+    expect(p.indice).toBe(1)
+    expect(p.total).toBe(3)
+  })
+})

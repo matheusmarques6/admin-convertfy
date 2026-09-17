@@ -105,6 +105,25 @@ export function escaparHtml(s: string): string {
     .replace(/'/g, "&#39;")
 }
 
+/**
+ * Qual bloco uma chave de recall endereça — a MESMA cascata do `resolver`
+ * (ref exato, depois alias, depois label), sem depender de haver resposta.
+ *
+ * O `resolver` só devolve texto quando a resposta existe, então ele não
+ * serve para a régua do editor, que roda sem ninguém ter respondido nada.
+ * Duas cascatas divergiriam, e a divergência apareceria como um aviso
+ * sobre `{{nome}}` que o formulário resolve bem — ou pior, o silêncio
+ * sobre um que ele não resolve.
+ */
+export function blocoDoRecall(chave: string, blocks: FormBlock[]): FormBlock | undefined {
+  const k = chave.trim().toLowerCase()
+  const porRef = blocks.find((b) => b.ref === chave.trim())
+  if (porRef) return porRef
+  const porAlias = blocks.find((b) => (b.alias ?? "").toLowerCase() === k)
+  if (porAlias) return porAlias
+  return blocks.find((b) => (b.label ?? "").trim().toLowerCase() === k)
+}
+
 /** Lista os refs citados num texto — o editor usa para avisar de ref quebrado. */
 export function refsCitados(texto: string | null | undefined): string[] {
   if (!texto) return []

@@ -29,16 +29,43 @@
  * **A barra de progresso nunca recua** (`progressoMonotonico`): com
  * ramificação, a estimativa muda a cada resposta, e barra que volta é
  * lida como perda de progresso.
+ *
+ * **Uma TELA pode ter várias perguntas.** É o primeiro passo pedindo
+ * nome, email e telefone de uma vez. Três consequências que a tela é
+ * obrigada a respeitar: o erro é POR CAMPO (um erro só, no rodapé,
+ * não diz qual dos quatro está errado), o Enter anda de campo em campo
+ * e só avança no último (avançar do primeiro faria o OK reprovar os
+ * outros três que a pessoa ainda ia preencher), e a escolha única NÃO
+ * avança sozinha — ela é uma pergunta entre outras, não a tela inteira.
+ *
+ * **A logo fica em todas as telas.** Ela ficava só na abertura e no
+ * fim, ou seja, em nenhuma das telas onde a pessoa realmente está. Marca
+ * ausente na hora de pedir telefone é onde ela mais faz falta.
+ *
+ * **A navegação mora no canto, e é `sticky`, nunca `fixed`.** Fixa, ela
+ * flutuaria sobre o teclado virtual — o mesmo motivo que mantém o botão
+ * de avançar dentro do fluxo.
  */
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
-import { AlertCircle, ArrowUp, Check, CornerDownLeft, Info, Loader2 } from "lucide-react"
+import {
+  AlertCircle,
+  ArrowRight,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  CornerDownLeft,
+  Info,
+  Loader2,
+} from "lucide-react"
 import type { FormAnswers, FormBlock, FormSchema } from "@/types/forms-conversational"
 import { TIPOS_DE_ESCOLHA, TIPOS_SEM_RESPOSTA } from "@/types/forms-conversational"
 import {
   acharEnding,
   atalhoDaOpcao,
+  blocosDaTela,
   calcularProgresso,
+  inicioDaTela,
   passoAnterior,
   primeiroBloco,
   progressoMonotonico,
@@ -61,6 +88,7 @@ import {
   PAISES_DE_TELEFONE,
   PLACEHOLDERS_DE_TELEFONE,
 } from "@/lib/forms/telefone"
+import { logoDoFormulario } from "@/lib/forms/logo"
 import { defaults, gradientCss, type FormTheme } from "./form-theme"
 import { useFormSession } from "./use-form-session"
 
@@ -136,13 +164,29 @@ export function ConversationalFormView({
   const [tela, setTela] = useState<Tela>(() =>
     schema.settings?.welcome ? { tipo: "welcome" } : telaDoDestino(primeiroBloco(schema)),
   )
-  const [erro, setErro] = useState<string | null>(null)
+  // Um erro por CAMPO. Com quatro perguntas na mesma tela, "campo
+  // obrigatório" solto no rodapé não diz qual delas — e a pessoa fica
+  // conferindo as quatro.
+  const [erros, setErros] = useState<Record<string, string>>({})
   const [direcao, setDirecao] = useState<"frente" | "tras">("frente")
   const [enviando, setEnviando] = useState(false)
   const [falhaEnvio, setFalhaEnvio] = useState<string | null>(null)
   const [progressoVisto, setProgressoVisto] = useState(0)
 
   const entradaEm = useRef<number>(Date.now())
+
+  /**
+   * Os campos desenhados agora, por `ref`.
+   *
+   * Um `ref` só não serve mais: a tela pode ter quatro campos, e é este
+   * registro que permite focar o PRIMEIRO ao entrar, focar o primeiro
+   * INVÁLIDO ao reprovar, e andar de um para o outro com Enter.
+   */
+  const campos = useRef(new Map<string, HTMLElement>())
+  const registrar = useCallback((ref: string, el: HTMLElement | null) => {
+    if (el) campos.current.set(ref, el)
+    else campos.current.delete(ref)
+  }, [])
 
   /**
    * `document.referrer` e a URL de verdade só existem no browser: o
@@ -180,8 +224,15 @@ export function ConversationalFormView({
     repostoRef.current = true
     setAnswers((a) => ({ ...r.answers, ...a }))
     setVariables((v) => ({ ...r.variables, ...v }))
+    // O autosave grava a TELA, mas uma sessão aberta antes de alguém
+    // agrupar as perguntas guarda o ref de um campo do meio: reabrir ali
+    // mostraria o grupo pela metade. `inicioDaTela` devolve a cabeça.
     const existe = r.currentRef && schema.blocks.some((b) => b.ref === r.currentRef && !b.hidden)
-    setTela(existe ? { tipo: "bloco", ref: r.currentRef as string } : telaDoDestino(primeiroBloco(schema)))
+    setTela(
+      existe
+        ? { tipo: "bloco", ref: inicioDaTela(schema, r.currentRef as string) }
+        : telaDoDestino(primeiroBloco(schema)),
+    )
     entradaEm.current = Date.now()
   }, [sessao.retomada, schema])
 
@@ -205,6 +256,20 @@ export function ConversationalFormView({
   }, [tela, schema.blocks])
 
   /**
+   * As perguntas desta tela, na ordem. Quase sempre uma; várias quando
+   * alguém agrupou (`mesma_tela`). Tudo o que decide comportamento —
+   * validar, avançar, Enter, atalho de letra — lê DAQUI, e não de
+   * `blocoAtual`: ler da cabeça faria os outros campos existirem só
+   * visualmente.
+   */
+  const daTela: FormBlock[] = useMemo(() => {
+    if (tela.tipo !== "bloco" || !blocoAtual) return []
+    return blocosDaTela(schema, tela.ref)
+  }, [tela, blocoAtual, schema])
+
+  const agrupada = daTela.length > 1
+
+  /**
    * A pergunta que está na tela sumiu do schema.
    *
    * No ar isso não acontece — a versão publicada é imutável e quem está
@@ -215,7 +280,7 @@ export function ConversationalFormView({
   useEffect(() => {
     if (tela.tipo !== "bloco" || blocoAtual) return
     setTela(telaDoDestino(primeiroBloco(schema)))
-    setErro(null)
+    setErros({})
   }, [tela.tipo, blocoAtual, schema])
 
   // ── progresso ──
@@ -233,7 +298,7 @@ export function ConversationalFormView({
   const irPara = useCallback(
     (nova: Tela, dir: "frente" | "tras") => {
       setDirecao(dir)
-      setErro(null)
+      setErros({})
       setTela(nova)
       entradaEm.current = Date.now()
     },
@@ -331,9 +396,19 @@ export function ConversationalFormView({
         ? { ...answers, [respostaAgora.ref]: respostaAgora.valor }
         : answers
 
-      const v = validarResposta(blocoAtual, answersEfetivas[blocoAtual.ref])
-      if (!v.valido) {
-        setErro(v.erro)
+      // Valida a TELA inteira e mostra TODOS os erros de uma vez. Parar
+      // no primeiro faria a pessoa corrigir, apertar OK, descobrir o
+      // segundo, corrigir, apertar OK — o formulário contando os erros
+      // um por um em vez de dizer o que falta.
+      const encontrados: Record<string, string> = {}
+      for (const b of daTela) {
+        const v = validarResposta(b, answersEfetivas[b.ref])
+        if (!v.valido && v.erro) encontrados[b.ref] = v.erro
+      }
+      if (Object.keys(encontrados).length > 0) {
+        setErros(encontrados)
+        const primeiro = daTela.find((b) => encontrados[b.ref])
+        if (primeiro) campos.current.get(primeiro.ref)?.focus()
         return
       }
 
@@ -378,7 +453,7 @@ export function ConversationalFormView({
       irPara({ tipo: "bloco", ref: r.destino.ref }, "frente")
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [tela, blocoAtual, answers, ocultos, variables, schema, sessao, irPara],
+    [tela, blocoAtual, daTela, answers, ocultos, variables, schema, sessao, irPara],
   )
 
   const voltar = useCallback(() => {
@@ -394,14 +469,24 @@ export function ConversationalFormView({
   const responder = useCallback(
     (ref: string, valor: FormAnswers[string], avancarJa = false) => {
       setAnswers((a) => ({ ...a, [ref]: valor }))
-      setErro(null)
-      if (avancarJa) {
+      // Some o erro DAQUELE campo. Limpar o mapa inteiro apagaria o aviso
+      // dos outros três da tela, que continuam errados.
+      setErros((e) => {
+        if (!e[ref]) return e
+        const novo = { ...e }
+        delete novo[ref]
+        return novo
+      })
+      // Escolha única avança sozinha só quando ela é a tela inteira. Numa
+      // tela agrupada, clicar num rádio pularia por cima dos campos que a
+      // pessoa ainda ia preencher.
+      if (avancarJa && !agrupada) {
         // O respiro de 300ms existe para a seleção ficar visível. Sem
         // ele, a tela troca antes de o olho registrar o clique.
         window.setTimeout(() => avancar({ ref, valor }), 300)
       }
     },
-    [avancar],
+    [avancar, agrupada],
   )
 
   // ── teclado global ──
@@ -415,6 +500,19 @@ export function ConversationalFormView({
       if (e.key === "Enter" && !e.shiftKey) {
         if (alvo?.tagName === "TEXTAREA") return // Enter quebra linha
         e.preventDefault()
+        // Numa tela agrupada o Enter é TAB: vai para o campo seguinte e
+        // só avança no último. Avançar do primeiro faria o OK reprovar
+        // os três campos que a pessoa ainda ia preencher — o formulário
+        // brigando com quem preenche no teclado, que é justamente quem
+        // usa Enter.
+        if (agrupada && alvo) {
+          const i = daTela.findIndex((b) => campos.current.get(b.ref) === alvo)
+          const seguinte = i >= 0 ? daTela.slice(i + 1).find((b) => campos.current.has(b.ref)) : undefined
+          if (seguinte) {
+            campos.current.get(seguinte.ref)?.focus()
+            return
+          }
+        }
         avancar()
         return
       }
@@ -428,8 +526,16 @@ export function ConversationalFormView({
         voltar()
         return
       }
-      // Letra escolhe a opção — só em bloco de escolha e fora de input.
-      if (!digitando && blocoAtual && TIPOS_DE_ESCOLHA.has(blocoAtual.type) && /^[a-z]$/i.test(e.key)) {
+      // Letra escolhe a opção — só quando a escolha é a tela inteira e o
+      // foco está fora de um input. Numa tela agrupada, "e" digitado
+      // fora do campo marcaria a opção E da única pergunta de escolha.
+      if (
+        !digitando &&
+        !agrupada &&
+        blocoAtual &&
+        TIPOS_DE_ESCOLHA.has(blocoAtual.type) &&
+        /^[a-z]$/i.test(e.key)
+      ) {
         const opcoes = blocoAtual.options ?? []
         const i = opcoes.findIndex((o, idx) => atalhoDaOpcao(idx, o.atalho) === e.key.toUpperCase())
         if (i >= 0) {
@@ -447,17 +553,20 @@ export function ConversationalFormView({
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [avancar, voltar, blocoAtual, answers, responder, enviando])
+  }, [avancar, voltar, blocoAtual, daTela, agrupada, answers, responder, enviando])
 
-  // Foco no campo ao trocar de tela — sem isso quem usa teclado precisa
-  // dar Tab a cada pergunta. No celular NÃO focamos: abrir o teclado
-  // virtual sozinho cobre a pergunta que a pessoa ainda não leu.
-  const campoRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null)
+  // Foco no PRIMEIRO campo ao trocar de tela — sem isso quem usa teclado
+  // precisa dar Tab a cada pergunta. No celular NÃO focamos: abrir o
+  // teclado virtual sozinho cobre a pergunta que a pessoa ainda não leu.
   useEffect(() => {
     if (tela.tipo !== "bloco") return
     if (typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches) return
-    const id = window.setTimeout(() => campoRef.current?.focus(), 120)
+    const id = window.setTimeout(() => {
+      const primeiro = daTela.find((b) => campos.current.has(b.ref))
+      if (primeiro) campos.current.get(primeiro.ref)?.focus()
+    }, 120)
     return () => window.clearTimeout(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tela])
 
   // Registra a visualização de cada pergunta — é o que permite dizer
@@ -479,6 +588,19 @@ export function ConversationalFormView({
 
   // ── render ──
   const mostrarProgresso = schema.settings?.mostrar_progresso !== false && tela.tipo !== "fim"
+  const logo = logoDoFormulario({
+    logoUrl: form.logo_url,
+    ocultar: form.theme?.hideLogo,
+    modo: t.mode,
+  })
+  const podeVoltar =
+    tela.tipo === "bloco" &&
+    Boolean(blocoAtual) &&
+    (Boolean(passoAnterior(schema, tela.ref, ctx)) || Boolean(schema.settings?.welcome))
+  // O número da tela, não o da pergunta: um grupo de quatro campos é o
+  // passo 1, e numerá-lo 1..4 diria que o formulário é quatro vezes mais
+  // longo do que é.
+  const numeroDaTela = tela.tipo === "bloco" ? calcularProgresso(schema, tela.ref, ctx).indice : 0
 
   return (
     <div
@@ -486,6 +608,10 @@ export function ConversationalFormView({
       style={{
         minHeight: moldura ? "100%" : "100dvh",
         height: moldura ? "100%" : undefined,
+        // Dentro da moldura do editor quem rola é ESTE elemento (o admin
+        // não rola por causa do preview). Sem isto, tela alta é cortada e
+        // não há como chegar ao botão.
+        overflowY: moldura ? "auto" : undefined,
         background: bgFill,
         color: t.text,
         fontFamily: t.fontFamily,
@@ -497,7 +623,7 @@ export function ConversationalFormView({
 
       {mostrarProgresso && (
         <div
-          style={{ position: "sticky", top: 0, height: 4, background: "rgba(127,127,127,0.15)", zIndex: 2 }}
+          style={{ position: "sticky", top: 0, height: 4, background: "rgba(127,127,127,0.15)", zIndex: 3 }}
           role="progressbar"
           aria-valuemin={0}
           aria-valuemax={100}
@@ -523,6 +649,22 @@ export function ConversationalFormView({
         </div>
       )}
 
+      {/*
+        A logo fica FORA da tela que troca: ela é da peça, não da
+        pergunta. Dentro, ela entraria na animação e piscaria a cada
+        avanço — e o olho lê isso como a página recarregando.
+      */}
+      {logo.url && (
+        <header style={{ padding: "18px 20px 0", flex: "0 0 auto" }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={logo.url}
+            alt={logo.daCasa ? "Convertfy" : form.name}
+            style={{ height: 26, width: "auto", objectFit: "contain", display: "block" }}
+          />
+        </header>
+      )}
+
       <div
         style={{
           flex: 1,
@@ -533,7 +675,7 @@ export function ConversationalFormView({
           // celular baixo), o centro corta o topo e não há como rolar
           // até ele. Com margin auto, centraliza quando cabe e rola
           // quando não cabe.
-          padding: "48px 20px 32px",
+          padding: logo.url ? "28px 20px 24px" : "48px 20px 24px",
         }}
       >
         <div
@@ -541,11 +683,6 @@ export function ConversationalFormView({
           className={`cfy-tela cfy-${direcao}`}
           style={{ width: "100%", maxWidth: Math.max(t.containerWidth, 560), margin: "auto 0" }}
         >
-          {form.logo_url && tela.tipo !== "bloco" && (
-            /* eslint-disable-next-line @next/next/no-img-element */
-            <img src={form.logo_url} alt="" style={{ height: 32, marginBottom: 28, objectFit: "contain" }} />
-          )}
-
           {tela.tipo === "welcome" && schema.settings?.welcome && (
             <TelaDeAbertura
               titulo={recall(schema.settings.welcome.title)}
@@ -558,21 +695,20 @@ export function ConversationalFormView({
           )}
 
           {tela.tipo === "bloco" && blocoAtual && (
-            <Pergunta
-              bloco={blocoAtual}
-              valor={answers[blocoAtual.ref]}
-              erro={erro}
+            <TelaDePerguntas
+              blocos={daTela}
+              numero={numeroDaTela}
+              answers={answers}
+              erros={erros}
               recall={recall}
               t={t}
               buttonFill={buttonFill}
               erroCor={erroCor}
               rotuloAvancar={schema.settings?.rotulo_avancar}
               enviando={enviando}
-              campoRef={campoRef}
-              onResponder={(v, avancarJa) => responder(blocoAtual.ref, v, avancarJa)}
+              registrar={registrar}
+              onResponder={responder}
               onAvancar={() => avancar()}
-              podeVoltar={Boolean(passoAnterior(schema, blocoAtual.ref, ctx)) || Boolean(schema.settings?.welcome)}
-              onVoltar={voltar}
             />
           )}
 
@@ -596,6 +732,23 @@ export function ConversationalFormView({
           )}
         </div>
       </div>
+
+      {/*
+        `sticky`, nunca `fixed`: no iOS o teclado virtual não redimensiona
+        a viewport, e um par de botões fixo ficaria flutuando por cima
+        dele. Aqui eles fazem parte do fluxo — ficam colados no rodapé
+        enquanto a tela cabe e rolam junto quando ela não cabe.
+      */}
+      {tela.tipo === "bloco" && (
+        <NavegacaoDeCanto
+          t={t}
+          buttonFill={buttonFill}
+          podeVoltar={podeVoltar}
+          desabilitado={enviando}
+          onVoltar={voltar}
+          onAvancar={() => avancar()}
+        />
+      )}
     </div>
   )
 }
@@ -698,38 +851,135 @@ function TelaFinal({
   )
 }
 
-// ──────────────────────────── a pergunta ────────────────────────────────
+// ──────────────────────────── a tela ────────────────────────────────────
 
-function Pergunta({
-  bloco,
-  valor,
-  erro,
+/**
+ * A tela: uma pergunta, ou várias que o operador agrupou.
+ *
+ * Com UMA, o rótulo é o título grande — a pergunta É a tela. Com várias,
+ * o título da tela sobe (quando existe) e cada rótulo vira etiqueta de
+ * campo: quatro títulos de 24px empilhados não são uma tela, são quatro
+ * telas espremidas numa.
+ */
+function TelaDePerguntas({
+  blocos,
+  numero,
+  answers,
+  erros,
   recall,
   t,
   buttonFill,
   erroCor,
   rotuloAvancar,
   enviando,
-  campoRef,
+  registrar,
   onResponder,
   onAvancar,
-  podeVoltar,
-  onVoltar,
 }: {
-  bloco: FormBlock
-  valor: FormAnswers[string]
-  erro: string | null
+  blocos: FormBlock[]
+  numero: number
+  answers: FormAnswers
+  erros: Record<string, string>
   recall: (s: string | null | undefined) => string
   t: ReturnType<typeof defaults>
   buttonFill: string
   erroCor: string
   rotuloAvancar?: string
   enviando: boolean
-  campoRef: React.MutableRefObject<HTMLInputElement | HTMLTextAreaElement | null>
-  onResponder: (v: FormAnswers[string], avancarJa?: boolean) => void
+  registrar: (ref: string, el: HTMLElement | null) => void
+  onResponder: (ref: string, v: FormAnswers[string], avancarJa?: boolean) => void
   onAvancar: () => void
-  podeVoltar: boolean
-  onVoltar: () => void
+}) {
+  const agrupada = blocos.length > 1
+  const cabeca = blocos[0]
+  const titulo = agrupada ? recall(cabeca?.titulo_da_tela) : ""
+
+  return (
+    <div>
+      {/*
+        O número da tela, com a seta. Ele orienta ("estou na 2") e é o
+        que dá à peça a cara de conversa em vez de página de cadastro —
+        mas é discreto de propósito: o protagonista é a pergunta.
+      */}
+      {numero > 0 && (
+        <div
+          aria-hidden
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 5,
+            marginBottom: 14,
+            fontSize: t.fontSize - 1,
+            fontWeight: 600,
+            color: t.primary,
+            opacity: 0.9,
+          }}
+        >
+          {numero}
+          <ArrowRight size={12} strokeWidth={2.5} />
+        </div>
+      )}
+
+      {agrupada && titulo && (
+        <h2
+          style={{
+            margin: "0 0 26px",
+            fontSize: Math.max(t.headingSize - 4, 22),
+            lineHeight: 1.3,
+            fontWeight: 500,
+          }}
+        >
+          {titulo}
+        </h2>
+      )}
+
+      <div style={{ display: "grid", gap: agrupada ? 22 : 0 }}>
+        {blocos.map((b) => (
+          <UmaPergunta
+            key={b.ref}
+            bloco={b}
+            agrupada={agrupada}
+            valor={answers[b.ref]}
+            erro={erros[b.ref] ?? null}
+            recall={recall}
+            t={t}
+            erroCor={erroCor}
+            registrar={registrar}
+            onResponder={(v, avancarJa) => onResponder(b.ref, v, avancarJa)}
+          />
+        ))}
+      </div>
+
+      <div style={{ marginTop: 28, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+        <BotaoPrincipal onClick={onAvancar} t={t} fill={buttonFill} carregando={enviando}>
+          {rotuloAvancar ?? "OK"}
+        </BotaoPrincipal>
+        <DicaEnter t={t} agrupada={agrupada} />
+      </div>
+    </div>
+  )
+}
+
+function UmaPergunta({
+  bloco,
+  agrupada,
+  valor,
+  erro,
+  recall,
+  t,
+  erroCor,
+  registrar,
+  onResponder,
+}: {
+  bloco: FormBlock
+  agrupada: boolean
+  valor: FormAnswers[string]
+  erro: string | null
+  recall: (s: string | null | undefined) => string
+  t: ReturnType<typeof defaults>
+  erroCor: string
+  registrar: (ref: string, el: HTMLElement | null) => void
+  onResponder: (v: FormAnswers[string], avancarJa?: boolean) => void
 }) {
   const escolha = TIPOS_DE_ESCOLHA.has(bloco.type)
   const semResposta = TIPOS_SEM_RESPOSTA.has(bloco.type)
@@ -739,7 +989,13 @@ function Pergunta({
     <div>
       <label
         htmlFor={`campo-${bloco.ref}`}
-        style={{ display: "block", fontSize: Math.max(t.headingSize - 4, 22), lineHeight: 1.3, fontWeight: 500 }}
+        style={{
+          display: "block",
+          fontSize: agrupada ? t.fontSize + 1 : Math.max(t.headingSize - 4, 22),
+          lineHeight: agrupada ? 1.4 : 1.3,
+          fontWeight: agrupada ? 500 : 500,
+          opacity: agrupada ? 0.75 : 1,
+        }}
       >
         {recall(bloco.label)}
         {/*
@@ -749,19 +1005,19 @@ function Pergunta({
           precisa saber é o contrário — qual ela pode pular.
         */}
         {!bloco.required && !semResposta && (
-          <span style={{ marginLeft: 8, fontSize: t.fontSize, opacity: 0.45, fontWeight: 400 }}>
+          <span style={{ marginLeft: 8, fontSize: t.fontSize - 1, opacity: 0.6, fontWeight: 400 }}>
             (opcional)
           </span>
         )}
       </label>
 
       {bloco.description && (
-        <p style={{ marginTop: 10, fontSize: t.fontSize + 1, opacity: 0.6, lineHeight: 1.55 }}>
+        <p style={{ marginTop: 8, fontSize: t.fontSize + (agrupada ? -1 : 1), opacity: 0.6, lineHeight: 1.55 }}>
           {recall(bloco.description)}
         </p>
       )}
 
-      <div style={{ marginTop: 26 }}>
+      <div style={{ marginTop: agrupada ? 8 : 26 }}>
         {escolha ? (
           <Opcoes
             bloco={bloco}
@@ -775,50 +1031,107 @@ function Pergunta({
             bloco={bloco}
             valor={valor}
             t={t}
-            campoRef={campoRef}
+            registrar={registrar}
+            erro={Boolean(erro)}
+            erroCor={erroCor}
             onChange={(v) => onResponder(v)}
             descrito={erro ? idErro : undefined}
           />
         )}
       </div>
 
-      <div id={idErro} role="alert" aria-live="polite" style={{ minHeight: erro ? undefined : 0 }}>
+      <div id={idErro} role="alert" aria-live="polite">
         {erro && (
-          <p style={{ marginTop: 12, color: erroCor, fontSize: t.fontSize, display: "flex", gap: 6, alignItems: "center" }}>
+          <p style={{ marginTop: 8, color: erroCor, fontSize: t.fontSize, display: "flex", gap: 6, alignItems: "center" }}>
             <AlertCircle size={15} /> {erro}
           </p>
         )}
       </div>
+    </div>
+  )
+}
 
-      <div style={{ marginTop: 28, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-        <BotaoPrincipal onClick={onAvancar} t={t} fill={buttonFill} carregando={enviando}>
-          {rotuloAvancar ?? "OK"}
-        </BotaoPrincipal>
-        <DicaEnter t={t} />
-        {podeVoltar && (
-          <button
-            type="button"
-            onClick={onVoltar}
-            aria-label="Voltar para a pergunta anterior"
-            style={{
-              marginLeft: "auto",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 4,
-              background: "transparent",
-              border: "none",
-              color: t.text,
-              opacity: 0.5,
-              fontSize: t.fontSize - 1,
-              cursor: "pointer",
-              padding: 6,
-            }}
-          >
-            <ArrowUp size={13} />
-            <span className="cfy-voltar-texto">Voltar</span>
-          </button>
-        )}
-      </div>
+/**
+ * Voltar e avançar no canto — o par de setas do Typeform.
+ *
+ * Existe porque a pessoa PERGUNTA como volta: o "Voltar" discreto ao
+ * lado do OK era descoberto por quem já sabia que existia. Aqui o par
+ * fica sempre no mesmo lugar, e o estado desabilitado diz onde ela está
+ * (sem volta = começo do formulário).
+ *
+ * Não substitui o OK: o botão continua sendo o caminho principal e a
+ * seta de baixo é o atalho de quem já entendeu o padrão.
+ */
+function NavegacaoDeCanto({
+  t,
+  buttonFill,
+  podeVoltar,
+  desabilitado,
+  onVoltar,
+  onAvancar,
+}: {
+  t: ReturnType<typeof defaults>
+  buttonFill: string
+  podeVoltar: boolean
+  desabilitado: boolean
+  onVoltar: () => void
+  onAvancar: () => void
+}) {
+  const base: React.CSSProperties = {
+    width: 34,
+    height: 30,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    border: "none",
+    color: t.buttonTextColor,
+    background: buttonFill,
+    cursor: "pointer",
+    transition: "opacity 140ms",
+  }
+  return (
+    <div
+      style={{
+        position: "sticky",
+        bottom: 0,
+        marginTop: "auto",
+        alignSelf: "flex-end",
+        display: "flex",
+        gap: 2,
+        padding: "0 16px 16px",
+        zIndex: 2,
+      }}
+      className="cfy-nav"
+    >
+      <button
+        type="button"
+        onClick={onVoltar}
+        disabled={!podeVoltar || desabilitado}
+        aria-label="Voltar para a pergunta anterior"
+        title="Voltar"
+        style={{
+          ...base,
+          borderRadius: `${t.buttonRadius}px 0 0 ${t.buttonRadius}px`,
+          opacity: podeVoltar && !desabilitado ? 0.9 : 0.35,
+          cursor: podeVoltar && !desabilitado ? "pointer" : "not-allowed",
+        }}
+      >
+        <ChevronUp size={16} strokeWidth={2.5} />
+      </button>
+      <button
+        type="button"
+        onClick={onAvancar}
+        disabled={desabilitado}
+        aria-label="Ir para a próxima pergunta"
+        title="Avançar"
+        style={{
+          ...base,
+          borderRadius: `0 ${t.buttonRadius}px ${t.buttonRadius}px 0`,
+          opacity: desabilitado ? 0.35 : 1,
+        }}
+      >
+        <ChevronDown size={16} strokeWidth={2.5} />
+      </button>
     </div>
   )
 }
@@ -920,14 +1233,18 @@ function CampoLivre({
   bloco,
   valor,
   t,
-  campoRef,
+  registrar,
+  erro,
+  erroCor,
   onChange,
   descrito,
 }: {
   bloco: FormBlock
   valor: FormAnswers[string]
   t: ReturnType<typeof defaults>
-  campoRef: React.MutableRefObject<HTMLInputElement | HTMLTextAreaElement | null>
+  registrar: (ref: string, el: HTMLElement | null) => void
+  erro?: boolean
+  erroCor: string
   onChange: (v: FormAnswers[string]) => void
   descrito?: string
 }) {
@@ -936,7 +1253,9 @@ function CampoLivre({
     padding: "12px 2px",
     background: "transparent",
     border: "none",
-    borderBottom: `2px solid ${t.inputBorder}`,
+    // A borda vermelha é o que aponta QUAL campo da tela reprovou. Só a
+    // mensagem embaixo não basta quando há quatro mensagens possíveis.
+    borderBottom: `2px solid ${erro ? erroCor : t.inputBorder}`,
     color: t.inputText,
     // 16px é o piso: abaixo disso o Safari do iPhone DÁ ZOOM ao focar, e
     // a página some de vista no meio do preenchimento.
@@ -951,6 +1270,7 @@ function CampoLivre({
         <input
           id={`campo-${bloco.ref}`}
           type="checkbox"
+          ref={(el) => registrar(bloco.ref, el)}
           checked={Boolean(valor)}
           onChange={(e) => onChange(e.target.checked)}
           aria-describedby={descrito}
@@ -965,9 +1285,7 @@ function CampoLivre({
     return (
       <textarea
         id={`campo-${bloco.ref}`}
-        ref={(el) => {
-          campoRef.current = el
-        }}
+        ref={(el) => registrar(bloco.ref, el)}
         rows={3}
         value={String(valor ?? "")}
         placeholder={bloco.placeholder ?? ""}
@@ -986,7 +1304,7 @@ function CampoLivre({
         valor={valor}
         t={t}
         estilo={estilo}
-        campoRef={campoRef}
+        registrar={registrar}
         onChange={onChange}
         descrito={descrito}
       />
@@ -1009,9 +1327,7 @@ function CampoLivre({
   return (
     <input
       id={`campo-${bloco.ref}`}
-      ref={(el) => {
-        campoRef.current = el
-      }}
+      ref={(el) => registrar(bloco.ref, el)}
       type={tipoHtml}
       value={String(valor ?? "")}
       placeholder={bloco.placeholder ?? ""}
@@ -1041,7 +1357,7 @@ function TelefoneComDDI({
   valor,
   t,
   estilo,
-  campoRef,
+  registrar,
   onChange,
   descrito,
 }: {
@@ -1049,7 +1365,7 @@ function TelefoneComDDI({
   valor: FormAnswers[string]
   t: ReturnType<typeof defaults>
   estilo: React.CSSProperties
-  campoRef: React.MutableRefObject<HTMLInputElement | HTMLTextAreaElement | null>
+  registrar: (ref: string, el: HTMLElement | null) => void
   onChange: (v: FormAnswers[string]) => void
   descrito?: string
 }) {
@@ -1091,9 +1407,7 @@ function TelefoneComDDI({
       </select>
       <input
         id={`campo-${bloco.ref}`}
-        ref={(el) => {
-          campoRef.current = el
-        }}
+        ref={(el) => registrar(bloco.ref, el)}
         type="tel"
         inputMode="tel"
         autoComplete="tel-national"
@@ -1148,14 +1462,28 @@ function BotaoPrincipal({
   )
 }
 
-/** A dica some no celular: lá não há tecla Enter física para prometer. */
-function DicaEnter({ t }: { t: ReturnType<typeof defaults> }) {
+/**
+ * A dica some no celular: lá não há tecla Enter física para prometer.
+ *
+ * Numa tela agrupada ela muda de texto porque MUDA DE FUNÇÃO: ali o
+ * Enter anda para o campo seguinte. Prometer "Enter avança" e ver o
+ * cursor pular para a caixa de baixo é a dica mentindo.
+ */
+function DicaEnter({ t, agrupada }: { t: ReturnType<typeof defaults>; agrupada?: boolean }) {
   return (
     <span
       className="cfy-dica"
       style={{ fontSize: t.fontSize - 2, opacity: 0.45, display: "inline-flex", alignItems: "center", gap: 5 }}
     >
-      pressione <CornerDownLeft size={12} /> Enter
+      {agrupada ? (
+        <>
+          <CornerDownLeft size={12} /> Enter passa ao campo seguinte
+        </>
+      ) : (
+        <>
+          pressione <CornerDownLeft size={12} /> Enter
+        </>
+      )}
     </span>
   )
 }
@@ -1212,8 +1540,7 @@ function cssDoEscopo(escopo: string, primaria: string): string {
 .${escopo} .cfy-girando { animation: cfy-gira 900ms linear infinite; }
 @keyframes cfy-gira { to { transform: rotate(360deg); } }
 @media (pointer: coarse) { .${escopo} .cfy-dica { display: none; } }
-.${escopo} .cfy-voltar-texto { font-size: inherit; }
-@media (max-width: 420px) { .${escopo} .cfy-voltar-texto { display: none; } }
+.${escopo} .cfy-nav button:hover:not(:disabled) { filter: brightness(1.08); }
 @media (prefers-reduced-motion: reduce) {
   .${escopo} .cfy-tela { animation: none; }
   .${escopo} .cfy-girando { animation-duration: 2s; }

@@ -191,8 +191,32 @@ function normalizarBloco(raw: unknown): FormBlock | null {
     map_to_lead_field:
       typeof b.map_to_lead_field === "string" && b.map_to_lead_field ? b.map_to_lead_field : null,
     ...(logic && logic.length > 0 ? { logic } : {}),
+    ...(b.mesma_tela === true ? { mesma_tela: true } : {}),
+    ...(typeof b.titulo_da_tela === "string" && b.titulo_da_tela.trim()
+      ? { titulo_da_tela: b.titulo_da_tela.trim() }
+      : {}),
     ...(b.hidden === true || tipoBruto === "hidden" ? { hidden: true } : {}),
   }
+}
+
+/**
+ * Toda tela tem um começo.
+ *
+ * `mesma_tela` quer dizer "divide a tela com a ANTERIOR", e o primeiro
+ * bloco visível não tem anterior. A marca sobra ali o tempo todo — basta
+ * reordenar as perguntas no editor e a que estava agrupada vira a
+ * primeira. Sem esta limpeza, `inicioDaTela` andaria para trás até o
+ * índice 0 e a tela ficaria sem cabeça: quem consome (progresso,
+ * caminho, Voltar) passaria a decidir cada um por conta.
+ */
+function primeiraTelaTemCabeca(blocks: FormBlock[]): FormBlock[] {
+  const i = blocks.findIndex((b) => !b.hidden)
+  if (i < 0 || !blocks[i].mesma_tela) return blocks
+  const copia = [...blocks]
+  const semMarca = { ...copia[i] }
+  delete semMarca.mesma_tela
+  copia[i] = semMarca
+  return copia
 }
 
 function normalizarEnding(raw: unknown): FormEnding | null {
@@ -217,7 +241,9 @@ export function normalizarSchema(raw: unknown): FormSchema {
   // O backfill da 20261144 gravou a lista como `fields`; o editor grava
   // como `blocks`. Os dois são lidos.
   const listaBruta = Array.isArray(s.blocks) ? s.blocks : Array.isArray(s.fields) ? s.fields : []
-  const blocks = listaBruta.map(normalizarBloco).filter((b): b is FormBlock => b !== null)
+  const blocks = primeiraTelaTemCabeca(
+    listaBruta.map(normalizarBloco).filter((b): b is FormBlock => b !== null),
+  )
   const endings = Array.isArray(s.endings)
     ? s.endings.map(normalizarEnding).filter((e): e is FormEnding => e !== null)
     : []

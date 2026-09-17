@@ -24,6 +24,7 @@ import {
   Monitor,
   Eye,
   ChevronDown,
+  CornerDownRight,
   Target,
   Workflow,
   RotateCcw,
@@ -44,6 +45,8 @@ import { montarVersao } from "@/lib/forms/publicar"
 import { remapearRefs } from "@/lib/forms/remapear-refs"
 import { normalizarSchema } from "@/lib/forms/schema"
 import { contarProblemas, diagnosticarFluxo } from "@/lib/forms/diagnostico-fluxo"
+import { logoDoFormulario } from "@/lib/forms/logo"
+import type { FormTheme as TemaDoFormulario } from "@/components/forms/form-theme"
 import type { FormSchema } from "@/types/forms-conversational"
 
 // ────────────────────────────────────────────────────────────────────
@@ -72,43 +75,14 @@ interface FormField {
   map_to_lead_field?: string | null
 }
 
-interface FormTheme {
-  mode?: "light" | "dark"
-  primaryColor?: string
-  backgroundColor?: string
-  textColor?: string
-  bgGradient?: { from: string; to: string; angle?: number } | null
-  cardBgColor?: string
-  cardBorderColor?: string
-  cardShadow?: "none" | "sm" | "md" | "lg"
-  cardPadding?: number
-  containerWidth?: number
-  fieldGap?: number
-  inputBgColor?: string
-  inputBorderColor?: string
-  inputTextColor?: string
-  inputPlaceholderColor?: string
-  inputRadius?: number
-  buttonText?: string
-  buttonTextColor?: string
-  buttonGradient?: { from: string; to: string; angle?: number } | null
-  buttonRadius?: number
-  fontFamily?: string
-  fontSize?: number
-  headingSize?: number
-  subheadingSize?: number
-  labelColor?: string
-  labelSize?: number
-  subtitleColor?: string
-  borderRadius?: number
-  hideTitle?: boolean
-  hideLabels?: boolean
-  hidePoweredBy?: boolean
-  headline?: string
-  subheadline?: string
-  badge?: string
-  badgeColor?: string
-}
+/**
+ * O tema é o MESMO do renderizador público.
+ *
+ * Esta interface era uma cópia à mão, e a cópia já divergiu: o campo
+ * `hideLogo` nasceu em `form-theme.ts` e o editor não o enxergava. Duas
+ * declarações da mesma coisa divergem sempre — a pergunta é só quando.
+ */
+type FormTheme = TemaDoFormulario
 
 /** Estado local da aba de rastreamento (pixels). */
 interface TrackingState {
@@ -526,6 +500,11 @@ export default function FormEditorPage({
   const [displayMode, setDisplayMode] = useState<"classic" | "conversational">("classic")
   const [redirectUrl, setRedirectUrl] = useState("")
   const [theme, setTheme] = useState<FormTheme>({})
+  /**
+   * A logo do formulário. Vazia = a da Convertfy (é o padrão, e o que
+   * as três linhas em produção têm hoje); `theme.hideLogo` = nenhuma.
+   */
+  const [logoUrl, setLogoUrl] = useState("")
   const [fields, setFields] = useState<FormField[]>([])
   const [tracking, setTracking] = useState<TrackingState>(EMPTY_TRACKING)
 
@@ -579,6 +558,7 @@ export default function FormEditorPage({
     )
     setRedirectUrl(data.form.redirect_url ?? "")
     setTheme(data.form.theme ?? {})
+    setLogoUrl(data.form.logo_url ?? "")
     setFields(data.fields)
     // `indisponivel` = existe versão publicada e a leitura dela falhou.
     // Hidratar com schema vazio ali faria o save seguinte apagar os
@@ -668,6 +648,85 @@ export default function FormEditorPage({
   }, [fields, rascunho, displayMode])
 
   const fluxo = montagem.schema
+
+  /**
+   * A leitura da versão publicada falhou.
+   *
+   * Sem isto, o primeiro clique no construtor de fluxo tiraria `rascunho`
+   * de `null` e o save seguinte gravaria por cima dos saltos que estão no
+   * AR — exatamente o que o aviso vermelho promete que não acontece.
+   */
+  const fluxoIndisponivel = data?.fluxo_origem === "indisponivel"
+
+  /**
+   * Em que tela cada pergunta cai, e quantas dividem essa tela.
+   *
+   * O agrupamento mora no SCHEMA (`mesma_tela`), não em
+   * `crm_form_fields` — a tabela não tem coluna para ele. Por isso a
+   * lista de Perguntas lê daqui e escreve no rascunho, como a aba Fluxo.
+   */
+  const telaPorRef = useMemo(() => {
+    const visiveis = fluxo.blocks.filter((b) => !b.hidden)
+    const parcial: Array<{ ref: string; numero: number; cabeca: string }> = []
+    let numero = 0
+    let cabeca = ""
+    for (const b of visiveis) {
+      if (!b.mesma_tela || !cabeca) {
+        numero += 1
+        cabeca = b.ref
+      }
+      parcial.push({ ref: b.ref, numero, cabeca })
+    }
+    const tamanho: Record<number, number> = {}
+    for (const p of parcial) tamanho[p.numero] = (tamanho[p.numero] ?? 0) + 1
+    const titulos = new Map(visiveis.map((b) => [b.ref, b.titulo_da_tela ?? ""]))
+    const out: Record<string, { numero: number; tamanho: number; cabeca: boolean; titulo: string }> = {}
+    for (const p of parcial) {
+      out[p.ref] = {
+        numero: p.numero,
+        tamanho: tamanho[p.numero],
+        cabeca: p.ref === p.cabeca,
+        titulo: titulos.get(p.cabeca) ?? "",
+      }
+    }
+    return out
+  }, [fluxo])
+
+  /**
+   * Agrupa (ou desagrupa) uma pergunta, e nomeia a tela.
+   *
+   * Escreve no rascunho pelo `ref` — nunca por posição: reordenar a lista
+   * deve levar o agrupamento junto com a pergunta, e não deixá-lo no
+   * lugar onde ela estava.
+   */
+  const agruparPergunta = useCallback(
+    (ref: string, patch: { mesma_tela?: boolean; titulo_da_tela?: string | null }) => {
+      if (fluxoIndisponivel) return
+      setRascunho((atual) => {
+        const base = atual ?? fluxo
+        return {
+          ...base,
+          blocks: base.blocks.map((b) =>
+            b.ref === ref
+              ? {
+                  ...b,
+                  ...(patch.mesma_tela === undefined
+                    ? {}
+                    : patch.mesma_tela
+                      ? { mesma_tela: true }
+                      : { mesma_tela: undefined }),
+                  ...(patch.titulo_da_tela === undefined
+                    ? {}
+                    : { titulo_da_tela: patch.titulo_da_tela || undefined }),
+                }
+              : b,
+          ),
+        }
+      })
+    },
+    [fluxo, fluxoIndisponivel],
+  )
+
   /** Quantos desvios cada pergunta tem — o selo na lista de Perguntas. */
   const regrasPorRef = useMemo(() => {
     const out: Record<string, number> = {}
@@ -691,6 +750,7 @@ export default function FormEditorPage({
           pipeline_id: pipelineId || null,
           stage_id: stageId || null,
           theme,
+          logo_url: logoUrl.trim() || null,
           success_message: successMessage || null,
           redirect_url: redirectUrl || null,
           display_mode: displayMode,
@@ -703,7 +763,7 @@ export default function FormEditorPage({
           })),
           // Rascunho desconhecido (leitura da versão publicada falhou)
           // não vai ao banco: gravar um vazio apagaria o fluxo do ar.
-          ...(rascunho === null ? {} : { draft_schema: fluxo }),
+          ...(rascunho === null || fluxoIndisponivel ? {} : { draft_schema: fluxo }),
           // Rastreamento (pixels). meta_capi_token so vai quando digitado.
           facebook_pixel_id: tracking.facebook_pixel_id || null,
           meta_test_event_code: tracking.meta_test_event_code || null,
@@ -758,7 +818,7 @@ export default function FormEditorPage({
     } finally {
       setSaving(false)
     }
-  }, [id, name, slug, description, pipelineId, stageId, theme, successMessage, redirectUrl, displayMode, fields, fluxo, rascunho, tracking, mutate])
+  }, [id, name, slug, description, pipelineId, stageId, theme, logoUrl, successMessage, redirectUrl, displayMode, fields, fluxo, rascunho, fluxoIndisponivel, tracking, mutate])
 
   /**
    * Põe o formulário no ar ou tira.
@@ -807,7 +867,7 @@ export default function FormEditorPage({
         slug: slug || "preview",
         description: description || null,
         theme,
-        logo_url: data?.form.logo_url ?? null,
+        logo_url: logoUrl || null,
         success_message: successMessage || null,
         redirect_url: redirectUrl || null,
       },
@@ -824,7 +884,7 @@ export default function FormEditorPage({
         map_to_lead_field: f.map_to_lead_field ?? null,
       })),
     }
-  }, [id, name, slug, description, theme, data?.form.logo_url, successMessage, redirectUrl, fields])
+  }, [id, name, slug, description, theme, logoUrl, successMessage, redirectUrl, fields])
 
   if (isLoading) {
     return (
@@ -989,7 +1049,7 @@ export default function FormEditorPage({
             />
           )}
           {abaVisivel === "style" && (
-            <StyleTab theme={theme} setTheme={setTheme} />
+            <StyleTab theme={theme} setTheme={setTheme} logoUrl={logoUrl} setLogoUrl={setLogoUrl} />
           )}
           {abaVisivel === "fields" && (
             <FieldsTab
@@ -1002,6 +1062,8 @@ export default function FormEditorPage({
               moveField={moveField}
               modo={displayMode}
               regrasPorRef={regrasPorRef}
+              telaPorRef={telaPorRef}
+              agruparPergunta={agruparPergunta}
               irParaFluxo={() => setActiveTab("flow")}
             />
           )}
@@ -1243,7 +1305,7 @@ export default function FormEditorPage({
                   form={{
                     id,
                     name,
-                    logo_url: data.form.logo_url ?? null,
+                    logo_url: logoUrl || null,
                     theme,
                     success_message: successMessage || null,
                     redirect_url: redirectUrl || null,
@@ -1490,14 +1552,66 @@ function ContentTab({
 function StyleTab({
   theme,
   setTheme,
+  logoUrl,
+  setLogoUrl,
 }: {
   theme: FormTheme
   setTheme: (fn: FormTheme | ((t: FormTheme) => FormTheme)) => void
+  logoUrl: string
+  setLogoUrl: (v: string) => void
 }) {
   const dark = theme.mode === "dark"
   const defaultText = dark ? "#F1F5F9" : "#0F172A"
+  const escolha = logoDoFormulario({ logoUrl, ocultar: theme.hideLogo, modo: theme.mode })
   return (
     <Stack>
+      {/* ── Logo ── */}
+      <SectionTitle
+        title="Logo"
+        hint="Aparece no alto de todas as telas, inclusive nas perguntas."
+      />
+      <div className="rounded-[6px] border border-slate-200 dark:border-white/[0.10] p-2.5 space-y-2">
+        <div
+          className="flex h-14 items-center justify-center rounded-[5px] border border-dashed border-slate-200 dark:border-white/[0.10]"
+          style={{ background: theme.mode === "dark" ? "#0B0B14" : "#FFFFFF" }}
+        >
+          {escolha.url ? (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img src={escolha.url} alt="" className="h-6 w-auto object-contain" />
+          ) : (
+            <span className="text-[10px] text-slate-400 dark:text-white/35">Sem logo</span>
+          )}
+        </div>
+        <Field
+          label="URL da logo"
+          hint={
+            theme.hideLogo
+              ? "Ignorada enquanto «Sem logo» estiver ligado."
+              : escolha.daCasa
+                ? "Em branco, o formulário usa a logo da Convertfy."
+                : "Logo própria — substitui a da Convertfy."
+          }
+        >
+          <input
+            type="url"
+            value={logoUrl}
+            onChange={(e) => setLogoUrl(e.target.value)}
+            placeholder="https://… (em branco = logo da Convertfy)"
+            className="crm-input w-full"
+            disabled={Boolean(theme.hideLogo)}
+          />
+        </Field>
+        <label className="flex items-center gap-2 text-[11px] text-slate-700 dark:text-white/75">
+          <input
+            type="checkbox"
+            checked={Boolean(theme.hideLogo)}
+            onChange={(e) => setTheme((t) => ({ ...t, hideLogo: e.target.checked || undefined }))}
+            className="h-3.5 w-3.5"
+          />
+          Sem logo nenhuma
+        </label>
+      </div>
+
       {/* ── Templates ── */}
       <SectionTitle
         title="Templates"
@@ -2010,6 +2124,8 @@ function FieldsTab({
   moveField,
   modo,
   regrasPorRef,
+  telaPorRef,
+  agruparPergunta,
   irParaFluxo,
 }: {
   fields: FormField[]
@@ -2022,6 +2138,9 @@ function FieldsTab({
   modo: "classic" | "conversational"
   /** Quantos desvios cada pergunta tem — o vínculo com a aba Fluxo. */
   regrasPorRef: Record<string, number>
+  /** Em que tela cada pergunta cai. Só o conversacional tem telas. */
+  telaPorRef: Record<string, { numero: number; tamanho: number; cabeca: boolean; titulo: string }>
+  agruparPergunta: (ref: string, patch: { mesma_tela?: boolean; titulo_da_tela?: string | null }) => void
   irParaFluxo: () => void
 }) {
   return (
@@ -2031,7 +2150,7 @@ function FieldsTab({
           title={`Perguntas (${fields.length})`}
           hint={
             modo === "conversational"
-              ? "Uma por tela, na ordem daqui."
+              ? "Uma por tela — ou várias na mesma, com o botão «Junta»."
               : "Todas de uma vez, na ordem daqui."
           }
         />
@@ -2057,20 +2176,54 @@ function FieldsTab({
       )}
 
       <div className="space-y-2">
-        {fields.map((field, idx) => (
-          <FieldEditor
-            key={field.id ?? `new-${idx}`}
-            field={field}
-            desvios={field.id ? (regrasPorRef[field.id] ?? 0) : 0}
-            irParaFluxo={modo === "conversational" ? irParaFluxo : undefined}
-            leadCustomFields={leadCustomFields}
-            dealCustomFields={dealCustomFields}
-            onChange={(patch) => updateField(idx, patch)}
-            onRemove={() => removeField(idx)}
-            onMoveUp={idx > 0 ? () => moveField(idx, "up") : undefined}
-            onMoveDown={idx < fields.length - 1 ? () => moveField(idx, "down") : undefined}
-          />
-        ))}
+        {fields.map((field, idx) => {
+          // `novo-<i>` é o mesmo endereço provisório que o `montarVersao`
+          // do editor usa para a pergunta ainda não salva: sem ele, a
+          // recém-criada não apareceria em tela nenhuma.
+          const ref = field.id ?? `novo-${idx}`
+          const tela = telaPorRef[ref]
+          const conversa = modo === "conversational"
+          const abreTela = !conversa || !tela || tela.cabeca
+          return (
+            <div key={field.id ?? `new-${idx}`}>
+              {/*
+                O cabeçalho de tela é o que torna o agrupamento VISÍVEL na
+                lista. Sem ele, "junta com a de cima" mudaria o formulário
+                e a lista continuaria com a mesma cara — e o operador não
+                teria como conferir o que montou sem ir ao preview.
+              */}
+              {conversa && tela && tela.cabeca && (
+                <div className="flex items-center gap-2 px-0.5 pb-1 pt-2 first:pt-0">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-white/40">
+                    Tela {tela.numero}
+                  </span>
+                  {tela.tamanho > 1 && (
+                    <span className="text-[10px] text-slate-400 dark:text-white/35">
+                      {tela.tamanho} perguntas juntas
+                    </span>
+                  )}
+                  <div className="h-px flex-1 bg-slate-200 dark:bg-white/[0.08]" />
+                </div>
+              )}
+              <div className={abreTela ? "" : "ml-3 border-l-2 border-slate-200 pl-2 dark:border-white/[0.10]"}>
+                <FieldEditor
+                  field={field}
+                  desvios={field.id ? (regrasPorRef[field.id] ?? 0) : 0}
+                  irParaFluxo={conversa ? irParaFluxo : undefined}
+                  tela={conversa ? tela : undefined}
+                  podeJuntar={conversa && idx > 0}
+                  onAgrupar={(patch) => agruparPergunta(ref, patch)}
+                  leadCustomFields={leadCustomFields}
+                  dealCustomFields={dealCustomFields}
+                  onChange={(patch) => updateField(idx, patch)}
+                  onRemove={() => removeField(idx)}
+                  onMoveUp={idx > 0 ? () => moveField(idx, "up") : undefined}
+                  onMoveDown={idx < fields.length - 1 ? () => moveField(idx, "down") : undefined}
+                />
+              </div>
+            </div>
+          )
+        })}
       </div>
     </Stack>
   )
@@ -3062,6 +3215,9 @@ function FieldEditor({
   field,
   desvios,
   irParaFluxo,
+  tela,
+  podeJuntar,
+  onAgrupar,
   leadCustomFields,
   dealCustomFields,
   onChange,
@@ -3072,6 +3228,10 @@ function FieldEditor({
   field: FormField
   desvios: number
   irParaFluxo?: () => void
+  /** A tela desta pergunta. Ausente no formato de página única. */
+  tela?: { numero: number; tamanho: number; cabeca: boolean; titulo: string }
+  podeJuntar?: boolean
+  onAgrupar?: (patch: { mesma_tela?: boolean; titulo_da_tela?: string | null }) => void
   leadCustomFields: Array<{ id: string; key: string; label: string; field_type: string }>
   dealCustomFields: Array<{ id: string; key: string; label: string; field_type: string }>
   onChange: (patch: Partial<FormField>) => void
@@ -3102,6 +3262,30 @@ function FieldEditor({
           onChange={(e) => onChange({ label: e.target.value })}
           className="flex-1 min-w-0 bg-transparent text-[13px] font-medium text-slate-900 dark:text-white outline-none"
         />
+        {podeJuntar && onAgrupar && (
+          <button
+            type="button"
+            onClick={() => onAgrupar({ mesma_tela: Boolean(tela?.cabeca) })}
+            title={
+              tela?.cabeca
+                ? "Juntar: esta pergunta passa a dividir a tela com a de cima"
+                : "Separar: esta pergunta volta a ter tela própria"
+            }
+            aria-pressed={!tela?.cabeca}
+            className={
+              // Rótulo curto nos DOIS estados: com a lista cheia, um
+              // "Junta com a de cima" por linha come o título da
+              // pergunta, que é o que o operador está lendo.
+              "shrink-0 inline-flex items-center gap-1 rounded-[4px] px-1.5 py-0.5 text-[10px] font-medium " +
+              (tela?.cabeca
+                ? "text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:text-white/35 dark:hover:bg-white/[0.06] dark:hover:text-white/80"
+                : "bg-slate-100 text-slate-700 dark:bg-white/[0.08] dark:text-white/80")
+            }
+          >
+            <CornerDownRight className="h-3 w-3" />
+            Junta
+          </button>
+        )}
         {desvios > 0 && irParaFluxo && (
           <button
             type="button"
@@ -3137,6 +3321,26 @@ function FieldEditor({
 
       {open && (
         <div className="px-2.5 pb-2.5 space-y-2 border-t border-slate-100 dark:border-white/[0.06] pt-2.5">
+          {/*
+            O título só aparece na CABEÇA de uma tela com mais de uma
+            pergunta. Numa tela de pergunta única ele seria um segundo
+            título competindo com o primeiro — ali o rótulo já é a
+            pergunta, e oferecer o campo convidaria a escrever os dois.
+          */}
+          {tela && tela.cabeca && tela.tamanho > 1 && onAgrupar && (
+            <Field
+              label={`Título da tela ${tela.numero}`}
+              hint={`Aparece acima das ${tela.tamanho} perguntas desta tela. Sem ele, elas aparecem soltas, cada uma com o próprio rótulo.`}
+            >
+              <input
+                type="text"
+                value={tela.titulo}
+                onChange={(e) => onAgrupar({ titulo_da_tela: e.target.value })}
+                placeholder="Ex.: Antes de tudo, seus dados de contato"
+                className="crm-input text-[11px]"
+              />
+            </Field>
+          )}
           <div className="grid grid-cols-2 gap-1.5">
             <select
               value={field.field_type}

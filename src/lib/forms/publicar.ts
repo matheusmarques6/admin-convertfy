@@ -80,6 +80,12 @@ export function montarVersao(
       // O alias é do EDITOR de schema, não da tabela de campos: se não
       // viesse daqui, todo `{{nome}}` do formulário quebraria ao publicar.
       ...(antigo.alias ? { alias: antigo.alias } : {}),
+      // O agrupamento também só existe no schema — `crm_form_fields` não
+      // tem coluna para ele. Publicar sem transportá-lo desmancharia a
+      // tela de contato em quatro telas, e ninguém saberia que o clique
+      // em Publicar foi o que fez isso.
+      ...(antigo.mesma_tela ? { mesma_tela: true } : {}),
+      ...(antigo.titulo_da_tela ? { titulo_da_tela: antigo.titulo_da_tela } : {}),
       ...(vivas.length > 0 ? { logic: vivas } : {}),
     }
   })

@@ -196,15 +196,77 @@ export function acharEnding(schema: FormSchema, ref: string | null): FormEnding 
   return lista.find((e) => e.ref === ref) ?? lista[0]
 }
 
+// ──────────────────────────── telas ─────────────────────────────────────
+
+/**
+ * A tela a que este bloco pertence.
+ *
+ * Um bloco com `mesma_tela` divide a tela com o anterior; a CABEÇA é o
+ * primeiro que não divide. Tudo o mais nesta engine navega por cabeças —
+ * é o que impede uma pessoa de pousar no meio de um grupo e ver metade
+ * dos campos, com o botão de avançar validando a outra metade que ela
+ * não está vendo.
+ *
+ * Bloco desconhecido devolve o próprio ref: a navegação segue com o que
+ * recebeu em vez de mandar para o começo, e quem chamou decide.
+ */
+export function inicioDaTela(schema: FormSchema, ref: string): string {
+  const vis = blocosVisiveis(schema)
+  let i = vis.findIndex((b) => b.ref === ref)
+  if (i < 0) return ref
+  while (i > 0 && vis[i].mesma_tela) i -= 1
+  return vis[i].ref
+}
+
+/** Os blocos que aparecem JUNTOS, na ordem. Sempre pelo menos um. */
+export function blocosDaTela(schema: FormSchema, ref: string): FormBlock[] {
+  const vis = blocosVisiveis(schema)
+  const cabeca = inicioDaTela(schema, ref)
+  const i = vis.findIndex((b) => b.ref === cabeca)
+  if (i < 0) {
+    const solto = acharBloco(schema, ref)
+    return solto ? [solto] : []
+  }
+  const out: FormBlock[] = [vis[i]]
+  for (let j = i + 1; j < vis.length && vis[j].mesma_tela; j++) out.push(vis[j])
+  return out
+}
+
+/**
+ * Expande um caminho de telas nos refs de TODAS as perguntas delas.
+ *
+ * `caminhoAte` devolve cabeças. Quem pergunta "esta resposta foi pedida?"
+ * — o submit, ao decidir que obrigatório cobrar, e `respostasForaDoCaminho`,
+ * ao decidir o que descartar — precisa da lista inteira. Sem expandir, as
+ * perguntas 2ª em diante de um grupo ficariam fora do caminho: o
+ * obrigatório delas deixaria de ser exigido E a resposta seria descartada
+ * no envio. Silencioso dos dois lados.
+ */
+export function refsDoCaminho(schema: FormSchema, caminho: string[]): string[] {
+  const out: string[] = []
+  const vistos = new Set<string>()
+  for (const cabeca of caminho) {
+    for (const b of blocosDaTela(schema, cabeca)) {
+      if (vistos.has(b.ref)) continue
+      vistos.add(b.ref)
+      out.push(b.ref)
+    }
+  }
+  return out
+}
+
 /** O primeiro bloco visível — onde o formulário começa. */
 export function primeiroBloco(schema: FormSchema): Destino {
   const vis = blocosVisiveis(schema)
-  return vis.length > 0 ? { tipo: "bloco", ref: vis[0].ref } : { tipo: "fim", ending: null }
+  return vis.length > 0 ? { tipo: "bloco", ref: inicioDaTela(schema, vis[0].ref) } : { tipo: "fim", ending: null }
 }
 
+/** O que vem depois da TELA de `refAtual` — não do bloco. */
 function proximoNaOrdem(schema: FormSchema, refAtual: string): Destino {
   const vis = blocosVisiveis(schema)
-  const i = vis.findIndex((b) => b.ref === refAtual)
+  const tela = blocosDaTela(schema, refAtual)
+  const ultimo = tela.length > 0 ? tela[tela.length - 1].ref : refAtual
+  const i = vis.findIndex((b) => b.ref === ultimo)
   if (i < 0) return { tipo: "fim", ending: null }
   const prox = vis[i + 1]
   return prox ? { tipo: "bloco", ref: prox.ref } : { tipo: "fim", ending: null }
@@ -220,7 +282,9 @@ function destinoDoGoto(schema: FormSchema, goto: string, origem: string): Destin
   // Saltar PARA um oculto não faz sentido (ele não é exibido); seguimos
   // para o próximo visível a partir dele, em vez de travar.
   if (alvo.hidden) return proximoNaOrdem(schema, alvo.ref)
-  return { tipo: "bloco", ref: alvo.ref }
+  // Apontar para uma pergunta agrupada pousa no INÍCIO da tela dela: o
+  // contrário mostraria o grupo pela metade.
+  return { tipo: "bloco", ref: inicioDaTela(schema, alvo.ref) }
 }
 
 export interface ResultadoAvanco {
@@ -236,6 +300,12 @@ export interface ResultadoAvanco {
  * navegação NÃO o pula — ele é uma tela, e pulá-lo apagaria o texto que
  * alguém escreveu para ser lido. Quem encadeia é o salto: A → B por
  * lógica, e B tem lógica que manda para C sem depender de resposta nova.
+ *
+ * Com perguntas agrupadas, quem decide é a TELA: vale a primeira regra
+ * que casa entre as regras de TODAS as perguntas dela, na ordem em que
+ * aparecem. Ler só a da cabeça faria a regra escrita na 3ª pergunta do
+ * grupo nunca rodar, sem nada dizendo por quê — e quem a escreveu a vê
+ * na tela do editor.
  */
 export function proximoPasso(
   schema: FormSchema,
@@ -243,15 +313,20 @@ export function proximoPasso(
   ctx: ContextoLogica,
 ): ResultadoAvanco {
   let variables = { ...(ctx.variables ?? {}) }
-  let atual = refAtual
-  const visitados = new Set<string>([refAtual])
+  let atual = inicioDaTela(schema, refAtual)
+  const visitados = new Set<string>([atual])
 
   for (let i = 0; i < LIMITE_DE_SALTOS; i++) {
     const bloco = acharBloco(schema, atual)
     if (!bloco) return { destino: { tipo: "fim", ending: null }, variables }
 
     const contexto: ContextoLogica = { ...ctx, variables }
-    const regra = (bloco.logic ?? []).find((r) => avaliarRegra(r, contexto))
+    const daTela = blocosDaTela(schema, atual)
+    let regra: LogicRule | undefined
+    for (const b of daTela) {
+      regra = (b.logic ?? []).find((r) => avaliarRegra(r, contexto))
+      if (regra) break
+    }
 
     if (!regra) return { destino: proximoNaOrdem(schema, atual), variables }
 
@@ -264,8 +339,14 @@ export function proximoPasso(
     // resposta e tem lógica própria — o caso "tela de aviso que decide
     // sozinha para onde ir". Qualquer outro destino é onde paramos.
     const alvo = acharBloco(schema, destino.ref)
+    const telaAlvo = blocosDaTela(schema, destino.ref)
     const encadeia =
-      alvo !== undefined && TIPOS_SEM_RESPOSTA.has(alvo.type) && (alvo.logic ?? []).length > 0
+      alvo !== undefined &&
+      // Uma tela que agrupa perguntas NÃO é "sem resposta", mesmo quando
+      // a cabeça dela é um aviso: encadear passaria por cima dos campos.
+      telaAlvo.length === 1 &&
+      TIPOS_SEM_RESPOSTA.has(alvo.type) &&
+      (alvo.logic ?? []).length > 0
     if (!encadeia) return { destino, variables }
 
     if (visitados.has(destino.ref)) {
@@ -293,12 +374,16 @@ export function proximoPasso(
  */
 export function caminhoAte(
   schema: FormSchema,
-  refAtual: string,
+  refBruto: string,
   ctx: ContextoLogica,
 ): { caminho: string[]; alcancou: boolean } {
   const inicio = primeiroBloco(schema)
   if (inicio.tipo !== "bloco") return { caminho: [], alcancou: false }
 
+  // O caminho é uma lista de TELAS. Perguntar por uma pergunta agrupada é
+  // perguntar pela tela dela; sem esta linha, `indexOf` daria -1 e o
+  // Voltar pousaria no fim do caminho em vez de um passo atrás.
+  const refAtual = inicioDaTela(schema, refBruto)
   const caminho: string[] = [inicio.ref]
   if (inicio.ref === refAtual) return { caminho, alcancou: true }
 
@@ -320,9 +405,10 @@ export function caminhoAte(
 /** O bloco anterior no caminho real. `null` quando já está no primeiro. */
 export function passoAnterior(
   schema: FormSchema,
-  refAtual: string,
+  refBruto: string,
   ctx: ContextoLogica,
 ): string | null {
+  const refAtual = inicioDaTela(schema, refBruto)
   const { caminho } = caminhoAte(schema, refAtual, ctx)
   const i = caminho.indexOf(refAtual)
   if (i > 0) return caminho[i - 1]
@@ -351,9 +437,13 @@ export interface Progresso {
  */
 export function calcularProgresso(
   schema: FormSchema,
-  refAtual: string,
+  refBruto: string,
   ctx: ContextoLogica,
 ): Progresso {
+  // Conta TELAS, não perguntas: um grupo de quatro campos é um passo, e
+  // contá-lo como quatro faria a barra dar um salto no primeiro OK e
+  // rastejar no resto.
+  const refAtual = inicioDaTela(schema, refBruto)
   const { caminho } = caminhoAte(schema, refAtual, ctx)
   const indice = Math.max(caminho.indexOf(refAtual) + 1, caminho.length)
 
@@ -397,7 +487,9 @@ export function respostasForaDoCaminho(
   const alvo = refFinal ?? ultimoAlcancavel(schema, ctx)
   if (!alvo) return []
   const { caminho } = caminhoAte(schema, alvo, ctx)
-  const noCaminho = new Set(caminho)
+  // Expandido: as perguntas agrupadas FORAM pedidas, e descartá-las aqui
+  // jogaria fora o email que a pessoa digitou na mesma tela do nome.
+  const noCaminho = new Set(refsDoCaminho(schema, caminho))
   return Object.keys(ctx.answers).filter((ref) => {
     if (noCaminho.has(ref)) return false
     // Oculto não está no caminho por definição e não é órfão.
@@ -440,10 +532,12 @@ export function primeiroSemResposta(schema: FormSchema, ctx: ContextoLogica): st
   const alvo = ultimoAlcancavel(schema, ctx)
   if (!alvo) return null
   const { caminho } = caminhoAte(schema, alvo, ctx)
-  for (const ref of caminho) {
+  for (const ref of refsDoCaminho(schema, caminho)) {
     const b = acharBloco(schema, ref)
     if (!b || TIPOS_SEM_RESPOSTA.has(b.type)) continue
-    if (!respondido(ctx, ref)) return ref
+    // A tela é a unidade do abandono: parar no 2º campo de um grupo é
+    // parar naquela TELA, e é o que o vendedor precisa ver.
+    if (!respondido(ctx, ref)) return inicioDaTela(schema, ref)
   }
   return caminho.length > 0 ? caminho[caminho.length - 1] : null
 }
@@ -483,7 +577,7 @@ export function totalRespondido(schema: FormSchema, ctx: ContextoLogica): number
   const alvo = ultimoAlcancavel(schema, ctx)
   if (!alvo) return 0
   const { caminho } = caminhoAte(schema, alvo, ctx)
-  return caminho.filter((ref) => {
+  return refsDoCaminho(schema, caminho).filter((ref) => {
     const b = acharBloco(schema, ref)
     if (!b || TIPOS_SEM_RESPOSTA.has(b.type)) return false
     return respondido(ctx, ref)

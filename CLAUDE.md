@@ -8649,6 +8649,92 @@ lê. E **a `ficha_operacional` continua com 2 de 7 campos**: enquanto `troca`,
 nenhuma objeção ganha `lastro_operacional.verificado` e a profundidade segue
 travada em `afirmacao`.
 
+## Formulário: várias perguntas numa tela, a navegação no canto, a logo (17/09)
+
+Pedido, com o print de um Typeform ao lado: a primeira tela pedindo tudo
+junto (nome, sobrenome, telefone, email) e só depois uma pergunta por vez;
+as setas de voltar/avançar no canto inferior direito; e a logo da
+Convertfy, que não aparecia.
+
+**O agrupamento é `mesma_tela` no bloco, não um tipo de bloco novo.** O
+`ref` continua sendo o `crm_form_fields.id` de cada pergunta — agrupar é
+apresentação, e mexer no endereço faria a regra do evento qualificado
+deixar de casar em silêncio. `titulo_da_tela` (lido só na CABEÇA) dá o
+título de cima; numa tela de pergunta única ele não é oferecido, porque
+ali o rótulo já é a pergunta. Os dois vivem no schema (a tabela de campos
+não tem coluna para eles) e `montarVersao` os transporta como já fazia
+com `alias` e `logic` — sem isso, publicar desmancharia a tela de contato
+em quatro telas e ninguém saberia que foi o clique em Publicar.
+
+**A engine passou a navegar por TELAS**, e o que ela protege é sempre o
+mesmo: ninguém pode pousar no meio de um grupo. `inicioDaTela` é a
+cabeça, `blocosDaTela` são as perguntas juntas, e daí saem `proximoPasso`
+(a decisão é da tela: vale a primeira regra que casa entre TODAS as
+perguntas dela — ler só a da cabeça faria a regra escrita na 3ª nunca
+rodar), `proximoNaOrdem` (pula o grupo inteiro), `destinoDoGoto` (salto
+que aponta para dentro do grupo pousa no começo), `passoAnterior`,
+`calcularProgresso` (conta telas: um grupo de quatro seria um salto na
+barra) e a retomada de sessão.
+
+**Duas expansões que, sem elas, o defeito é silencioso e caro.**
+`refsDoCaminho` traduz um caminho de telas nos refs de todas as perguntas
+delas, e é usado (a) no `respostasForaDoCaminho` — sem ele, o email
+digitado na mesma tela do nome seria DESCARTADO no envio por "não estar
+no caminho" — e (b) no submit, onde `refs` decide que obrigatório cobrar:
+sem expandir, dava para enviar sem o email que a tela exigia.
+
+**Recall da mesma tela é erro de cadastro, e agora aparece.** `{{nome}}`
+só tem valor depois que a pessoa responde e avança; com as duas perguntas
+juntas o texto sai vazio ("Prazer, . Para onde mando?") e o recall devolve
+o fallback, que quase nunca existe. `recall_da_mesma_tela` no diagnóstico
+do fluxo, com a mesma cascata de resolução do recall de verdade
+(`blocoDoRecall`: ref → alias → label) — uma segunda cascata acusaria o
+que o formulário resolve bem. Campo OCULTO no grupo não conta: o valor
+dele vem da URL e está lá desde o primeiro instante.
+
+**Na tela** (`TelaDePerguntas`): erro POR CAMPO com borda vermelha (um
+"campo obrigatório" solto no rodapé não diz qual dos quatro), todos de uma
+vez (parar no primeiro faz a pessoa descobrir os erros um a um), Enter
+anda de campo em campo e só avança no ÚLTIMO (avançar do primeiro faria o
+OK reprovar os três que ela ainda ia preencher — e a dica muda de texto
+junto, senão ela mente), escolha única NÃO avança sozinha num grupo, e o
+atalho de letra vale só quando a escolha é a tela inteira. O número da
+TELA aparece com a seta ("1 →").
+
+**A navegação ⌃⌄ é `sticky`, nunca `fixed`** — fixa, flutuaria sobre o
+teclado virtual do iOS, o mesmo motivo que mantém o botão de avançar
+dentro do fluxo. O "Voltar" discreto ao lado do OK saiu: era descoberto
+por quem já sabia que existia.
+
+**A logo aparece em TODAS as telas** e fica fora do bloco que troca (dentro
+dele entraria na animação e piscaria a cada avanço, que o olho lê como
+recarregar). `logoDoFormulario` (puro, 5 testes) tem três estados: logo
+própria, a da Convertfy (o padrão — as três linhas em produção estão com
+`logo_url` NULL, e exigir que alguém cole uma URL para o formulário ter
+marca é o atrito que terminou em formulário sem marca) e `theme.hideLogo`.
+A variante segue o FUNDO do formulário, não o tema do admin: a logo preta
+sobre `#0B0B14` some sem erro nenhum. **No formato de página única a logo
+da casa só entra no STANDALONE** — embutido, a página que hospeda já tem a
+marca dela e uma segunda dentro do card parece erro de montagem.
+
+**No editor**: a lista de Perguntas passou a mostrar as TELAS ("Tela 1 · 4
+perguntas juntas"), com as agrupadas indentadas sob um filete, o botão
+«Junta» por pergunta e o campo "Título da tela" na cabeça de um grupo.
+Rótulo curto nos dois estados de propósito: um "Junta com a de cima" por
+linha comia o título da pergunta, que é o que se está lendo.
+
+Dois consertos de passagem: o `FormTheme` do editor era uma CÓPIA à mão do
+canônico e já tinha divergido (`hideLogo` nasceu num e não no outro) —
+agora é o mesmo tipo; e o save deixou de gravar `draft_schema` quando a
+leitura da versão publicada falhou, que é o que o aviso vermelho já
+prometia e o código não cumpria (o primeiro clique no construtor tirava
+`rascunho` de `null` e o save seguinte passava por cima dos saltos no ar).
+
+**Sequência declarada**: nenhum formulário de produção foi agrupado. O
+renderizador que entende `mesma_tela` só existe depois do deploy — gravar
+o agrupamento antes deixaria as perguntas uma por tela com os rótulos
+curtos, que é pior que hoje.
+
 ---
 
 *Última atualização: Setembro 2026*

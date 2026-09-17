@@ -310,3 +310,50 @@ describe("opcoesDaPergunta", () => {
     expect(opcoesDaPergunta(s.blocks[0])).toEqual(["Sim", "Não"])
   })
 })
+
+describe("recall de uma resposta da mesma tela", () => {
+  const comGrupo = (labelDoEmail: string): FormSchema => ({
+    version: 1,
+    display_mode: "conversational",
+    locale: "pt-BR",
+    blocks: [
+      { ref: "f1", type: "text", label: "Nome", alias: "nome", required: true },
+      { ref: "f2", type: "email", label: labelDoEmail, required: true, mesma_tela: true },
+    ],
+    endings: [{ ref: "ok", title: "Pronto" }],
+  })
+
+  it("acusa {{nome}} quando as duas perguntas dividem a tela", () => {
+    const p = diagnosticarFluxo(comGrupo("Prazer, {{nome}}. Seu email?"))
+    const achado = p.find((x) => x.tipo === "recall_da_mesma_tela")
+    expect(achado).toBeDefined()
+    expect(achado?.gravidade).toBe("erro")
+    expect(achado?.ref).toBe("f2")
+  })
+
+  it("resolve por ref e por label, como o recall de verdade", () => {
+    expect(diagnosticarFluxo(comGrupo("Oi {{f1}}")).some((x) => x.tipo === "recall_da_mesma_tela")).toBe(true)
+    expect(diagnosticarFluxo(comGrupo("Oi {{Nome}}")).some((x) => x.tipo === "recall_da_mesma_tela")).toBe(true)
+  })
+
+  it("não acusa quando as perguntas estão em telas diferentes", () => {
+    const s = comGrupo("Prazer, {{nome}}. Seu email?")
+    s.blocks[1].mesma_tela = false
+    expect(diagnosticarFluxo(s).some((x) => x.tipo === "recall_da_mesma_tela")).toBe(false)
+  })
+
+  it("campo OCULTO no grupo continua citável — o valor vem da URL", () => {
+    const s: FormSchema = {
+      version: 1,
+      display_mode: "conversational",
+      locale: "pt-BR",
+      blocks: [
+        { ref: "utm", type: "text", label: "utm_source", hidden: true },
+        { ref: "f1", type: "text", label: "Veio de {{utm_source}}?", required: true },
+        { ref: "f2", type: "email", label: "Email", required: true, mesma_tela: true },
+      ],
+      endings: [{ ref: "ok", title: "Pronto" }],
+    }
+    expect(diagnosticarFluxo(s).some((x) => x.tipo === "recall_da_mesma_tela")).toBe(false)
+  })
+})
