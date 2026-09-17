@@ -317,6 +317,41 @@ function neutralizeAngles(value: string): string {
 }
 
 /**
+ * Ênfase em markdown (`**10% off**`) vira `<strong>`.
+ *
+ * O redator do n8n escreve ênfase em markdown — visto no run de 01/09 e de
+ * novo em 17/09 (`at checkout for **10% off** your order`). O merge grava
+ * TEXTO, então sem esta conversão os asteriscos vão para a tela do cliente.
+ * Roda DEPOIS do `neutralizeAngles`: antes, o `<strong>` que ela escreve
+ * seria escapado junto com os sinais de menor do valor.
+ *
+ * Duas decisões que valem declarar:
+ *
+ *  - **Só `**` e `***`.** Um asterisco solto é pontuação legítima (nota de
+ *    rodapé, "válido*"), e converter `*isto*` em itálico transformaria em
+ *    marcação o que o redator escreveu como texto. `semMarcacao` (o guard,
+ *    logo abaixo) é permissivo de propósito — ele MEDE sobrevivência de
+ *    frase; quem ESCREVE tem de ser conservador.
+ *  - **Asterisco sem par fica.** Apagá-lo seria decidir que o redator errou.
+ *    Ele aparece na tela como está, que é honesto e visível.
+ *
+ * `dentroDeNegrito` vem do `replacementCosturado`, que é quem sabe em qual
+ * segmento do vão a copy vai cair: onde o range já está dentro de um
+ * `<strong>`, a ênfase vira texto limpo em vez de abrir um segundo.
+ *
+ * O `font-weight` vai INLINE porque cliente de e-mail zera o estilo padrão
+ * das tags com frequência — é a convenção que as próprias variantes da
+ * biblioteca usam (`<strong style="font-weight:700;">`).
+ */
+const ENFASE_MD_RE = /\*{2,3}([^*\n]+?)\*{2,3}/g
+
+export function enfaseParaHtml(valor: string, dentroDeNegrito = false): string {
+  return valor.replace(ENFASE_MD_RE, (_m, texto: string) =>
+    dentroDeNegrito ? texto : `<strong style="font-weight:700;">${texto}</strong>`,
+  )
+}
+
+/**
  * Valor de copy que é MARCAÇÃO em vez de texto (nasceu no set_text do
  * Integrador; mora aqui desde que o merge virou o único escritor de texto).
  * Conservador de propósito: só pega tag HTML de verdade (`<img ...>`,
@@ -677,14 +712,18 @@ export function copyMergeByExample(
         // principal (02/09 — o `</span>` da marca `[N]` sumia e 11 itens do
         // body-4 saíram a 14px dentro do span da marca).
         const de = html.slice(a.range.start, a.range.end)
-        const principal = replacementCosturado(de, valor)
+        const principal = replacementCosturado(de, valor, enfaseParaHtml)
         splices.push({ ...a.range, replacement: principal.texto, entryIdx: i })
         // Frase repetida pela arte e um único campo dono (regra 5): escreve
         // em todas as cópias, senão o email sai metade traduzido.
         for (const extra of a.extraRanges ?? []) {
           splices.push({
             ...extra,
-            replacement: replacementCosturado(html.slice(extra.start, extra.end), valor).texto,
+            replacement: replacementCosturado(
+              html.slice(extra.start, extra.end),
+              valor,
+              enfaseParaHtml,
+            ).texto,
             entryIdx: i,
           })
         }

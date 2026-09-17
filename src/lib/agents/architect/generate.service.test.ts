@@ -158,8 +158,8 @@ describe("generateBlueprintAndReference — lacuna de biblioteca (Passo 11)", ()
     h.lacuna = {
       fatal: true,
       posicoes: [
-        { block_index: 2, section: "body", label: "Garantias", dispositivo_pedido: "body_garantias", motivo: "todas_descartadas", flow_type: "welcome", email_number: 1 },
-        { block_index: 4, section: "products", label: "Produtos", dispositivo_pedido: "products_grade_preco", motivo: "sem_candidata", flow_type: "welcome", email_number: 1 },
+        { block_index: 2, section: "body", label: "Garantias", dispositivo_pedido: "remocao_de_risco", motivo: "todas_descartadas", flow_type: "welcome", email_number: 1 },
+        { block_index: 4, section: "products", label: "Produtos", dispositivo_pedido: "vitrine_paralela", motivo: "sem_candidata", flow_type: "welcome", email_number: 1 },
       ],
     }
     const res = await generateBlueprintAndReference(input)
@@ -176,7 +176,7 @@ describe("generateBlueprintAndReference — lacuna de biblioteca (Passo 11)", ()
   it("lacuna NÃO fatal (uma posição não-hero): segue com blueprint e não marca failed", async () => {
     h.lacuna = {
       fatal: false,
-      posicoes: [{ block_index: 4, section: "products", label: "Produtos", dispositivo_pedido: "products_grade_preco", motivo: "sem_candidata", flow_type: "welcome", email_number: 1 }],
+      posicoes: [{ block_index: 4, section: "products", label: "Produtos", dispositivo_pedido: "vitrine_paralela", motivo: "sem_candidata", flow_type: "welcome", email_number: 1 }],
     }
     const res = await generateBlueprintAndReference(input)
     expect(res.referenceSource).toBe("llm")

@@ -60,6 +60,8 @@ export const RESPONSAVEL_POR_TIPO: Readonly<Record<QaIssueType, NoResponsavelQa>
   posicao_sem_variante: "biblioteca",
   traducao_faltante: "loja",
   cupom_inexistente_na_plataforma: "loja",
+  // 17/09: o example do schema divergiu do HTML da variante — cadastro.
+  campo_sem_lugar: "biblioteca",
 }
 
 /** Preenche `no_responsavel` sem sobrescrever o que o produtor já disse. */

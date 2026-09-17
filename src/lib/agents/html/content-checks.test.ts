@@ -107,12 +107,12 @@ describe("computeContentChecks — a decisão entra no QA (Passo 15)", () => {
     const issues = computeContentChecks(LIMPO, {
       incentivoExiste: true,
       posicoesSemVariante: [
-        { block_index: 4, section: "products", dispositivo_pedido: "products_grade_preco", motivo: "sem_candidata" },
+        { block_index: 4, section: "products", dispositivo_pedido: "vitrine_paralela", motivo: "sem_candidata" },
       ],
     })
     expect(issues).toHaveLength(1)
     expect(issues[0]).toMatchObject({ type: "posicao_sem_variante", severity: "high", no_responsavel: "biblioteca", location: "block:4:products" })
-    expect(issues[0].message).toContain("products_grade_preco")
+    expect(issues[0].message).toContain("vitrine_paralela")
   })
 
   it("cupom sem tradução é aviso medium, dono loja", () => {
@@ -160,5 +160,42 @@ describe("mecanica_do_incentivo_ausente", () => {
       incentivoExiste: true,
     })
     expect(issues.map((i) => i.type)).toContain("padrao_editorial")
+  })
+})
+
+// ── campo_sem_lugar (17/09) ────────────────────────────────────────────
+//
+// O merge relatava `sem_lugar` desde sempre e nada lia. Caso real: Innova
+// Bay welcome — `cart_coupon_condition` sem âncora, `at checkout for
+// xx% OFF!` no cliente, e-mail `ready`.
+describe("campo_sem_lugar", () => {
+  it("bloqueia, nomeia a chave e o dono é a biblioteca", () => {
+    const issues = computeContentChecks("<td>at checkout for xx% OFF!</td>", {
+      camposSemLugar: [
+        { block_id: "blk-7", key: "cart_coupon_condition", motivo: "nao_encontrado" },
+      ],
+    })
+    const achado = issues.find((i) => i.type === "campo_sem_lugar")
+    expect(achado).toBeDefined()
+    expect(achado?.severity).toBe("high")
+    expect(achado?.disposition).toBe("blocking")
+    expect(achado?.no_responsavel).toBe("biblioteca")
+    expect(achado?.message).toContain("cart_coupon_condition")
+    expect(achado?.location).toBe("block:blk-7")
+  })
+
+  it("uma issue por campo — a chave é o que a curadoria lê", () => {
+    const issues = computeContentChecks("<td>x</td>", {
+      camposSemLugar: [
+        { block_id: null, key: "a", motivo: "nao_encontrado" },
+        { block_id: null, key: "b", motivo: "range_ja_tomado" },
+      ],
+    })
+    expect(issues.filter((i) => i.type === "campo_sem_lugar")).toHaveLength(2)
+  })
+
+  it("lista vazia (retomada) não produz achado", () => {
+    const issues = computeContentChecks("<td>x</td>", { camposSemLugar: [] })
+    expect(issues.map((i) => i.type)).not.toContain("campo_sem_lugar")
   })
 })

@@ -2,7 +2,8 @@
 
 Como cadastrar um bloco novo na biblioteca (`email_component_variants`) de um
 jeito que o pipeline inteiro saiba usá-lo. Escrito em 15/09/2026 a partir do
-código vigente — cada regra aqui aponta o arquivo que a executa.
+código vigente e revisado em 17/09, quando o vocabulário de `dispositivo`
+foi redefinido (seção 6) — cada regra aqui aponta o arquivo que a executa.
 
 Se você só quer a ordem das coisas, pule para o [checklist](#9-checklist-de-pronto).
 
@@ -161,40 +162,90 @@ existe, e a geração acusaria `sem_lugar` para sempre.
 
 ## 6. Escolher o dispositivo
 
-O `dispositivo` é o vocabulário fechado de 22 valores
+O `dispositivo` é o vocabulário fechado de **34 valores**
 (`src/lib/agents/shared/dispositivos.ts`) que o Estruturador e o Curador falam
 entre si. O Estruturador pede um pelo nome; o código elimina por ele **antes** de
 qualquer outro requisito. Sem dispositivo, a variante nunca é pedida.
 
-| dispositivo | o que é | o que a anatomia OBRIGA |
-|---|---|---|
-| `hero_apresentacao` | abre apresentando a marca, sem oferta nem pergunta | CTA; sem cupom |
-| `hero_oferta_cupom` | a oferta é a manchete | CTA + slot de cupom |
-| `hero_pergunta` | a headline pergunta algo ao leitor | CTA; sem cupom |
-| `hero_lineup` | anuncia conjunto (kit, rotina, coleção) | CTA + 3 itens ou mais |
-| `body_tese` | um argumento em prosa: título, 1–2 parágrafos, CTA | CTA; no máximo 1 item |
-| `body_mecanismo_visual` | mostra como funciona, com apoio visual | 2–4 itens + ao menos 1 imagem |
-| `body_garantias` | selos e garantias em itens curtos | 2–4 itens; sem cupom |
-| `body_comparacao` | nós × os outros, lado a lado | 3–5 itens |
-| `body_faq` | perguntas e respostas | 3–5 itens |
-| `body_passos` | lista numerada de passos | 3–5 itens |
-| `products_grade_preco` | grade com preço visível | preço + 2–4 itens + 2 imagens |
-| `products_grade_sem_preco` | grade sem preço | sem preço + 2–4 itens + 2 imagens |
-| `products_unico_oferta` | um produto só, com oferta | preço + CTA + 1 item + 1 imagem |
-| `products_galeria` | fotos grandes, sem grade regular | sem preço + 2–3 itens + 2 imagens |
-| `reviews_2` | exatamente dois depoimentos | 2 itens, sem credencial |
-| `reviews_3plus` | três ou mais depoimentos | 3 itens ou mais |
-| `reviews_com_credencial` | depoimentos com cargo, idade ou contexto | 1–3 itens **com credencial** |
-| `offer_cupom` | bloco de oferta com código | cupom + CTA |
-| `offer_sem_cupom` | condição comercial sem código | CTA; sem cupom |
-| `offer_lembrete` | lembra um cupom já entregue | cupom + CTA |
-| `footer_nav` | rodapé com menu | 4 a 9 links |
-| `footer_minimo` | rodapé enxuto | no máximo 3 links |
+**Ele nomeia o MECANISMO — o que o bloco faz com o leitor —, nunca a seção nem
+o tema.** O vocabulário anterior tinha prefixo de seção (`hero_…`, `body_…`) e
+dizia três coisas ao mesmo tempo; por isso não separava nada. Medido nas 72
+variantes em 17/09: `hero_oferta_cupom` cobria 10 das 18 heroes e
+`products_grade_sem_preco` 10 das 16 peças de produto. Pior, o prefixo repetia
+`block_type` e escondia o mesmo mecanismo cruzando seções — quatro cruzam de
+fato hoje (`codigo_entregue` em hero e offer, `lineup_de_colecao` em products e
+hero, `mecanismo_apontado` em body e products, `prova_por_relato` em reviews e
+products). A seção de cada um está em `SECOES_DO_DISPOSITIVO`, explícita.
+
+### Oferta e preço
+
+| dispositivo | seção | o que é | o que a anatomia OBRIGA |
+|---|---|---|---|
+| `oferta_em_manchete` | hero | o percentual ou o valor é o maior elemento da peça | CTA |
+| `campanha_nomeada` | hero | o nome próprio da data emoldura a oferta | CTA |
+| `oferta_condicionada` | offer | a mecânica é o conteúdo (combo, brinde, frete) | CTA; **sem cupom** (com código vira `codigo_entregue`) |
+| `oferta_adiada` | offer | o código só aparece depois do argumento | CTA + cupom |
+| `codigo_entregue` | hero · offer | entrega um código NOVO, em texto real | CTA + cupom |
+| `codigo_relembrado` | offer | repete um código já concedido | CTA + cupom |
+| `prazo_declarado` | hero | o relógio é a peça: prazo com hora | CTA |
+
+### Argumento
+
+| dispositivo | seção | o que é | o que a anatomia OBRIGA |
+|---|---|---|---|
+| `tese_declarada` | body | uma afirmação carrega o bloco | CTA; no máximo 1 item |
+| `lista_enumerada` | body | 3 a 5 itens com título próprio | 3–5 itens |
+| `mecanismo_apontado` | body · products | marcadores apontam pontos da própria foto | 2–4 itens + ao menos 1 imagem |
+| `antes_e_depois` | body | duas fotos do mesmo ângulo, etiquetadas | exatamente 2 itens + 2 imagens |
+| `comparacao_pareada` | body | nós × a categoria, critério a critério | 3–6 itens |
+| `duvida_antecipada` | body | nomeia a dúvida em pergunta e resposta | 3–5 itens |
+| `pergunta_ao_leitor` | hero | abre com uma pergunta dirigida | CTA; sem cupom |
+| `cena_de_uso` | body | o argumento é a cena, não o atributo | CTA + ao menos 1 imagem |
+| `remocao_de_risco` | body | garantias como conteúdo principal | 2–4 itens; sem cupom |
+| `oferta_de_ajuda` | hero | dois caminhos de suporte, sem venda | CTA; sem cupom |
+| `moldura_de_genero` | hero | a peça se disfarça de outro formato | **nada** — a forma É o estranhamento |
+| `abertura_editorial` | hero | foto e frase, sem oferta | CTA; sem cupom; ao menos 1 imagem |
+
+### Catálogo e produto
+
+| dispositivo | seção | o que é | o que a anatomia OBRIGA |
+|---|---|---|---|
+| `vitrine_paralela` | products | N produtos equivalentes, um destino cada | 2–9 itens + 2 imagens |
+| `vitrine_narrada` | products | poucos produtos, cada um com frase própria | 2–4 itens + 2 imagens |
+| `produto_unico_aprofundado` | products | um produto explicado antes de precificado | CTA + 1 item + 1 imagem |
+| `galeria_de_angulos` | products | o mesmo produto de vários ângulos | no máximo 2 itens + **3 imagens** |
+| `lineup_de_colecao` | products · hero | o conjunto é o argumento (kit, rotina, linha) | CTA + 3 itens ou mais |
+| `catalogo_por_ocasiao` | body | navegação por ocasião, não por produto | 2–6 itens + 2 imagens |
+| `escassez_por_estoque` | products | a disponibilidade é o argumento | 3 itens ou mais |
+| `carrinho_dinamico` | offer | devolve o item abandonado, por destinatário | CTA |
+
+### Prova social e fechamento
+
+| dispositivo | seção | o que é | o que a anatomia OBRIGA |
+|---|---|---|---|
+| `prova_por_autoridade` | reviews | o cargo ou a credencial de quem fala é o argumento | no máximo 3 itens **com credencial** |
+| `prova_por_relato` | reviews · products | um relato longo e específico | no máximo 2 itens, **sem** credencial |
+| `prova_por_volume` | reviews | vários depoimentos curtos, ou a nota agregada | 3 itens ou mais, sem credencial |
+| `prova_com_vitrine` | reviews | prova social que também mostra produto | 2 itens ou mais + 2 imagens |
+| `menu_de_saida` | footer | destinos de navegação no fim da peça | 4 a 9 links |
+| `assinatura_minima` | footer | assina em vez de oferecer menu | no máximo 3 links |
+
+### O valor de controle
+
+`nao_classificado` existe para a variante que **nunca foi julgada**. Ele não é
+um lugar na peça: sai com lista de seções VAZIA, então nenhuma posição consegue
+pedi-lo — e, como toda posição que pede algo elimina quem realiza outro
+mecanismo, marcá-lo bloqueia a escolha às cegas. É o oposto de deixar a coluna
+em branco: **em branco é fail-open** (a variante concorre em toda posição da
+seção e paga 75 no desempate do resgate).
 
 A régua está em `contratoDoDispositivo`
 (`src/lib/agents/gerador-anatomia/validar-anatomia.ts:54`) e é a mesma que o
-Curador aplica. Cadastrar `reviews_com_credencial` sem um campo de credencial
-faz a variante ser eliminada toda vez que essa forma for pedida.
+Curador aplica. Cadastrar `prova_por_autoridade` sem um campo de credencial
+faz a variante ser eliminada toda vez que essa forma for pedida — e cadastrar
+`prova_por_relato` COM credencial acusa o inverso: quem tem cargo é
+autoridade, e foi assim que a review 10 acabou ocupando o lugar da prova
+técnica.
 
 ### Chaves canônicas por dispositivo
 
@@ -203,20 +254,26 @@ mão — divergir não quebra nada, mas faz a biblioteca falar dois idiomas.
 
 | dispositivo | chaves |
 |---|---|
-| `hero_oferta_cupom` | `discount_headline`, `coupon_code`, `cta_label`, `cta_url` |
-| `hero_pergunta` | `headline_question`, `cta_label`, `cta_url` |
-| `hero_lineup` | `lineup_N_image`, `lineup_N_label` |
-| `body_tese` | `paragraph_1`, `paragraph_2`, `cta_label` |
-| `body_mecanismo_visual` | `marker_N_title`, `marker_N_text` |
-| `body_garantias` | `seal_N_label`, `seal_N_text`, `seal_N_icon` |
-| `body_comparacao` | `us_title`, `them_title`, `us_item_N`, `them_item_N` |
-| `body_faq` | `question_item_N`, `answer_item_N` |
-| `body_passos` | `step_item_N`, `step_text_item_N` |
-| `products_*` | `product_N_image`, `product_N_name`, `product_N_price`, `product_N_url` |
-| `products_galeria` | `panel_N_image`, `panel_N_label` |
-| `reviews_*` | `review_N_quote`, `review_N_name`, `review_N_rating`, `review_N_role` |
-| `offer_*` | `offer_headline`, `offer_terms`, `coupon_code`, `deadline` |
-| `footer_nav` | `nav_N_label`, `nav_N_url`, `legal_text` |
+| `oferta_em_manchete` · `campanha_nomeada` | `discount_headline`, `cta_label`, `cta_url` |
+| `codigo_entregue` · `codigo_relembrado` · `oferta_adiada` | `coupon_code`, `coupon_value`, `coupon_instruction`, `cta_label` |
+| `oferta_condicionada` | `offer_headline`, `offer_terms`, `cta_label` |
+| `prazo_declarado` | `deadline`, `badge_deadline`, `cta_label` |
+| `pergunta_ao_leitor` | `headline_question`, `cta_label`, `cta_url` |
+| `tese_declarada` | `paragraph_1`, `paragraph_2`, `cta_label` |
+| `lista_enumerada` | `feature_N_title`, `feature_N_text` |
+| `mecanismo_apontado` | `marker_N_title`, `marker_N_text` |
+| `antes_e_depois` | `before_image`, `before_label`, `after_image`, `after_label`, `comparison_caption` |
+| `remocao_de_risco` | `seal_N_label`, `seal_N_text`, `seal_N_icon` |
+| `comparacao_pareada` | `us_title`, `them_title`, `us_item_N`, `them_item_N` |
+| `duvida_antecipada` | `question_item_N`, `answer_item_N` |
+| `oferta_de_ajuda` | `support_N_label`, `support_N_url` |
+| `abertura_editorial` · `cena_de_uso` | `headline`, `subhead`, `hero_image`, `cta_label` |
+| `vitrine_paralela` · `vitrine_narrada` · `produto_unico_aprofundado` · `escassez_por_estoque` | `product_N_image`, `product_N_name`, `product_N_price`, `product_N_url` |
+| `galeria_de_angulos` · `catalogo_por_ocasiao` | `panel_N_image`, `panel_N_label` |
+| `lineup_de_colecao` | `lineup_N_image`, `lineup_N_label` |
+| `carrinho_dinamico` | `cart_item_image`, `cart_item_name`, `cart_coupon_condition`, `cta_label` |
+| `prova_por_autoridade` · `prova_por_relato` · `prova_por_volume` · `prova_com_vitrine` | `review_N_quote`, `review_N_name`, `review_N_rating`, `review_N_role` |
+| `menu_de_saida` · `assinatura_minima` | `nav_N_label`, `nav_N_url`, `legal_text` |
 
 O nome da chave **carrega significado**: `papelDoCampo`
 (`src/lib/agents/shared/field-roles.ts:76`) lê cupom, CTA, preço, avaliação e
@@ -225,12 +282,15 @@ reconhecido como cupom, e o contrato da variante sai errado.
 
 ### Formas que a biblioteca ainda não tem
 
-**Seis** dispositivos estão sem nenhuma variante ativa (medido em 15/09; o
-plano de execução de 14/09 lista cinco e esqueceu `body_mecanismo_visual`).
-Quando o Estruturador pede um deles, a posição fica sem candidata:
+**Dois** dispositivos estão sem nenhuma variante ativa (medido em 17/09, depois
+do de/para): `oferta_adiada` (offer) e `duvida_antecipada` (body). Quando o
+Estruturador pede um deles, a posição fica sem candidata.
 
-`hero_apresentacao` · `body_mecanismo_visual` · `body_faq` · `body_passos` ·
-`products_grade_preco` · `reviews_2`
+Eram **seis** no vocabulário anterior. A queda não é cadastro novo: é que os
+nomes passaram a descrever o que a biblioteca de fato faz, em vez de nomear
+formas que ninguém tinha. Dos 33 mecanismos pedíveis, **31 têm variante ativa**
+— e a contrapartida honesta é que treze deles têm UMA só, então a escolha ali
+não é escolha.
 
 A consulta que refaz esta lista está no fim do guia.
 
@@ -302,19 +362,59 @@ Na ordem. Nada aqui é opcional se você quer que a variante seja usada.
 
 ## 10. Como refazer as contagens deste guia
 
-Os números aqui foram medidos em 15/09/2026. Para refazer:
+Os números aqui foram medidos em 17/09/2026, depois do de/para do
+vocabulário (migration 20261166). Para refazer:
 
 ```sql
--- Formas sem nenhuma variante ativa (a lista de encomenda da seção 6)
+-- Formas sem nenhuma variante ativa (a lista de encomenda da seção 6).
+-- `nao_classificado` fica FORA: ele não é uma forma a encomendar.
 with todos(d) as (values
- ('hero_apresentacao'),('hero_oferta_cupom'),('hero_pergunta'),('hero_lineup'),
- ('body_tese'),('body_mecanismo_visual'),('body_garantias'),('body_comparacao'),
- ('body_faq'),('body_passos'),
- ('products_grade_preco'),('products_grade_sem_preco'),('products_unico_oferta'),
- ('products_galeria'),
- ('reviews_2'),('reviews_3plus'),('reviews_com_credencial'),
- ('offer_cupom'),('offer_sem_cupom'),('offer_lembrete'),
- ('footer_nav'),('footer_minimo'))
+ ('oferta_em_manchete'),('campanha_nomeada'),('oferta_condicionada'),
+ ('oferta_adiada'),('codigo_entregue'),('codigo_relembrado'),
+ ('prazo_declarado'),('tese_declarada'),('lista_enumerada'),
+ ('mecanismo_apontado'),('antes_e_depois'),('comparacao_pareada'),
+ ('duvida_antecipada'),('pergunta_ao_leitor'),('cena_de_uso'),
+ ('remocao_de_risco'),('oferta_de_ajuda'),('moldura_de_genero'),
+ ('abertura_editorial'),('vitrine_paralela'),('vitrine_narrada'),
+ ('produto_unico_aprofundado'),('galeria_de_angulos'),('lineup_de_colecao'),
+ ('catalogo_por_ocasiao'),('escassez_por_estoque'),('carrinho_dinamico'),
+ ('prova_por_autoridade'),('prova_por_relato'),('prova_por_volume'),
+ ('prova_com_vitrine'),('menu_de_saida'),('assinatura_minima'))
+select t.d from todos t
+where not exists (
+  select 1 from email_component_variants v
+  where v.is_active and v.dispositivo = t.d
+) order by 1;
+
+-- Lacunas de preenchimento (a tabela da seção 3)
+select
+  count(*) filter (where coalesce(trim(when_not_use),'') = '') as sem_quando_nao_usar,
+  count(*) filter (where coalesce(trim(copy_guidance),'') = '') as sem_orientacao_de_copy,
+  count(*) filter (where coalesce(trim(photo_direction),'') = '') as sem_direcao_foto,
+  count(*) filter (where dispositivo is null) as sem_dispositivo,
+  count(*) filter (where jsonb_array_length(coalesce(output_schema,'[]'::jsonb)) = 0) as sem_schema
+from email_component_variants where is_active;
+```
+
+---
+
+## 11. Campos que não fazem nada
+
+Não gaste tempo: `slots`, `tags`, `thumbnail`, `niche_affinity`, `positioning`,
+`mood`, `version`. Nenhum é lido pelo pipeline.
+
+Três outros são lidos, mas só em um lugar:
+
+- `rendered_html` — só o agente de hero. Cole o exemplo renderizado real; se você
+  editar o HTML depois, o editor avisa que o exemplo ficou velho.
+- `design_system` — só o agente de hero. Regras de desenho: hierarquia, bandas de
+  fundo, acabamento de botão, o que nunca pode ser removido.
+- `long_description` — notas de implementação (quirks de Outlook, hospedagem de
+  asset). Vai ao Curador no catálogo completo.
+
+`objectives`, `tones` e `density` são gravados e hoje não influenciam escolha
+nenhuma.
+
 select t.d from todos t
 where not exists (
   select 1 from email_component_variants v

@@ -13,7 +13,7 @@ import { z } from "zod"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
 import { assertCanManagePrompts } from "@/lib/services/prompt-management.service"
-import { DISPOSITIVOS, type Dispositivo } from "@/lib/agents/shared/dispositivos"
+import { DISPOSITIVOS_PEDIVEIS, type Dispositivo } from "@/lib/agents/shared/dispositivos"
 import { paletasDeProva } from "@/lib/agents/html/paletas-de-prova"
 import { gerarAnatomia } from "@/lib/agents/gerador-anatomia/gerar-anatomia.service"
 import { logger } from "@/lib/logger"
@@ -35,7 +35,9 @@ export async function GET(request: NextRequest) {
       paletasDeProva(admin),
     ])
     const cobertura: Record<string, { ativas: number; geradas_aguardando: number }> = {}
-    for (const d of DISPOSITIVOS) cobertura[d] = { ativas: 0, geradas_aguardando: 0 }
+    // `nao_classificado` fica fora: é valor de CONTROLE, não um mecanismo
+    // que a biblioteca precise cobrir — contá-lo pediria anatomia para ele.
+    for (const d of DISPOSITIVOS_PEDIVEIS) cobertura[d] = { ativas: 0, geradas_aguardando: 0 }
     for (const r of (data ?? []) as Array<{ dispositivo: string | null; is_active: boolean; source: string | null }>) {
       if (!r.dispositivo || !cobertura[r.dispositivo]) continue
       if (r.is_active) cobertura[r.dispositivo].ativas++
@@ -53,7 +55,7 @@ export async function GET(request: NextRequest) {
 }
 
 const postSchema = z.object({
-  dispositivo: z.enum(DISPOSITIVOS as unknown as [string, ...string[]]),
+  dispositivo: z.enum(DISPOSITIVOS_PEDIVEIS as unknown as [string, ...string[]]),
   variante: z.string().trim().min(1).max(3).default("a"),
   densidade: z.enum(["minimal", "balanced", "rich"]).default("balanced"),
   idioma: z.string().trim().max(10).optional(),

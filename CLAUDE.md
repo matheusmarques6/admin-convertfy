@@ -8945,6 +8945,91 @@ lembrete, e a etapa do parceiro recusada. As regras novas são **no-op na
 base de hoje** (0 em nutrição, 0 com tarefa aberta) — são guardas para o
 que acontece depois que a cadência começar.
 
+
+## O example virou entrega, e o gradiente cobriu a cor da loja (17/09)
+
+Duas queixas num print da Innova Bay nova · welcome (e-mail `6b3a7f42`,
+batch `e6853f56`): o bloco de oferta saiu com **`xx% OFF!`** no lugar da
+porcentagem, e o degradê é preto → cinza numa loja `#034326`. Nenhuma das
+duas é o agente errando: as duas são sinal que EXISTE e não chega a quem
+decide.
+
+**1. O `xx% OFF` é o `example`, e a copy certa nunca foi gravada.** O campo
+existe (`cart_coupon_condition`, variante `body 20`) e a copy chegou certa
+do n8n (`at checkout for **10% off** your order`). O merge é que não
+gravou: `normalizeForMatch` não remove marcação markdown, então o example
+normalizado (`…for **xx% off!**`) nunca casa o HTML (`…for xx% off!` — o
+`<strong>` vira vão costurado). Sem âncora, o example fica na tela. A run
+reportou com precisão — `merged: 55/56`, `sem_lugar: [{key:
+"cart_coupon_condition", motivo: "nao_encontrado"}]` — e **nada lia**.
+
+O conserto é de CADASTRO (`DADOS_20260917_examples_sem_markdown.sql`,
+UMA variante — as outras com `xx%`/`XXXX%` ancoram normalmente), e ele
+obriga a consequência: com a âncora casando, o merge passaria a escrever
+`**10% off**` com os asteriscos na tela. `enfaseParaHtml` converte `**`/
+`***` em `<strong style="font-weight:700;">` DEPOIS do `neutralizeAngles`
+(antes, a tag sairia escapada) e com `font-weight` inline (cliente de
+e-mail zera o estilo padrão das tags). **Só `**`**: um asterisco solto é
+pontuação legítima, e quem ESCREVE tem de ser conservador — `semMarcacao`,
+que só MEDE, é que pode ser permissivo. Asterisco sem par fica; apagá-lo
+seria decidir que o redator errou. `replacementCosturado` ganhou um
+`transform` ciente de `dentroDeNegrito` porque só ele sabe em qual segmento
+do vão a copy cai — uma segunda régua para isso divergiria da primeira e o
+sintoma seria negrito no lugar errado, sem erro nenhum.
+
+**`sem_lugar` passou a ter consumidor**: `campo_sem_lugar` (`high`,
+`blocking`, dono `biblioteca`) nos content-checks. `high` e não aviso
+porque campo sem âncora não é copy faltando — é o texto de EXEMPLO da
+biblioteca indo ao cliente, e foi isso, quatro vezes, em peças `ready`.
+Vem VAZIO na retomada (o merge roda só no primeiro passe), como o
+`heroCopyAceita`. `EXEMPLO_RE` ganhou `/\bx{2,}\s*%/i` — o `X{4,}` que já
+existia é sensível a caixa e o `copy-merge` chama a régua sobre o texto já
+minúsculo, então ele só valia no caminho do texto órfão.
+
+**2. A cor da loja estava no documento, debaixo do preto.** O agente
+decidiu certo e a op foi aplicada: `background-color:#034326`. Ao lado,
+intacto, `background-image:linear-gradient(180deg,#000000 0%,#E3E3E3 100%)`
+— e `background-image` pinta por cima. Para ele a faixa era verde sólida:
+`contextOf` classifica pelos 60 chars anteriores e, dentro de
+`linear-gradient(180deg, `, nada casa `background:`; as paradas caíam em
+`outro` e nenhuma op as alcançava (`recolor` é por VALOR — o mesmo
+`#000000` é texto no documento inteiro — e `set_fundo` só conhece as
+declarações de fundo do tag).
+
+Agora `contextOf` tem o papel **`gradiente`** (contexto NOVO, não
+`background`: classificá-las como fundo faria `recolor … where background`
+alcançar parada de gradiente por efeito colateral, mexendo em ops que hoje
+funcionam), `Faixa.gradiente` leva direção, paradas, os ranges e
+`editavel`, e a op `set_gradiente` repinta **as TRÊS declarações** — o
+`-webkit-linear-gradient`, o `linear-gradient` padrão e o `<v:fill
+type="gradient" color color2>` do Outlook. Mexer em uma só deixa parte dos
+clientes com a cor velha, em silêncio (a lição do par VML do botão).
+
+**A leitura do documento real derrubou a primeira versão da régua.** Ela
+procurava o gradiente no mesmo tag que declara o fundo da faixa; na peça, o
+fundo está no `<table width="600" style="background:#034326">` e o
+gradiente DOIS níveis abaixo, num `<td>` sem largura nenhuma — devolveria
+`null` justamente no caso que originou tudo. O que separa a banda de um
+chip não é largura declarada no próprio tag: é a largura EFETIVA (a
+primeira que algum ancestral declara), e ela tem de alcançar a faixa
+inteira (`cobre_px`), não só o piso de `LARGURA_DE_SECAO`. O botão desta
+mesma peça mede **405px** e passaria pelo piso de 400.
+
+**Guardas declaradas**: mais de duas paradas, parada que não é hex (`rgba`,
+`var`, `transparent`) ou espelho VML que DISCORDA do CSS tiram o gradiente
+de `editavel` — o agente registra lacuna e o código não toca. A direção e
+as paradas vêm da declaração SEM prefixo: a prefixada escreve `top` onde a
+moderna escreve `180deg`, e o agente leria uma direção que o documento não
+usa. Repintar gradiente NÃO consome o `TETO_DE_FAIXAS`: o teto limita
+quantas faixas mudam o RITMO, e conformar a cor de um gradiente não muda
+ritmo nenhum. No guia, a R4 deixou de ser lacuna pela metade — INSERIR
+gradiente onde não há segue fora da alçada; repintar o que existe é dele.
+
+**`parsePlanoDeCor` precisou aprender a chave `gradiente`**: sem isso o
+agente podia devolvê-la e o parser a descartaria em silêncio — a decisão
+existiria no output e não chegaria a op nenhuma, que é exatamente o modo de
+falha que esta rodada inteira veio consertar.
+
 ## O construtor de fluxo passa a mostrar o que a engine faz (17/09)
 
 Relato: *"tem pergunta que existe no fluxo mas tá faltando pergunta que
@@ -9353,3 +9438,72 @@ orçamento → final de aprovação, com `{{nome}}` e `{{loja}}` resolvidos),
 e o editor renderizado para conferir o arrasto nos dois sentidos (a
 região entrou na tela da loja: 6 telas → 5; o WhatsApp saiu da tela 1
 pela faixa: 6 → 7) e a aba Estilo sem Templates.
+
+## O dispositivo passa a nomear o MECANISMO (17/09, migration 20261166)
+
+O vocabulário fechado da B3 (22 valores) virou **34**, e o de/para é TOTAL:
+as 72 variantes do banco estão nomeadas uma a uma na migration, endereçadas
+por **id** — há nome REPETIDO na biblioteca ("body 21" aparece duas vezes) e
+casar por nome reclassificaria a variante errada em silêncio.
+
+**O eixo não separava nada porque dizia três coisas ao mesmo tempo** (seção,
+tema e mecanismo). Medido nas 72: `hero_oferta_cupom` cobria **10 das 18
+heroes**, juntando a que entrega o código do opt-in, a que grita o
+percentual, a que emoldura a data e a que abre com um contador;
+`products_grade_sem_preco` cobria **10 das 16** de produto — e definia a peça
+pelo que ela NÃO tem. Alguns nomes contradiziam a peça (`hero_apresentacao`
+numa peça com oferta, `reviews_com_credencial` em depoimento sem cargo).
+
+**O prefixo de seção SAI, e é a regra que mais mexe em código**: `block_type`
+já é coluna, e o prefixo escondia o mesmo mecanismo cruzando seções — o
+marcador que aponta um detalhe na própria foto era `body_mecanismo_visual`
+numa peça e `products_unico_oferta` em outra. Com ele fora, **a seção deixa
+de ser derivável do nome**: `secaoDoDispositivo` (um `split("_")[0]`) morreu
+e virou `SECOES_DO_DISPOSITIVO`, mapa EXPLÍCITO um-para-muitos. Quatro
+cruzam de fato — `codigo_entregue` (hero, offer), `lineup_de_colecao`
+(products, hero), `mecanismo_apontado` (body, products), `prova_por_relato`
+(reviews, products). `secaoPrimariaDoDispositivo` existe porque o gerador de
+anatomias escreve UMA linha e a coluna aceita UM valor.
+
+**`nao_classificado` é valor de CONTROLE, não de uso**, e a diferença entre
+ele e a coluna em BRANCO é de comportamento, não de gosto: ele sai com lista
+de seções VAZIA, então `dispositivosDaSecao` nunca o devolve, nenhuma posição
+consegue pedi-lo e — como toda posição que pede algo elimina quem realiza
+outro mecanismo — a variante marcada assim fica bloqueada **por construção**.
+Em branco é fail-open (concorre em toda posição da seção e paga 75 no
+desempate do resgate). O editor oferece os dois, com o efeito escrito no
+rótulo; o gerador de anatomias só enxerga `DISPOSITIVOS_PEDIVEIS`, porque não
+se gera anatomia do que ninguém julgou. As duas que o recebem (body 6 e body
+9) já estavam inativas e sem `output_schema`: efeito zero em produção, é
+carimbo.
+
+**A ordem do deploy degrada nos dois sentidos**: código novo com banco velho
+(ou o inverso) faz nenhuma variante casar com nenhum pedido,
+`conflitoDeDispositivo` elimina tudo, `filtrarPorRequisitos` é fail-open no
+CONJUNTO (zerou a seção, devolve todas) e o pipeline volta ao comportamento
+pré-B3. Degradação, não queda — mas o certo é aplicar a migration na MESMA
+janela do deploy.
+
+**Efeito na cobertura**: as formas sem nenhuma variante ativa caíram de
+**seis para duas** (`oferta_adiada` em offer, `duvida_antecipada` em body) e
+31 dos 33 mecanismos pedíveis têm variante ativa. Não é cadastro novo — é que
+os nomes passaram a descrever o que a biblioteca faz, em vez de nomear formas
+que ninguém tinha. A contrapartida honesta: **treze têm UMA variante só**, e
+ali não existe escolha a fazer.
+
+A régua por mecanismo (`contratoDoDispositivo`) foi reescrita junto, e duas
+entradas dizem o que o vocabulário antigo confundia: `oferta_condicionada`
+proíbe cupom (com código a peça vira entrega de código, que é outro
+dispositivo) e `prova_por_relato`/`prova_por_volume` proíbem credencial —
+**credencial é CARGO, não carimbo de verificado**, e foi confundi-los que fez
+a review 10 ocupar o lugar da prova técnica. `moldura_de_genero` não obriga
+nada: a forma dela É o estranhamento, e amarrá-la a uma anatomia mataria o
+mecanismo.
+
+Docs que acompanharam: seção 6 do `guia-de-cadastro-de-variante.md` (tabela
+por grupo, chaves canônicas e a consulta de lacunas) e as fichas de
+`handoff-heroes-15-09.md`. **Não** foram reescritos, de propósito:
+`prompt-catalogar-variantes-set26.md` e `DIAGNOSTICO_ofuscamento.sql` são
+retratos datados, e `docs/n8n/email-copy.workflow.json` é um export da
+ferramenta externa, onde o dispositivo aparece só como dado de amostra
+pinado, sem nenhuma regra lendo.

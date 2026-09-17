@@ -2490,6 +2490,12 @@ async function runFormattingChain(p: {
       heroInventado: string[]
       /** Passo 15: variante por posição, para o QA e os checks de lacuna. */
       slotMap: ReferenceSlotMapEntry[] | null
+      /**
+       * Campos cujo example não tem lugar no documento (17/09). Vazio na
+       * retomada — o merge roda só no primeiro passe —, como o
+       * `heroCopyAceita`.
+       */
+      camposSemLugar: Array<{ block_id: string | null; key: string; motivo: string }>
     }
   | { status: "failed" }
   | { status: "out_of_budget" }
@@ -2867,6 +2873,12 @@ async function runFormattingChain(p: {
   /** Campos da hero que o merge NÃO escreveu — o agente decide as linhas. */
   let heroPending: Array<{ key: string; motivo: string; tem_valor: boolean }> =
     []
+  /**
+   * Campos sem âncora no documento (17/09). O merge relata em `sem_lugar`
+   * desde sempre; daqui o sinal chega ao QA, onde bloqueia — sem âncora o
+   * que vai ao cliente é o texto de EXEMPLO da biblioteca.
+   */
+  let camposSemLugar: Array<{ block_id: string | null; key: string; motivo: string }> = []
 
   // Bloco com copy do n8n e SEM contrato: existe texto para escrever e
   // nenhum endereço. Até 28/08 isso era fail-open MUDO — o bloco seguia
@@ -2962,6 +2974,8 @@ async function runFormattingChain(p: {
     // o trecho não vai ao n8n, não volta como copy e nenhum agente tem
     // alçada para tocá-lo — sai no email como está (os selos "SELO n /
     // OFF n" da InnovaBay, 28/08). Fail-open, mas nunca mais em silêncio.
+    camposSemLugar = merge.report.sem_lugar.map((c) => ({ ...c }))
+
     const orfaosSuspeitos = merge.report.texto_orfao.filter((t) => t.suspeito)
     if (orfaosSuspeitos.length > 0) {
       log.warn("phase2.fmt.texto_de_exemplo_no_documento", {
@@ -4104,6 +4118,7 @@ async function runFormattingChain(p: {
               faixas_no_documento: faixas.length,
               faixas_decididas: r.plano?.faixas?.length ?? 0,
               faixas_pintadas: applied.faixasPintadas,
+              gradientes_pintados: applied.gradientesPintados,
               ctas_no_documento: ctas.length,
               botoes_recoloridos: applied.botoesRecoloridos,
               botoes_inseridos: applied.botoesInseridos,
@@ -4374,7 +4389,15 @@ async function runFormattingChain(p: {
     }
   }
 
-  return { status: "ok", html: currentHtml, qaViews, heroCopyAceita, heroInventado, slotMap: fmtCtx.slotMap }
+  return {
+    status: "ok",
+    html: currentHtml,
+    qaViews,
+    heroCopyAceita,
+    heroInventado,
+    slotMap: fmtCtx.slotMap,
+    camposSemLugar,
+  }
 }
 
 
@@ -4653,6 +4676,7 @@ export async function runPhase2HtmlQa(
     incentivoCodigo: ctx.incentivoCodigo ?? null,
     posicoesSemVariante,
     traducaoFaltante: decisaoDoEmail?.incentivo.traducao_faltante ?? null,
+    camposSemLugar: fmtResult.camposSemLugar,
     // O trabalho fixo é que liga o check: cobrar a mecânica num toque que
     // não foi encarregado de explicá-la seria alarme falso.
     mecanicaPedida: decisaoDoEmail?.alvo?.trabalhos_fixos?.includes("mecanica_do_incentivo") ?? false,

@@ -337,7 +337,7 @@ describe("recorteDaDecisao", () => {
   const decisao = JSON.stringify({
     fio_narrativo: "o arco do welcome",
     estrutura: [
-      { section: "hero", papel: "abre", adaptacao: "sem cupom", porque: "é o 1º toque", requisitos: { dispositivo: "hero_pergunta" } },
+      { section: "hero", papel: "abre", adaptacao: "sem cupom", porque: "é o 1º toque", requisitos: { dispositivo: "pergunta_ao_leitor" } },
       { section: "body", papel: "sustenta" },
     ],
   })
@@ -346,7 +346,7 @@ describe("recorteDaDecisao", () => {
     const r = recorteDaDecisao(decisao)
     expect(r.fio).toBe("o arco do welcome")
     expect(r.posicoes[0].papel).toBe("abre — Adaptação: sem cupom — Por quê: é o 1º toque")
-    expect(JSON.parse(r.posicoes[0].requisitos)).toEqual({ dispositivo: "hero_pergunta" })
+    expect(JSON.parse(r.posicoes[0].requisitos)).toEqual({ dispositivo: "pergunta_ao_leitor" })
   })
 
   it("posição sem adaptação nem porquê fica só com o papel", () => {

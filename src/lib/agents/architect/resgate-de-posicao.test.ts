@@ -96,14 +96,14 @@ describe("custoDeIncompatibilidade", () => {
     expect(aMais).toBeLessThan(aMenos)
   })
 
-  // O caso real da posição 3 do batch 6249aef2: body-4 (body_comparacao)
+  // O caso real da posição 3 do batch 6249aef2: body-4 (comparacao_pareada)
   // entrou por resgate depois de o Estruturador descartar exatamente esse
   // dispositivo com motivo. Descarte é decisão, custa Infinity.
   it("variante de dispositivo DESCARTADO custa Infinity", () => {
     const custo = custoDeIncompatibilidade(
-      contrato({ dispositivo: "body_comparacao", n_itens: 3 }),
+      contrato({ dispositivo: "comparacao_pareada", n_itens: 3 }),
       { cupom: false, n_itens: { min: 3, max: 3 } },
-      [{ dispositivo: "body_comparacao" }],
+      [{ dispositivo: "comparacao_pareada" }],
     )
     expect(custo).toBe(Infinity)
   })
@@ -112,32 +112,32 @@ describe("custoDeIncompatibilidade", () => {
   // DECISÃO do e-mail, não da posição.
   it("descarte vale mesmo sem requisito na posição", () => {
     expect(
-      custoDeIncompatibilidade(contrato({ dispositivo: "body_comparacao" }), null, [{ dispositivo: "body_comparacao" }]),
+      custoDeIncompatibilidade(contrato({ dispositivo: "comparacao_pareada" }), null, [{ dispositivo: "comparacao_pareada" }]),
     ).toBe(Infinity)
   })
 
-  // A decisão de referência pede `body_garantias` na posição 2 E lista
-  // `body_garantias` nos descartes. Comparar pelo requisito, ou aplicar o
+  // A decisão de referência pede `remocao_de_risco` na posição 2 E lista
+  // `remocao_de_risco` nos descartes. Comparar pelo requisito, ou aplicar o
   // descarte sem olhar o pedido, mataria a posição certa.
   it("descarte que nomeia o dispositivo PEDIDO pela posição é ignorado", () => {
-    const r = { dispositivo: "body_garantias", cupom: false }
-    expect(descartesEfetivos([{ dispositivo: "body_garantias" }, { dispositivo: "body_comparacao" }], r)).toEqual(
-      new Set(["body_comparacao"]),
+    const r = { dispositivo: "remocao_de_risco", cupom: false }
+    expect(descartesEfetivos([{ dispositivo: "remocao_de_risco" }, { dispositivo: "comparacao_pareada" }], r)).toEqual(
+      new Set(["comparacao_pareada"]),
     )
     expect(
-      custoDeIncompatibilidade(contrato({ dispositivo: "body_garantias" }), r, [{ dispositivo: "body_garantias" }]),
+      custoDeIncompatibilidade(contrato({ dispositivo: "remocao_de_risco" }), r, [{ dispositivo: "remocao_de_risco" }]),
     ).toBe(0)
   })
 
   // Não saber não é violar: variante ainda não classificada (coluna NULL)
   // nunca é eliminada por descarte.
   it("variante sem dispositivo cadastrado tem custo finito mesmo com descartes", () => {
-    const custo = custoDeIncompatibilidade(contrato({ dispositivo: null }), null, [{ dispositivo: "body_comparacao" }])
+    const custo = custoDeIncompatibilidade(contrato({ dispositivo: null }), null, [{ dispositivo: "comparacao_pareada" }])
     expect(Number.isFinite(custo)).toBe(true)
   })
 
   it("descarte sem dispositivo é ignorado", () => {
-    expect(custoDeIncompatibilidade(contrato({ dispositivo: "body_tese" }), null, [{ dispositivo: null }])).toBe(0)
+    expect(custoDeIncompatibilidade(contrato({ dispositivo: "tese_declarada" }), null, [{ dispositivo: null }])).toBe(0)
   })
 
   // O example do cupom sobrevive ao merge (`pareceExemplo` não reconhece
@@ -222,13 +222,13 @@ describe("menosIncompativel — repetição", () => {
   it("com todas as candidatas de dispositivo descartado, não há resgate", () => {
     const escolha = menosIncompativel(
       [
-        { variant_id: "body-4", contrato: contrato({ dispositivo: "body_comparacao", n_itens: 6 }) },
-        { variant_id: "body-6", contrato: contrato({ dispositivo: "body_comparacao", n_itens: 3 }) },
+        { variant_id: "body-4", contrato: contrato({ dispositivo: "comparacao_pareada", n_itens: 6 }) },
+        { variant_id: "body-6", contrato: contrato({ dispositivo: "comparacao_pareada", n_itens: 3 }) },
       ],
       { cupom: false, n_itens: { min: 3, max: 3 } },
       "body",
       new Set(),
-      [{ dispositivo: "body_comparacao" }],
+      [{ dispositivo: "comparacao_pareada" }],
     )
     expect(escolha).toBeNull()
   })
@@ -238,13 +238,13 @@ describe("menosIncompativel — repetição", () => {
   it("descartada sai do pool e a viável entra, com a contagem", () => {
     const escolha = menosIncompativel(
       [
-        { variant_id: "body-4", contrato: contrato({ dispositivo: "body_comparacao", n_itens: 3 }) },
-        { variant_id: "body-2", contrato: contrato({ dispositivo: "body_tese", n_itens: 3 }) },
+        { variant_id: "body-4", contrato: contrato({ dispositivo: "comparacao_pareada", n_itens: 3 }) },
+        { variant_id: "body-2", contrato: contrato({ dispositivo: "tese_declarada", n_itens: 3 }) },
       ],
       { cupom: false, n_itens: { min: 3, max: 3 } },
       "body",
       new Set(),
-      [{ dispositivo: "body_comparacao" }],
+      [{ dispositivo: "comparacao_pareada" }],
     )
     expect(escolha?.variant_id).toBe("body-2")
     expect(escolha?.descartadas_por_dispositivo).toBe(1)
@@ -364,14 +364,14 @@ describe("variante não classificada não empata com quem acerta o dispositivo",
   // empatavam em 0 e o desempate por MENOR USO entregava a abertura de um
   // welcome para a peça de Black Friday.
   const PEDE_PERGUNTA = {
-    dispositivo: "hero_pergunta" as const,
+    dispositivo: "pergunta_ao_leitor" as const,
     cta: true,
     cupom: null,
     preco: null,
     avaliacao: null,
     n_itens: null,
   }
-  const hero9 = contrato({ dispositivo: "hero_pergunta", copy: 4 })
+  const hero9 = contrato({ dispositivo: "pergunta_ao_leitor", copy: 4 })
   const hero13 = contrato({ dispositivo: null, tem_cupom: true, copy: 7 })
 
   it("a não classificada custa 75; a que acerta o dispositivo custa 0", () => {
@@ -401,7 +401,7 @@ describe("variante não classificada não empata com quem acerta o dispositivo",
   // propósito: errado SAI do pool, ausente FICA e paga. Sem o preço, ausente
   // e certo empatavam.
   it("o errado sai pelo filtro; o ausente fica e paga", () => {
-    const heroOferta = contrato({ dispositivo: "hero_oferta_cupom" })
+    const heroOferta = contrato({ dispositivo: "oferta_em_manchete" })
     const { dentro, fora } = doDispositivoPedido(
       [{ contrato: heroOferta }, { contrato: hero13 }, { contrato: hero9 }],
       PEDE_PERGUNTA,
@@ -419,7 +419,7 @@ describe("variante não classificada não empata com quem acerta o dispositivo",
 describe("doDispositivoPedido", () => {
   it("sem dispositivo pedido, ninguém sai", () => {
     const { dentro, fora } = doDispositivoPedido(
-      [{ contrato: contrato({ dispositivo: "body_comparacao" }) }],
+      [{ contrato: contrato({ dispositivo: "comparacao_pareada" }) }],
       { cupom: false },
     )
     expect(dentro).toHaveLength(1)
@@ -435,9 +435,9 @@ describe("doDispositivoPedido", () => {
     const { dentro, fora } = doDispositivoPedido(
       [
         { contrato: contrato({ dispositivo: null }) },
-        { contrato: contrato({ dispositivo: "hero_pergunta" }) },
+        { contrato: contrato({ dispositivo: "pergunta_ao_leitor" }) },
       ],
-      { dispositivo: "hero_lineup" },
+      { dispositivo: "lineup_de_colecao" },
     )
     expect(dentro).toHaveLength(1)
     expect(dentro[0].contrato?.dispositivo).toBeNull()
@@ -448,8 +448,8 @@ describe("doDispositivoPedido", () => {
   // elegibilidade: um `===` local divergiria em caixa e espaço, que é o
   // engano por apelido que este repo já pagou.
   it("compara normalizado, como o filtro de elegibilidade", () => {
-    const { fora } = doDispositivoPedido([{ contrato: contrato({ dispositivo: " Body_Garantias " }) }], {
-      dispositivo: "body_garantias",
+    const { fora } = doDispositivoPedido([{ contrato: contrato({ dispositivo: " Remocao_De_Risco " }) }], {
+      dispositivo: "remocao_de_risco",
     })
     expect(fora).toBe(0)
   })
@@ -457,17 +457,17 @@ describe("doDispositivoPedido", () => {
 
 describe("menosIncompativel — dispositivo pedido (Passo 19)", () => {
   // O buraco medido: `filtrarPorRequisitos` é fail-open no CONJUNTO (zerou a
-  // seção, devolve todas), então uma posição que pede `body_garantias` numa
+  // seção, devolve todas), então uma posição que pede `remocao_de_risco` numa
   // seção sem nenhuma chegava aqui com o pool inteiro — e a "menos
-  // incompatível" era uma `body_comparacao`, outra FORMA entregue ao cliente
+  // incompatível" era uma `comparacao_pareada`, outra FORMA entregue ao cliente
   // no lugar da decidida. Agora a posição cai e a lacuna sobe com nome.
   it("nenhuma do dispositivo pedido: a posição cai, não entra outra forma", () => {
     const escolha = menosIncompativel(
       [
-        { variant_id: "body-4", contrato: contrato({ dispositivo: "body_comparacao", n_itens: 3 }) },
-        { variant_id: "body-2", contrato: contrato({ dispositivo: "body_tese", n_itens: 3 }) },
+        { variant_id: "body-4", contrato: contrato({ dispositivo: "comparacao_pareada", n_itens: 3 }) },
+        { variant_id: "body-2", contrato: contrato({ dispositivo: "tese_declarada", n_itens: 3 }) },
       ],
-      { dispositivo: "body_garantias", cupom: false },
+      { dispositivo: "remocao_de_risco", cupom: false },
       "body",
     )
     expect(escolha).toBeNull()
@@ -477,10 +477,10 @@ describe("menosIncompativel — dispositivo pedido (Passo 19)", () => {
     const escolha = menosIncompativel(
       [
         // Contrato perfeito, forma errada: antes vencia por custo 0 vs 40.
-        { variant_id: "body-tese", contrato: contrato({ dispositivo: "body_tese", tem_preco: true, n_itens: 2 }) },
-        { variant_id: "body-gar", contrato: contrato({ dispositivo: "body_garantias", n_itens: 2 }) },
+        { variant_id: "body-tese", contrato: contrato({ dispositivo: "tese_declarada", tem_preco: true, n_itens: 2 }) },
+        { variant_id: "body-gar", contrato: contrato({ dispositivo: "remocao_de_risco", n_itens: 2 }) },
       ],
-      { ...PRODUCTS_HERO_BOXERS, dispositivo: "body_garantias" },
+      { ...PRODUCTS_HERO_BOXERS, dispositivo: "remocao_de_risco" },
       "body",
     )
     expect(escolha?.variant_id).toBe("body-gar")
@@ -493,14 +493,14 @@ describe("menosIncompativel — dispositivo pedido (Passo 19)", () => {
   it("separa 'descartada pela decisão' de 'outra forma'", () => {
     const escolha = menosIncompativel(
       [
-        { variant_id: "body-gar", contrato: contrato({ dispositivo: "body_garantias", n_itens: 3 }) },
-        { variant_id: "body-tese", contrato: contrato({ dispositivo: "body_tese", n_itens: 3 }) },
+        { variant_id: "body-gar", contrato: contrato({ dispositivo: "remocao_de_risco", n_itens: 3 }) },
+        { variant_id: "body-tese", contrato: contrato({ dispositivo: "tese_declarada", n_itens: 3 }) },
       ],
-      { dispositivo: "body_garantias", cupom: false, n_itens: { min: 3, max: 3 } },
+      { dispositivo: "remocao_de_risco", cupom: false, n_itens: { min: 3, max: 3 } },
       "body",
       new Set(),
       // Descarte de um dispositivo que nem chega a ser considerado.
-      [{ dispositivo: "body_comparacao" }],
+      [{ dispositivo: "comparacao_pareada" }],
     )
     expect(escolha?.variant_id).toBe("body-gar")
     expect(escolha?.fora_do_dispositivo).toBe(1)
@@ -515,7 +515,7 @@ describe("menosIncompativel — dispositivo pedido (Passo 19)", () => {
         { variant_id: "hero-2", contrato: contrato({ dispositivo: null }) },
         { variant_id: "hero-1", contrato: contrato({ dispositivo: null }) },
       ],
-      { dispositivo: "hero_lineup", cupom: false },
+      { dispositivo: "lineup_de_colecao", cupom: false },
       "hero",
     )
     expect(escolha?.variant_id).toBe("hero-1")

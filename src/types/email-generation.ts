@@ -305,6 +305,11 @@ export type QaIssueType =
   | "traducao_faltante"
   // Passo 16: a plataforma da loja foi consultada e o código NÃO existe.
   | "cupom_inexistente_na_plataforma"
+  // ── 17/09: o example do campo não tem lugar no HTML ──────────────────
+  // O merge relatava `sem_lugar` desde sempre e NINGUÉM lia. Um campo sem
+  // âncora entrega ao cliente o texto de exemplo da biblioteca — foi assim
+  // que `at checkout for xx% OFF!` saiu em peças marcadas `ready`.
+  | "campo_sem_lugar"
 
 /**
  * Quem CORRIGE a issue (Passo 15). É vocabulário de ação, não de

@@ -161,7 +161,7 @@ function params(over: Partial<CuradorShadowParams> = {}): CuradorShadowParams {
       [2, { ids: ["f1"], zerou: false, bloqueadasPelaJanela: [], janelaAfrouxada: false }],
     ]),
     decisaoPorPosicao: [
-      { papel: "abre com a objeção", requisitos: "dispositivo: hero_pergunta" },
+      { papel: "abre com a objeção", requisitos: "dispositivo: pergunta_ao_leitor" },
       { papel: "sustenta", requisitos: "" },
       { papel: "fecha", requisitos: "" },
     ],
@@ -260,7 +260,7 @@ describe("o leque dentro do runCuradorShadow", () => {
     await runCuradorShadow(params())
     const vars = invokeAgent.mock.calls.map((c) => c[1] as Record<string, string>)
     expect(vars[0].posicao_papel).toBe("abre com a objeção")
-    expect(vars[0].posicao_requisitos).toContain("hero_pergunta")
+    expect(vars[0].posicao_requisitos).toContain("pergunta_ao_leitor")
     expect(vars[2].posicao_papel).toBe("fecha")
   })
 

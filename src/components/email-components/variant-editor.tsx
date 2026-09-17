@@ -23,7 +23,7 @@ import {
   DENSITY_LABELS_PT,
 } from "@/lib/agents/shared/component-dimensions"
 import { COMPONENT_CATEGORIES } from "@/lib/agents/shared/component-categories"
-import { DESCRICAO_DO_DISPOSITIVO, dispositivosDaSecao } from "@/lib/agents/shared/dispositivos"
+import { DESCRICAO_DO_DISPOSITIVO, DISPOSITIVO_NAO_CLASSIFICADO, dispositivosDaSecao } from "@/lib/agents/shared/dispositivos"
 import { fichasDoLote } from "@/lib/email-workspace/ficha-do-vault"
 import { C, F, egInputStyle } from "@/components/email-generation/ui/eg-theme"
 import {
@@ -405,13 +405,21 @@ export function VariantEditor({
             </div>
             <div>
               <EGLabel>Dispositivo</EGLabel>
-              {/* B3: o PRIMEIRO filtro do Curador. Só os da seção escolhida —
-                  "hero_pergunta" numa body é descartado no pipeline. */}
+              {/* B3: o PRIMEIRO filtro do Curador. Só os MECANISMOS que vivem
+                  nesta seção — "pergunta_ao_leitor" numa products é descartado no
+                  pipeline. Alguns valem em duas seções (`codigo_entregue` em hero
+                  e offer); `dispositivosDaSecao` já resolve isso. */}
               <EGSelect
                 value={draft.dispositivo}
                 onChange={(v) => set({ dispositivo: v })}
                 options={[
-                  { value: "", label: "(não classificada — filtro fail-open)" },
+                  // Os dois estados de "sem mecanismo" NÃO são o mesmo, e a
+                  // diferença é de comportamento: vazio é fail-open (concorre em
+                  // toda posição da seção), `nao_classificado` é o valor de
+                  // CONTROLE — ele elimina a variante de toda posição que pede
+                  // algo, que é o ponto: bloquear a escolha às cegas.
+                  { value: "", label: "(em branco — concorre em toda posição, fail-open)" },
+                  { value: DISPOSITIVO_NAO_CLASSIFICADO, label: `${DISPOSITIVO_NAO_CLASSIFICADO} — ${DESCRICAO_DO_DISPOSITIVO[DISPOSITIVO_NAO_CLASSIFICADO]}` },
                   ...dispositivosDaSecao(draft.block_type).map((d) => ({ value: d, label: `${d} — ${DESCRICAO_DO_DISPOSITIVO[d]}` })),
                 ]}
               />

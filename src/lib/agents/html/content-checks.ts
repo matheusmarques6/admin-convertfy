@@ -25,6 +25,10 @@
  *    menos (vem do `slot_map`, Passo 11).
  *  - `traducao_faltante` (medium, Passo 15): o cupom saiu em pt-BR numa
  *    loja de outro idioma (flag gravada pelo Passo 4).
+ *  - `campo_sem_lugar` (high, 17/09): o example do campo não é encontrável
+ *    no HTML, então a copy do n8n não foi gravada e o texto de EXEMPLO da
+ *    biblioteca vai ao cliente. O merge relatava isso em `sem_lugar` desde
+ *    sempre e nada lia.
  */
 
 import type { QaIssue } from "@/types/email-generation"
@@ -52,6 +56,17 @@ export interface ContentCheckOptions {
   }> | null
   /** `decisao.incentivo.traducao_faltante` — cupom sem tradução no idioma da loja. */
   traducaoFaltante?: boolean | null
+  /**
+   * `CopyMergeReport.sem_lugar` — campos cujo example não foi encontrado no
+   * documento. O sinal é exato e existe desde sempre; o que faltava era
+   * consumidor. Vem VAZIO na retomada (o merge roda só no primeiro passe),
+   * como o `heroCopyAceita`: a peça que retoma já passou por aqui uma vez.
+   */
+  camposSemLugar?: ReadonlyArray<{
+    block_id: string | null
+    key: string
+    motivo: string
+  }> | null
   /**
    * `mecanica_do_incentivo` está entre os trabalhos fixos deste toque. Só
    * então se cobra que o texto diga ONDE o cupom se aplica — check que
@@ -287,6 +302,33 @@ export function computeContentChecks(html: string, opts: ContentCheckOptions = {
         no_responsavel: "copy",
       })
     }
+  }
+
+  // 7b. Campo sem lugar no documento (17/09). Uma issue por campo: a chave
+  // é o que a curadoria precisa ler para achar o example divergente.
+  //
+  // `high` e não aviso: campo sem âncora não é copy faltando — é o texto de
+  // EXEMPLO da biblioteca indo ao cliente no lugar da copy. Foi exatamente
+  // isso, quatro vezes, em peças marcadas `ready`.
+  for (const c of opts.camposSemLugar ?? []) {
+    const motivo =
+      c.motivo === "nao_encontrado"
+        ? "o example do schema não existe no HTML da variante"
+        : c.motivo === "range_ja_tomado"
+          ? "o trecho já tinha sido reivindicado por outro campo"
+          : c.motivo === "frase_curta"
+            ? "o example é curto demais para ancorar com segurança"
+            : c.motivo === "example_e_json"
+              ? "o example é um array JSON, não uma frase"
+              : c.motivo || "sem motivo registrado"
+    issues.push({
+      type: "campo_sem_lugar",
+      severity: "high",
+      disposition: "blocking",
+      message: `O campo \`${c.key}\` não tem lugar no documento — ${motivo}. A copy do n8n não foi gravada e o texto de exemplo da variante foi ao cliente. Corrija o \`example\` na aba Componentes para a frase que está no HTML.`,
+      location: c.block_id ? `block:${c.block_id}` : "html",
+      no_responsavel: "biblioteca",
+    })
   }
 
   // 8. Régua retórica: como a frase está escrita, não o que ela afirma.

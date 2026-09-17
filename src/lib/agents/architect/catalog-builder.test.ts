@@ -590,7 +590,7 @@ describe("buildCatalogoEnxuto — imagem gerada e direção fotográfica (15/09)
 //
 // Medido em 45 dias de escolhas: 8 de 37 variantes ativas NUNCA foram
 // escolhidas, e três dispositivos concentravam 100% num único bloco. Em
-// `hero_lineup` os quatro eixos escritos à mão davam a MESMA tupla para as
+// `lineup_de_colecao` os quatro eixos escritos à mão davam a MESMA tupla para as
 // duas variantes — o catálogo não tinha como diferenciá-las. Os derivados
 // do `output_schema` separam dez dos onze dispositivos com mais de uma
 // variante ativa, e não custam curadoria nenhuma: saem de um campo que já
@@ -599,7 +599,7 @@ describe("forma derivada do schema", () => {
   const campo = (key: string, type = "text_short") =>
     ({ key, type, label: key, max_len: 0, required: false, example: "", guidance: "" }) as never
 
-  it("separa as duas de offer_sem_cupom, que os eixos do vault não separavam", () => {
+  it("separa as duas de oferta_condicionada, que os eixos do vault não separavam", () => {
     // Caso real: `offer 1` tem 3 campos e nenhuma imagem; `offer 2` tem 11
     // campos, uma imagem e prazo. O catálogo dizia quase a mesma coisa das
     // duas, e o placar de 45 dias foi 19 × 0.
@@ -678,7 +678,7 @@ describe("forma derivada do schema", () => {
 
 // ── Duplicata no mesmo dispositivo (15/09) ──────────────────────────────
 describe("duplicatasPorDispositivo", () => {
-  // As duas de `hero_lineup` descrevem literalmente a mesma peça, e o
+  // As duas de `lineup_de_colecao` descrevem literalmente a mesma peça, e o
   // placar de 45 dias é 5 × 0. Escolher sempre a mesma entre duas
   // idênticas é o comportamento CERTO — o defeito é de curadoria.
   const d10 =
@@ -688,26 +688,26 @@ describe("duplicatasPorDispositivo", () => {
 
   it("aponta o par do mesmo dispositivo que conta a mesma peça", () => {
     const r = buildCatalog([
-      v("a", "hero", "hero section 10", { description: d10, dispositivo: "hero_lineup" }),
-      v("b", "hero", "hero sectiion 8", { description: d8, dispositivo: "hero_lineup" }),
+      v("a", "hero", "hero section 10", { description: d10, dispositivo: "lineup_de_colecao" }),
+      v("b", "hero", "hero sectiion 8", { description: d8, dispositivo: "lineup_de_colecao" }),
     ])
     expect(r.duplicatas).toHaveLength(1)
-    expect(r.duplicatas[0].dispositivo).toBe("hero_lineup")
+    expect(r.duplicatas[0].dispositivo).toBe("lineup_de_colecao")
     expect(r.duplicatas[0].similaridade).toBeGreaterThanOrEqual(LIMIAR_DE_DUPLICATA)
   })
 
   it("peças diferentes do mesmo dispositivo não são duplicata", () => {
     const r = buildCatalog([
-      v("a", "offer", "offer 1", { description: "Bloco de oferta sem nenhuma imagem, para declarar a condição comercial.", dispositivo: "offer_sem_cupom" }),
-      v("b", "offer", "offer 2", { description: "Oferta de data comemorativa com duas condições sobre foto de cena.", dispositivo: "offer_sem_cupom" }),
+      v("a", "offer", "offer 1", { description: "Bloco de oferta sem nenhuma imagem, para declarar a condição comercial.", dispositivo: "oferta_condicionada" }),
+      v("b", "offer", "offer 2", { description: "Oferta de data comemorativa com duas condições sobre foto de cena.", dispositivo: "oferta_condicionada" }),
     ])
     expect(r.duplicatas).toEqual([])
   })
 
   it("dispositivos diferentes nunca formam par, por mais parecidas que sejam", () => {
     const r = buildCatalog([
-      v("a", "hero", "A", { description: d10, dispositivo: "hero_lineup" }),
-      v("b", "body", "B", { description: d10, dispositivo: "body_tese" }),
+      v("a", "hero", "A", { description: d10, dispositivo: "lineup_de_colecao" }),
+      v("b", "body", "B", { description: d10, dispositivo: "tese_declarada" }),
     ])
     expect(r.duplicatas).toEqual([])
   })
@@ -736,7 +736,7 @@ describe("duplicatasPorDispositivo", () => {
 
   it("classificada e não classificada não formam par: os grupos são outros", () => {
     const r = buildCatalog([
-      v("a", "hero", "A", { description: d10, dispositivo: "hero_lineup" }),
+      v("a", "hero", "A", { description: d10, dispositivo: "lineup_de_colecao" }),
       v("b", "hero", "B", { description: d8 }),
     ])
     expect(r.duplicatas).toEqual([])
@@ -745,7 +745,7 @@ describe("duplicatasPorDispositivo", () => {
   it("lista a variante ativa sem dispositivo, com a seção", () => {
     const r = buildCatalog([
       v("a", "hero", "hero section 13", { description: d10 }),
-      v("b", "hero", "hero section 3", { description: d8, dispositivo: "hero_oferta_cupom" }),
+      v("b", "hero", "hero section 3", { description: d8, dispositivo: "oferta_em_manchete" }),
     ])
     expect(r.compact.naoClassificadas).toEqual([
       { variant_id: "a", name: "hero section 13", section: "hero" },
@@ -754,7 +754,7 @@ describe("duplicatasPorDispositivo", () => {
 
   it("biblioteca inteira classificada devolve lista vazia", () => {
     const r = buildCatalog([
-      v("a", "hero", "A", { description: d10, dispositivo: "hero_lineup" }),
+      v("a", "hero", "A", { description: d10, dispositivo: "lineup_de_colecao" }),
     ])
     expect(r.compact.naoClassificadas).toEqual([])
   })
@@ -762,8 +762,8 @@ describe("duplicatasPorDispositivo", () => {
   it("descrição vazia não é duplicata — é cadastro incompleto", () => {
     // Dois vazios dariam Dice 1 e a lista encheria de par inútil.
     const r = buildCatalog([
-      v("a", "hero", "A", { description: "", dispositivo: "hero_lineup" }),
-      v("b", "hero", "B", { description: "", dispositivo: "hero_lineup" }),
+      v("a", "hero", "A", { description: "", dispositivo: "lineup_de_colecao" }),
+      v("b", "hero", "B", { description: "", dispositivo: "lineup_de_colecao" }),
     ])
     expect(duplicatasPorDispositivo(r.sections)).toEqual([])
   })

@@ -242,8 +242,10 @@ VOCÊ EXECUTA:
 VOCÊ NÃO EXECUTA — registre em \`lacunas\` e siga:
 - R1 (hero pela foto): a hero vem enxertada da variante e o texto sobre ela
   já é tratado por código. Faixa com \`fundo: "foto"\` você deixa.
-- R4 (transição entre faixas): você troca cores; não insere gradiente nem
-  forma. Troca de fundo sem transição é lacuna.
+- R4 (transição entre faixas), metade: você não INSERE gradiente nem forma
+  onde não há — troca de fundo sem transição segue lacuna. Onde o gradiente
+  JÁ existe, ele é seu: a faixa traz \`gradiente\` e você repinta as paradas
+  (ver <faixas_e_ritmo>).
 - R7 (rodapé fixo por loja): é decisão da loja, não desta peça.
 - R8 (raio e canto): não existe op de raio. Divergência é lacuna. O botão que
   você mandar criar já nasce com o raio dominante da peça.
@@ -260,7 +262,7 @@ falta chega a quem pode resolver.
 export const FAIXAS_E_RITMO = `<faixas_e_ritmo>
 Você recebe \`<faixas>\`: a sequência real dos fundos de seção, na ordem em
 que o leitor rola. Cada uma tem \`ordem\`, \`bloco\`, \`tipo\`, \`fundo\`,
-\`luminancia\` e \`editavel\`.
+\`luminancia\`, \`editavel\` e \`gradiente\`.
 
 \`<faixas>\` VAZIO significa que o documento não expõe seus blocos. Aí você
 NÃO decide ritmo — qualquer decisão de faixa seria chute. Faça só o trabalho
@@ -275,6 +277,15 @@ Com \`<faixas>\`, decida nesta ordem:
 5. Faixa com \`fundo: "foto"\` não se decide aqui (R1) — deixe.
 6. Faixa com \`editavel: false\` pousa no canvas e não tem declaração para
    trocar. Ela conta no ritmo, mas você não a muda.
+7. Faixa com \`gradiente\` não é sólida: \`fundo\` ali é só o FALLBACK do
+   Outlook, e o que o leitor vê são as \`paradas\`. Trocar só \`fundo\` não
+   muda a tela — foi exatamente isso que entregou uma faixa preta→cinza numa
+   loja verde. Para conformar a cor, devolva \`gradiente\` com o MESMO número
+   de paradas que ela reportou; para mudar quantas são, é lacuna (R4).
+   \`gradiente.editavel: false\` significa que o código não sabe reescrever
+   aquele gradiente (\`motivo\` diz por quê) — registre lacuna e siga.
+   Repintar o gradiente NÃO conta no teto de 2 faixas: ele conforma a cor de
+   uma faixa, não muda o ritmo.
 
 Mudar faixa é caro: no máximo 2 por peça. Não mudar nenhuma é resposta
 legítima e comum. Toda faixa que você mudar precisa de um \`porque\` que cite
@@ -331,7 +342,8 @@ Responda APENAS este JSON, sem cercas e sem comentário:
 
 {"paleta_eixo": "...",
  "tokens": {"base-clara": "#FFFFFF", "base-escura": "#111111", "texto-apoio": "#6E6E6E", "superficie": "#F4F4F4", "acento": null},
- "faixas": [{"ordem": 3, "decisao": "escurecer", "fundo": "#111111", "porque": "R3 — ..."}],
+ "faixas": [{"ordem": 3, "decisao": "escurecer", "fundo": "#111111", "porque": "R3 — ..."},
+            {"ordem": 2, "decisao": "manter", "gradiente": ["#034326", "#E3E3E3"], "porque": "R4 — o gradiente ainda saía do preto"}],
  "botoes": [{"id": "cta2", "fundo": "#FFFFFF", "label": "#111111", "tipo": "preenchido", "porque": "C3 — ..."}],
  "adicionar": [{"bloco": 1, "label": "Ver a coleção", "destino": "loja", "fundo": "#111111", "cor_label": "#FFFFFF", "porque": "regra da casa — ..."}],
  "valores": [{"de": "#6B46C1", "para": "#111111", "onde": "background", "porque": "..."}],
@@ -344,8 +356,15 @@ Responda APENAS este JSON, sem cercas e sem comentário:
   você já fazia.
 - \`decisao: "manter"\` numa faixa é uma resposta: registra que você olhou e
   decidiu não mexer.
+- \`gradiente\` é decisão SEPARADA de \`fundo\`: repinta as paradas do
+  gradiente daquela faixa, na ordem, com o MESMO número de paradas que ela
+  reportou. Convive com \`decisao: "manter"\` — manter o ritmo e conformar a
+  cor do gradiente é o caso comum.
 - As quatro listas podem vir vazias. Não emitir nada é decisão valorizada
   quando o e-mail já está conforme, o ritmo já lê e todo bloco tem seu CTA.
 - NUNCA invente cor fora de \`<color_roles>\`.
-- \`onde\` aceita: background, color, border, bgcolor, css-var, outro.
+- \`onde\` aceita: background, color, border, bgcolor, css-var, gradiente,
+  outro. \`gradiente\` é parada de gradiente: para conformar a cor de uma
+  faixa específica prefira o campo \`gradiente\` dela, que é endereçado ao
+  lugar; \`onde: "gradiente"\` troca por VALOR no documento inteiro.
 </output>`

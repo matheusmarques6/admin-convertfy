@@ -305,3 +305,63 @@ describe("recolor de fundo alcança as DUAS formas", () => {
     expect(r.html).toContain('bgcolor="#000000"')
   })
 })
+
+// ── set_gradiente (17/09) ──────────────────────────────────────────────
+//
+// O caso da Innova Bay: o `background-color` já estava na cor da loja e a
+// tela continuava preto → cinza. Nenhuma op existente alcançava as paradas —
+// `recolor` é por VALOR (o mesmo `#000000` é texto no documento inteiro) e
+// `set_fundo` só conhece as declarações de fundo do tag.
+describe("set_gradiente", () => {
+  const TAG = `<td valign="top" width="600"
+          style="background-color:#034326;background-image:-webkit-linear-gradient(top, #000000 0%, #E3E3E3 100%);background-image:linear-gradient(180deg, #000000 0%, #E3E3E3 100%);">`
+  const VML = `<!--[if gte mso 9]><v:rect fill="true" style="width:600px;height:692px;">
+    <v:fill type="gradient" color="#000000" color2="#E3E3E3" angle="180" /></v:rect><![endif]-->`
+  const DOC_G = `<!DOCTYPE html><html><body><table width="600">
+${bloco(0, "body", `<tr>${TAG}${VML}<p style="color:#FFFFFF;">oi</p></td></tr>`)}
+${bloco(1, "footer", `<tr><td width="600" style="background-color:#000000;"><p style="color:#FFFFFF;">rodapé</p></td></tr>`)}
+</table></body></html>`
+
+  it("repinta as TRÊS declarações e deixa o resto do documento intacto", () => {
+    const r = aplicar(DOC_G, [
+      { action: "set_gradiente", bloco: 0, paradas: ["#034326", "#E3E3E3"] },
+    ])
+    expect(r.skipped).toEqual([])
+    expect(r.gradientesPintados).toBe(1)
+
+    expect(r.html).toContain("-webkit-linear-gradient(top, #034326 0%, #E3E3E3 100%)")
+    expect(r.html).toContain("linear-gradient(180deg, #034326 0%, #E3E3E3 100%)")
+    expect(r.html).toContain('<v:fill type="gradient" color="#034326" color2="#E3E3E3"')
+    // O preto do RODAPÉ é outra decisão e não pode ser levado junto — é a
+    // diferença entre esta op e um `recolor` por valor.
+    expect(r.html).toContain('style="background-color:#000000;"')
+    // O fallback sólido segue como estava: quem o troca é `set_fundo`.
+    expect(r.html).toContain("background-color:#034326;background-image")
+  })
+
+  it("`set_fundo` e `set_gradiente` convivem no mesmo bloco", () => {
+    const r = aplicar(DOC_G, [
+      { action: "set_fundo", bloco: 0, para: "#034326" },
+      { action: "set_gradiente", bloco: 0, paradas: ["#034326", "#E3E3E3"] },
+    ])
+    expect(r.skipped).toEqual([])
+    expect(r.html).toContain("linear-gradient(180deg, #034326 0%, #E3E3E3 100%)")
+  })
+
+  it("número de paradas diferente é recusado, não aplicado pela metade", () => {
+    const r = aplicar(DOC_G, [
+      { action: "set_gradiente", bloco: 0, paradas: ["#034326"] },
+    ])
+    expect(r.gradientesPintados).toBe(0)
+    expect(r.skipped[0]?.reason).toBe("sem_fundo_editavel")
+    expect(r.html).toContain("linear-gradient(180deg, #000000 0%")
+  })
+
+  it("faixa sem gradiente recusa a op com motivo", () => {
+    const r = aplicar(DOC_G, [
+      { action: "set_gradiente", bloco: 1, paradas: ["#034326", "#E3E3E3"] },
+    ])
+    expect(r.gradientesPintados).toBe(0)
+    expect(r.skipped[0]?.reason).toBe("sem_fundo_editavel")
+  })
+})

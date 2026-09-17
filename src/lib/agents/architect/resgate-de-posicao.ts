@@ -64,8 +64,8 @@
  * O descarte é comparado com o dispositivo da VARIANTE (coluna B3), nunca
  * com o requisito da posição — e um descarte que nomeia o MESMO dispositivo
  * que a posição pede é ignorado. Não é caso teórico: a decisão de
- * referência (`fixtures/hero-boxers-welcome-1.ts`) pede `body_garantias`
- * na posição 2 e lista `body_garantias` nos descartes (o Estruturador
+ * referência (`fixtures/hero-boxers-welcome-1.ts`) pede `remocao_de_risco`
+ * na posição 3 e lista `remocao_de_risco` nos descartes (o Estruturador
  * descartou um ITEM da referência, "política de devolução em linguagem
  * simples", e a normalização carimbou o dispositivo da família). Aplicar o
  * descarte ali mataria a posição certa. Variante sem dispositivo
@@ -77,16 +77,16 @@
  *
  * Até aqui o dispositivo errado custava 150 — caro, e finito. Finito é o
  * problema: `filtrarPorRequisitos` é fail-open no CONJUNTO (zerou a seção,
- * devolve todas), então uma posição que pede `body_garantias` numa seção
+ * devolve todas), então uma posição que pede `remocao_de_risco` numa seção
  * onde nenhuma variante o realiza chegava aqui com o pool inteiro, e a
- * "menos incompatível" era uma `body_comparacao` — outra FORMA, entregue ao
+ * "menos incompatível" era uma `comparacao_pareada` — outra FORMA, entregue ao
  * cliente no lugar da decidida. O fail-open está certo para redação (preço,
  * avaliação: a copy compensa) e para não esvaziar a shortlist do Curador;
  * está errado para a forma, que é o que a posição É.
  *
  * Agora quem realiza dispositivo CONHECIDO e diferente sai do pool antes de
  * pontuar, e pool vazio devolve `null`: a posição cai e a lacuna sobe
- * nomeada ("falta `body_garantias` em body"), que é o pedido de cadastro
+ * nomeada ("falta `remocao_de_risco` em body"), que é o pedido de cadastro
  * exato. Por isso o preço de 150 saiu — duas regras para a mesma coisa
  * deixariam o próximo leitor sem saber qual vence.
  *
@@ -163,7 +163,7 @@ export function doDispositivoPedido<T extends { contrato?: ContratoResumo }>(
 /**
  * Descartes que valem para esta posição: os que nomeiam o dispositivo que
  * a própria posição pede são ignorados (ver o cabeçalho — o caso
- * `body_garantias` da decisão de referência).
+ * `remocao_de_risco` da decisão de referência).
  */
 export function descartesEfetivos(
   descartes: ReadonlyArray<Pick<DecisaoDescarte, "dispositivo">> | null | undefined,
@@ -209,7 +209,7 @@ export function custoDeIncompatibilidade(
   // quem acerta, e aí decidia o desempate seguinte, que desde 15/09 é o
   // MENOR USO — premiando quem não tem etiqueta exatamente por não ter.
   // Medido no dia em que as 8 heroes novas entraram sem classificação: numa
-  // posição que pede `hero_pergunta`, a `hero section 9` (a certa, 25
+  // posição que pede `oferta_de_ajuda`, a `hero section 9` (a certa, 25
   // escolhas em 45 dias) perdia para a `hero section 13` (um e-mail inteiro
   // de Black Friday, 0 escolhas). 75 é metade do que o dispositivo errado
   // custava, e continua finito de propósito: não saber não é violar, e
