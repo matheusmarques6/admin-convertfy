@@ -105,6 +105,7 @@ export const ROUTES = {
       INSTAGRAM: "/admin/comercial/instagram",
       AGENDA: "/admin/comercial/agenda",
       FILA: "/admin/comercial/fila",
+      PROSPECCAO: "/admin/comercial/prospeccao",
       PRODUTOS: "/admin/comercial/produtos",
       FUNIL: "/admin/comercial/funil",
       REPORTS: "/admin/comercial/reports",

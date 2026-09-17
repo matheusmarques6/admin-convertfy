@@ -8735,6 +8735,81 @@ renderizador que entende `mesma_tela` só existe depois do deploy — gravar
 o agrupamento antes deixaria as perguntas uma por tela com os rótulos
 curtos, que é pior que hoje.
 
+## Prospecção ativa: a lista do parceiro vira operação (17/09)
+
+431 leads do parceiro Luan (mentoria de dropshipping) importados em
+produção para a BFCM 2026. Pacote e SQLs em `docs/prospeccao/luan-bf2026/`.
+Contagens conferidas contra o banco antes de escrever código: A 75, B 119,
+C 106, D 108, Aguardando 23; zero lead sem negócio, zero duplicado.
+
+**O cartão não dizia quem abrir primeiro.** Prioridade, segmento, alerta
+de dados e tentativas moravam em `deals.custom_fields` e só apareciam
+abrindo o card. `lib/crm/prospeccao.ts` (puro) lê os sinais e a régua de
+BLOQUEIO — `nao-contatar`, negociação com o parceiro e sem telefone —, e
+é o MESMO módulo que o filtro do board usa: duas leituras fariam o filtro
+esconder um negócio que o badge mostra. `--crm-orange` entrou como token
+porque P1..P4 é escala ORDINAL, não estado semântico; `--crm-warn` no P3
+leria "atenção".
+
+**Enviar T1/T2/T3** (`lib/crm/cadencia.ts` + `/deals/[id]/toque`) escolhe
+o script do segmento, troca as variáveis, abre o `wa.me`, registra
+`wa_message`, conta a tentativa, move de etapa e agenda a checagem no SLA
+do destino. **A janela é aberta VAZIA no clique** e só recebe a URL
+depois da resposta — `window.open` pós-await é bloqueado, e abrir já com
+o link mandaria mensagem a quem pediu pra parar quando a recusa viesse do
+servidor. Tudo que pode RECUSAR roda antes de qualquer escrita.
+
+Três armadilhas que os testes e a leitura do cliente pegaram:
+
+- **"Aguardando liberação Luan" começa com A** e pegaria o script do
+  aluno, que cita a mentoria. Os 23 dessa coluna guardam o segmento
+  depois que ele libera, então o engano sairia pra gente de verdade. A
+  letra vem de `segmentoCurto`, nunca do 1º caractere.
+- **Variável NÃO FORNECIDA ≠ fornecida VAZIA.** O composer do inbox
+  inseria `reply.body` CRU (nenhuma substituição existia); apagar
+  `{hora}` ali deixaria "confirmando amanhã às." em silêncio, enquanto
+  `{nome}` de contato sem nome tem de sumir com o espaço.
+- **O diálogo de perda grava `"Motivo — comentário"`.** Comparar a string
+  inteira contra `crm_lost_reasons` bloquearia TODA perda comentada; o
+  casamento é por prefixo, o mais longo vence, e a mesma régua marca a
+  tag `nao-contatar` (o comentário do vendedor não pode desligar a
+  proteção que a pessoa pediu).
+
+**`required_fields` passou a cobrar campo personalizado** (`custom:<key>`)
+— cobrar "URL da loja" ao entrar no diagnóstico é regra de operação, não
+`if` por nome de etapa. O que aquele mecanismo não expressa (condição de
+SAÍDA, confirmação humana, efeitos de ganho/perda) vive em
+`regras-de-coluna.ts`, com `regrasSemEtapa()` porque regra por NOME de
+coluna morre calada se alguém renomear a coluna.
+
+**A ETAPA é o sinal de resposta, não a caixa de entrada.** Medido: dos
+431, ZERO têm thread ligada e só 2 casam por telefone com conversa
+existente — a abordagem sai de um número que não é canal conectado, então
+resposta nenhuma chega ao banco. Daí o botão "Respondeu" no card.
+
+**O job de SLA nasce em `dry_run`** (`CRM_PROSPECCAO_SLA_MODE`), agendado
+às 08:00 BRT porque rota sob `/api/cron/` sem horário é código morto.
+T1/T2 vencidos marcam e criam tarefa, NUNCA movem; T3 vencido move pra
+perdido; qualificação parada só vira tarefa (perder quem RESPONDEU por
+demora nossa é o pior desfecho). **A idempotência não funcionaria**:
+`crm_automation_runs` tem UNIQUE (automation_id, idempotency_key) e o job
+insere com `automation_id` NULL — NULL é DISTINTO em Postgres, o 23505
+nunca dispararia e a tarefa nasceria de novo em toda rodada. Migration
+20261165 cria o índice parcial que falta.
+
+**Fila de hoje** (`/admin/comercial/fila`): ordem A→B→C→D depois pela
+posição, pendentes antes das novas, e o teto vale SÓ sobre as novas — ele
+é o limite do número de WhatsApp, não do trabalho. **Relatório**
+(`/admin/comercial/prospeccao`): o degrau alcançado vem de
+`crm_deal_history` + etapa atual, porque só a etapa ATUAL contaria o lead
+perdido por silêncio como "respondeu". Taxa sem denominador é `null` e
+aparece como "—", nunca 0%.
+
+Verificados renderizando no Chromium contra os 431 reais — foi o render
+que pegou a tela em branco antes de a pipeline resolver, o botão a meia
+tela do nome, o segmento repetido três vezes na linha e a barra do
+gráfico esticando a 400px com poucos dias.
+
 ---
 
 *Última atualização: Setembro 2026*

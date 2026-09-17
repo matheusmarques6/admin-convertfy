@@ -121,6 +121,7 @@ export const COMERCIAL_NAV: NavGroup[] = [
     label: "Analise",
     items: [
       { id: "comercial.funil", name: "Funil", href: ROUTES.ADMIN.COMERCIAL.FUNIL, icon: Filter },
+      { id: "comercial.prospeccao", name: "Prospecção", href: ROUTES.ADMIN.COMERCIAL.PROSPECCAO, icon: Megaphone },
       { id: "comercial.reports", name: "Reports", href: ROUTES.ADMIN.COMERCIAL.REPORTS, icon: BarChart3 },
       // (Onda 1: nomes com acentuação correta — a UI mostra pt-BR real.)
     ],
