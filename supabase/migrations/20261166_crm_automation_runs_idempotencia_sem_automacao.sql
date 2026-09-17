@@ -16,6 +16,13 @@
 -- índice parcial + `on_conflict=` do PostgREST não se aplica.
 --
 -- Idempotente: pode rodar de novo.
+--
+-- NUMERAÇÃO: nasceu como 20261165 e foi APLICADA em produção com esse
+-- nome (`20261165_crm_automation_runs_idempotencia_sem_automacao`, em
+-- 17/09 16:44 UTC). Outra sessão criou um 20261165 no mesmo dia
+-- (agent_studio_runs_agregado, aplicado 16:41), então o arquivo foi
+-- renumerado pra 20261166 — a ordem do arquivo passa a bater com a
+-- ordem real de aplicação. O registro no banco guarda o nome antigo.
 
 create unique index if not exists uniq_crm_automation_runs_idem_sem_automacao
   on public.crm_automation_runs (idempotency_key)
