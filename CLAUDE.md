@@ -9507,3 +9507,89 @@ por grupo, chaves canônicas e a consulta de lacunas) e as fichas de
 retratos datados, e `docs/n8n/email-copy.workflow.json` é um export da
 ferramenta externa, onde o dispositivo aparece só como dado de amostra
 pinado, sem nenhuma regra lendo.
+
+## O lead qualificado fala com a gente na mesma hora (17/09)
+
+O funil qualificava e deixava a pessoa parada numa tela dizendo "nosso
+time te chama no WhatsApp em até 1 dia útil" — o pior momento possível
+para esfriar. Quem acabou de responder que fatura acima do corte está com
+a mão no teclado AGORA. Agora o final aprovado abre a conversa no
+WhatsApp com o texto já escrito, ou leva direto ao horário no Calendly.
+
+**É por FINAL, nunca pelo formulário.** O diagnóstico tem quatro finais e
+só um aprova: um destino no nível do formulário mandaria para o link de
+agendamento justamente quem acabou de ler que a conta não fecha, e a
+agenda encheria de call que não deveria existir. `FormEnding.destino`
+(`DestinoDoFinal`) é typed: `whatsapp` (número + mensagem), `calendly`
+(link) ou `url`. Ele **vence o `redirect_url`** — este é um endereço fixo
+para todo mundo, aquele carrega o dado de quem respondeu.
+
+**O formato de página única não tem finais**, e é ele que está com verba
+(`pagina-de-vendas`: 58 cadastros, régua de qualificado ligada). Lá o
+destino é do formulário e quem decide quem o recebe é a MESMA régua do
+evento `LeadQualificado`, avaliada no servidor (`tracking.qualified` já
+voltava no submit e ninguém lia). Mora em
+`crm_forms.settings.destino_qualificado` — sem migration, a coluna já
+existe — e o PATCH o aceita como campo **NOMEADO**, fazendo MERGE: a mesma
+coluna guarda o `abandono_stage_id`, e aceitar o objeto inteiro faria um
+save do editor apagá-lo em silêncio.
+
+**As regras do módulo puro** (`lib/forms/destino.ts`, 22 testes), cada uma
+contra um erro mudo:
+
+1. **`wa.me` sem DDI não resolve.** Reusa `linkDoWhatsApp`, que saiu da
+   cadência da prospecção para `lib/whatsapp/link.ts` (importar
+   `crm/cadencia` puxaria o vocabulário de segmentos para o bundle
+   público) — os dois lados chamam a MESMA função, então divergir é
+   impossível por construção. O número do campo é **o NOSSO**, não o
+   telefone que o lead digitou; o rótulo diz isso porque a confusão é
+   fácil e o estrago é a pessoa abrir uma conversa consigo mesma.
+2. **Texto não codificado é texto cortado** — um `&` ou `#` na mensagem
+   come o resto sem avisar. O `{{loja}}` passa pelo MESMO `aplicarRecall`
+   da tela.
+3. **`javascript:` é recusado.** O destino é a única parte do formulário
+   que o navegador EXECUTA, e o endereço vem de um campo gravado.
+4. **Destino incompleto devolve `null`** e a tela final aparece como
+   sempre — configuração pela metade não pode custar o lead. Quem diz o
+   que falta é `conferirDestino`, no editor, e ela **não reprova recall no
+   meio do endereço** (`https://app/{{loja}}` só resolve na hora).
+5. **Calendly**: `name` + `email` vêm do `map_to_lead_field` (nome e
+   sobrenome compostos, como o submit faz para o card do CRM), a query já
+   escrita no link é preservada, e a **UTM da VISITA vence** a do link —
+   ela identifica o clique que pagou por este lead. Valor vazio não é
+   escrito: `?name=` deixa o campo em branco do mesmo jeito e ainda dá ao
+   link a aparência de preenchido.
+
+**`normalizarEnding` apagava o destino em silêncio** — ela descarta todo
+campo que não conhece e roda no GET público E na publicação, então o
+WhatsApp configurado sumiria no primeiro clique em Publicar, sem erro
+nenhum. `normalizarDestino` é a porta ÚNICA (schema e rota), e um teste
+publica um final com destino e exige que ele sobreviva.
+
+**O automático espera ~1,2s** (`ESPERA_DO_DESTINO_MS`, uma constante para
+os dois formatos) por duas razões que teste nenhum pega: o pixel do
+browser acabou de disparar e a requisição ainda está no ar — navegar
+cancela o que não saiu; e quem não tem WhatsApp instalado precisa de algo
+na tela. O botão fica visível nos dois casos, que é o que salva o
+bloqueio. **Na PRÉVIA ele não navega**: o formulário é renderizado dentro
+do editor, na MESMA janela, e levaria o operador para o WhatsApp com o
+rascunho não salvo — a tela diz "no ar, esta tela leva sozinha; na prévia,
+não". Na prévia do formato de página única o destino nem é montado, e isso
+é declarado: a régua de qualificação é do servidor, e fingir que qualificou
+mostraria um botão que o visitante real pode não ver.
+
+*Verificado renderizando* o funil inteiro no Chromium, nos dois caminhos:
+o `href` sai `https://wa.me/5511999998888?text=…` com `{{loja}}` resolvido,
+e o do Calendly sai `…?hide_gdpr_banner=1&name=Ana&email=ana%40lojinha.com`
+com a navegação chegando ao destino. **Foi o render que pegou a navegação
+disparando na prévia** — nenhum teste quebrava.
+
+**O arnês de render mentiu de novo**, pela terceira vez neste repo: o
+`index.html` carrega o bundle **inline**, então reconstruir `bundle.js`
+não muda nada e a tela continua mostrando o código de horas atrás. Foi
+assim que o "1 →" apareceu num render de um arquivo onde ele já não
+existia. Regerar o HTML é parte do build, não um passo opcional.
+
+De passagem, **o indicador de número da tela ("1 →") saiu do formulário
+conversacional** a pedido: `calcularProgresso` fica, porque é ele que
+alimenta a barra de progresso.

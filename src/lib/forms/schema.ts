@@ -30,6 +30,7 @@ import type {
   LogicRule,
 } from "@/types/forms-conversational"
 import type { QualifiedOperator } from "@/types/form-tracking"
+import { normalizarDestino } from "./destino"
 
 /** A linha de `crm_form_fields`, como as rotas a selecionam. */
 export interface CampoLegado {
@@ -241,6 +242,11 @@ function normalizarEnding(raw: unknown): FormEnding | null {
     redirect_url: typeof e.redirect_url === "string" && e.redirect_url ? e.redirect_url : null,
     button_label: typeof e.button_label === "string" && e.button_label ? e.button_label : null,
     button_url: typeof e.button_url === "string" && e.button_url ? e.button_url : null,
+    // O destino tem de ser normalizado AQUI. Campo que o normalizador
+    // não conhece é descartado, e este roda no GET público e na
+    // publicação: sem esta linha, o WhatsApp configurado no editor
+    // sumiria no primeiro clique em Publicar, sem erro nenhum.
+    destino: normalizarDestino(e.destino),
     ...(e.disqualified === true ? { disqualified: true } : {}),
   }
 }

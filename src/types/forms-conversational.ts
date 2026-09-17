@@ -187,6 +187,31 @@ export interface LogicRule {
   set?: Array<{ nome: string; operacao: "set" | "add"; valor: string | number }>
 }
 
+export const TIPOS_DE_DESTINO = ["whatsapp", "calendly", "url"] as const
+export type TipoDeDestino = (typeof TIPOS_DE_DESTINO)[number]
+
+/**
+ * Para onde o lead vai quando termina. A régua que monta o endereço a
+ * partir disto é pura e vive em `lib/forms/destino`.
+ */
+export interface DestinoDoFinal {
+  tipo: TipoDeDestino
+  /**
+   * WhatsApp: **o NOSSO número**, o que vai RECEBER a mensagem — não o
+   * telefone que o lead acabou de digitar. A confusão é fácil e o
+   * estrago é a pessoa abrir uma conversa consigo mesma.
+   */
+  numero?: string | null
+  /** WhatsApp: o texto que já vai escrito. Aceita `{{pergunta}}`. */
+  mensagem?: string | null
+  /** Calendly ou endereço livre. Aceita `{{pergunta}}`. */
+  url?: string | null
+  /** Leva sozinho, sem esperar clique. O botão continua na tela. */
+  automatico?: boolean
+  /** Texto do botão. Vazio usa o padrão do tipo. */
+  rotulo?: string | null
+}
+
 export interface FormEnding {
   ref: string
   /** Título da tela final. Aceita recall. */
@@ -197,6 +222,18 @@ export interface FormEnding {
   /** Rótulo de um botão opcional (ex.: "Agendar diagnóstico"). */
   button_label?: string | null
   button_url?: string | null
+  /**
+   * Para onde o lead vai daqui — WhatsApp com o texto pronto, o horário
+   * no Calendly, ou um endereço livre. Ver `lib/forms/destino`.
+   *
+   * Vive no FINAL, e não no formulário, porque só um dos quatro finais
+   * do diagnóstico aprova: um destino no nível do formulário mandaria
+   * para o agendamento quem acabou de ler que a conta não fecha.
+   *
+   * Vence o `redirect_url` quando os dois existem: ele carrega o dado de
+   * quem respondeu, o outro é um endereço fixo para todo mundo.
+   */
+  destino?: DestinoDoFinal | null
   /**
    * Marca o desfecho como desqualificado. Muda a `status` da sessão para
    * `disqualified` — o que NÃO é abandono e não pode ser cobrado como tal.

@@ -13,6 +13,7 @@ import { resolveOrgId } from "@/lib/api/resolve-org"
 import { encrypt } from "@/lib/crypto"
 import { normalizeTrackingConfig } from "@/types/form-tracking"
 import { normalizarSchema } from "@/lib/forms/schema"
+import { normalizarDestino } from "@/lib/forms/destino"
 import { mapaPorPosicao, remapearRefs } from "@/lib/forms/remapear-refs"
 import { logger } from "@/lib/logger"
 
@@ -41,6 +42,7 @@ export async function GET(
          facebook_pixel_id, google_ads_id, google_analytics_id,
          meta_capi_token, meta_test_event_code, google_ads_conversion_label,
          tracking_config, display_mode, draft_schema, published_version_id, has_unpublished_changes,
+         settings,
          submissions_count, views_count, created_at, updated_at,
          pipeline:pipelines(id, name, scope, color),
          stage:pipeline_stages!crm_forms_stage_id_fkey(id, name, color)`,
@@ -222,6 +224,17 @@ const patchFormSchema = z.object({
    * está olhando. Normalizado aqui, então JSON torto nunca chega ao banco.
    */
   draft_schema: z.record(z.string(), z.unknown()).nullable().optional(),
+  /**
+   * Para onde vai o lead QUALIFICADO no formato de página única — ele
+   * não tem finais, então o destino é do formulário e a régua de
+   * qualificação é que decide quem o recebe. Quem não qualifica segue no
+   * `success_message`/`redirect_url` de sempre.
+   *
+   * Campo NOMEADO de propósito: `settings` guarda também o
+   * `abandono_stage_id`, e aceitar o objeto inteiro faria um save do
+   * editor — que não conhece essa chave — apagá-la em silêncio.
+   */
+  destino_qualificado: z.record(z.string(), z.unknown()).nullable().optional(),
   // Quando fields fornecido, faz replace total: deleta os antigos e
   // insere os novos. Editor envia o array completo a cada save.
   fields: z.array(fieldUpsertSchema).optional(),
@@ -240,12 +253,29 @@ export async function PATCH(
 
     const body = await request.json()
     const parsed = patchFormSchema.parse(body)
-    const { fields, redirect_url, logo_url, meta_capi_token, draft_schema, ...formData } = parsed
+    const { fields, redirect_url, logo_url, meta_capi_token, draft_schema, destino_qualificado, ...formData } = parsed
 
     // Coerce empty string -> null pra colunas URL.
     const update: Record<string, unknown> = { ...formData }
     if (redirect_url !== undefined) update.redirect_url = redirect_url || null
     if (logo_url !== undefined) update.logo_url = logo_url || null
+
+    // Destino do qualificado: MERGE em `settings`, nunca replace — a
+    // mesma coluna guarda o `abandono_stage_id`, e sobrescrevê-la
+    // desligaria a fila do abandono sem nada dizer.
+    if (destino_qualificado !== undefined) {
+      const { data: atual } = await admin
+        .from("crm_forms")
+        .select("settings")
+        .eq("id", id)
+        .eq("org_id", orgId)
+        .maybeSingle()
+      const settings = { ...((atual?.settings as Record<string, unknown>) ?? {}) }
+      const limpo = normalizarDestino(destino_qualificado)
+      if (limpo) settings.destino_qualificado = limpo
+      else delete settings.destino_qualificado
+      update.settings = settings
+    }
 
     // Token da CAPI: so grava (cifrado) quando vem string nao-vazia. Vazio
     // ou omitido = mantem o atual (a UI so envia quando o usuario altera).

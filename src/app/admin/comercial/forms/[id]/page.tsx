@@ -41,6 +41,9 @@ import { FormResults } from "@/components/forms/form-results"
 import { FormPublishPanel } from "@/components/forms/form-publish-panel"
 import { ConversationalFormView } from "@/components/forms/conversational-form-view"
 import { FlowEditor } from "@/components/forms/flow-editor"
+import { DestinoEditor } from "@/components/forms/destino-editor"
+import { normalizarDestino } from "@/lib/forms/destino"
+import type { DestinoDoFinal } from "@/types/forms-conversational"
 import { montarVersao } from "@/lib/forms/publicar"
 import { remapearRefs } from "@/lib/forms/remapear-refs"
 import { normalizarSchema } from "@/lib/forms/schema"
@@ -140,6 +143,7 @@ interface FormDetail {
     stage_id: string | null
     success_message: string | null
     redirect_url: string | null
+    settings?: Record<string, unknown> | null
     logo_url: string | null
     facebook_pixel_id: string | null
     google_ads_id: string | null
@@ -304,6 +308,7 @@ export default function FormEditorPage({
   const [successMessage, setSuccessMessage] = useState("")
   const [displayMode, setDisplayMode] = useState<"classic" | "conversational">("classic")
   const [redirectUrl, setRedirectUrl] = useState("")
+  const [destinoQualificado, setDestinoQualificado] = useState<DestinoDoFinal | null>(null)
   const [theme, setTheme] = useState<FormTheme>({})
   /**
    * A logo do formulário. Vazia = a da Convertfy (é o padrão, e o que
@@ -362,6 +367,9 @@ export default function FormEditorPage({
         : "classic",
     )
     setRedirectUrl(data.form.redirect_url ?? "")
+    setDestinoQualificado(
+      normalizarDestino((data.form.settings as Record<string, unknown> | null)?.destino_qualificado),
+    )
     setTheme(data.form.theme ?? {})
     setLogoUrl(data.form.logo_url ?? "")
     setFields(data.fields)
@@ -640,6 +648,7 @@ export default function FormEditorPage({
           logo_url: logoUrl.trim() || null,
           success_message: successMessage || null,
           redirect_url: redirectUrl || null,
+          destino_qualificado: destinoQualificado,
           display_mode: displayMode,
           fields: fields.map((f, i) => ({
             ...f,
@@ -705,7 +714,7 @@ export default function FormEditorPage({
     } finally {
       setSaving(false)
     }
-  }, [id, name, slug, description, pipelineId, stageId, theme, logoUrl, successMessage, redirectUrl, displayMode, fields, fluxo, rascunho, fluxoIndisponivel, tracking, mutate])
+  }, [id, name, slug, description, pipelineId, stageId, theme, logoUrl, successMessage, redirectUrl, destinoQualificado, displayMode, fields, fluxo, rascunho, fluxoIndisponivel, tracking, mutate])
 
   /**
    * Põe o formulário no ar ou tira.
@@ -757,6 +766,7 @@ export default function FormEditorPage({
         logo_url: logoUrl || null,
         success_message: successMessage || null,
         redirect_url: redirectUrl || null,
+        destino_qualificado: destinoQualificado,
       },
       fields: fields.map((f, i) => ({
         id: f.id ?? `temp-${i}`,
@@ -771,7 +781,7 @@ export default function FormEditorPage({
         map_to_lead_field: f.map_to_lead_field ?? null,
       })),
     }
-  }, [id, name, slug, description, theme, logoUrl, successMessage, redirectUrl, fields])
+  }, [id, name, slug, description, theme, logoUrl, successMessage, redirectUrl, destinoQualificado, fields])
 
   if (isLoading) {
     return (
@@ -977,6 +987,8 @@ export default function FormEditorPage({
               successMessage={successMessage}
               setSuccessMessage={setSuccessMessage}
               redirectUrl={redirectUrl}
+              destinoQualificado={destinoQualificado}
+              setDestinoQualificado={setDestinoQualificado}
               setRedirectUrl={setRedirectUrl}
             />
           )}
@@ -2635,6 +2647,8 @@ function AfterTab({
   setSuccessMessage,
   redirectUrl,
   setRedirectUrl,
+  destinoQualificado,
+  setDestinoQualificado,
 }: {
   pipelines: PipelineLite[]
   stagesForPipeline: Array<{ id: string; name: string }>
@@ -2646,6 +2660,8 @@ function AfterTab({
   setSuccessMessage: (v: string) => void
   redirectUrl: string
   setRedirectUrl: (v: string) => void
+  destinoQualificado: DestinoDoFinal | null
+  setDestinoQualificado: (d: DestinoDoFinal | null) => void
 }) {
   return (
     <Stack>
@@ -2717,6 +2733,19 @@ function AfterTab({
           placeholder="https://"
         />
       </Field>
+
+      <Divider />
+
+      <SectionTitle
+        title="Lead qualificado"
+        hint="Vale só para quem a régua de qualificação aprovou — a mesma do evento LeadQualificado. Quem não qualifica segue na mensagem acima."
+      />
+      <DestinoEditor
+        destino={destinoQualificado}
+        onChange={setDestinoQualificado}
+        titulo="Para onde o lead qualificado vai"
+        apoio="Vence o redirecionamento acima, que é o mesmo endereço para todo mundo."
+      />
     </Stack>
   )
 }
