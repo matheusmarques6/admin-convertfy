@@ -26,6 +26,18 @@ export const SEGMENTOS = [
 ] as const
 export type Segmento = (typeof SEGMENTOS)[number]
 
+/**
+ * Em que pé está a loja do lead. Só "Vendendo" tem fit para a Black
+ * Friday agora; o resto é nutrição pra reabordar em janeiro.
+ */
+export const MATURIDADES = [
+  "Sem loja",
+  "Em construção",
+  "No ar sem vendas",
+  "Vendendo",
+] as const
+export type Maturidade = (typeof MATURIDADES)[number]
+
 /** Tag que marca quem pediu pra não ser contatado. */
 export const TAG_NAO_CONTATAR = "nao-contatar"
 
@@ -50,6 +62,8 @@ export interface SinaisDeProspeccao {
   proximoContato: string | null
   /** Ângulo de abordagem escrito na importação. */
   angulo: string | null
+  /** Maturidade da loja, preenchida na qualificação. */
+  maturidade: string | null
 }
 
 type CamposCrus = Record<string, unknown> | null | undefined
@@ -129,6 +143,7 @@ export function sinaisDoNegocio(custom: CamposCrus): SinaisDeProspeccao {
     followupVencido: c.followup_vencido === true || c.followup_vencido === "true",
     proximoContato: texto(c.proximo_contato),
     angulo: texto(c.angulo_abordagem),
+    maturidade: texto(c.maturidade_loja),
   }
 }
 

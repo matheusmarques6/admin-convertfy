@@ -96,7 +96,8 @@ export function BotaoToque({
         onErro?.(msg)
         return
       }
-      const dados = (json?.data ?? json) as RespostaDoToque
+      // `successResponse` espalha no topo — não existe `json.data`.
+      const dados = json as RespostaDoToque
       if (janela) janela.location.href = dados.url
       else window.open(dados.url, "_blank", "noopener,noreferrer")
       onFeito?.(dados)

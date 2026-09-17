@@ -104,6 +104,7 @@ export const ROUTES = {
       CANAIS: "/admin/comercial/canais",
       INSTAGRAM: "/admin/comercial/instagram",
       AGENDA: "/admin/comercial/agenda",
+      FILA: "/admin/comercial/fila",
       PRODUTOS: "/admin/comercial/produtos",
       FUNIL: "/admin/comercial/funil",
       REPORTS: "/admin/comercial/reports",

@@ -554,10 +554,9 @@ export function PipelineBoardView({
     // Sugestão é conselho sobre um move que JÁ aconteceu — toast neutro,
     // nunca erro, senão o vendedor acha que precisa desfazer.
     const corpo = (await res.json().catch(() => null)) as {
-      data?: { sugestoes?: Array<{ mensagem: string }> }
       sugestoes?: Array<{ mensagem: string }>
     } | null
-    const sugestoes = corpo?.data?.sugestoes ?? corpo?.sugestoes ?? []
+    const sugestoes = corpo?.sugestoes ?? []
     if (sugestoes.length > 0) {
       setToast({ kind: "success", msg: sugestoes.map((x) => x.mensagem).join(" ") })
     }

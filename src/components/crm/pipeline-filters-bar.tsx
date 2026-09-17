@@ -20,7 +20,8 @@ import {
   Check,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { PRIORIDADES, SEGMENTOS, sinaisDoNegocio } from "@/lib/crm/prospeccao"
+import { MATURIDADES, PRIORIDADES, SEGMENTOS, sinaisDoNegocio } from "@/lib/crm/prospeccao"
+import { normalizeForCompare } from "@/lib/tracking/normalizar-comparacao"
 
 export type SortOrder =
   | "created_desc"
@@ -45,6 +46,8 @@ export interface PipelineFilters {
      spread sobre EMPTY_FILTERS, então ela continua valendo. */
   prioridades: string[]
   segmentos: string[]
+  /** Maturidade da loja (`custom_fields.maturidade_loja`). */
+  maturidades: string[]
   /** Só negócios com `alerta_dados` preenchido. */
   comAlerta: boolean
   /** Só negócios que o job de SLA marcou como follow-up vencido. */
@@ -65,6 +68,7 @@ export const EMPTY_FILTERS: PipelineFilters = {
   movedTo: null,
   prioridades: [],
   segmentos: [],
+  maturidades: [],
   comAlerta: false,
   followupVencido: false,
 }
@@ -99,6 +103,7 @@ function countActiveFilters(f: PipelineFilters): number {
   if (f.owners.length) n++
   if (f.prioridades?.length) n++
   if (f.segmentos?.length) n++
+  if (f.maturidades?.length) n++
   if (f.comAlerta) n++
   if (f.followupVencido) n++
   if (f.statuses.length) n++
@@ -342,6 +347,18 @@ function FiltersPopover({
                 options={SEGMENTOS.map((sg) => ({ value: sg, label: sg }))}
                 selected={draft.segmentos ?? []}
                 onChange={(next) => setDraft({ ...draft, segmentos: next })}
+                emptyMsg=""
+              />
+            </FilterSection>
+
+            <FilterSection
+              title="Maturidade da loja"
+              countSelected={draft.maturidades?.length ?? 0}
+            >
+              <MultiSelectList
+                options={MATURIDADES.map((m) => ({ value: m, label: m }))}
+                selected={draft.maturidades ?? []}
+                onChange={(next) => setDraft({ ...draft, maturidades: next })}
                 emptyMsg=""
               />
             </FilterSection>
@@ -700,6 +717,15 @@ export function applyFiltersAndSort<
     list = list.filter((d) => {
       const seg = sinaisDoNegocio(d.custom_fields).segmento
       return seg != null && filters.segmentos.includes(seg)
+    })
+  }
+  if (filters.maturidades?.length) {
+    // Comparação normalizada: o valor vem do select do campo, mas uma
+    // importação antiga pode ter gravado sem acento.
+    const alvo = filters.maturidades.map((m) => normalizeForCompare(m))
+    list = list.filter((d) => {
+      const m = sinaisDoNegocio(d.custom_fields).maturidade
+      return m != null && alvo.includes(normalizeForCompare(m))
     })
   }
   if (filters.comAlerta) {
