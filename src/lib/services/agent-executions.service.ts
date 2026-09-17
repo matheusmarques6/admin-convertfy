@@ -83,6 +83,17 @@ interface LatestRunRow {
   retry_count: number | null
   error_message: string | null
   created_at: string
+  /** Agregados da TENTATIVA (migration 20261165). Ver `studio-graph.ts`. */
+  batch_id?: string | null
+  runs_count?: number | null
+  failed_count?: number | null
+  cost_cents_total?: number | null
+  tokens_input_total?: number | null
+  tokens_output_total?: number | null
+  duration_ms_max?: number | null
+  duration_ms_total?: number | null
+  error_run_id?: string | null
+  error_message_first?: string | null
 }
 
 const EMAIL_SELECT = `id, number, name, status, generation_batch_id, ready_at,
@@ -215,6 +226,16 @@ export async function fetchAgentExecutions(
       retry_count: r.retry_count,
       error_message: r.error_message,
       created_at: r.created_at,
+      batch_id: r.batch_id ?? null,
+      runs_count: r.runs_count ?? null,
+      failed_count: r.failed_count ?? null,
+      cost_cents_total: r.cost_cents_total != null ? Number(r.cost_cents_total) : null,
+      tokens_input_total: r.tokens_input_total != null ? Number(r.tokens_input_total) : null,
+      tokens_output_total: r.tokens_output_total != null ? Number(r.tokens_output_total) : null,
+      duration_ms_max: r.duration_ms_max ?? null,
+      duration_ms_total: r.duration_ms_total ?? null,
+      error_run_id: r.error_run_id ?? null,
+      error_message_first: r.error_message_first ?? null,
     }))
 
     return {
@@ -233,7 +254,11 @@ export async function fetchAgentExecutions(
       flow_id: e.flow?.id ?? null,
       flow_type: e.flow?.flow_type ?? null,
       flow_type_label: flowTypeLabel(e.flow?.flow_type),
-      cost_cents: runs.reduce((s, r) => s + (r.cost_cents ?? 0), 0),
+      // O custo da execução soma o TOTAL da tentativa de cada agente, não a
+      // run representativa: com `DISTINCT ON` devolvendo uma linha e o
+      // agente de imagem gravando uma por campo, a soma antiga ficava
+      // ~US$ 2 abaixo do real em toda peça com imagem (medido em 17/09).
+      cost_cents: runs.reduce((s, r) => s + (r.cost_cents_total ?? r.cost_cents ?? 0), 0),
       runs,
       manual: manualPorEmail.get(e.id) ?? null,
     } satisfies AgentExecution

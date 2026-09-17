@@ -71,6 +71,65 @@ describe("projectRuns", () => {
     expect(runs.copy.runId).toBe("run-copy")
   })
 
+  it("uma linha com os agregados vale por N — o caso REAL da Hero Boxers", () => {
+    // Medido no batch 6c746be0 (17/09): 11 runs de `image`, US$ 2,321 e
+    // 1.495s. A linha representativa sozinha dizia US$ 0,254 e 137s, e as
+    // duas falhas não apareciam em lugar nenhum.
+    const runs = projectRuns(
+      [
+        run("image", "success", {
+          duration_ms: 137_000,
+          cost_cents: 25.4,
+          runs_count: 11,
+          failed_count: 2,
+          cost_cents_total: 232.1,
+          duration_ms_max: 288_000,
+          duration_ms_total: 1_495_000,
+          error_run_id: "run-que-falhou",
+          error_message_first: "provider recusou",
+          batch_id: "batch-1",
+        }),
+      ],
+      "success",
+    )
+    expect(runs.image.count).toBe(11)
+    expect(runs.image.failed).toBe(2)
+    expect(runs.image.usd).toBeCloseTo(2.321, 3)
+    expect(runs.image.durSec).toBe(288)
+    expect(runs.image.durSomaSec).toBe(1_495)
+    expect(runs.image.batchId).toBe("batch-1")
+  })
+
+  it("falha DENTRO do agregado pinta o nó de erro e aponta a run que falhou", () => {
+    // Sem isto, a linha representativa `success` deixava o nó verde e a
+    // imagem quebrada sumia — o defeito das seis falhas invisíveis.
+    const runs = projectRuns(
+      [
+        run("image", "success", {
+          runs_count: 11,
+          failed_count: 1,
+          error_run_id: "run-que-falhou",
+          error_message_first: "provider recusou",
+        }),
+      ],
+      "success",
+    )
+    expect(runs.image.status).toBe("erro")
+    expect(runs.image.runId).toBe("run-que-falhou")
+    expect(runs.image.err).toBe("provider recusou")
+  })
+
+  it("SEM os agregados nada muda — a garantia da aba Teste e do payload antigo", () => {
+    const runs = projectRuns(
+      [run("image", "success", { duration_ms: 137_000, cost_cents: 25.4 })],
+      "success",
+    )
+    expect(runs.image.status).toBe("sucesso")
+    expect(runs.image.count).toBeUndefined()
+    expect(runs.image.usd).toBeCloseTo(0.254, 4)
+    expect(runs.image.durSec).toBe(137)
+  })
+
   it("mapeia status da API e preenche métricas", () => {
     const runs = projectRuns(
       [run("qa", "success", { duration_ms: 11400, cost_cents: 1 })],

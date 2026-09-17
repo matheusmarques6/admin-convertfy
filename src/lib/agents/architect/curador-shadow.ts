@@ -69,6 +69,15 @@ import {
   restanteDoOrcamento,
   tetoDeRelogioDoAgente,
 } from "@/lib/agents/fase1-orcamento"
+import { renderImageTemplate } from "@/lib/agents/image/template-renderer"
+import {
+  CAUDA_TELEMETRIA_MAX,
+  SAIDA_TELEMETRIA_MAX,
+  novoOrcamentoDeTexto,
+  registrarTexto,
+  type ConsumoDaChamada,
+  type ConsumoPorChamada,
+} from "./curador-telemetria-chamada"
 import { usageOf } from "@/lib/agents/chains/step-usage"
 import { RespostaVaziaError } from "@/lib/agents/resposta-vazia"
 import { parseCuratorRanking, type ParsedRanking, type RankedChoice } from "./curator-ranking.parser"
@@ -1311,17 +1320,43 @@ export async function runCuradorShadow(
    * se o teto novo precisa ir para a shortlist, para a escolha, ou para as
    * duas, e a próxima decisão de teto vira chute.
    */
-  const porChamada: Record<
-    string,
-    { tokens_output: number; tokens_input: number; tokens_cache?: number; tokens_cache_escrita?: number; seg: number } | null
-  > = {}
-  const medir = async <T extends { tokensInput: number; tokensOutput: number; cachedTokens?: number; cacheWriteTokens?: number }>(
-    etapa: string,
+  const porChamada: ConsumoPorChamada = {}
+  // Orçamento SOMADO de texto da run: ver `curador-telemetria-chamada.ts`.
+  // O `parsed_output` é lido inteiro em toda retomada, então a telemetria
+  // não pode encarecer a retomada que existe para economizar.
+  const orcamentoDeTexto = novoOrcamentoDeTexto()
+  /**
+   * Contexto da chamada que só o CALLER conhece.
+   *
+   * A cauda vem renderizada de fora, nunca fatiada do prompt gravado:
+   * `segUser.prompt` passa por `semMarcadores()` e o `renderImageTemplate`
+   * do `invokeAgent` não, então o `CACHE_PREFIX_MARKER` desalinha os dois
+   * por um byte e um `slice(prefixo.length)` sairia torto.
+   */
+  interface ContextoDaChamada {
+    etapa: string
+    cauda?: string
+    chave?: ConsumoDaChamada["chave"]
+    teto?: number
+    modelo?: string
+  }
+  const medir = async <T extends { raw?: string; tokensInput: number; tokensOutput: number; cachedTokens?: number; cacheWriteTokens?: number; finishReason?: string }>(
+    ctx: string | ContextoDaChamada,
     fn: () => Promise<T>,
   ): Promise<T> => {
+    const c: ContextoDaChamada = typeof ctx === "string" ? { etapa: ctx } : ctx
+    const etapa = c.etapa
     const inicio = Date.now()
+    const cauda = registrarTexto(orcamentoDeTexto, c.cauda, CAUDA_TELEMETRIA_MAX)
+    const comum = {
+      ...(cauda ? { cauda: cauda.texto, cauda_chars: cauda.chars, cauda_truncada: cauda.truncado } : {}),
+      ...(c.chave ? { chave: c.chave } : {}),
+      ...(typeof c.teto === "number" ? { teto: c.teto } : {}),
+      ...(c.modelo ? { modelo: c.modelo } : {}),
+    }
     try {
       const r = await fn()
+      const saida = registrarTexto(orcamentoDeTexto, r.raw, SAIDA_TELEMETRIA_MAX)
       porChamada[etapa] = {
         tokens_input: r.tokensInput,
         tokens_output: r.tokensOutput,
@@ -1331,6 +1366,14 @@ export async function runCuradorShadow(
         ...(typeof r.cachedTokens === "number" ? { tokens_cache: r.cachedTokens } : {}),
         ...(typeof r.cacheWriteTokens === "number" ? { tokens_cache_escrita: r.cacheWriteTokens } : {}),
         seg: Math.round((Date.now() - inicio) / 1000),
+        ms: Date.now() - inicio,
+        // O custo REAL do OpenRouter desta chamada. Ele sempre chegou aqui
+        // e era descartado: só a SOMA ia para `cost_cents`, e "quanto
+        // gastou em cada vez" não tinha resposta em lugar nenhum.
+        custo_usd: (r as { costUsd?: number }).costUsd ?? 0,
+        ...(r.finishReason ? { finish_reason: r.finishReason } : {}),
+        ...comum,
+        ...(saida ? { saida: saida.texto, saida_chars: saida.chars, saida_truncada: saida.truncado } : {}),
       }
       return r
     } catch (e) {
@@ -1340,6 +1383,9 @@ export async function runCuradorShadow(
         tokens_input: 0,
         tokens_output: 0,
         seg: Math.round((Date.now() - inicio) / 1000),
+        ms: Date.now() - inicio,
+        erro: e instanceof Error ? e.message : String(e),
+        ...comum,
       }
       throw e
     }
@@ -1615,7 +1661,14 @@ export async function runCuradorShadow(
           .map((i) => `- block_index ${i} (${p.liveSections[i] ?? "?"})`)
           .join("\n"),
       }
-      const shortlistCall = await medir("shortlist", () =>
+      const shortlistCall = await medir(
+        {
+          etapa: "shortlist",
+          cauda: renderImageTemplate(CAUDA_SHORTLIST_USER, shortlistVars),
+          teto: maxTokens,
+          modelo: config.model,
+        },
+        () =>
         naEtapa("shortlist", () =>
         invokeAgent(
           { ...config, user_template: `${config.user_template}${CAUDA_SHORTLIST_USER}`, max_tokens: maxTokens },
@@ -1727,7 +1780,7 @@ export async function runCuradorShadow(
         nomePorVariante: new Map(p.catalogComExtras.compact.entries.map((e) => [e.variant_id, e.title])),
         // Grava assim que CADA posição fecha — é o que faz "continuar até
         // acabar" sobreviver ao fim do `maxDuration`. Fail-open por dentro.
-        onDecidida: (_escolha, todas) => gravarProgressoDoLeque(runId, todas),
+        onDecidida: (_escolha, todas) => gravarProgressoDoLeque(runId, todas, porChamada),
         chamar: async (pos, ja) => {
           const posVars = {
             ...vars,
@@ -1743,7 +1796,23 @@ export async function runCuradorShadow(
             ja_decididas: renderJaDecididas(ja),
           }
           const etapa = `posicao_${pos.block_index}`
-          let call = await medir(etapa, () => naEtapa(etapa, () => invokeAgent(lequeConfig, posVars, systemVars)))
+          // A chave é o ENDEREÇO da chamada: sem ela a árvore mostraria
+          // seis folhas chamadas "posicao_N" sem dizer que posição é qual.
+          const chaveDaPosicao = {
+            block_index: pos.block_index,
+            section: pos.section,
+            candidatas: (pos.candidatas.match(/\n/g)?.length ?? 0) + 1,
+          }
+          let call = await medir(
+            {
+              etapa,
+              cauda: renderImageTemplate(CAUDA_POSICAO_USER, posVars),
+              chave: chaveDaPosicao,
+              teto: tetoPorPosicao,
+              modelo: lequeConfig.model,
+            },
+            () => naEtapa(etapa, () => invokeAgent(lequeConfig, posVars, systemVars)),
+          )
           chamadasDoLeque++
           // `sem_escolha` é resposta legítima (a eliminação zerou a lista) e
           // NÃO retoma; só o JSON ilegível retoma.
@@ -1753,14 +1822,23 @@ export async function runCuradorShadow(
             (r) => parseEscolhaDaPosicao(r, pos).erro !== "json_ilegivel",
           )
           if (retomadaLigada() && motivo) {
-            const retry = await medir(`${etapa}_retomada`, () =>
+            const retomadaVars = { ...posVars, resposta_anterior: call.raw }
+            const retry = await medir(
+              {
+                etapa: `${etapa}_retomada`,
+                cauda: renderImageTemplate(CAUDA_POSICAO_USER, retomadaVars),
+                chave: chaveDaPosicao,
+                teto: tetoPorPosicao,
+                modelo: lequeConfig.model,
+              },
+              () =>
               naEtapa(`${etapa}_retomada`, () =>
                 invokeAgent(
                   {
                     ...lequeConfig,
                     user_template: `${lequeConfig.user_template}\n\n<resposta_anterior>{{resposta_anterior}}</resposta_anterior>\n${MENSAGEM_RETOMADA_POSICAO}`,
                   },
-                  { ...posVars, resposta_anterior: call.raw },
+                  retomadaVars,
                   systemVars,
                 ),
               ),
@@ -1799,15 +1877,28 @@ export async function runCuradorShadow(
         ...config,
         user_template: `${config.user_template}${CAUDA_ESCOLHA_USER}`,
       }
-      finalCall = await medir("escolha", () =>
-        naEtapa("escolha", () => invokeAgent(finalConfig, finalVars, systemVars)),
+      finalCall = await medir(
+        {
+          etapa: "escolha",
+          cauda: renderImageTemplate(CAUDA_ESCOLHA_USER, finalVars),
+          teto: finalConfig.max_tokens,
+          modelo: finalConfig.model,
+        },
+        () => naEtapa("escolha", () => invokeAgent(finalConfig, finalVars, systemVars)),
       )
       // Uma retomada curta preserva o comportamento de recuperação do JSON,
       // sem reabrir ferramentas nem refazer a shortlist.
       const motivoRetomada = motivoDeRetomada(finalCall.raw, finalCall.finishReason)
       if (retomadaLigada() && motivoRetomada) {
         const retryVars = { ...finalVars, resposta_anterior: finalCall.raw }
-        const retry = await medir("retomada", () =>
+        const retry = await medir(
+          {
+            etapa: "retomada",
+            cauda: renderImageTemplate(CAUDA_ESCOLHA_USER, retryVars),
+            teto: finalConfig.max_tokens,
+            modelo: finalConfig.model,
+          },
+          () =>
           naEtapa("retomada", () =>
             invokeAgent(
               { ...finalConfig, user_template: `${finalConfig.user_template}\n\n<resposta_anterior>{{resposta_anterior}}</resposta_anterior>\n${MENSAGEM_RETOMADA_JSON}` },

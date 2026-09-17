@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import {
   CheckCheck,
+  ChevronDown,
   FileImage,
   Layers,
   Mail,
@@ -29,6 +30,7 @@ import {
   STUDIO_EDGES,
   STUDIO_GROUPS,
   STUDIO_NODES,
+  STUDIO_NODE_BY_KEY,
   edgeVisual,
   fmtDur,
   nodeMeta,
@@ -95,8 +97,11 @@ function RunPill({ run }: { run: NodeRun | null }) {
       {/* Nó que agrega várias runs (imagem gera uma por slot): "12/16"
           diz de cara quantas entraram e quantas falharam. */}
       {run.count != null && run.count > 1 && (
-        <span style={{ fontWeight: 500, color: st.c, opacity: 0.75 }}>
+        <span style={{ fontWeight: 500, color: st.c, opacity: 0.75, display: "inline-flex", alignItems: "center", gap: 2 }}>
           · {run.count - (run.failed ?? 0)}/{run.count}
+          {/* O chevron diz que o nó TEM o que abrir: sem ele, "11/11" é só
+              um número e ninguém descobre que existe um leque embaixo. */}
+          <ChevronDown size={10} />
         </span>
       )}
       {run.usd != null && run.usd > 0 && (
@@ -277,6 +282,7 @@ export function FlowCanvas({
   runs,
   modelByAgent,
   overlay,
+  arvore,
 }: {
   positions: Positions
   selected: string | null
@@ -286,7 +292,14 @@ export function FlowCanvas({
   /** Presente = modo execução (pills de status + arestas coloridas). */
   runs?: Record<string, NodeRun> | null
   modelByAgent?: Record<string, string | null>
+  /** Fica FORA do transform (barras, avisos). */
   overlay?: ReactNode
+  /**
+   * O leque de um nó, DENTRO do transform: ele é ancorado nas coordenadas
+   * do canvas e tem de acompanhar pan e zoom. Opcional de propósito — as
+   * abas Editor e Teste não passam nada e não mudam em nada.
+   */
+  arvore?: { nodeKey: string; render: (pos: { x: number; y: number }) => ReactNode } | null
 }) {
   const ref = useRef<HTMLDivElement | null>(null)
   const [view, setView] = useState<View | null>(null)
@@ -495,6 +508,11 @@ export function FlowCanvas({
             />
           )
         })}
+        {arvore &&
+          arvore.render(positions[arvore.nodeKey] ?? {
+            x: STUDIO_NODE_BY_KEY[arvore.nodeKey]?.x ?? 0,
+            y: STUDIO_NODE_BY_KEY[arvore.nodeKey]?.y ?? 0,
+          })}
       </div>
       {/* Controles de zoom */}
       <div

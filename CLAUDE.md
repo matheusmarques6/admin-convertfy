@@ -8734,6 +8734,107 @@ prometia e o código não cumpria (o primeiro clique no construtor tirava
 renderizador que entende `mesma_tela` só existe depois do deploy — gravar
 o agrupamento antes deixaria as perguntas uma por tela com os rótulos
 curtos, que é pior que hoje.
+## A árvore de chamadas: 86% do custo de imagem era invisível (set/2026, migration 20261165)
+
+Pedido: comprovação visual de que o leque do Curador está funcionando —
+quantas vezes e quanto em cada. Medido antes de escrever código, e a
+primeira resposta é que **`curador_leque_mode = 'off'`**: ele não está
+ligado. A run de 17/09 tem `parsed_output.leque = null` e duas chamadas,
+`shortlist` (49 s) e `escolha` (143 s, com **65.008 dos 71.216 tokens de
+entrada lidos do cache** — a prova de que o cache de prompt funciona). O
+canvas mostrava UMA linha: `193s · $1,542`.
+
+**E a medição achou um defeito que ninguém pediu.** A RPC
+`agent_studio_latest_runs` faz `DISTINCT ON (email, agente)` e o agente de
+imagem grava uma run **por campo**. Em 14 dias: **180 de 210 runs
+invisíveis (86%), US$ 39,78 de US$ 46,38, e SEIS falhas de geração de
+imagem que nunca apareceram em tela**. No batch `6c746be0` (Hero Boxers ·
+Welcome 1): 11 runs, US$ 2,321 e 1.495 s reais publicados como US$ 0,254 e
+137 s — e o `cost_cents` da execução, que soma essas linhas, ficava ~US$ 2
+abaixo do real em toda peça com imagem.
+
+**O `DISTINCT ON` FICA.** Ele existe pelo motivo bom (o e-mail regenerado
+439 vezes que perdia a run de um agente pro corte) e a linha escolhida não
+muda: o que muda é que ela **carrega a soma da própria tentativa** em vez de
+se passar pelo conjunto. A partição é `(email, bucket, batch_id)` com o
+batch vindo da PRÓPRIA run — é isso que impede o histórico de virar "esta
+execução custou US$ 900", e como sai da run escolhida, a perna `union all`
+da fase 1 segue sem premissa nova. `error_run_id` não é enfeite: com a
+linha representativa `success` e `failed_count = 1`, o nó pintaria VERDE
+escondendo a imagem quebrada.
+
+**Os filhos são SOB DEMANDA** (`agent_studio_run_children`), fora da
+listagem que o SSE refaz de 2 em 2 s — trazer 180 filhos em todo evento
+para um nó que ninguém clicou é o padrão que custou 372 min de CPU no
+inbox. O rótulo é derivado NO BANCO (`fieldKey` → `avatar N` do depoimento,
+que não tem fieldKey → `blockId`) e vem com a `imageUrl` como miniatura.
+**Sem `p_batch_id` o padrão é a TENTATIVA mais recente, nunca o histórico**
+— medido: sem esse recorte a função devolvia 179 runs em vez de 11, o mesmo
+defeito entrando pela porta dos filhos.
+
+**O Curador é o caso oposto**: uma run, N chamadas, e a telemetria por
+chamada não tinha custo, prompt nem saída — o `costUsd` real chegava em
+`InvokeResult` e era DESCARTADO. Enriquecido em `consumo_por_chamada`
+(`architect/curador-telemetria-chamada.ts`, puro): `custo_usd`, `ms`,
+`modelo`, `finish_reason`, `chave` (posição e seção), `erro`, e a **CAUDA**
+com a **saída** de cada chamada. Runs filhas de verdade foram recusadas:
+exigiriam `agent` novo no CHECK e — pior — `carregarEscolhasGravadas` lê
+por `(email_id, batch_id, agent)` com `limit 4`, então filhas do mesmo
+agente empurrariam a run-pai para fora da janela e **quebrariam a
+retomada**, que é o que hoje impede pagar US$ 1,7–2,5 de novo.
+
+**Só a cauda, e renderizada de novo.** O prompt é prefixo cacheado (93.231
+chars, em `rendered_prompt`) + cauda por chamada; guardar a cauda é barato e
+é exatamente o que DIFERE uma chamada da outra. Ela não é fatiada do prompt
+gravado: `segUser.prompt` passa por `semMarcadores()` e o
+`renderImageTemplate` do `invokeAgent` não, então o `CACHE_PREFIX_MARKER`
+desalinharia o corte por um byte. O risco de drift entre os dois renders é
+fechado por um TESTE que exige `userReal.endsWith(cauda)` — e que exige o
+caso sem corte, senão passaria sem comparar nada. Tetos: cauda 6.000
+**cortada NO MEIO** (a cabeça é a posição, o fim é `<ja_decididas>`; o miolo
+é `finalistas_notas`), saída 4.000, e **orçamento de 90.000 na run** —
+16 posições levariam o `parsed_output` de 41 KB para ~200 KB, e ele é lido
+inteiro em TODA retomada.
+
+**O consumo sobe junto do progresso**, e sem texto (`semTexto`): quem o
+persistia era só o `finishGenerationRun`, que não roda quando o runtime mata
+a função — exatamente quando saber o gasto mais importa. Como
+`updateGenerationRun` SUBSTITUI o `parsed_output` inteiro, gravar um sem o
+outro apagaria o outro; e com as caudas dentro seriam ~0,5 MB de WAL por
+e-mail, já que a escrita parcial roda a cada posição. O Curador **legado**
+grava `tentativa_N` no mesmo formato: sem isso a árvore sumiria justamente
+no caminho de fallback, que só aparece quando algo já deu errado.
+
+**Na tela** o leque PENDE do nó, dentro do `transform` do canvas — as
+folhas **não** entram em `STUDIO_NODES`, porque `layoutSignature()`
+invalidaria o layout arrastado do operador toda vez que ele abrisse. E a
+colisão é real: `image` está em (2092, 308) e **`copy_merge` logo abaixo,
+em (2092, 452)**; num layout de posições absolutas sem reflow, a saída é
+flutuar com fundo opaco. O cabeçalho mostra as DUAS durações ("soma 1.495s
+· maior 288s") porque os slots correm em paralelo e cada número sozinho
+mente. A folha de imagem abre no MESMO painel por `run_id`; a do Curador lê
+`consumo_por_chamada[etapa]` do detalhe que o painel já busca — com a mesma
+`chaveDoDetalhe`, então o SWR deduplica e não há requisição a mais. Na aba
+Prompt do filho, prefixo e cauda vão ROTULADOS: sem isso o operador lê que
+o Curador mandou 93 mil caracteres em cada chamada.
+
+*Verificado renderizando* (esbuild + `renderToStaticMarkup` + Chromium) os
+quatro casos. Foi o render que pegou o que nenhum teste pega: "2 falhou"
+sem concordância, o cartão de 11 filhos com **948 px de altura** cobrindo o
+nó de baixo (daí o teto por ALTURA, não por contagem — e, quando só a
+altura foi limitada, 826 px de LARGURA transbordando, daí o teto de colunas
+mais rolagem), a grade vazia reservando uma linha de 104 px, e o resumo
+quebrando em cinco linhas no cartão estreito.
+
+**O n8n**: `emails[].doutrina`, `campos[*].orientacao`, `directive`,
+`proibido` e `insumos_permitidos` já são lidos pelo flow. **`decisao.
+incentivo.mecanica` e `emails[].orientacao` NÃO** — o `incentivoTxt` toca
+só `existe`, `valor` e `codigo`, e a régua de assunto está hardcoded no
+system do `GERADOR` (50 chars, contra os 55 do admin, divergindo em
+silêncio porque a nossa não é lida). Decisão do usuário: **só o patch do
+flow**, sem mexer no admin — `docs/n8n/email-copy-patch-mecanica-e-assunto.md`.
+Até ele ser colado, a mecânica do cupom e a régua de assunto continuam no
+payload e não chegam ao redator; quem as pega é o QA, depois do fato.
 
 ## Prospecção ativa: a lista do parceiro vira operação (17/09)
 

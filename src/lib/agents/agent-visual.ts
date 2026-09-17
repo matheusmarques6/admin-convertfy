@@ -119,7 +119,7 @@ export const AGENT_VISUAL: Record<PipelineAgentKey, AgentVisual> = {
   },
   image: {
     name: "Image",
-    desc: "Gera imagens hero/banner — máx 3 por email",
+    desc: "Gera as imagens — uma run POR CAMPO (~16 num e-mail pesado)",
     color: "#7C3AED",
     bg: "#F3E8FF",
     border: "#E0CBFF",

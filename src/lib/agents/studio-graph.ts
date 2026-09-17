@@ -175,6 +175,16 @@ export interface NodeRun {
   count?: number
   /** Runs com erro dentro do agregado. */
   failed?: number
+  /**
+   * A SOMA das durações do agregado, ao lado de `durSec`, que é a maior.
+   *
+   * As duas juntas porque cada uma sozinha mente: os slots de imagem
+   * correm em paralelo, então a soma não é o tempo que ninguém esperou, e
+   * a maior esconde que foram 1.495s de trabalho em 11 chamadas.
+   */
+  durSomaSec?: number | null
+  /** Batch da tentativa — o recorte que a busca dos filhos precisa. */
+  batchId?: string | null
 }
 
 export const RUN_STYLE: Record<
@@ -219,6 +229,28 @@ export interface ExecutionAgentRun {
    * rodou nunca). Sem ele as duas viram o mesmo selo cinza.
    */
   model?: string | null
+  /**
+   * ── Os agregados da TENTATIVA (migration 20261165) ──────────────────
+   *
+   * A RPC faz `DISTINCT ON (email, agente)` e devolve UMA run por agente,
+   * mas o agente de imagem grava uma POR CAMPO. Sem estes campos a linha
+   * representativa se passava pelo conjunto: no batch 6c746be0 o nó dizia
+   * US$ 0,254 num agente que custou US$ 2,321, e as duas falhas de imagem
+   * não apareciam em lugar nenhum.
+   *
+   * Ausentes (payload antigo, aba Teste) → o comportamento é o de antes.
+   */
+  batch_id?: string | null
+  runs_count?: number | null
+  failed_count?: number | null
+  cost_cents_total?: number | null
+  tokens_input_total?: number | null
+  tokens_output_total?: number | null
+  duration_ms_max?: number | null
+  duration_ms_total?: number | null
+  /** A run que falhou: é para ela que o nó aponta, não para a última. */
+  error_run_id?: string | null
+  error_message_first?: string | null
 }
 
 export type ExecutionBucket = "success" | "error" | "running"
@@ -327,6 +359,44 @@ export function projectRuns(
     }
   }
 
+  /**
+   * Uma linha da RPC vale por N quando ela traz os agregados da tentativa.
+   *
+   * Sem eles (payload antigo, aba Teste, que recebe as runs de verdade),
+   * cai exatamente no comportamento de antes — é o que garante que nada
+   * regride onde o dado não existe.
+   */
+  const comAgregados = (r: ExecutionAgentRun): NodeRun => {
+    const n = r.runs_count ?? 1
+    const falhas = r.failed_count ?? 0
+    const custo = r.cost_cents_total ?? r.cost_cents
+    const base: NodeRun = {
+      status: apiStatusToNode(r.status, r.model),
+      runId: r.run_id,
+      durSec: (r.duration_ms_max ?? r.duration_ms ?? null) != null
+        ? (r.duration_ms_max ?? r.duration_ms!) / 1000
+        : null,
+      usd: custo != null ? custo / 100 : null,
+      tokIn: r.tokens_input_total ?? r.tokens_input,
+      tokOut: r.tokens_output_total ?? r.tokens_output,
+      retries: r.retry_count,
+      err: r.error_message_first ?? r.error_message,
+      batchId: r.batch_id ?? null,
+    }
+    if (n <= 1 && falhas === 0) return base
+    return {
+      ...base,
+      // Falha dentro do agregado é ERRO mesmo que a linha representativa
+      // (a mais recente) tenha dado certo: era assim que uma imagem
+      // quebrada sumia atrás de um nó verde.
+      status: falhas > 0 ? "erro" : base.status,
+      runId: falhas > 0 ? (r.error_run_id ?? r.run_id) : r.run_id,
+      durSomaSec: r.duration_ms_total != null ? r.duration_ms_total / 1000 : null,
+      count: n,
+      failed: falhas,
+    }
+  }
+
   const out: Record<string, NodeRun> = {}
   // Último índice na linha principal com run registrada.
   let lastIdx = -1
@@ -355,16 +425,7 @@ export function projectRuns(
       return
     }
     if (r) {
-      out[key] = {
-        status: apiStatusToNode(r.status, r.model),
-        runId: r.run_id,
-        durSec: r.duration_ms != null ? r.duration_ms / 1000 : null,
-        usd: r.cost_cents != null ? r.cost_cents / 100 : null,
-        tokIn: r.tokens_input,
-        tokOut: r.tokens_output,
-        retries: r.retry_count,
-        err: r.error_message,
-      }
+      out[key] = comAgregados(r)
       return
     }
     if (bucket === "running" && i > lastIdx) {

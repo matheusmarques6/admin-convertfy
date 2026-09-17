@@ -27,6 +27,12 @@
  *     template global.
  */
 
+import {
+  SAIDA_TELEMETRIA_MAX,
+  novoOrcamentoDeTexto,
+  registrarTexto,
+  type ConsumoPorChamada,
+} from "./curador-telemetria-chamada"
 import { REGRAS_PENDENTES } from "@/lib/agents/shared/validadores/tipos"
 import { ALVO_AUSENTE_CURADOR } from "../objecoes/alvo-render"
 import { INTENCAO_NAO_SERVIDA } from "../estruturador/estruturador-prompt"
@@ -1627,6 +1633,8 @@ export async function assembleStoreReference(
   let chooserTokensIn = 0
   let chooserTokensOut = 0
   let chooserCostUsd = 0
+  const consumoPorChamada: ConsumoPorChamada = {}
+  const orcamentoDeTexto = novoOrcamentoDeTexto()
   let ranking: ParsedRanking | null = vaultResultado?.ranking ?? null
   let chooserError: string | null = null
   let attempts = 0
@@ -1675,6 +1683,7 @@ export async function assembleStoreReference(
       break
     }
     attempts = attempt
+    const inicioDaTentativa = Date.now()
     try {
       const res = await invokeAgent(chooserConfig, chooserVars, {
         // Catálogo no SYSTEM: prefixo idêntico entre lojas → cacheável.
@@ -1687,6 +1696,29 @@ export async function assembleStoreReference(
       chooserTokensIn += res.tokensInput
       chooserTokensOut += res.tokensOutput
       chooserCostUsd += res.costUsd
+      // `registrarTexto` CONSOME o orçamento a cada chamada: uma vez só.
+      const saidaDaTentativa = registrarTexto(orcamentoDeTexto, res.raw, SAIDA_TELEMETRIA_MAX)
+      // Uma linha por TENTATIVA, no mesmo formato do Curador do vault: é o
+      // que faz a árvore de chamadas do Estúdio funcionar também quando o
+      // fallback legado roda. Sem isto ela sumiria sem explicação num
+      // caminho que só aparece quando algo já deu errado.
+      consumoPorChamada[`tentativa_${attempt}`] = {
+        tokens_input: res.tokensInput,
+        tokens_output: res.tokensOutput,
+        seg: Math.round((Date.now() - inicioDaTentativa) / 1000),
+        ms: Date.now() - inicioDaTentativa,
+        custo_usd: res.costUsd,
+        modelo: chooserConfig.model,
+        teto: chooserConfig.max_tokens,
+        ...(res.finishReason ? { finish_reason: res.finishReason } : {}),
+        ...(saidaDaTentativa
+          ? {
+              saida: saidaDaTentativa.texto,
+              saida_chars: saidaDaTentativa.chars,
+              saida_truncada: saidaDaTentativa.truncado,
+            }
+          : {}),
+      }
       const parsed = parseCuratorRanking({
         raw: res.raw,
         sections,
@@ -1719,6 +1751,7 @@ export async function assembleStoreReference(
   )
 
   const chooserTelemetry = {
+    consumo_por_chamada: consumoPorChamada,
     sections: input.structure.length,
     catalog_variants: catalog.total,
     catalog_types: catalog.types.length,
