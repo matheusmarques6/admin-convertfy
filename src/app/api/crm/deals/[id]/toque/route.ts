@@ -63,7 +63,7 @@ export async function POST(
     const { data: deal, error: dErr } = await admin
       .from("deals")
       .select(
-        `id, title, org_id, pipeline_id, stage_id, client_id, lead_id, tags,
+        `id, title, org_id, pipeline_id, stage_id, client_id, lead_id, tags, status,
          custom_fields,
          client:clients (id, name, phone),
          lead:crm_leads (id, name, phone)`,
@@ -95,6 +95,7 @@ export async function POST(
       etapa: etapaAtual?.name ?? null,
       tags: deal.tags,
       telefone,
+      status: deal.status,
     })
     if (bloqueio) {
       throw new AppError(EXPLICACAO_DO_BLOQUEIO[bloqueio], 422, bloqueio)

@@ -127,6 +127,21 @@ describe("linkDoWhatsApp", () => {
   it("texto vazio abre a conversa sem mensagem", () => {
     expect(linkDoWhatsApp("5511999998888", "  ")).toBe("https://wa.me/5511999998888")
   })
+
+  it("número BR sem DDI ganha o 55 — wa.me/11999998888 não resolve", () => {
+    // O link abriria a tela do WhatsApp dizendo "número inválido"
+    // DEPOIS do clique, sem erro nenhum do nosso lado.
+    expect(linkDoWhatsApp("11999998888", "oi")).toBe("https://wa.me/5511999998888?text=oi")
+    expect(linkDoWhatsApp("(11) 3333-4444", "oi")).toBe(
+      "https://wa.me/551133334444?text=oi",
+    )
+  })
+
+  it("`+` é DDI explícito e é respeitado — 2 dos 431 não são BR", () => {
+    expect(linkDoWhatsApp("+351933489324", "oi")).toBe(
+      "https://wa.me/351933489324?text=oi",
+    )
+  })
 })
 
 describe("proximoToque", () => {

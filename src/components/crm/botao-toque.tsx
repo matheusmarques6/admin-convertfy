@@ -39,6 +39,8 @@ interface BotaoToqueProps {
   tags?: string[] | null
   stageName?: string | null
   telefone?: string | null
+  /** `deals.status`: ganho/perdido saíram da cadência. */
+  status?: string | null
   /** Variante compacta pro card; a cheia vive no drawer. */
   compacto?: boolean
   onFeito?: (r: RespostaDoToque) => void
@@ -51,6 +53,7 @@ export function BotaoToque({
   tags,
   stageName,
   telefone,
+  status,
   compacto = false,
   onFeito,
   onErro,
@@ -59,7 +62,7 @@ export function BotaoToque({
 
   const sinais = sinaisDoNegocio(custom_fields)
   const toque = proximoToque(sinais.tentativas)
-  const bloqueio = motivoDeBloqueio({ etapa: stageName, tags, telefone })
+  const bloqueio = motivoDeBloqueio({ etapa: stageName, tags, telefone, status })
 
   // Cadência concluída não é erro: é o fim do roteiro. O botão fica
   // desabilitado dizendo isso, em vez de sumir — sumir esconderia que

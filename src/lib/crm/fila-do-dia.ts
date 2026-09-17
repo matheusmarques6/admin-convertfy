@@ -10,8 +10,8 @@
  * com quem nunca conversou, e passar do teto derruba o número.
  */
 
-import { SEGMENTOS, TAG_NAO_CONTATAR, sinaisDoNegocio } from "./prospeccao"
-import { ETAPA_AGUARDANDO } from "./regras-de-coluna"
+import { SEGMENTOS, motivoDeBloqueio, sinaisDoNegocio } from "./prospeccao"
+import { diaEmSaoPaulo } from "./sla-prospeccao"
 import { proximoToque, type Toque } from "./cadencia"
 
 /** Conversas novas por dia, por número de WhatsApp. */
@@ -22,6 +22,9 @@ export interface NegocioDaFila {
   title: string
   stage_name: string
   position: number
+  /** `deals.status`. A rota já filtra `open`, mas a nutrição TAMBÉM é
+   * `open` — quem a tira da fila é o nome da etapa. */
+  status?: string | null
   custom_fields?: Record<string, unknown> | null
   tags?: string[] | null
   contact_phone?: string | null
@@ -41,6 +44,9 @@ export interface ItemDaFila {
   proximoToque: Toque | null
   telefone: string | null
   alerta: string | null
+  /** Tags do negócio: é com elas que o botão da tela aplica a MESMA
+   * régua de bloqueio que o servidor. */
+  tags: string[]
   tarefa: { id: string; content: string; due_at: string | null } | null
 }
 
@@ -54,8 +60,11 @@ export interface FilaDoDia {
   excluidos: {
     aguardando_parceiro: number
     nao_contatar: number
+    fora_da_cadencia: number
     sem_telefone: number
     cadencia_concluida: number
+    /** Já abordado, com a checagem marcada para depois de hoje. */
+    aguardando_resposta: number
   }
 }
 
@@ -80,6 +89,7 @@ function paraItem(n: NegocioDaFila): ItemDaFila {
     proximoToque: proximoToque(s.tentativas),
     telefone: n.contact_phone ?? null,
     alerta: s.alerta,
+    tags: n.tags ?? [],
     tarefa: n.tarefa ?? null,
   }
 }
@@ -96,43 +106,70 @@ function paraItem(n: NegocioDaFila): ItemDaFila {
  * conversa não abre janela nova com o WhatsApp, e cortá-lo pelo teto
  * faria a cadência morrer na metade todo dia.
  */
+/**
+ * A tarefa está vencendo HOJE (ou antes)?
+ *
+ * Todo toque agenda "Checar resposta do T1" para daqui a 48h. Tratar
+ * qualquer tarefa aberta como pendente põe na lista, no mesmo instante
+ * do envio, os 40 leads abordados hoje — e o follow-up que venceu de
+ * verdade há três dias se perde no meio. Tarefa SEM prazo conta como
+ * vencida: quem a criou à mão queria que fosse feita.
+ */
+export function tarefaVenceHoje(dueAt: string | null | undefined, agora: Date): boolean {
+  if (!dueAt) return true
+  const dia = dueAt.slice(0, 10)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dia)) return true
+  return dia <= diaEmSaoPaulo(agora)
+}
+
 export function montarFilaDoDia(
   negocios: NegocioDaFila[],
-  opts?: { teto?: number },
+  opts?: { teto?: number; agora?: Date },
 ): FilaDoDia {
   const teto = Math.max(0, opts?.teto ?? TETO_DIARIO_PADRAO)
+  const agora = opts?.agora ?? new Date()
   const pendentes: ItemDaFila[] = []
   const candidatosNovos: Array<{ item: ItemDaFila; ordem: number; position: number }> = []
   const excluidos: FilaDoDia["excluidos"] = {
     aguardando_parceiro: 0,
     nao_contatar: 0,
+    fora_da_cadencia: 0,
     sem_telefone: 0,
     cadencia_concluida: 0,
+    aguardando_resposta: 0,
   }
 
   for (const n of negocios) {
-    const tags = (n.tags ?? []).map((t) => String(t).trim().toLowerCase())
-    if (tags.includes(TAG_NAO_CONTATAR)) {
-      excluidos.nao_contatar++
-      continue
-    }
-    if (n.stage_name === ETAPA_AGUARDANDO) {
-      excluidos.aguardando_parceiro++
-      continue
-    }
-    const digitos = (n.contact_phone ?? "").replace(/\D/g, "")
-    if (digitos.length < 10) {
-      excluidos.sem_telefone++
+    // A MESMA régua do botão (`motivoDeBloqueio`), não uma cópia: três
+    // checagens escritas à mão aqui divergiriam da que decide se o
+    // toque sai, e a fila ofereceria quem o servidor recusa — ou, pior,
+    // esconderia quem ele aceita.
+    const bloqueio = motivoDeBloqueio({
+      etapa: n.stage_name,
+      tags: n.tags,
+      telefone: n.contact_phone,
+      status: n.status,
+    })
+    if (bloqueio) {
+      excluidos[bloqueio]++
       continue
     }
 
     const item = paraItem(n)
 
-    // Pendente é quem já entrou na cadência e está devendo: o job de
-    // SLA marcou, ou existe tarefa aberta.
+    // Pendente é quem já entrou na cadência e está DEVENDO: o job de
+    // SLA marcou, ou existe tarefa que já venceu.
     const s = sinaisDoNegocio(n.custom_fields)
-    if (s.followupVencido || n.tarefa) {
+    if (s.followupVencido || (n.tarefa && tarefaVenceHoje(n.tarefa.due_at, agora))) {
       pendentes.push(item)
+      continue
+    }
+
+    // Tarefa marcada para depois: o lead está no meio da cadência e a
+    // checagem tem data. Não é pendente (não venceu) nem abordagem nova
+    // (o T2 é D+2, e mandá-lo hoje atropelaria o T1 de agora).
+    if (n.tarefa) {
+      excluidos.aguardando_resposta++
       continue
     }
 

@@ -19,15 +19,17 @@
  */
 
 import { normalizeForCompare } from "@/lib/tracking/normalizar-comparacao"
+import {
+  ETAPA_AGUARDANDO,
+  ETAPA_DIAGNOSTICO,
+  ETAPA_NUTRIR,
+  ETAPA_QUALIFICAR,
+  TAG_NAO_CONTATAR,
+} from "./prospeccao"
 
-/** Coluna em que o lead está travado em negociação com o parceiro. */
-export const ETAPA_AGUARDANDO = "Aguardando liberação Luan"
-/** Coluna em que o lead respondeu e falta dizer o estágio da loja. */
-export const ETAPA_QUALIFICAR = "Respondeu · qualificar"
-/** Coluna de nutrição de quem ainda não vende. */
-export const ETAPA_NUTRIR = "Nutrir · loja sem vendas"
-/** Coluna da call de 20 min. */
-export const ETAPA_DIAGNOSTICO = "Diagnóstico agendado"
+// Os nomes de coluna vivem em `prospeccao.ts` (a fonte única) e são
+// re-exportados aqui só para os importadores não terem de saber disso.
+export { ETAPA_AGUARDANDO, ETAPA_DIAGNOSTICO, ETAPA_NUTRIR, ETAPA_QUALIFICAR, TAG_NAO_CONTATAR }
 
 /** Etapas que as regras por NOME governam. */
 export const ETAPAS_COM_REGRA = [
@@ -42,7 +44,6 @@ export const MATURIDADE_VENDENDO = "Vendendo"
 
 /** Motivo que, escolhido, marca o lead como fora de alcance pra sempre. */
 export const MOTIVO_NAO_CONTATAR = "Pediu para não ser contatado"
-export const TAG_NAO_CONTATAR = "nao-contatar"
 
 export interface EtapaDaRegra {
   name: string

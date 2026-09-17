@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
     const { data: deals, error: dErr } = await admin
       .from("deals")
       .select(
-        `id, title, stage_id, position, tags, custom_fields,
+        `id, title, stage_id, position, status, tags, custom_fields,
          client:clients (phone),
          lead:crm_leads!deals_lead_id_fkey (phone)`,
       )
@@ -94,6 +94,7 @@ export async function GET(request: NextRequest) {
         title: d.title,
         stage_name: nomePorEtapa.get(d.stage_id) ?? "",
         position: d.position ?? 0,
+        status: d.status,
         tags: d.tags,
         custom_fields: d.custom_fields as Record<string, unknown> | null,
         contact_phone: client?.phone ?? lead?.phone ?? null,

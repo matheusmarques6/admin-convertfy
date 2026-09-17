@@ -770,6 +770,7 @@ export function DealCard({
               tags={deal.tags}
               stageName={deal.stage_name}
               telefone={deal.contact_phone}
+              status={deal.status}
               compacto
               onFeito={onToque}
               onErro={onToqueErro}

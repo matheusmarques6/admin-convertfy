@@ -16,16 +16,20 @@
  */
 
 import { ETAPA_DO_TOQUE, TOQUES, proximoToque, type Toque } from "./cadencia"
-import { TAG_NAO_CONTATAR, contarTentativas } from "./prospeccao"
+import {
+  ETAPA_AGUARDANDO,
+  ETAPA_PERDIDO_SEM_RESPOSTA,
+  ETAPA_QUALIFICAR,
+  TAG_NAO_CONTATAR,
+  contarTentativas,
+} from "./prospeccao"
 
-/** Coluna que recebe quem esgotou os três toques. */
-export const ETAPA_PERDIDO_SEM_RESPOSTA = "Perdido · sem resposta"
+// Fonte única dos nomes de coluna: `prospeccao.ts`. Re-exportados para
+// os importadores deste módulo (a rota do cron) não mudarem de porta.
+export { ETAPA_AGUARDANDO, ETAPA_PERDIDO_SEM_RESPOSTA, ETAPA_QUALIFICAR }
+
 /** Motivo gravado nessa perda. Tem de existir em `crm_lost_reasons`. */
 export const MOTIVO_SEM_RESPOSTA = "Sem resposta após 3 toques"
-/** Coluna em que o lead respondeu e falta qualificar. */
-export const ETAPA_QUALIFICAR = "Respondeu · qualificar"
-/** Coluna dos leads travados com o parceiro. */
-export const ETAPA_AGUARDANDO = "Aguardando liberação Luan"
 
 /** Horas que a qualificação pode ficar parada antes de virar tarefa. */
 export const HORAS_ATE_COBRAR_QUALIFICACAO = 24

@@ -12,6 +12,8 @@
  * abordar" errado manda mensagem pra quem pediu pra não ser contatado.
  */
 
+import { normalizePhone } from "@/lib/whatsapp/phone"
+
 /** Ordinal da lista. P1 é o mais quente. */
 export const PRIORIDADES = ["P1", "P2", "P3", "P4"] as const
 export type Prioridade = (typeof PRIORIDADES)[number]
@@ -41,8 +43,22 @@ export type Maturidade = (typeof MATURIDADES)[number]
 /** Tag que marca quem pediu pra não ser contatado. */
 export const TAG_NAO_CONTATAR = "nao-contatar"
 
-/** Etapa em que o lead está travado em negociação com o parceiro. */
+/**
+ * Nomes das colunas do board, em UM lugar só.
+ *
+ * Eles são DADO — `pipeline_stages.name` em produção —, e quem os lê
+ * são quatro módulos e um cron. Copiados, renomear a coluna na tela
+ * desliga a regra **em silêncio** naquele que ficou para trás: o card
+ * do parceiro passaria a ser abordável, o SLA deixaria de perder quem
+ * sumiu, e nada acusa. `regras-de-coluna` e `sla-prospeccao`
+ * RE-EXPORTAM daqui para que divergir seja impossível por construção,
+ * em vez de ser pego por um teste que alguém ainda teria de escrever.
+ */
 export const ETAPA_AGUARDANDO = "Aguardando liberação Luan"
+export const ETAPA_QUALIFICAR = "Respondeu · qualificar"
+export const ETAPA_NUTRIR = "Nutrir · loja sem vendas"
+export const ETAPA_DIAGNOSTICO = "Diagnóstico agendado"
+export const ETAPA_PERDIDO_SEM_RESPOSTA = "Perdido · sem resposta"
 
 export interface SinaisDeProspeccao {
   prioridade: Prioridade | null
@@ -148,7 +164,11 @@ export function sinaisDoNegocio(custom: CamposCrus): SinaisDeProspeccao {
 }
 
 /** Por que a abordagem está bloqueada. `null` = pode abordar. */
-export type MotivoDeBloqueio = "aguardando_parceiro" | "nao_contatar" | "sem_telefone"
+export type MotivoDeBloqueio =
+  | "aguardando_parceiro"
+  | "nao_contatar"
+  | "fora_da_cadencia"
+  | "sem_telefone"
 
 export interface ContextoDeAbordagem {
   /** Nome da etapa em que o card está. */
@@ -156,6 +176,8 @@ export interface ContextoDeAbordagem {
   tags?: string[] | null
   /** Telefone efetivo do contato, como vier. */
   telefone?: string | null
+  /** `deals.status`: won/lost já saíram da cadência. */
+  status?: string | null
 }
 
 /**
@@ -165,6 +187,13 @@ export interface ContextoDeAbordagem {
  *   Abordar por fora queima a relação com o parceiro.
  * - `nao_contatar`: a pessoa pediu pra parar. É o único que é decisão
  *   dela, e o mais caro de furar.
+ * - `fora_da_cadencia`: o negócio já saiu do funil de abordagem —
+ *   ganho, perdido, ou em "Nutrir · loja sem vendas", que é a coluna de
+ *   quem disse que a loja ainda não vende e volta a ser falado em
+ *   janeiro. A coluna de nutrição tem `stage_type = 'archived'`, e o
+ *   move deixa o negócio `status = 'open'` (medido em 17/09): sem esta
+ *   régua ele reapareceria na fila de amanhã como abordagem NOVA e
+ *   levaria o T2 como se nada tivesse sido dito.
  * - `sem_telefone`: sem número não existe wa.me nenhum — o botão só
  *   saberia falhar.
  *
@@ -175,14 +204,22 @@ export function motivoDeBloqueio(ctx: ContextoDeAbordagem): MotivoDeBloqueio | n
   const tags = (ctx.tags ?? []).map((t) => String(t).trim().toLowerCase())
   if (tags.includes(TAG_NAO_CONTATAR)) return "nao_contatar"
   if (texto(ctx.etapa) === ETAPA_AGUARDANDO) return "aguardando_parceiro"
-  const digitos = (ctx.telefone ?? "").replace(/\D/g, "")
-  if (digitos.length < 10) return "sem_telefone"
+  // `status` é estrutural e sobrevive a renomear coluna; o nome cobre a
+  // nutrição, que continua `open` justamente por não ser um desfecho.
+  const status = (ctx.status ?? "").trim().toLowerCase()
+  if (status === "won" || status === "lost") return "fora_da_cadencia"
+  if (texto(ctx.etapa) === ETAPA_NUTRIR) return "fora_da_cadencia"
+  // A MESMA régua que monta o link (`normalizePhone`): contar dígitos
+  // aqui e normalizar lá deixaria o botão habilitado para um número que
+  // o `linkDoWhatsApp` recusa — bloqueio e link têm de concordar.
+  if (!normalizePhone(ctx.telefone ?? "")) return "sem_telefone"
   return null
 }
 
 export const EXPLICACAO_DO_BLOQUEIO: Record<MotivoDeBloqueio, string> = {
   aguardando_parceiro: "Em negociação com o Luan — não abordar até ele liberar",
   nao_contatar: "Pediu para não ser contatado",
+  fora_da_cadencia: "Fora da cadência (ganho, perdido ou em nutrição)",
   sem_telefone: "Sem telefone válido para WhatsApp",
 }
 

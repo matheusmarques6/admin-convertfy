@@ -204,7 +204,7 @@ export default function FilaDoDiaPage() {
         <div className="flex flex-col gap-5">
           <Secao
             titulo="Pendentes"
-            subtitulo="Follow-up vencido ou tarefa aberta. Vem antes de abrir conversa nova."
+            subtitulo="Follow-up vencido ou checagem que venceu. Vem antes de abrir conversa nova."
             itens={data.pendentes}
             vazio="Nenhum follow-up devendo."
             aoEnviar={aoEnviar}
@@ -238,6 +238,8 @@ export default function FilaDoDiaPage() {
             <strong style={{ color: "var(--crm-gray-700)" }}>Fora da fila:</strong>{" "}
             {data.excluidos.aguardando_parceiro} em negociação com o parceiro ·{" "}
             {data.excluidos.nao_contatar} pediram para não ser contatados ·{" "}
+            {data.excluidos.fora_da_cadencia} em nutrição ou já fechados ·{" "}
+            {data.excluidos.aguardando_resposta} aguardando resposta ·{" "}
             {data.excluidos.sem_telefone} sem telefone ·{" "}
             {data.excluidos.cadencia_concluida} com a cadência concluída. De{" "}
             {data.total_aberto} negócios abertos.
@@ -391,6 +393,10 @@ function Linha({
         custom_fields={{ tentativas_contato: item.tentativas, segmento_parceiro: item.segmento }}
         stageName={item.etapa}
         telefone={item.telefone}
+        // A fila já exclui bloqueado, mas o dado da tela envelhece entre
+        // dois `fetch`: sem as tags o botão renderiza habilitado para
+        // quem, no banco, acabou de pedir pra parar.
+        tags={item.tags}
         onFeito={aoEnviar}
         onErro={aoErrar}
       />

@@ -139,6 +139,25 @@ describe("motivoDeBloqueio", () => {
     expect(motivoDeBloqueio({ ...ok, telefone: null })).toBe("sem_telefone")
   })
 
+  it("BR sem DDI NÃO é bloqueio: a régua é a mesma que monta o link", () => {
+    // `normalizePhone` prefixa o 55; bloquear aqui e normalizar lá (ou o
+    // contrário) deixaria botão e link discordando sobre o mesmo número.
+    expect(motivoDeBloqueio({ ...ok, telefone: "11999998888" })).toBeNull()
+    expect(motivoDeBloqueio({ ...ok, telefone: "+351933489324" })).toBeNull()
+  })
+
+  it("nutrição, ganho e perdido saem da cadência", () => {
+    // "Nutrir · loja sem vendas" é `stage_type: archived` e o move
+    // deixa o negócio `status: open` — sem esta régua ele voltaria à
+    // fila de amanhã como abordagem NOVA e levaria o T2.
+    expect(motivoDeBloqueio({ ...ok, etapa: "Nutrir · loja sem vendas" })).toBe(
+      "fora_da_cadencia",
+    )
+    expect(motivoDeBloqueio({ ...ok, status: "won" })).toBe("fora_da_cadencia")
+    expect(motivoDeBloqueio({ ...ok, status: "lost" })).toBe("fora_da_cadencia")
+    expect(motivoDeBloqueio({ ...ok, status: "open" })).toBeNull()
+  })
+
   it("a ordem é fixa: o pedido da pessoa é o mais caro de furar", () => {
     expect(
       motivoDeBloqueio({ etapa: "Aguardando liberação Luan", tags: ["nao-contatar"], telefone: "" }),

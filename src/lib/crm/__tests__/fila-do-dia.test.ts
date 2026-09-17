@@ -87,10 +87,11 @@ describe("pendentes vêm antes e NÃO contam no teto", () => {
     expect(fila.novos.map((i) => i.dealId)).toEqual(["n"])
   })
 
-  it("tarefa aberta entra em pendentes mesmo sem a marca do job", () => {
-    const fila = montarFilaDoDia([
-      neg({ id: "t", tarefa: { id: "t1", content: "Enviar T2", due_at: "2026-09-20T12:00:00Z" } }),
-    ])
+  it("tarefa VENCIDA entra em pendentes mesmo sem a marca do job", () => {
+    const fila = montarFilaDoDia(
+      [neg({ id: "t", tarefa: { id: "t1", content: "Enviar T2", due_at: "2026-09-20T12:00:00Z" } })],
+      { agora: new Date("2026-09-22T12:00:00Z") },
+    )
     expect(fila.pendentes).toHaveLength(1)
     expect(fila.novos).toEqual([])
   })
@@ -107,10 +108,13 @@ describe("pendentes vêm antes e NÃO contam no teto", () => {
   })
 
   it("pendente mais antigo primeiro — o de três dias é o que dói", () => {
-    const fila = montarFilaDoDia([
-      neg({ id: "novo", tarefa: { id: "a", content: "x", due_at: "2026-09-21T09:00:00Z" } }),
-      neg({ id: "velho", tarefa: { id: "b", content: "y", due_at: "2026-09-18T09:00:00Z" } }),
-    ])
+    const fila = montarFilaDoDia(
+      [
+        neg({ id: "novo", tarefa: { id: "a", content: "x", due_at: "2026-09-21T09:00:00Z" } }),
+        neg({ id: "velho", tarefa: { id: "b", content: "y", due_at: "2026-09-18T09:00:00Z" } }),
+      ],
+      { agora: new Date("2026-09-22T12:00:00Z") },
+    )
     expect(fila.pendentes.map((i) => i.dealId)).toEqual(["velho", "novo"])
   })
 })
@@ -134,6 +138,41 @@ describe("quem fica de fora, e por quê", () => {
   it("sem telefone sai — o botão só saberia falhar", () => {
     const fila = montarFilaDoDia([neg({ contact_phone: null }), neg({ id: "c", contact_phone: "1199" })])
     expect(fila.excluidos.sem_telefone).toBe(2)
+  })
+
+  it("checagem marcada pra depois NÃO é pendente — 40 toques de hoje afogariam o vencido", () => {
+    const agora = new Date("2026-09-21T15:00:00Z")
+    const fila = montarFilaDoDia(
+      [
+        neg({
+          id: "hoje",
+          custom_fields: { tentativas_contato: 1 },
+          tarefa: { id: "a", content: "Checar resposta do T1", due_at: "2026-09-23T15:00:00Z" },
+        }),
+        neg({
+          id: "vencido",
+          custom_fields: { tentativas_contato: 1 },
+          tarefa: { id: "b", content: "Checar resposta do T1", due_at: "2026-09-18T15:00:00Z" },
+        }),
+      ],
+      { agora },
+    )
+    expect(fila.pendentes.map((i) => i.dealId)).toEqual(["vencido"])
+    expect(fila.novos).toEqual([])
+    expect(fila.excluidos.aguardando_resposta).toBe(1)
+  })
+
+  it("tarefa sem prazo é pendente: quem a criou à mão queria que fosse feita", () => {
+    const fila = montarFilaDoDia([
+      neg({ tarefa: { id: "a", content: "Ligar", due_at: null } }),
+    ])
+    expect(fila.pendentes).toHaveLength(1)
+  })
+
+  it("nutrição não volta à fila: ela é `open` e reapareceria como abordagem nova", () => {
+    const fila = montarFilaDoDia([neg({ stage_name: "Nutrir · loja sem vendas" })])
+    expect(fila.novos).toEqual([])
+    expect(fila.excluidos.fora_da_cadencia).toBe(1)
   })
 
   it("cadência concluída sai das novas, com o motivo declarado", () => {
