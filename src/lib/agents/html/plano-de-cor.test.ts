@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import type { Cta, Faixa } from "./color-faixas"
+import type { Cta, Faixa, GradienteDaFaixa } from "./color-faixas"
 import {
   parsePlanoDeCor,
   planoParaOps,
@@ -17,6 +17,7 @@ const faixa = (over: Partial<Faixa> & { ordem: number; bloco: number }): Faixa =
   cobre_px: 600,
   editavel: true,
   decls: [{ start: 0, end: 7 }],
+  gradiente: null,
   ...over,
 })
 
@@ -313,5 +314,119 @@ describe("planoParaOps — Passo 14: contrato, decisão e cor por código", () =
     const op = r.ops[0]
     if (op.action === "add_cta") expect(op.fundo).toBe("#123456")
     expect(r.ajustes).toEqual([])
+  })
+})
+
+// ── Gradiente da faixa (17/09) ─────────────────────────────────────────
+describe("planoParaOps — gradiente", () => {
+  const gradiente = (over: Partial<GradienteDaFaixa> = {}): GradienteDaFaixa => ({
+    direcao: "180deg",
+    paradas: ["#000000", "#E3E3E3"],
+    decls: [{ start: 0, end: 7 }],
+    editavel: true,
+    ...over,
+  })
+
+  const ctx = (g: GradienteDaFaixa | null): ContextoDoPlano => ({
+    faixas: [faixa({ ordem: 1, bloco: 0, gradiente: g })],
+    ctas: [],
+    incentivo: { existe: null },
+  })
+
+  it("traduz a decisão em set_gradiente endereçado ao bloco", () => {
+    const r = planoParaOps(
+      { faixas: [{ ordem: 1, decisao: "manter", gradiente: ["#034326", "#E3E3E3"] }] },
+      ctx(gradiente()),
+    )
+    expect(r.ops).toEqual([
+      { action: "set_gradiente", bloco: 0, paradas: ["#034326", "#E3E3E3"] },
+    ])
+  })
+
+  it("convive com a troca do fundo sólido na mesma faixa", () => {
+    // O fallback e o gradiente são decisões diferentes — trocar só o
+    // primeiro foi o que deixou a tela preto → cinza numa loja verde.
+    const r = planoParaOps(
+      {
+        faixas: [
+          { ordem: 1, decisao: "conformar", fundo: "#034326", gradiente: ["#034326", "#E3E3E3"] },
+        ],
+      },
+      ctx(gradiente()),
+    )
+    expect(r.ops).toEqual([
+      { action: "set_fundo", bloco: 0, para: "#034326" },
+      { action: "set_gradiente", bloco: 0, paradas: ["#034326", "#E3E3E3"] },
+    ])
+  })
+
+  it("gradiente igual ao que já está não vira op", () => {
+    const r = planoParaOps(
+      { faixas: [{ ordem: 1, decisao: "manter", gradiente: ["#000000", "#e3e3e3"] }] },
+      ctx(gradiente()),
+    )
+    expect(r.ops).toEqual([])
+  })
+
+  it("contagem de paradas diferente é descarte com motivo", () => {
+    const r = planoParaOps(
+      { faixas: [{ ordem: 1, decisao: "manter", gradiente: ["#034326"] }] },
+      ctx(gradiente()),
+    )
+    expect(r.ops).toEqual([])
+    expect(r.descartes[0]?.motivo).toContain("2 paradas")
+  })
+
+  it("gradiente não editável vira descarte que nomeia o motivo", () => {
+    const r = planoParaOps(
+      { faixas: [{ ordem: 1, decisao: "manter", gradiente: ["#034326", "#E3E3E3"] }] },
+      ctx(gradiente({ editavel: false, motivo: "vml_divergente" })),
+    )
+    expect(r.ops).toEqual([])
+    expect(r.descartes[0]?.motivo).toContain("Outlook")
+  })
+
+  it("faixa sem gradiente recusa a decisão em vez de inventar um", () => {
+    const r = planoParaOps(
+      { faixas: [{ ordem: 1, decisao: "manter", gradiente: ["#034326", "#E3E3E3"] }] },
+      ctx(null),
+    )
+    expect(r.ops).toEqual([])
+    expect(r.descartes[0]?.motivo).toContain("não tem gradiente")
+  })
+
+  it("repintar gradiente NÃO consome o teto de faixas", () => {
+    // O teto limita quantas faixas mudam o RITMO; conformar a cor de um
+    // gradiente não muda ritmo nenhum.
+    const faixas = [0, 1, 2].map((b) =>
+      faixa({ ordem: b + 1, bloco: b, gradiente: gradiente() }),
+    )
+    const r = planoParaOps(
+      {
+        faixas: [
+          { ordem: 1, decisao: "escurecer", fundo: "#111111" },
+          { ordem: 2, decisao: "escurecer", fundo: "#111111" },
+          { ordem: 3, decisao: "manter", gradiente: ["#034326", "#E3E3E3"] },
+        ],
+      },
+      { faixas, ctas: [], incentivo: { existe: null } },
+    )
+    expect(r.ops.filter((o) => o.action === "set_fundo")).toHaveLength(TETO_DE_FAIXAS)
+    expect(r.ops.filter((o) => o.action === "set_gradiente")).toHaveLength(1)
+  })
+})
+
+describe("parsePlanoDeCor — gradiente", () => {
+  it("lê a lista de paradas da faixa", () => {
+    const p = parsePlanoDeCor(
+      '{"faixas":[{"ordem":2,"decisao":"manter","gradiente":["#034326"," #E3E3E3 "],"porque":"R4"}]}',
+    )
+    expect(p.faixas?.[0]?.gradiente).toEqual(["#034326", "#E3E3E3"])
+  })
+
+  it("gradiente que não é lista de string é ignorado, não quebra o plano", () => {
+    const p = parsePlanoDeCor('{"faixas":[{"ordem":2,"gradiente":"#034326"}]}')
+    expect(p.faixas?.[0]?.gradiente).toBeUndefined()
+    expect(p.faixas?.[0]?.ordem).toBe(2)
   })
 })

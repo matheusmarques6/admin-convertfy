@@ -219,6 +219,7 @@ describe("tonsDeFundo — a procedência do fundo", () => {
     cobre_px: 600,
     editavel: fundo != null,
     decls: [],
+    gradiente: null,
   })
 
   // A identidade REAL da Hero Boxers, lida do banco: duas principais, zero
@@ -366,5 +367,165 @@ describe("CTA que só existe no ramo do Outlook", () => {
     expect(ctas[0].peso).toBe(700)
     expect(ctas[0].padding_v).toBe(14)
     expect(ctas[0].padding_h).toBe(36)
+  })
+})
+
+// ── Gradiente sobre o fundo sólido (17/09) ─────────────────────────────
+//
+// O HTML é o da peça real (Innova Bay nova · welcome, e-mail 6b3a7f42): o
+// agente recoloriu `background-color` para a cor da loja, a op foi aplicada,
+// e a tela continuou preto → cinza — `background-image` pinta por cima.
+describe("extrairFaixas — gradiente da faixa", () => {
+  const TAG_REAL = `<td valign="top"
+          style="background-color:#034326;background-image:-webkit-linear-gradient(top, #000000 0%, #E3E3E3 100%);background-image:linear-gradient(180deg, #000000 0%, #E3E3E3 100%);" width="600">`
+  const VML_REAL = `<!--[if gte mso 9]>
+        <v:rect xmlns:v="urn:schemas-microsoft-com:vml" fill="true" stroke="false" style="width:600px;height:692px;">
+          <v:fill type="gradient" color="#000000" color2="#E3E3E3" angle="180" />
+        </v:rect><![endif]-->`
+  const docReal = (miolo = VML_REAL) =>
+    `<!DOCTYPE html><html><body><table width="600">
+${bloco(0, "body", `<tr>${TAG_REAL}${miolo}<p style="color:#FFFFFF;">oi</p></td></tr>`)}
+</table></body></html>`
+
+  it("vê o gradiente que o fundo sólido escondia", () => {
+    const [faixa] = extrairFaixas(docReal())
+    // `fundo` continua sendo o fallback — é o que uma op de fundo troca.
+    expect(faixa.fundo).toBe("#034326")
+    expect(faixa.gradiente).not.toBeNull()
+    expect(faixa.gradiente?.paradas).toEqual(["#000000", "#E3E3E3"])
+    expect(faixa.gradiente?.direcao).toBe("180deg")
+    expect(faixa.gradiente?.editavel).toBe(true)
+  })
+
+  it("endereça as TRÊS declarações: -webkit-, padrão e o espelho VML", () => {
+    const [faixa] = extrairFaixas(docReal())
+    // 2 paradas × 2 declarações CSS + color/color2 do VML.
+    expect(faixa.gradiente?.decls).toHaveLength(6)
+  })
+
+  it("sem VML, só as duas declarações CSS", () => {
+    const [faixa] = extrairFaixas(docReal(""))
+    expect(faixa.gradiente?.decls).toHaveLength(4)
+  })
+
+  it("espelho VML que discorda do CSS tira o gradiente de editável", () => {
+    // Reescrever o CSS e deixar o VML deixaria o Outlook com a cor velha,
+    // em silêncio — o mesmo modo de falha do par VML do botão.
+    const vmlOutro = VML_REAL.replace('color="#000000"', 'color="#123456"')
+    const [faixa] = extrairFaixas(docReal(vmlOutro))
+    expect(faixa.gradiente?.editavel).toBe(false)
+    expect(faixa.gradiente?.motivo).toBe("vml_divergente")
+  })
+
+  it("mais de duas paradas é lacuna, não reescrita às cegas", () => {
+    const tresParadas = TAG_REAL.replace(
+      /background-image:linear-gradient\([^)]+\);/,
+      "background-image:linear-gradient(180deg, #000000 0%, #888888 50%, #E3E3E3 100%);",
+    ).replace(/background-image:-webkit-linear-gradient\([^)]+\);/, "")
+    const doc = `<!DOCTYPE html><html><body><table width="600">
+${bloco(0, "body", `<tr>${tresParadas}<p>oi</p></td></tr>`)}
+</table></body></html>`
+    const [faixa] = extrairFaixas(doc)
+    expect(faixa.gradiente?.paradas).toHaveLength(3)
+    expect(faixa.gradiente?.editavel).toBe(false)
+    expect(faixa.gradiente?.motivo).toBe("paradas_demais")
+  })
+
+  it("parada em rgba não é reescrita por código", () => {
+    const comRgba = `<td width="600" style="background-color:#034326;background-image:linear-gradient(180deg, rgba(0,0,0,0.6) 0%, #E3E3E3 100%);">`
+    const doc = `<!DOCTYPE html><html><body><table width="600">
+${bloco(0, "body", `<tr>${comRgba}<p>oi</p></td></tr>`)}
+</table></body></html>`
+    const [faixa] = extrairFaixas(doc)
+    expect(faixa.gradiente?.editavel).toBe(false)
+    expect(faixa.gradiente?.motivo).toBe("parada_nao_hex")
+  })
+
+  it("faixa sem gradiente segue com `gradiente: null`", () => {
+    const faixas = extrairFaixas(DOC)
+    expect(faixas.every((f) => f.gradiente === null)).toBe(true)
+  })
+
+  it("gradiente de CHIP não vira faixa — a régua de largura é a mesma", () => {
+    const doc = `<!DOCTYPE html><html><body><table width="600">
+${bloco(0, "body", `<tr><td width="600" style="background-color:#FFFFFF;">
+  <span style="background-image:linear-gradient(90deg, #FF0000 0%, #00FF00 100%);width:60px;">chip</span>
+</td></tr>`)}
+</table></body></html>`
+    const [faixa] = extrairFaixas(doc)
+    expect(faixa.gradiente).toBeNull()
+  })
+})
+
+// ── A estrutura REAL do documento (17/09) ──────────────────────────────
+//
+// O teste que derrubou a primeira versão desta frente. Na peça da Innova Bay
+// o fundo sólido da faixa está no `<table width="600">` e o gradiente DOIS
+// níveis abaixo, num `<td>` sem largura nenhuma — procurar no mesmo tag do
+// fundo devolvia `null` justamente no caso que originou tudo.
+describe("extrairFaixas — gradiente na estrutura real, sem largura no tag", () => {
+  const BOTAO_405 = `<table role="presentation" width="405"><tr>
+    <td align="center" height="63" style="width:405px;height:63px;background-image:linear-gradient(90deg, #FF0000 0%, #00FF00 100%);">
+      <a href="https://innovabay.site" style="display:block;">Comprar</a>
+    </td></tr></table>`
+
+  const DOC_REAL = `<!DOCTYPE html><html><body>
+${bloco(0, "hero", `<tr><td width="600" style="background:url(https://cdn/x.jpg);">hero</td></tr>`)}
+${bloco(
+  1,
+  "body",
+  `<tr>
+<td align="center" style="padding:0;">
+<table role="presentation" width="600" style="width:600px;max-width:600px;background:#034326;">
+<tr>
+<td align="center" style="padding:0;">
+  <table role="presentation" width="600" style="width:600px;min-width:600px;max-width:600px;background:#F2F2F2;">
+    <tr>
+      <td valign="top"
+          style="background-color:#034326;background-image:-webkit-linear-gradient(top, #000000 0%, #E3E3E3 100%);background-image:linear-gradient(180deg, #000000 0%, #E3E3E3 100%);">
+        <p style="color:#FFFFFF;">at checkout for 10% off</p>
+        ${BOTAO_405}
+      </td>
+    </tr>
+  </table>
+</td>
+</tr>
+</table>
+</td>
+</tr>`,
+)}
+</body></html>`
+
+  it("acha o gradiente mesmo sem largura no tag que o declara", () => {
+    const faixas = extrairFaixas(DOC_REAL)
+    const body = faixas.find((f) => f.tipo === "body")!
+    expect(body.fundo).toBe("#034326")
+    expect(body.cobre_px).toBe(600)
+    expect(body.gradiente?.paradas).toEqual(["#000000", "#E3E3E3"])
+    expect(body.gradiente?.direcao).toBe("180deg")
+    expect(body.gradiente?.editavel).toBe(true)
+  })
+
+  it("o gradiente do BOTÃO de 405px não é confundido com o da banda", () => {
+    // Sem OUTRO gradiente na frente, quem decide é a largura — e só a
+    // largura: 405 passa do piso de 400 de `LARGURA_DE_SECAO`, e o que o
+    // descarta é ter de alcançar a faixa inteira (`cobre_px`, 600).
+    const soBotao = DOC_REAL.replace(
+      /background-image:-webkit-linear-gradient\([^)]*\);background-image:linear-gradient\([^)]*\);/,
+      "",
+    )
+    const body = extrairFaixas(soBotao).find((f) => f.tipo === "body")!
+    expect(body.cobre_px).toBe(600)
+    expect(body.gradiente).toBeNull()
+  })
+
+  it("o mesmo botão VIRA a banda quando ele é a faixa inteira", () => {
+    // A contraprova: a régua é a largura relativa à faixa, não uma lista de
+    // elementos proibidos.
+    const faixaDe405 = `<!DOCTYPE html><html><body>
+${bloco(0, "body", `<tr><td width="405" style="background-color:#FFFFFF;">${BOTAO_405}</td></tr>`)}
+</body></html>`
+    const [faixa] = extrairFaixas(faixaDe405)
+    expect(faixa.gradiente?.paradas).toEqual(["#FF0000", "#00FF00"])
   })
 })

@@ -8945,6 +8945,91 @@ lembrete, e a etapa do parceiro recusada. As regras novas são **no-op na
 base de hoje** (0 em nutrição, 0 com tarefa aberta) — são guardas para o
 que acontece depois que a cadência começar.
 
+
+## O example virou entrega, e o gradiente cobriu a cor da loja (17/09)
+
+Duas queixas num print da Innova Bay nova · welcome (e-mail `6b3a7f42`,
+batch `e6853f56`): o bloco de oferta saiu com **`xx% OFF!`** no lugar da
+porcentagem, e o degradê é preto → cinza numa loja `#034326`. Nenhuma das
+duas é o agente errando: as duas são sinal que EXISTE e não chega a quem
+decide.
+
+**1. O `xx% OFF` é o `example`, e a copy certa nunca foi gravada.** O campo
+existe (`cart_coupon_condition`, variante `body 20`) e a copy chegou certa
+do n8n (`at checkout for **10% off** your order`). O merge é que não
+gravou: `normalizeForMatch` não remove marcação markdown, então o example
+normalizado (`…for **xx% off!**`) nunca casa o HTML (`…for xx% off!` — o
+`<strong>` vira vão costurado). Sem âncora, o example fica na tela. A run
+reportou com precisão — `merged: 55/56`, `sem_lugar: [{key:
+"cart_coupon_condition", motivo: "nao_encontrado"}]` — e **nada lia**.
+
+O conserto é de CADASTRO (`DADOS_20260917_examples_sem_markdown.sql`,
+UMA variante — as outras com `xx%`/`XXXX%` ancoram normalmente), e ele
+obriga a consequência: com a âncora casando, o merge passaria a escrever
+`**10% off**` com os asteriscos na tela. `enfaseParaHtml` converte `**`/
+`***` em `<strong style="font-weight:700;">` DEPOIS do `neutralizeAngles`
+(antes, a tag sairia escapada) e com `font-weight` inline (cliente de
+e-mail zera o estilo padrão das tags). **Só `**`**: um asterisco solto é
+pontuação legítima, e quem ESCREVE tem de ser conservador — `semMarcacao`,
+que só MEDE, é que pode ser permissivo. Asterisco sem par fica; apagá-lo
+seria decidir que o redator errou. `replacementCosturado` ganhou um
+`transform` ciente de `dentroDeNegrito` porque só ele sabe em qual segmento
+do vão a copy cai — uma segunda régua para isso divergiria da primeira e o
+sintoma seria negrito no lugar errado, sem erro nenhum.
+
+**`sem_lugar` passou a ter consumidor**: `campo_sem_lugar` (`high`,
+`blocking`, dono `biblioteca`) nos content-checks. `high` e não aviso
+porque campo sem âncora não é copy faltando — é o texto de EXEMPLO da
+biblioteca indo ao cliente, e foi isso, quatro vezes, em peças `ready`.
+Vem VAZIO na retomada (o merge roda só no primeiro passe), como o
+`heroCopyAceita`. `EXEMPLO_RE` ganhou `/\bx{2,}\s*%/i` — o `X{4,}` que já
+existia é sensível a caixa e o `copy-merge` chama a régua sobre o texto já
+minúsculo, então ele só valia no caminho do texto órfão.
+
+**2. A cor da loja estava no documento, debaixo do preto.** O agente
+decidiu certo e a op foi aplicada: `background-color:#034326`. Ao lado,
+intacto, `background-image:linear-gradient(180deg,#000000 0%,#E3E3E3 100%)`
+— e `background-image` pinta por cima. Para ele a faixa era verde sólida:
+`contextOf` classifica pelos 60 chars anteriores e, dentro de
+`linear-gradient(180deg, `, nada casa `background:`; as paradas caíam em
+`outro` e nenhuma op as alcançava (`recolor` é por VALOR — o mesmo
+`#000000` é texto no documento inteiro — e `set_fundo` só conhece as
+declarações de fundo do tag).
+
+Agora `contextOf` tem o papel **`gradiente`** (contexto NOVO, não
+`background`: classificá-las como fundo faria `recolor … where background`
+alcançar parada de gradiente por efeito colateral, mexendo em ops que hoje
+funcionam), `Faixa.gradiente` leva direção, paradas, os ranges e
+`editavel`, e a op `set_gradiente` repinta **as TRÊS declarações** — o
+`-webkit-linear-gradient`, o `linear-gradient` padrão e o `<v:fill
+type="gradient" color color2>` do Outlook. Mexer em uma só deixa parte dos
+clientes com a cor velha, em silêncio (a lição do par VML do botão).
+
+**A leitura do documento real derrubou a primeira versão da régua.** Ela
+procurava o gradiente no mesmo tag que declara o fundo da faixa; na peça, o
+fundo está no `<table width="600" style="background:#034326">` e o
+gradiente DOIS níveis abaixo, num `<td>` sem largura nenhuma — devolveria
+`null` justamente no caso que originou tudo. O que separa a banda de um
+chip não é largura declarada no próprio tag: é a largura EFETIVA (a
+primeira que algum ancestral declara), e ela tem de alcançar a faixa
+inteira (`cobre_px`), não só o piso de `LARGURA_DE_SECAO`. O botão desta
+mesma peça mede **405px** e passaria pelo piso de 400.
+
+**Guardas declaradas**: mais de duas paradas, parada que não é hex (`rgba`,
+`var`, `transparent`) ou espelho VML que DISCORDA do CSS tiram o gradiente
+de `editavel` — o agente registra lacuna e o código não toca. A direção e
+as paradas vêm da declaração SEM prefixo: a prefixada escreve `top` onde a
+moderna escreve `180deg`, e o agente leria uma direção que o documento não
+usa. Repintar gradiente NÃO consome o `TETO_DE_FAIXAS`: o teto limita
+quantas faixas mudam o RITMO, e conformar a cor de um gradiente não muda
+ritmo nenhum. No guia, a R4 deixou de ser lacuna pela metade — INSERIR
+gradiente onde não há segue fora da alçada; repintar o que existe é dele.
+
+**`parsePlanoDeCor` precisou aprender a chave `gradiente`**: sem isso o
+agente podia devolvê-la e o parser a descartaria em silêncio — a decisão
+existiria no output e não chegaria a op nenhuma, que é exatamente o modo de
+falha que esta rodada inteira veio consertar.
+
 ---
 
 *Última atualização: Setembro 2026*

@@ -25,7 +25,7 @@ import type { Cta, Faixa } from "./color-faixas"
 import { corDoBotao, type PapeisParaBotao } from "./cor-do-botao"
 import type { InventarioDeCta } from "./cta-inventario"
 import { escalaDoBotao } from "./escala-do-botao"
-import { isColorLiteral } from "./color-inventory"
+import { canonicalHex, isColorLiteral } from "./color-inventory"
 
 /**
  * Teto de faixas que uma peça pode ter repintadas.
@@ -45,6 +45,19 @@ export interface DecisaoDeFaixa {
   ordem: number
   decisao?: string
   fundo?: string
+  /**
+   * As paradas do gradiente da faixa, na ordem, quando ela tem um (17/09).
+   *
+   * É decisão SEPARADA de `fundo`: a cor sólida é o fallback, o gradiente é
+   * o que o leitor vê. Na Innova Bay o agente trocou o fundo para a cor da
+   * loja, a op foi aplicada, e a tela continuou preto → cinza — porque
+   * ninguém tinha como pedir a troca das paradas.
+   *
+   * Tem de vir com o MESMO número de paradas que a faixa reportou: o agente
+   * decide as cores, não quantas elas são. Mudar a contagem é redesenhar o
+   * gradiente, e isso é a lacuna R4 que segue fora da alçada dele.
+   */
+  gradiente?: string[]
   porque?: string
 }
 
@@ -248,6 +261,53 @@ export function planoParaOps(plano: PlanoDeCor, ctx: ContextoDoPlano): TraducaoD
     ops.push({ action: "set_fundo", bloco: faixa.bloco, para: d.fundo })
     fundoDecidido.set(faixa.bloco, d.fundo)
     pintadas++
+  }
+
+  // ── Gradiente das faixas ─────────────────────────────────────────────
+  //
+  // Laço próprio, e não um ramo do de cima: `decisao: "manter"` e a ausência
+  // de `fundo` fazem aquele pular a faixa, e "mantenho a cor sólida e
+  // repinto o gradiente" é uma decisão legítima — é justamente a da peça que
+  // originou isto. Fora do `TETO_DE_FAIXAS` pelo mesmo motivo: o teto limita
+  // quantas faixas mudam de COR no ritmo; repintar o gradiente de uma faixa
+  // que já está na cor da loja não muda ritmo nenhum, conforma o que já foi
+  // decidido.
+  for (const d of plano.faixas ?? []) {
+    if (!d.gradiente) continue
+    const alvo = `gradiente da faixa ${d.ordem}`
+    const faixa = porOrdem.get(d.ordem)
+    if (!faixa) continue // já descartado com motivo no laço acima
+    const g = faixa.gradiente
+    if (!g) {
+      descartes.push({ o_que: alvo, motivo: "a faixa não tem gradiente" })
+      continue
+    }
+    if (!g.editavel) {
+      descartes.push({
+        o_que: alvo,
+        motivo:
+          g.motivo === "paradas_demais"
+            ? "mais de duas paradas — redesenhar não é alçada deste agente"
+            : g.motivo === "parada_nao_hex"
+              ? "alguma parada não é cor literal (rgba, var, transparent)"
+              : "o espelho do Outlook não concorda com o CSS",
+      })
+      continue
+    }
+    if (d.gradiente.length !== g.paradas.length) {
+      descartes.push({
+        o_que: alvo,
+        motivo: `o gradiente tem ${g.paradas.length} paradas e o plano trouxe ${d.gradiente.length}`,
+      })
+      continue
+    }
+    const invalida = d.gradiente.find((c) => !isColorLiteral(c))
+    if (invalida) {
+      descartes.push({ o_que: alvo, motivo: `parada "${invalida}" não é cor` })
+      continue
+    }
+    if (d.gradiente.every((c, i) => canonicalHex(c) === g.paradas[i])) continue
+    ops.push({ action: "set_gradiente", bloco: faixa.bloco, paradas: d.gradiente })
   }
 
   /** Fundo real em que um botão do bloco pousa (com a decisão de faixa deste plano). */
@@ -477,6 +537,13 @@ export function parsePlanoDeCor(raw: string): PlanoDeCor {
         ordem,
         ...(str(x.decisao) ? { decisao: str(x.decisao) } : {}),
         ...(str(x.fundo) ? { fundo: str(x.fundo) } : {}),
+        // Sem esta linha o agente podia devolver `gradiente` e o parser o
+        // descartaria em silêncio — a decisão existiria no output e não
+        // chegaria a op nenhuma, que é o modo de falha que esta frente toda
+        // veio consertar.
+        ...(Array.isArray(x.gradiente) && x.gradiente.every((c) => typeof c === "string")
+          ? { gradiente: (x.gradiente as string[]).map((c) => c.trim()) }
+          : {}),
         ...(str(x.porque) ? { porque: str(x.porque) } : {}),
       }
     }),

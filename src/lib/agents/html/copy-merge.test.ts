@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest"
 import {
   applyStructuralFills,
   copyMergeByExample,
+  enfaseParaHtml,
   heroCopyPreserved,
   heroTextoInventado,
   isLogoKey,
@@ -1005,5 +1006,83 @@ describe("copyMergeByExample — campo omitido pela arbitragem (09/09)", () => {
     ])
     expect(r.html).toContain("[WELCOME-CODE]")
     expect(r.report.omitidos).toEqual([])
+  })
+})
+
+// ── Ênfase markdown do redator (17/09) ─────────────────────────────────
+//
+// O n8n devolve `**10% off**` e o merge grava TEXTO: sem conversão os
+// asteriscos vão para a tela. Caso real: Innova Bay welcome, campo
+// `cart_coupon_condition` da variante `body 20`.
+describe("enfaseParaHtml", () => {
+  it("converte ** e *** em <strong>", () => {
+    expect(enfaseParaHtml("at checkout for **10% off** your order")).toBe(
+      'at checkout for <strong style="font-weight:700;">10% off</strong> your order',
+    )
+    expect(enfaseParaHtml("***agora***")).toBe(
+      '<strong style="font-weight:700;">agora</strong>',
+    )
+  })
+
+  it("dentro de um negrito existente, limpa em vez de aninhar", () => {
+    expect(enfaseParaHtml("**10% off**", true)).toBe("10% off")
+  })
+
+  it("asterisco solto e ênfase de um asterisco ficam como texto", () => {
+    // `*` é pontuação legítima (nota de rodapé). Quem ESCREVE é conservador;
+    // o guard `semMarcacao`, que só MEDE, é que pode ser permissivo.
+    expect(enfaseParaHtml("válido* até domingo")).toBe("válido* até domingo")
+    expect(enfaseParaHtml("*isto* não é ênfase")).toBe("*isto* não é ênfase")
+  })
+
+  it("não atravessa linha", () => {
+    expect(enfaseParaHtml("**a\nb**")).toBe("**a\nb**")
+  })
+})
+
+describe("copyMergeByExample — ênfase markdown na escrita", () => {
+  it("grava <strong> e não asterisco na tela", () => {
+    // HTML e example como estão no banco (variante `body 20`).
+    const html =
+      '<td style="font-size:22px;">\n              at checkout for <strong style="font-weight:700;">xx% OFF!</strong>\n            </td>'
+    const blocks: MergeBlock[] = [
+      block(
+        [{ key: "cart_coupon_condition", example: "at checkout for xx% OFF!" }],
+        { cart_coupon_condition: "at checkout for **10% off** your order" },
+      ),
+    ]
+    const { html: out, report } = copyMergeByExample(html, blocks)
+    expect(report.sem_lugar).toEqual([])
+    expect(report.merged).toBe(1)
+    expect(out).toContain('<strong style="font-weight:700;">10% off</strong>')
+    expect(out).not.toContain("**")
+    expect(out).not.toContain("xx%")
+  })
+
+  it("o `<strong>` do vão sobrevive ao splice", () => {
+    // A tag de elemento do example fica (regra do costurado, 02/09) — o que
+    // muda é só o texto.
+    const html = '<td><p>Save <strong>xx%</strong> today</p></td>'
+    const blocks: MergeBlock[] = [
+      block(
+        [{ key: "headline", example: "Save xx% today" }],
+        { headline: "Save **15%** today" },
+      ),
+    ]
+    const { html: out } = copyMergeByExample(html, blocks)
+    expect(out).toContain('<strong style="font-weight:700;">15%</strong>')
+    expect(out).not.toContain("**")
+  })
+
+  it("o valor com `<` segue escapado antes da conversão", () => {
+    const html = "<td><p>Tudo por menos de 100 reais</p></td>"
+    const blocks: MergeBlock[] = [
+      block(
+        [{ key: "headline", example: "Tudo por menos de 100 reais" }],
+        { headline: "Tudo por **< 100** reais" },
+      ),
+    ]
+    const { html: out } = copyMergeByExample(html, blocks)
+    expect(out).toContain('<strong style="font-weight:700;">&lt; 100</strong>')
   })
 })

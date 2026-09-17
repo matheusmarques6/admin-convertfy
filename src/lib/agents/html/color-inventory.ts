@@ -34,6 +34,22 @@ export const COLOR_CONTEXTS = [
   "border",
   "bgcolor",
   "css-var",
+  /**
+   * Parada de gradiente (17/09). Contexto PRÓPRIO, não `background`.
+   *
+   * A Innova Bay entregou `background-color:#034326` (a cor da loja, que o
+   * agente recoloriu certo) debaixo de
+   * `background-image:linear-gradient(180deg,#000000 0%,#E3E3E3 100%)`
+   * intacto — e `background-image` pinta por cima de `background-color`. As
+   * paradas caíam em `outro` porque `contextOf` olha os 60 chars anteriores
+   * e, dentro de `linear-gradient(180deg, `, nada casa `background:`.
+   *
+   * Por que não classificá-las como `background`: o inventário e o aplicador
+   * usam esta MESMA régua, então `recolor … where background` passaria a
+   * alcançar parada de gradiente por efeito colateral — mudaria ops que hoje
+   * funcionam. Contexto novo deixa o agente ver sem mexer no que já decide.
+   */
+  "gradiente",
   "outro",
 ] as const
 
@@ -169,12 +185,57 @@ export function openTagAt(html: string, idx: number): string | null {
 }
 
 /**
+ * Funções de gradiente CSS, com os prefixos que a biblioteca usa de fato
+ * (`-webkit-linear-gradient` é o par de compatibilidade que as variantes
+ * escrevem ao lado do `linear-gradient` padrão).
+ */
+const GRADIENT_FN_RE =
+  /(?:-webkit-|-moz-|-ms-|-o-)?(?:repeating-)?(?:linear|radial|conic)-gradient\s*\(/gi
+
+/**
+ * Janela para trás na busca pela abertura do gradiente.
+ *
+ * Maior que os 60 chars do `contextOf` porque um gradiente é longo por
+ * natureza: na peça real, a SEGUNDA parada está a 54 chars da abertura e um
+ * terceiro stop passaria dos 60. Curto demais, a última parada de um
+ * gradiente longo voltaria a cair em "outro" — exatamente o defeito.
+ */
+const JANELA_DE_GRADIENTE = 300
+
+/**
+ * O offset está DENTRO de uma função de gradiente?
+ *
+ * Contagem de parênteses a partir da última abertura de gradiente na janela:
+ * se ela ainda está aberta quando se chega ao offset, a cor é uma parada.
+ * `rgba(…)` dentro do gradiente fecha o próprio parêntese e não confunde a
+ * conta.
+ */
+export function dentroDeGradiente(html: string, idx: number): boolean {
+  const antes = html.slice(Math.max(0, idx - JANELA_DE_GRADIENTE), idx)
+  let abertura = -1
+  for (const m of antes.matchAll(GRADIENT_FN_RE)) {
+    abertura = (m.index ?? 0) + m[0].length
+  }
+  if (abertura === -1) return false
+  let abertos = 1
+  for (let i = abertura; i < antes.length; i++) {
+    if (antes[i] === "(") abertos++
+    else if (antes[i] === ")" && --abertos === 0) return false
+  }
+  return true
+}
+
+/**
  * Contexto da ocorrência a partir do trecho imediatamente anterior.
  * Exportado porque o inventário e o aplicador PRECISAM usar a mesma
  * régua: o agente escolhe pelo que o inventário mostrou, e o recolor
  * escopado tem de casar exatamente aquelas ocorrências.
  */
 export function contextOf(html: string, idx: number): ColorContext {
+  // Gradiente primeiro: a parada mora DENTRO de uma função, e o que vem
+  // antes dela (`(180deg, `, `#000000 0%, `) não casa nenhum dos papéis
+  // abaixo — cairia em "outro" e nenhuma op escopada a alcançaria.
+  if (dentroDeGradiente(html, idx)) return "gradiente"
   const before = html.slice(Math.max(0, idx - 60), idx).toLowerCase()
   if (/bgcolor\s*=\s*["']?$/.test(before)) return "bgcolor"
   if (/--[a-z0-9-]+\s*:\s*$/.test(before)) return "css-var"

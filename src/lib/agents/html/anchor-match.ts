@@ -744,6 +744,12 @@ const EXEMPLO_RE: RegExp[] = [
   /\b(?:\d\s*verified\s+buyer|verified\s+buyer\s*\d)\b/i,
   /\bname\.\s*\d/i,
   /X{4,}/,
+  // `xx% OFF!`, `XXXX% off` — a porcentagem de exemplo das variantes de
+  // oferta (17/09, Innova Bay welcome: `at checkout for xx% OFF!` chegou ao
+  // cliente). O `X{4,}` acima não a pega: ele é sensível a caixa e o
+  // `copy-merge` chama esta régua sobre o texto JÁ minúsculo do
+  // `normalizeForMatch`, então só valia no caminho do texto órfão.
+  /\bx{2,}\s*%/i,
   /_AQUI\b/i,
   /\bplaceholder\b/i,
   /\b(logo|texto|imagem)\s+here\b/i,
@@ -858,12 +864,22 @@ const VOID_INLINE_RE = /^<\/?(?:br|wbr)\b/i
  * ("Title<br>Here" segue virando "WHY INNOVABAY"). A copy entra no segmento
  * de texto de MAIOR participação no example (empate → o último) e os
  * demais segmentos ficam vazios. Trecho sem tag devolve a copy como está.
+ *
+ * `transform` existe para quem precisa saber ONDE a copy vai cair antes de
+ * escrevê-la — hoje só a conversão de ênfase markdown do `copy-merge`, que
+ * não pode abrir um `<strong>` dentro de outro. A escolha do segmento
+ * principal é feita aqui e em lugar nenhum mais: uma segunda régua para
+ * "onde a copy cai" divergiria desta na primeira mudança, e o sintoma seria
+ * negrito no lugar errado, sem erro nenhum.
  */
 export function replacementCosturado(
   raw: string,
   copy: string,
+  transform?: (copy: string, dentroDeNegrito: boolean) => string,
 ): { texto: string; tags_mantidas: number } {
-  if (!/<[^>]+>/.test(raw)) return { texto: copy, tags_mantidas: 0 }
+  const escrever = (c: string, negrito: boolean): string =>
+    transform ? transform(c, negrito) : c
+  if (!/<[^>]+>/.test(raw)) return { texto: escrever(copy, false), tags_mantidas: 0 }
   const tokens = raw.split(/(<[^>]+>)/)
   const out: string[] = []
   const textIdx: number[] = []
@@ -878,7 +894,9 @@ export function replacementCosturado(
     textIdx.push(out.length)
     out.push(t)
   })
-  if (textIdx.length === 0) return { texto: copy, tags_mantidas: tagsMantidas }
+  if (textIdx.length === 0) {
+    return { texto: escrever(copy, false), tags_mantidas: tagsMantidas }
+  }
   let main = textIdx[textIdx.length - 1]
   let best = -1
   for (const idx of textIdx) {
@@ -888,6 +906,18 @@ export function replacementCosturado(
       main = idx
     }
   }
-  for (const idx of textIdx) out[idx] = idx === main ? copy : ""
+  // O segmento principal está dentro de um negrito aberto no próprio trecho?
+  // Conta abre/fecha das tags mantidas ANTES dele — `<strong>`/`<b>` só.
+  // `<em>`/`<i>` não importam: itálico aninhando negrito é legítimo.
+  let negrito = 0
+  for (let i = 0; i < main; i++) {
+    const t = out[i]
+    if (!t.startsWith("<")) continue
+    if (/^<strong/i.test(t) || /^<b/i.test(t)) negrito++
+    else if (/^<\/(?:strong|b)\s*>/i.test(t)) negrito--
+  }
+  for (const idx of textIdx) {
+    out[idx] = idx === main ? escrever(copy, negrito > 0) : ""
+  }
   return { texto: out.join(""), tags_mantidas: tagsMantidas }
 }

@@ -58,6 +58,20 @@ export type FormatOp =
    * uma delas — e é disso que o ritmo de faixas depende.
    */
   | { action: "set_fundo"; bloco: number; para: string }
+  /**
+   * Repinta as PARADAS do gradiente de uma faixa (17/09).
+   *
+   * `set_fundo` troca a cor sólida; onde há gradiente, ela é só o fallback —
+   * `background-image` pinta por cima. Na Innova Bay a faixa saiu verde no
+   * fallback e preto → cinza na tela, e nenhuma op existente alcançava as
+   * paradas: `recolor` é por valor (o mesmo `#000000` é texto no documento
+   * inteiro) e `set_fundo` só conhece as declarações de fundo do tag.
+   *
+   * O aplicador reescreve TODOS os ranges que a faixa reportou — as duas
+   * declarações CSS (`-webkit-` e padrão) e o par `color`/`color2` do VML.
+   * Mexer numa só deixaria parte dos clientes com a cor velha.
+   */
+  | { action: "set_gradiente"; bloco: number; paradas: string[] }
   /** Recolore UM botão (fundo e/ou label), pelo id do mapa de CTAs. */
   | { action: "set_botao"; cta: string; fundo?: string; label?: string }
   /**
@@ -107,6 +121,8 @@ export function alvoDaOp(op: FormatOp): string {
       return op.from
     case "set_fundo":
       return `bloco ${op.bloco} → ${op.para}`
+    case "set_gradiente":
+      return `bloco ${op.bloco} gradiente → ${op.paradas.join(" → ")}`
     case "set_botao":
       return `${op.cta} → ${op.fundo ?? "="}/${op.label ?? "="}`
     case "add_cta":
@@ -188,6 +204,14 @@ export interface ApplyOpsResult {
   panelFixes: number
   /** Faixas cujo fundo foi repintado (`set_fundo`). */
   faixasPintadas: number
+  /**
+   * Gradientes de faixa repintados (`set_gradiente`).
+   *
+   * Separado de `faixasPintadas` de propósito: repintar o fallback e
+   * repintar o gradiente são decisões diferentes, e somá-las esconderia
+   * justamente o caso em que o agente trocou a cor sólida e a tela não mudou.
+   */
+  gradientesPintados: number
   /** Botões recoloridos (`set_botao`), somando o par VML quando existe. */
   botoesRecoloridos: number
   /** Botões inseridos (`add_cta`). */
@@ -317,7 +341,11 @@ export function applyOps(
       })
       continue
     }
-    if (op.action === "set_fundo" || op.action === "add_cta") {
+    if (
+      op.action === "set_fundo" ||
+      op.action === "set_gradiente" ||
+      op.action === "add_cta"
+    ) {
       const regiao = regioes.get(op.bloco)
       if (!regiao) {
         skipped.push({ op, reason: "endereco_inexistente" })
@@ -396,6 +424,7 @@ export function applyOps(
   // tudo o que vem depois. Descendo por posição, o que ainda falta processar
   // está sempre antes do que já foi escrito.
   let faixasPintadas = 0
+  let gradientesPintados = 0
   let botoesRecoloridos = 0
   let botoesInseridos = 0
   /** Ranges de botão — o conserto de painel abaixo não pode tocá-los. */
@@ -427,6 +456,35 @@ export function applyOps(
       substituidos.add(canonicalHex(faixa.fundo))
       pintados.add(canonicalHex(op.para))
       faixasPintadas++
+      applied++
+      continue
+    }
+
+    if (op.action === "set_gradiente") {
+      const faixa = faixaDe.get(op.bloco)
+      const g = faixa?.gradiente
+      if (!g || !g.editavel || g.decls.length === 0) {
+        skipped.push({ op, reason: "sem_fundo_editavel" })
+        continue
+      }
+      if (op.paradas.length !== g.paradas.length) {
+        skipped.push({ op, reason: "sem_fundo_editavel" })
+        continue
+      }
+      // Os ranges vêm na ordem em que estão no documento e ciclam pelas
+      // paradas: cada declaração CSS repete o par (o `-webkit-` e o padrão),
+      // e o espelho VML repete de novo em `color`/`color2`. Aplicar de trás
+      // para a frente mantém os offsets dos ranges anteriores válidos.
+      const n = g.paradas.length
+      const ordenados = g.decls
+        .map((d, i) => ({ d, parada: op.paradas[i % n] }))
+        .sort((a, b) => b.d.start - a.d.start)
+      for (const { d, parada } of ordenados) {
+        out = out.slice(0, d.start) + parada + out.slice(d.end)
+      }
+      for (const antiga of g.paradas) substituidos.add(canonicalHex(antiga))
+      for (const nova of op.paradas) pintados.add(canonicalHex(nova))
+      gradientesPintados++
       applied++
       continue
     }
@@ -662,6 +720,7 @@ export function applyOps(
     contrastRemaining,
     panelFixes,
     faixasPintadas,
+    gradientesPintados,
     botoesRecoloridos,
     botoesInseridos,
   }

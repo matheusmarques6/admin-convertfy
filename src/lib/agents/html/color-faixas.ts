@@ -32,6 +32,47 @@ import { canonicalHex, declaredWidth, LARGURA_DE_SECAO, openTagAt } from "./colo
 import { buildAncestorChain, visibleTextOf, type Range } from "./dom-locator"
 import { locateBlockRegions } from "./slot-finder"
 
+/**
+ * O gradiente que pinta a faixa POR CIMA do fundo sólido.
+ *
+ * Existe por causa da Innova Bay (17/09): o agente recoloriu o
+ * `background-color` para a cor da loja, a op foi aplicada, e a tela
+ * continuou preto → cinza — porque `background-image:linear-gradient(...)`
+ * pinta por cima. Para ele, a faixa era verde sólida: nada no que ele
+ * recebia dizia que havia um gradiente ali.
+ *
+ * O gradiente é declarado até TRÊS vezes na mesma faixa (o
+ * `-webkit-linear-gradient` de compatibilidade, o `linear-gradient` padrão
+ * e o `<v:fill type="gradient">` do Outlook). Reescrever só uma deixa parte
+ * dos clientes com a cor velha — quebra em silêncio, como o par VML do
+ * botão.
+ */
+export interface GradienteDaFaixa {
+  /** Direção como está escrita (`180deg`, `top`) — só para o agente ler. */
+  direcao: string
+  /** As paradas em hex canônico, na ordem. */
+  paradas: string[]
+  /**
+   * Ranges de TODOS os valores que uma op reescreve — as paradas das
+   * declarações CSS e o par `color`/`color2` do espelho VML, quando ele
+   * existe e concorda com o CSS.
+   */
+  decls: Range[]
+  /**
+   * O código sabe reescrever este gradiente.
+   *
+   * `false` quando são mais de duas paradas, quando alguma não é hex
+   * (`rgba`, `transparent`, uma var) ou quando existe um espelho VML que
+   * NÃO concorda com o CSS. Nos três casos o agente registra lacuna e o
+   * código não toca: reescrever um gradiente de três paradas sem saber o
+   * papel de cada uma é pior que deixá-lo, e mexer só na metade que se
+   * entende deixaria o Outlook divergente sem ninguém saber.
+   */
+  editavel: boolean
+  /** Por que não é editável — vai ao agente para ele declarar a lacuna. */
+  motivo?: "paradas_demais" | "parada_nao_hex" | "vml_divergente"
+}
+
 /** Uma banda do e-mail: o fundo de um bloco, na ordem em que se rola. */
 export interface Faixa {
   /** Posição na leitura, 1-based. */
@@ -77,6 +118,14 @@ export interface Faixa {
    * teste desta frente.
    */
   decls: Range[]
+  /**
+   * Gradiente sobre o fundo desta faixa, ou `null`.
+   *
+   * `fundo` continua sendo a cor SÓLIDA declarada (o fallback). Quando há
+   * gradiente, é ele que o leitor vê — e é por isso que o agente precisa dos
+   * dois: o fallback é o que o e-mail mostra onde gradiente não funciona.
+   */
+  gradiente: GradienteDaFaixa | null
 }
 
 /** Um botão do e-mail, com a faixa em que ele pousa. */
@@ -193,6 +242,145 @@ function hexOu(valor: string | undefined): string | null {
   return valor ? canonicalHex(valor) : null
 }
 
+/** Abertura de uma função de gradiente, com os prefixos que a casa usa. */
+const GRADIENTE_ABRE =
+  /(?:-webkit-|-moz-|-ms-|-o-)?(?:repeating-)?(?:linear|radial|conic)-gradient\s*\(/gi
+/** Cor de uma parada: hex de 3 ou 6, na posição em que está escrita. */
+const PARADA_HEX = /#[0-9a-f]{3}(?:[0-9a-f]{3})?\b/gi
+/** `<v:fill type="gradient" color="#000" color2="#FFF" …>` — espelho do Outlook. */
+const VML_FILL = /<v:fill\b[^>]*type\s*=\s*"gradient"[^>]*>/gi
+const VML_COLOR = /\bcolor2?\s*=\s*"(#[0-9a-fA-F]{3,6})"/g
+
+/** Fecha o parêntese da função que abre em `abre` (índice logo após o `(`). */
+function fimDaFuncao(txt: string, abre: number): number {
+  let n = 1
+  for (let i = abre; i < txt.length; i++) {
+    if (txt[i] === "(") n++
+    else if (txt[i] === ")" && --n === 0) return i
+  }
+  return -1
+}
+
+/**
+ * O gradiente que pinta a FAIXA, procurado no bloco inteiro.
+ *
+ * A primeira versão procurava no mesmo tag que declara o fundo da faixa — e
+ * a leitura do documento real derrubou a régua: na peça da Innova Bay o
+ * fundo sólido da faixa está no `<table width="600" style="background:
+ * #034326">` e o gradiente, DOIS níveis abaixo, num `<td>` sem largura
+ * nenhuma. Procurar só no tag do fundo devolveria `null` justamente no caso
+ * que originou isto.
+ *
+ * O que separa a banda de um chip, então, não é largura declarada no próprio
+ * tag: é a largura EFETIVA (a primeira que algum ancestral declara). Ela tem
+ * de alcançar a faixa inteira — `cobre`, quando a faixa tem fundo, e
+ * `LARGURA_DE_SECAO` quando não tem. O botão desta mesma peça mede 405px e
+ * fica de fora por essa conta; com o piso de 400 sozinho ele entraria.
+ */
+function gradienteDaFaixa(
+  html: string,
+  regiao: Range,
+  cobre: number | null,
+  chainAt: (offset: number) => Array<{ tagName: string; range: Range }> | null,
+): GradienteDaFaixa | null {
+  const piso = Math.max(cobre ?? 0, LARGURA_DE_SECAO)
+  const regiaoTxt = html.slice(regiao.start, regiao.end)
+
+  // 1. O tag que carrega o gradiente da banda.
+  let tagRange: Range | null = null
+  for (const m of regiaoTxt.matchAll(GRADIENTE_ABRE)) {
+    const off = regiao.start + (m.index ?? 0)
+    const cadeia = chainAt(off)
+    if (!cadeia) continue // dentro de comentário MSO ou de <style>
+    let largura: number | null = null
+    for (const no of cadeia) {
+      const tag = openTagAt(html, no.range.start + 1)
+      const w = tag ? declaredWidth(tag) : null
+      if (w != null) {
+        largura = w
+        break
+      }
+    }
+    if (largura == null || largura < piso) continue
+    tagRange = rangeDoTag(html, off)
+    if (tagRange) break
+  }
+  if (!tagRange) return null
+
+  // 2. Todas as funções de gradiente DAQUELE tag — o `-webkit-` e o padrão
+  //    convivem lado a lado, e as duas têm de ser repintadas.
+  const tag = html.slice(tagRange.start, tagRange.end)
+  const funcoes: Array<{ ini: number; fim: number; prefixada: boolean }> = []
+  for (const m of tag.matchAll(GRADIENTE_ABRE)) {
+    const abre = (m.index ?? 0) + m[0].length
+    const fim = fimDaFuncao(tag, abre)
+    if (fim > abre) funcoes.push({ ini: abre, fim, prefixada: /^-/.test(m[0]) })
+  }
+  if (funcoes.length === 0) return null
+
+  // A direção e as paradas vêm da declaração SEM prefixo — é a moderna, e a
+  // prefixada escreve a direção na sintaxe antiga (`top`, não `180deg`). Ler
+  // a primeira que aparece devolveria `top` para um gradiente declarado como
+  // `180deg`, e o agente leria uma direção que o documento não usa. As
+  // prefixadas seguem contribuindo com ranges: elas também têm de ser
+  // repintadas.
+  const canonica = funcoes.find((f) => !f.prefixada) ?? funcoes[0]
+  const corpo = tag.slice(canonica.ini, canonica.fim)
+  const direcao = (corpo.split(",")[0] ?? "").trim()
+  const temDirecao = !/^#|^rgb|^\d+%/i.test(direcao)
+
+  const decls: Range[] = []
+  const paradas: string[] = []
+  let naoHex = false
+  for (const f of funcoes) {
+    const trecho = tag.slice(f.ini, f.fim)
+    // Cada item separado por vírgula é uma parada (fora a direção).
+    const itens = trecho.split(",").slice(temDirecao ? 1 : 0)
+    if (itens.some((i) => i.trim() && !/#[0-9a-f]{3,6}\b/i.test(i))) naoHex = true
+    for (const m of trecho.matchAll(PARADA_HEX)) {
+      const ini = tagRange.start + f.ini + (m.index ?? 0)
+      decls.push({ start: ini, end: ini + m[0].length })
+      if (f === canonica) paradas.push(canonicalHex(m[0]))
+    }
+  }
+  if (paradas.length === 0) return null
+
+  // 3. Espelho VML: só entra quando CONCORDA com o CSS. Divergente, o
+  //    gradiente inteiro sai de `editavel` — reescrever o CSS e deixar o VML
+  //    deixaria o Outlook com a cor velha, em silêncio.
+  let vmlDivergente = false
+  for (const m of regiaoTxt.matchAll(VML_FILL)) {
+    const base = regiao.start + (m.index ?? 0)
+    const cores: Range[] = []
+    const valores: string[] = []
+    for (const c of m[0].matchAll(VML_COLOR)) {
+      const off = base + (c.index ?? 0) + c[0].indexOf(c[1])
+      cores.push({ start: off, end: off + c[1].length })
+      valores.push(canonicalHex(c[1]))
+    }
+    if (valores.length === paradas.length && valores.every((v, i) => v === paradas[i])) {
+      decls.push(...cores)
+    } else {
+      vmlDivergente = true
+    }
+  }
+
+  const motivo = naoHex
+    ? ("parada_nao_hex" as const)
+    : paradas.length > 2
+      ? ("paradas_demais" as const)
+      : vmlDivergente
+        ? ("vml_divergente" as const)
+        : undefined
+  return {
+    direcao: temDirecao ? direcao : "",
+    paradas,
+    decls,
+    editavel: !motivo,
+    ...(motivo ? { motivo } : {}),
+  }
+}
+
 /**
  * A sequência de faixas do documento.
  *
@@ -203,6 +391,10 @@ export function extrairFaixas(html: string): Faixa[] {
   if (blocos.length === 0) return []
 
   const fundos = backgroundDeclarations(html)
+  // Uma vez por documento: a cadeia é o que dá a largura EFETIVA do tag que
+  // carrega o gradiente, e reconstruí-la por faixa custaria o índice inteiro
+  // a cada bloco.
+  const chainAt = buildAncestorChain(html)
   const faixas: Faixa[] = []
 
   blocos.forEach((bloco, i) => {
@@ -234,6 +426,8 @@ export function extrairFaixas(html: string): Faixa[] {
       break
     }
 
+    const gradiente = gradienteDaFaixa(html, bloco.range, cobre, chainAt)
+
     const regiao = html.slice(bloco.range.start, bloco.range.end)
     const foto = fundo == null && IMAGEM_DE_FUNDO.test(regiao)
 
@@ -247,6 +441,7 @@ export function extrairFaixas(html: string): Faixa[] {
       cobre_px: cobre,
       editavel,
       decls,
+      gradiente,
     })
   })
 
