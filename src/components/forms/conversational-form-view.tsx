@@ -245,8 +245,17 @@ export function ConversationalFormView({
             event_source_url: typeof window !== "undefined" ? window.location.href : null,
           }),
         })
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        const json = await res.json()
+        const json = await res.json().catch(() => null)
+        if (!res.ok) {
+          // A mensagem do servidor é a que diz o que fazer (campo que
+          // faltou, muitos envios seguidos). Ela NÃO passa pelo `catch`:
+          // lá o texto é "confira a conexão", que é o conselho errado
+          // para os dois casos — e a conexão está funcionando, tanto que
+          // a resposta chegou.
+          const doServidor = typeof json?.error === "string" ? json.error : null
+          setFalhaEnvio(doServidor || "Não conseguimos enviar agora. Tente de novo em instantes.")
+          return
+        }
 
         // ANTES de qualquer redirecionamento: o `Lead` do browser leva o
         // MESMO `event_id` da CAPI, a Meta deduplica e conta uma conversão.
@@ -263,7 +272,8 @@ export function ConversationalFormView({
         }
         irPara({ tipo: "fim", ending: endingRef }, "frente")
       } catch {
-        // A resposta NÃO é perdida: o estado continua na tela e o botão
+        // Aqui só chega falha de REDE (o `fetch` nem respondeu). A
+        // resposta NÃO é perdida: o estado continua na tela e o botão
         // volta. Mandar para a tela final sem ter enviado seria mentir
         // para quem preencheu.
         setFalhaEnvio("Não conseguimos enviar agora. Confira a conexão e tente de novo.")

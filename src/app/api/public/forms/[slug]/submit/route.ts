@@ -22,6 +22,7 @@ import { z } from "zod"
 import { createAdminClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
+import { checkRateLimit } from "@/lib/rate-limit"
 import { dispatchTrigger } from "@/lib/services/crm-trigger-dispatcher.service"
 import { resolveAutoOwner } from "@/lib/services/crm-assignment.service"
 import { normalizeTrackingConfig, type MetaAdvancedMatching } from "@/types/form-tracking"
@@ -81,6 +82,38 @@ export async function POST(
 ) {
   try {
     const { slug } = await context.params
+
+    // O endereço mais valioso do público era o único SEM teto: as rotas
+    // de sessão (telemetria) limitavam e esta, que cria lead, cria
+    // negócio e manda conversão para a Meta, não. Com anúncio ligado a
+    // página entra no radar de robô, e evento lixo na CAPI não só suja o
+    // CRM como estraga a otimização da campanha.
+    //
+    // 10 por minuto por IP é folgado para gente — uma pessoa envia uma
+    // vez, e uma repetição depois de erro de rede são duas ou três.
+    // NUNCA `failClosed`: sem Redis configurado isso recusaria todo
+    // cadastro real, e o cadastro é o produto.
+    const limite = await checkRateLimit(request, `form-submit:${slug}`, {
+      limit: 10,
+      windowSeconds: 60,
+    })
+    if (limite) {
+      // O corpo padrão é em inglês e o formulário mostra a mensagem do
+      // servidor ao visitante. Status e `Retry-After` seguem intactos.
+      return new Response(
+        JSON.stringify({ error: "Muitos envios seguidos. Aguarde um minuto e tente de novo." }),
+        {
+          status: limite.status,
+          headers: {
+            "Content-Type": "application/json",
+            ...(limite.headers.get("Retry-After")
+              ? { "Retry-After": limite.headers.get("Retry-After") as string }
+              : {}),
+          },
+        },
+      )
+    }
+
     const admin = createAdminClient()
 
     const body = await request.json()
