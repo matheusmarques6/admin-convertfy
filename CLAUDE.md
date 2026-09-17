@@ -8483,6 +8483,65 @@ mexer nos saltos hoje é por lá, e a publicação os preserva), o embed sem
 iframe com Shadow DOM, e o teste A/B. A coluna `ab_variant` e o
 `form_versions` já existem para os dois.
 
+## O que a primeira visita real ao formulário revelou (17/09)
+
+Duas sessões de verdade no `/forms/diagnostico` — o próprio usuário
+testando — e foi o BANCO, não um erro em tela, que entregou quatro
+defeitos. Todos silenciosos, três deles na fronteira entre camadas.
+
+**1. O conversacional estava CEGO para a Meta.** O renderizador novo não
+carregava pixel nenhum: sem `PageView` (a Meta não via a visita da
+campanha), sem o `Lead` de browser deduplicado por `event_id` — e some a
+redundância pixel+CAPI que este repositório mantém de propósito — e sem
+`_fbc`/`_fbp` no corpo do submit, que é a chave determinística do clique
+pago. A CAPI continuava saindo do servidor, então nada falhava. O
+disparo virou `components/forms/form-pixels.ts`, usado pelos DOIS
+renderizadores (o clássico passou a importar de lá em vez de ter a
+cópia), e `form-pixels.test.ts` é a régua: ela lê o código SEM
+comentário, porque a primeira versão passava com a chamada comentada.
+
+**2. O evento de sessão nunca gravou — 42P10 pela TERCEIRA vez.** Duas
+sessões com respostas e ZERO linhas em `form_session_events`:
+`uq_form_session_events_key` era PARCIAL e o `on_conflict=` do PostgREST
+manda só as colunas. O funil por pergunta da aba Resultados ficaria
+vazio para sempre. Pior, o comentário no código AFIRMAVA que estava
+seguro ("o predicado é sobre a própria coluna do índice" — não é como a
+inferência funciona). A varredura que virou `on-conflict-parcial.test.ts`
+achou uma terceira ocorrência em `refunds`. Migration 20261164.
+
+**3. A régua da RPC do funil lia a GUC errada.** `form_funnel_stats`
+checava `current_setting('request.jwt.claim.role')`, que o PostgREST ≥ 11
+só popula com `db-use-legacy-gucs` ligado — o `auth.role()` do Supabase
+faz `coalesce` com o `request.jwt.claims` em JSON justamente por isso. Se
+a GUC sumisse, o papel viraria NULL, a checagem cairia no ramo de membro,
+`auth.uid()` também é NULL para a chave de serviço e a função devolveria
+NULL: **a aba Resultados vazia para sempre, sem erro em lugar nenhum**.
+Migration 20261163; provado nos quatro papéis com claims em JSON apenas.
+
+**4. Quem o formulário RECUSOU chegava ao funil igual a quem ele quer.**
+O card do "fora do corte" saía com probabilidade 50 e nenhuma marca — o
+time liga para quem acabou de ler "a conta não fecha para você". Agora
+sai marcado (título, tag `fora-do-corte`, probabilidade 5, atividade
+explicando), **sem etapa nova no kanban de ninguém**: mexer na pipeline
+de vendas é decisão do dono dela. E quem decide se o final desqualifica é
+o SCHEMA PUBLICADO, não o corpo do POST.
+
+**Na mesma rodada**, por leitura: a página pública não declarava título
+nem descrição (a aba do anúncio dizia "Convertfy Admin - Sistema de
+Gestão para Agências", e era isso que o WhatsApp mostrava na prévia do
+link — `metadataDoFormulario` faz a aba dizer o que o visitante lê na
+tela); o `submit` era o único endereço público SEM teto de requisições,
+enquanto as rotas de sessão (telemetria) limitavam; "Despublicar" tirava
+o destino do anúncio do ar com um clique e sem confirmação, e chamava-se
+igual ao "Publicar" da versão; e o conversacional respondia "confira a
+conexão" a qualquer erro do servidor, inclusive a um 400 de campo
+obrigatório — a mesma lição que o clássico já tinha aprendido.
+
+**A regra que atravessa as quatro**: o que falha em silêncio aqui é
+sempre uma FRONTEIRA — entre dois renderizadores, entre o código e o
+índice, entre a função e a GUC, entre o formulário e o CRM. Nenhuma
+delas aparece como erro; todas aparecem como um número que não sobe.
+
 ---
 
 *Última atualização: Setembro 2026*
