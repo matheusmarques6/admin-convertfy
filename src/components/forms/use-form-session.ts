@@ -250,6 +250,18 @@ export function useFormSession(params: {
     }
   }, [ativo, enviar])
 
+  /**
+   * A sessão abre depois do primeiro render, e quem responde rápido pode
+   * enfileirar antes disso. `enviar` sai sem id e o pendente fica parado
+   * até o próximo `salvar` — se a pessoa responder a primeira pergunta e
+   * sair, esse save nunca acontece. Assim que o id chega, descarrega.
+   */
+  useEffect(() => {
+    if (!sessionId || !pendenteRef.current) return
+    if (timerRef.current) clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(() => void enviar(false), 200)
+  }, [sessionId, enviar])
+
   useEffect(() => {
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current)

@@ -8304,6 +8304,160 @@ ficaria no documento, invisível. **Sem variantes de layout**
 (`variantesDoTipo` devolve `undefined`): o cartão cresce com o conteúdo e
 fica centrado, sempre.
 
+## Formulários conversacionais e abandono → CRM (set/2026, migrations 20261144/20261161)
+
+Medido antes de escrever: o "Pagina de vendas" tinha **56 envios e
+VISITAS = 0**, e nenhum registro de quem abriu e não enviou. As duas
+coisas eram a mesma família de defeito — dado que ninguém grava.
+
+**VISITAS = 0 tinha causa única**: `void admin.rpc("increment_form_views")`
+na rota pública. Promise solta em serverless morre quando o processo
+congela depois do `return` — a mesma armadilha que perdeu os eventos de
+conversão da Meta e a cotação do câmbio. É `await`, e a falha da contagem
+loga sem derrubar o formulário.
+
+**Os dois modos convivem, e o clássico não foi tocado.**
+`crm_forms.display_mode` (classic|conversational, default classic) decide
+o renderizador; a rota GET devolve `fields` (como sempre) e `schema`
+(novo). O clássico está no ar com verba em cima e continua byte a byte.
+
+### O `ref` é o `crm_form_fields.id`, e isso é obrigação
+
+`tracking_config.rules[].field_id` aponta para aquele id,
+`form_submissions.data` é chaveada por ele, `answers` idem. Gerar `ref`
+novo faria a regra do evento "lead qualificado" deixar de casar **em
+silêncio** — o modo de falha que este repo já pagou duas vezes. Como id
+não se digita num texto de pergunta, o bloco tem `alias` (`{{nome}}`), que
+serve só ao recall e não endereça nada.
+
+`schema.ts` é a ponte entre `crm_form_fields` (a forma viva, que o submit
+usa) e `form_versions.schema` (o publicado, imutável, que carrega lógica,
+finais e tela de abertura). As duas convivem por tempo indeterminado:
+migrar de uma vez exigiria reescrever submit, dispatch de conversão e
+mapeamento de lead na mesma janela.
+
+### A engine é pura e roda nos DOIS lados
+
+`engine.ts` reexecuta a lógica em vez de guardar pilha de telas — pilha
+fica errada assim que a pessoa volta e troca uma resposta. Corte de laço
+(`LIMITE_DE_SALTOS`), progresso **monotônico** (com ramificação a
+estimativa muda a cada resposta, e barra que recua é lida como perda de
+progresso), e `blocoDoAbandono` = a primeira pergunta SEM resposta, não a
+última que a lógica alcança: a segunda diria que a pessoa parou no fim do
+formulário quando parou na segunda pergunta.
+
+**O obrigatório vale no CAMINHO percorrido.** Foi o bug crítico da
+revisão de integração: o submit exigia TODOS os `required`, e quem cai no
+final "abaixo do corte" nunca vê a URL da loja, que é obrigatória — 400 e
+lead perdido, justamente quem respondeu tudo o que lhe foi perguntado. A
+validação reexecuta a MESMA engine do cliente; uma segunda régua no
+servidor diria "campo obrigatório" de pergunta que nunca apareceu.
+Formulário sem lógica devolve `null` e a validação fica a de antes.
+
+### Sessão: o autosave que importa é o da aba fechando
+
+`POST /session` abre e devolve id + token HMAC (HKDF de
+`FORM_SESSION_SECRET` → `ENCRYPTION_KEY` → `SUPABASE_SERVICE_ROLE_KEY`,
+nunca a chave original). O id sozinho não autoriza: ele aparece na aba de
+rede, e sem assinatura bastaria conhecê-lo para reescrever as respostas de
+outra pessoa.
+
+`POST /session/save` é POST, não PATCH, porque `sendBeacon` — a única
+forma de o último save sobreviver ao fechamento da aba — só faz POST. Um
+PATCH bonito perderia exatamente o dado do abandono. Idempotente: respostas
+mesclam, **status só avança** (save atrasado não desfaz `completed`) e
+evento deduplica por `event_key`. Nunca responde 4xx para sessão
+desconhecida — não há ninguém para ler, e o beacon nem expõe a resposta.
+
+`origemPermitida`: **lista vazia PERMITE**, porque formulário existe para
+ser embutido e nascer fechado quebraria o embed no dia do deploy. Com
+lista, compara HOST inteiro — `startsWith` aceitaria
+`convertfy.me.atacante.com`.
+
+### O lead parcial NÃO nasce no autosave
+
+`contact_captured_at` é medição e acontece na hora. Criar o lead é outra
+coisa: o vendedor que vê lead novo LIGA, e ligar para quem está na
+terceira pergunta é o jeito mais rápido de perder a venda. Quem cria é o
+cron `/api/cron/forms-abandono` (5 em 5 min), depois da janela de
+inatividade — por formulário, com piso de 5 min e teto de 24 h, porque um
+zero digitado no editor viraria "ligue agora para quem acabou de abrir".
+
+Três classes, e só uma vira lead: **`so_visita`** (abriu e não respondeu) é
+visita, e o formulário já conta visitas; **`sem_contato`** é registro de
+funil, porque lead sem email nem telefone enche o CRM de linha morta;
+**`com_contato`** vira lead + negócio. Os três saem da fila
+(`abandon_processed_at`), senão o cron reprocessa para sempre. O carimbo é
+ANTES do trabalho pesado: perder UM abandono é melhor que duplicar no CRM
+do cliente.
+
+A **etapa é própria e nasce sozinha** no pipeline do formulário (o id fica
+em `settings.abandono_stage_id`): misturar abandono com quem enviou desfaz
+o motivo da feature, e exigir configuração deixaria tudo inerte sem
+ninguém descobrir por quê. O negócio sai com probabilidade **20** (quem
+não terminou está mais longe de fechar) e com "— abandonou <form>" no
+NOME, porque o card aparece em busca e relatório fora da etapa.
+
+A **timeline é o produto**: a pergunta onde parou, o que já tinha
+respondido, quando sumiu, e o link para continuar de onde parou. O link
+guarda só o SHA-256 no banco, vale 7 dias, e a retomada devolve um token
+de ESCRITA novo — o de retomada vive num link que pode ser encaminhado.
+
+O schema real corrigiu dois palpites: `crm_leads` guarda UTM em **JSONB**,
+não em colunas soltas, e `lead_status` é enum (status inventado seria
+22P02). A cadeia inteira foi provada contra produção em transação com
+ROLLBACK.
+
+### O que o render pegou e nenhum teste pegaria
+
+No formulário: o asterisco de obrigatório colado no "?" e em toda pergunta
+(o que informa é o contrário, "(opcional)"); `#DC2626` sem contraste no
+fundo escuro; "↑ ↓" soltos que não dizem nada; `align-items: center`
+cortando o topo da pergunta de 6 opções em celular baixo, **sem como rolar
+até ele** (a correção é `margin: auto` no filho); e o ✓ de sucesso na tela
+que diz "ainda não é para você".
+
+Na aba Resultados: `{{nome}}` cru no meio do relatório (vira `[nome]` —
+apagar deixaria "Prazer, . Para onde…"); card com rótulo de duas linhas
+entortando a fileira; e o campo **opcional** contado como queda de 16% em
+âmbar — pular o que é opcional é escolha, não desistência, e apontá-lo
+como gargalo manda mexer no lugar errado.
+
+### Interação, pelo que quebra na prática
+
+Escolha única avança sozinha com 300 ms de respiro (instantâneo dá
+sensação de clique não registrado); Enter avança e Shift+Enter quebra
+linha só em texto longo; letra A/B/C seleciona; o botão fica no FLUXO,
+nunca `position: fixed` — no iOS o teclado virtual não redimensiona a
+viewport e um botão fixo fica atrás dele; input com piso de **16px**,
+abaixo disso o Safari dá zoom ao focar; e **sem foco automático no
+celular**, que abriria o teclado por cima da pergunta ainda não lida.
+
+### `/forms/diagnostico` e o corte de R$200 mil
+
+Criado em produção para os anúncios: 6 perguntas, mesmo pipeline, mesmo
+pixel e **mesmo nome de evento** (`LeadQualificado`) do formulário atual —
+fragmentar a otimização em dois nomes seria pior que o problema. As faixas
+foram corrigidas: iam de R$100 mil (abaixo do critério comercial) e
+**pulavam a faixa 300–500k**, que não existia entre as opções — quem
+faturava R$400 mil não tinha o que marcar.
+
+`auditarQualificacao` (puro) existe para isso não voltar: mostra, antes de
+subir verba, quais respostas disparam o evento e quais não, e nomeia valor
+de regra que não corresponde a opção nenhuma. Usa o MESMO normalizador do
+executor (`normalizar-comparacao.ts`) — auditor que compara diferente do
+executor inventa erro onde não há e cala onde há.
+
+**Resultados** (`form_funnel_stats`, uma RPC): visitas → começaram →
+contato → concluíram, e por pergunta quantos VIRAM contra quantos
+RESPONDERAM. A diferença é a pergunta que faz desistir, e é o número que o
+módulo inteiro existe para produzir.
+
+**Ficou de fora, de propósito**: o editor visual do conversacional (o
+schema de `/forms/diagnostico` foi publicado por SQL — editar perguntas
+hoje é por lá), o embed sem iframe com Shadow DOM, e o teste A/B. A
+coluna `ab_variant` e o `form_versions` já existem para os dois.
+
 ---
 
 *Última atualização: Setembro 2026*

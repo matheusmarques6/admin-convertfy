@@ -135,7 +135,18 @@ export function ConversationalFormView({
     entradaEm.current = Date.now()
   }, [sessao.retomada, schema])
 
-  const ctx = useMemo(() => ({ answers, hidden, variables }), [answers, hidden, variables])
+  /**
+   * Os ocultos da sessão retomada entram por BAIXO dos da URL atual: o
+   * link de retomada não carrega os `?utm_*` da visita original, e sem
+   * isto a lógica que depende deles passaria a não casar justamente para
+   * quem voltou — o oposto do que o link existe para fazer. A URL de
+   * agora vence porque é a informação mais recente.
+   */
+  const ocultos = useMemo(
+    () => ({ ...(sessao.retomada?.hidden ?? {}), ...hidden }),
+    [sessao.retomada, hidden],
+  )
+  const ctx = useMemo(() => ({ answers, hidden: ocultos, variables }), [answers, ocultos, variables])
   const css = useMemo(() => cssDoEscopo(escopo, t.primary), [escopo, t.primary])
 
   const blocoAtual: FormBlock | null = useMemo(() => {
@@ -239,7 +250,7 @@ export function ConversationalFormView({
         return
       }
 
-      const ctxEfetivo = { answers: answersEfetivas, hidden, variables }
+      const ctxEfetivo = { answers: answersEfetivas, hidden: ocultos, variables }
       const r = proximoPasso(schema, blocoAtual.ref, ctxEfetivo)
       const tempo = Date.now() - entradaEm.current
 
@@ -280,7 +291,7 @@ export function ConversationalFormView({
       irPara({ tipo: "bloco", ref: r.destino.ref }, "frente")
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [tela, blocoAtual, answers, hidden, variables, schema, sessao, irPara],
+    [tela, blocoAtual, answers, ocultos, variables, schema, sessao, irPara],
   )
 
   const voltar = useCallback(() => {
@@ -375,8 +386,8 @@ export function ConversationalFormView({
   }, [tela.tipo === "bloco" ? tela.ref : null, preview])
 
   const recall = useCallback(
-    (txt: string | null | undefined) => aplicarRecall(txt, { answers, hidden, variables, blocks: schema.blocks }),
-    [answers, hidden, variables, schema.blocks],
+    (txt: string | null | undefined) => aplicarRecall(txt, { answers, hidden: ocultos, variables, blocks: schema.blocks }),
+    [answers, ocultos, variables, schema.blocks],
   )
 
   // ── render ──
