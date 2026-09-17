@@ -80,8 +80,17 @@ export async function GET(
 
     if (fErr) throw fErr
 
-    // Fire-and-forget incremento de views.
-    void admin.rpc("increment_form_views", { p_form_id: form.id })
+    // AWAIT, nunca `void`: promise solta em serverless morre quando o
+    // processo congela depois do `return` — era por isso que VISITAS
+    // ficava em 0 com 56 envios. A mesma armadilha que perdeu os eventos
+    // de conversão da Meta e a cotação do câmbio.
+    //
+    // Falhar a contagem NÃO pode derrubar o formulário: a métrica é
+    // secundária, o formulário é o produto.
+    const { error: viewErr } = await admin.rpc("increment_form_views", {
+      p_form_id: form.id,
+    })
+    if (viewErr) log.warn("form.view_nao_contada", { formId: form.id, code: viewErr.code, message: viewErr.message })
 
     return successResponse(request, { form: publicForm, fields: fields || [] })
   } catch (error) {

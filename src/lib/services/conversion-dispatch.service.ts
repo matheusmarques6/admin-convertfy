@@ -68,23 +68,13 @@ function ruleValues(value: QualifiedRule["value"]): string[] {
 }
 
 /**
- * Normaliza para comparar: sem espaços nas pontas, minúsculas e sem
- * acento.
- *
- * A comparação era literal (`===`), então a regra `= "Sim"` NÃO batia a
- * resposta "sim", e `= "São Paulo"` não batia "Sao Paulo". Quem monta a
- * regra digita à mão, quem responde escolhe no formulário — exigir que
- * as duas grafias coincidam byte a byte fazia o evento simplesmente
- * nunca disparar, sem erro em lugar nenhum. Comparação numérica (gt/lt)
- * não passa por aqui.
+ * Reexportado da fonte única (`lib/tracking/normalizar-comparacao`), que
+ * é client-safe. A auditoria da regra roda no EDITOR e precisa comparar
+ * exatamente como o executor compara — auditor com normalizador próprio
+ * inventa erro onde não há e cala onde há.
  */
-export function normalizeForCompare(s: string): string {
-  return s
-    .trim()
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "") // marcas de acento separadas pelo NFD
-}
+export { normalizeForCompare } from "@/lib/tracking/normalizar-comparacao"
+import { normalizeForCompare } from "@/lib/tracking/normalizar-comparacao"
 
 const eq = (a: string, b: string): boolean => normalizeForCompare(a) === normalizeForCompare(b)
 
