@@ -8945,6 +8945,82 @@ lembrete, e a etapa do parceiro recusada. As regras novas são **no-op na
 base de hoje** (0 em nutrição, 0 com tarefa aberta) — são guardas para o
 que acontece depois que a cadência começar.
 
+## O construtor de fluxo passa a mostrar o que a engine faz (17/09)
+
+Relato: *"tem pergunta que existe no fluxo mas tá faltando pergunta que
+existe nela… preciso ver e configurar a próxima pergunta e fluxo com mais
+clareza"*. Renderizando a aba Fluxo com o funil de produção, a frase era
+literal — e o topo do painel dizia, em vermelho:
+
+> **1 regra não funciona** — A regra 1 de "Qual o faturamento médio mensal
+> da loja?" testa a resposta de uma pergunta que não existe mais.
+
+**A regra é o corte de R$200 mil e ela funciona.** O que ela testa é o
+piso derivado (`…__piso_brl`), que o construtor não conhecia: o `select`
+da condição listava as 10 perguntas e **nenhuma ficava marcada** — a
+regra existia no fluxo e a pergunta que existe nela estava faltando. Quem
+"consertasse" o erro falso escolhendo outra pergunta **desligaria o corte
+do funil**. `derivadosDoSchema`/`origemDoDerivado` (`derivados.ts`) são a
+lista única que o diagnóstico, a auditoria e o construtor leem; só origem
+apagada é erro (`derivado_sem_origem`), operador de texto sobre número é
+recusado, e o select tem opção de pouso para o sujeito que sumiu — sem
+ela o campo fica EM BRANCO, que foi como isto apareceu.
+
+**A unidade virou a TELA** (`mapa-do-fluxo.ts`, puro, 18 testes). A engine
+percorre telas: um grupo de quatro campos é um clique só e a regra escrita
+em qualquer uma das quatro vale para as quatro. Listando blocos, o
+construtor mostrava **10 passos onde há 6**, anunciava "segue para
+Sobrenome" — um passo que nunca acontece — e não dizia em lugar nenhum
+que aquelas perguntas estão juntas. Agora cada cartão é uma tela com as
+perguntas dentro listadas (tela que AGRUPA nasce aberta: é nela que a
+informação sumia), o desvio diz **de qual pergunta parte** (a engine
+numera por pergunta, então duas telas podem ter dois "Desvio 1"), e o
+`select` de "SE" separa *respondida nesta tela* × *já respondida antes* ×
+*valor calculado* × *campo oculto* × *ainda sem resposta aqui*. Os
+destinos são endereçados pela CABEÇA da tela — gravar o ref do meio do
+grupo funciona (a engine corrige) e faria o rascunho discordar da tela no
+primeiro reagrupamento.
+
+**"A próxima pergunta" deixou de ser frase e virou campo**
+(`FormBlock.proximo`): mesmo vocabulário do `goto` de um desvio, porque
+são a mesma decisão. É da TELA, não da pergunta — o construtor grava na
+cabeça e limpa dos demais, e a engine lê o **primeiro** bloco da tela que
+declarar, senão arrastar uma pergunta para cima apagaria o destino em
+silêncio. `montarVersao` transporta (como `alias` e `mesma_tela`) e
+descarta o que aponta para pergunta apagada; final alcançado só pelo
+destino padrão deixou de ser contado como órfão.
+
+**A régua que o render expôs**: configurar a Tela 3 para pular a Tela 4
+torna o corte inalcançável, e nada dizia. A doutrina antiga
+(`diagnostico-fluxo.ts` dizia, por escrito, que "pergunta inalcançável não
+existe, a engine sempre cai em `proximoNaOrdem`") **deixou de valer no
+momento em que o destino padrão virou configurável**. `tela_inalcancavel`
+é erro e a régua é auto-limitada: sem nenhum `proximo` declarado toda tela
+continua sendo o destino natural da anterior e nada dispara — zero alarme
+falso nos funis de hoje. Pelo mesmo motivo nasceu `laco_de_destino_padrao`:
+ordem não faz ciclo, destino configurável faz, e a tela que aponta para si
+mesma é a pessoa respondendo e voltando para sempre. Ciclo com um desvio
+que sai dele é AVISO (ninguém sabe estaticamente se a regra casa); sem
+saída nenhuma é erro. O título do aviso também parou de chamar tela de
+regra ("N problemas quebram o fluxo" quando nem todo erro é de regra).
+
+**Posterioridade passou a ser medida por TELA**: com quatro campos juntos,
+a regra da cabeça pode testar o quarto sem problema nenhum — os quatro são
+respondidos antes do mesmo clique. Comparar posição de BLOCO acusava "só
+aparece depois" sobre o caso mais comum de agrupar.
+
+**Limite declarado**: `telasDaSequencia` (`telas.ts`), que numera as telas
+na aba Perguntas, não filtra campo oculto; `telasDoFluxo` filtra. Medido
+em 17/09: zero campos ocultos em produção e nenhuma UI que os crie. No dia
+em que houver, as duas numerações discordam sem nada explicando, e mudam
+juntas.
+
+*Verificado renderizando* (esbuild + Chromium, com o schema publicado do
+`/forms/diagnostico`): o erro falso sumiu do topo e do selo da aba, as
+duas perguntas da tela da loja aparecem, o desvio de contato sai marcado
+"em Sobrenome", configurar o destino da Tela 3 para a Tela 5 muda o rótulo
+e acende o aviso de tela inalcançável com o cartão em vermelho.
+
 ---
 
 *Última atualização: Setembro 2026*

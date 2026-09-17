@@ -82,7 +82,7 @@ export function camposDerivados(
     out.answers[refDoPiso(b.ref)] = piso
     out.fields.push({
       id: refDoPiso(b.ref),
-      label: `${b.label || "Faturamento"} — equivalente em R$`,
+      label: rotuloDoPiso(b.label),
     })
 
     // Só grava no deal quando o campo já tem destino: inventar chave em
@@ -95,6 +95,65 @@ export function camposDerivados(
   }
 
   return out
+}
+
+/* ------------------------------------------------------------------ *
+ * Quem enxerga o derivado
+ * ------------------------------------------------------------------ */
+
+/** Um endereço que ninguém responde: o servidor o calcula. */
+export interface RefDerivado {
+  /** O endereço, como uma condição o cita. */
+  ref: string
+  /** Nome legível — é o que o construtor de fluxo mostra no select. */
+  label: string
+  /** `ref` da pergunta de onde ele sai. */
+  origem: string
+  /** Comparação numérica: `in`/`contains` ali não fazem sentido. */
+  numerico: true
+}
+
+/**
+ * Os derivados que ESTE schema produz.
+ *
+ * Lista única, porque três leitores dependem dela e divergir é
+ * silencioso: a auditoria da qualificação, o diagnóstico do fluxo (que
+ * sem ela acusa "pergunta que não existe mais" sobre o mecanismo que
+ * está funcionando) e o construtor, cujo select ficaria sem nada
+ * selecionado — e trocar aquele select desligaria o corte do funil.
+ *
+ * Hoje há um derivado só, o piso em real da faixa de faturamento. A
+ * lista existe para o segundo não nascer espalhado.
+ */
+export function derivadosDoSchema(schema: FormSchema | null | undefined): RefDerivado[] {
+  if (!schema || !Array.isArray(schema.blocks)) return []
+  const out: RefDerivado[] = []
+  for (const b of schema.blocks) {
+    if (!b.opcoes_por_moeda) continue
+    out.push({
+      ref: refDoPiso(b.ref),
+      label: rotuloDoPiso(b.label),
+      origem: b.ref,
+      numerico: true,
+    })
+  }
+  return out
+}
+
+/**
+ * O `ref` da pergunta de onde um endereço derivado sai — `null` quando o
+ * endereço não é derivado.
+ *
+ * É leitura de STRING, de propósito: uma condição pode citar o piso de
+ * uma pergunta que foi apagada, e é justamente esse o caso que precisa
+ * virar erro em vez de passar batido.
+ */
+export function origemDoDerivado(ref: string): string | null {
+  return ref.endsWith(SUFIXO_PISO) ? ref.slice(0, -SUFIXO_PISO.length) : null
+}
+
+function rotuloDoPiso(label: string | null | undefined): string {
+  return `${label || "Faturamento"} — equivalente em R$`
 }
 
 /* ------------------------------------------------------------------ *
@@ -162,7 +221,7 @@ export function camposParaAuditoria(schema: FormSchema | null | undefined): Camp
     for (const o of todas) if (typeof o.piso === "number") porOpcao[o.value] = o.piso
 
     const ref = refDoPiso(b.ref)
-    const rotulo = `${b.label || "Faturamento"} — equivalente em R$`
+    const rotulo = rotuloDoPiso(b.label)
     out.push({
       id: b.ref,
       label: b.label,

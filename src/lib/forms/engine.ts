@@ -300,6 +300,35 @@ function proximoNaOrdem(schema: FormSchema, refAtual: string): Destino {
   return prox ? { tipo: "bloco", ref: prox.ref } : { tipo: "fim", ending: null }
 }
 
+/**
+ * O `proximo` que a tela declara — o PRIMEIRO bloco dela que o declara.
+ *
+ * Exportada porque o construtor precisa ler exatamente o mesmo que a
+ * engine obedece. Duas leituras divergiriam no dia em que alguém
+ * reagrupasse as perguntas, e a divergência apareceria como "na tela do
+ * editor diz que vai para a 9 e o formulário vai para a 8".
+ */
+export function proximoDeclarado(blocos: readonly FormBlock[]): string | undefined {
+  return blocos.find((b) => typeof b.proximo === "string" && b.proximo)?.proximo ?? undefined
+}
+
+/**
+ * O destino padrão da TELA: para onde vai quem não caiu em desvio nenhum.
+ *
+ * Lê o `proximo` do PRIMEIRO bloco da tela que o declara — não só da
+ * cabeça. O construtor grava na cabeça, mas quem reagrupa as perguntas
+ * na aba Perguntas troca qual delas é a cabeça, e ler só ali faria o
+ * destino configurado sumir em silêncio no dia em que alguém arrastasse
+ * uma pergunta para cima.
+ *
+ * Sem `proximo`, a próxima tela na ordem — o comportamento de sempre.
+ */
+function destinoPadrao(schema: FormSchema, refAtual: string): Destino {
+  const declarado = proximoDeclarado(blocosDaTela(schema, refAtual))
+  if (!declarado) return proximoNaOrdem(schema, refAtual)
+  return destinoDoGoto(schema, declarado, refAtual)
+}
+
 function destinoDoGoto(schema: FormSchema, goto: string, origem: string): Destino {
   if (goto.startsWith(PREFIXO_ENDING)) {
     const ref = goto.slice(PREFIXO_ENDING.length)
@@ -323,6 +352,9 @@ export interface ResultadoAvanco {
 
 /**
  * De onde estou, para onde vou.
+ *
+ * Sem regra que case, vale o destino PADRÃO da tela (`proximo`), que por
+ * omissão é a próxima na ordem.
  *
  * Encadeia: se o destino for um `statement` (bloco sem resposta) a
  * navegação NÃO o pula — ele é uma tela, e pulá-lo apagaria o texto que
@@ -356,7 +388,7 @@ export function proximoPasso(
       if (regra) break
     }
 
-    if (!regra) return { destino: proximoNaOrdem(schema, atual), variables }
+    if (!regra) return { destino: destinoPadrao(schema, atual), variables }
 
     variables = aplicarVariaveis(regra, variables)
     const destino = destinoDoGoto(schema, regra.goto, atual)
