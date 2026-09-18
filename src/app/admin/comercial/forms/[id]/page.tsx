@@ -38,6 +38,9 @@ import { AUTOSAVE_MS, podeSalvarSozinho, type EstadoDoSave } from "@/lib/forms/a
 import type { LayoutDaMidia } from "@/lib/forms/midia"
 import { PreviaDoFormulario } from "@/components/forms/previa-do-formulario"
 import { HistoricoDeVersoes } from "@/components/forms/historico-de-versoes"
+import { FluxoCanvas } from "@/components/forms/fluxo-canvas"
+import { noDaSelecao } from "@/lib/forms/fluxo-canvas"
+import { telasDoFluxo } from "@/lib/forms/mapa-do-fluxo"
 import { PublicFormView } from "@/components/forms/public-form-view"
 import { QUALIFIED_OPERATORS, type QualifiedRule } from "@/types/form-tracking"
 import { metaEventName, willRenameEvent } from "@/lib/tracking/meta-event-name"
@@ -363,6 +366,12 @@ export default function FormEditorPage({
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
   const [previaAberta, setPreviaAberta] = useState(false)
+  /**
+   * O nó escolhido no mapa. `undefined` = "ainda não escolheu nada nesta
+   * visita": aí o mapa abre no item da espinha, para trocar de aba não
+   * perder o lugar. `null` = desmarcou de propósito.
+   */
+  const [noDoFluxo, setNoDoFluxo] = useState<string | null | undefined>(undefined)
   const [historicoAberto, setHistoricoAberto] = useState(false)
   const [publicando, setPublicando] = useState(false)
   /** Edição local desde a última publicação — acende o selo antes do save. */
@@ -541,6 +550,10 @@ export default function FormEditorPage({
     [selecao, espinha, displayMode],
   )
   const refDaPrevia = useMemo(() => telaDaPrevia(selecaoAtiva, espinha), [selecaoAtiva, espinha])
+  const noSelecionadoNoFluxo = useMemo(
+    () => (noDoFluxo === undefined ? noDaSelecao(telasDoFluxo(fluxo), selecaoAtiva) : noDoFluxo),
+    [noDoFluxo, fluxo, selecaoAtiva],
+  )
 
   /**
    * Abre na primeira pergunta.
@@ -1464,15 +1477,26 @@ export default function FormEditorPage({
         )}
 
         {activeTab === "fluxo" && (
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            <div className="mx-auto max-w-[900px] px-4 py-4">
-              <FlowEditor
-                fluxo={fluxo}
-                onChange={setRascunho}
-                temAbertura={displayMode === "conversational"}
-                formId={id}
-              />
-            </div>
+          <div className="min-h-0 min-w-0 flex-1">
+            <FluxoCanvas
+              fluxo={fluxo}
+              onChange={setRascunho}
+              temAbertura={displayMode === "conversational"}
+              selecionado={noSelecionadoNoFluxo}
+              onSelecionar={setNoDoFluxo}
+              onEditar={(no) => {
+                // A mesma seleção nos dois lados: o nó vira o item da espinha.
+                setSelecao(
+                  no.tipo === "abertura"
+                    ? { tipo: "abertura" }
+                    : no.tipo === "final"
+                      ? { tipo: "final", ref: no.ref }
+                      : { tipo: "pergunta", ref: no.ref },
+                )
+                setActiveTab("criar")
+              }}
+              formId={id}
+            />
           </div>
         )}
 
