@@ -79,3 +79,49 @@ describe("pixels dos formulários públicos", () => {
     expect(vistos.sort()).toEqual([...RENDERIZADORES].sort())
   })
 })
+
+/**
+ * O passo e o lead parcial — o que o formulário longo mede no caminho.
+ *
+ * Um funil de 21 telas perde metade de quem começa. Sem o `FormStep` a
+ * Meta não sabe quem parou onde, e sem o `Lead` na captura do contato
+ * ela só vê a conversão de quem termina — a campanha passa a otimizar
+ * para "terminar o questionário" em vez de "deixar contato".
+ */
+describe("passo e lead parcial no conversacional", () => {
+  const src = ler("conversational-form-view.tsx")
+
+  it("dispara `FormStep` a cada tela nova", () => {
+    expect(src).toContain("fireFormStep(")
+    // Uma vez por tela: voltar e avançar de novo não é passo novo, e
+    // contá-lo infla o público de "chegou até a tela 9" com quem só
+    // corrigiu a resposta anterior.
+    expect(src, "sem o Set, voltar e avançar dispara de novo").toMatch(
+      /passosDisparados[\s\S]{0,400}fireFormStep\(/,
+    )
+  })
+
+  it("dispara o `Lead` parcial com o id da SESSÃO", () => {
+    expect(src).toContain("contatoCapturado(")
+    expect(src).toMatch(/fireLeadParcial\(\s*form\.tracking,\s*sessao\.sessionId\s*\)/)
+    // Marcar como disparado ANTES de o id existir faria o evento nunca
+    // sair — o id chega assíncrono, e é ele que impede o parcial e o
+    // completo virarem duas conversões.
+    expect(src).toMatch(/if \(!sessao\.sessionId\) return[\s\S]{0,200}parcialDisparado\.current = true/)
+  })
+
+  it("o submit reusa o id da sessão como `event_id` do Lead", () => {
+    const rota = semComentarios(
+      readFileSync(
+        join(process.cwd(), "src", "app", "api", "public", "forms", "[slug]", "submit", "route.ts"),
+        "utf8",
+      ),
+    )
+    // Com ids diferentes, o parcial e o completo do MESMO cadastro
+    // viram duas conversões: a dedupe da Meta é por (evento, event_id).
+    expect(rota).toMatch(/eventId = sessaoAutenticada && parsed\.session_id \? parsed\.session_id :/)
+    // Só o id autenticado: ele viaja pelo browser, e aceitar qualquer um
+    // deixaria alguém colar a conversão de um cadastro em cima da de outro.
+    expect(rota).toContain("sessaoAutenticada = tk.valido && tk.sessionId === parsed.session_id")
+  })
+})

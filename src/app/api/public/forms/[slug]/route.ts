@@ -66,6 +66,8 @@ export async function GET(
     const tracking = {
       meta_browser_pixel: Boolean(cfg.meta.enabled && cfg.meta.browser_pixel),
       meta_pixel_id: cfg.meta.enabled ? (form.facebook_pixel_id ?? null) : null,
+      form_step: Boolean(cfg.meta.form_step),
+      lead_no_parcial: Boolean(cfg.meta.lead_no_parcial),
       google_enabled: Boolean(cfg.google.enabled),
       google_ads_id: cfg.google.enabled ? (form.google_ads_id ?? null) : null,
       google_ads_conversion_label: cfg.google.enabled

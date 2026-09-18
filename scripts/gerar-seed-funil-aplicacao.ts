@@ -49,12 +49,29 @@ const tema = {
 }
 
 const tracking = {
-  meta: { enabled: true, browser_pixel: true },
+  meta: {
+    enabled: true,
+    browser_pixel: true,
+    // Um funil de 21 telas perde metade de quem começa. `form_step`
+    // diz onde cada um parou (um evento só, parametrizado) e
+    // `lead_no_parcial` manda o "Lead" na hora em que o contato é
+    // capturado — sem ele a Meta só vê quem termina, e a campanha
+    // otimiza para concluir o questionário em vez de deixar contato.
+    // Os dois são opt-in justamente porque só fazem sentido aqui.
+    form_step: true,
+    lead_no_parcial: true,
+  },
   google: { enabled: false },
   // O `LeadQualificado` é do FINAL aprovado, não de uma faixa de
   // faturamento: quem chega lá já passou pelos três cortes duros. Uma
   // régua por resposta aqui discordaria do desfecho que a pessoa viu.
-  qualified_lead: { enabled: false, logic: "and", rules: [], event_name: "LeadQualificado" },
+  qualified_lead: {
+    enabled: true,
+    logic: "and",
+    rules: [],
+    endings: ["fim_aprovado"],
+    event_name: "LeadQualificado",
+  },
 }
 
 const out: string[] = []

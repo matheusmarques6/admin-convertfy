@@ -617,9 +617,11 @@ export async function POST(
     // O token é conferido porque `session_id` viaja pelo browser: sem
     // ele, qualquer um marcaria a sessão de outra pessoa como concluída
     // e o abandono dela nunca chegaria ao vendedor.
+    let sessaoAutenticada = false
     if (parsed.session_id && parsed.session_token) {
       const tk = verificarTokenSessao(parsed.session_token)
-      if (tk.valido && tk.sessionId === parsed.session_id) {
+      sessaoAutenticada = tk.valido && tk.sessionId === parsed.session_id
+      if (sessaoAutenticada) {
         await concluirSessao(admin, parsed.session_id, {
           leadId,
           dealId,
@@ -726,7 +728,17 @@ export async function POST(
     let qualifiedUserData: MetaAdvancedMatching | null = null
     let qualifiedCustomData: Record<string, unknown> | null = null
     if (metaConfigured && leadId) {
-      eventId = randomUUID()
+      // O `event_id` do "Lead" é o da SESSÃO quando ela existe e foi
+      // verificada. É isso que impede contar a mesma pessoa duas vezes:
+      // o conversacional pode ter disparado o "Lead" parcial assim que o
+      // contato foi capturado (ver `fireLeadParcial`), e a dedupe da Meta
+      // é por (nome do evento, event_id) — com ids diferentes, o parcial
+      // e o completo virariam duas conversões do mesmo cadastro.
+      //
+      // Só o id AUTENTICADO serve: ele viaja pelo browser, e aceitar um
+      // qualquer deixaria alguém colar a conversão de um cadastro em
+      // cima da de outro. Sem sessão (formulário clássico) nada muda.
+      eventId = sessaoAutenticada && parsed.session_id ? parsed.session_id : randomUUID()
       qualified = evaluateQualified(
         trackingCfg.qualified_lead,
         respostasComDerivados,

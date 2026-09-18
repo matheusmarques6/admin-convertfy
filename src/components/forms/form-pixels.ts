@@ -45,6 +45,10 @@ export interface FormTracking {
   google_enabled: boolean
   google_ads_id: string | null
   google_ads_conversion_label: string | null
+  /** Dispara `FormStep` a cada tela. Opt-in — ver `fireFormStep`. */
+  form_step?: boolean
+  /** Dispara `Lead` quando o contato é capturado. Ver `fireLeadParcial`. */
+  lead_no_parcial?: boolean
 }
 
 /** Resposta de tracking do submit — event ids p/ deduplicar com o browser. */
@@ -126,4 +130,53 @@ export function fireConversionPixels(
   ) {
     fireGtagConversion(`${tracking.google_ads_id}/${tracking.google_ads_conversion_label}`)
   }
+}
+
+/**
+ * A tela por onde a pessoa passou — `FormStep`, para remarketing de
+ * abandono.
+ *
+ * Um evento SÓ, parametrizado, e não vinte e um nomes: o Gerenciador de
+ * Eventos lista cada nome custom separado, e um formulário de 21 telas
+ * encheria a conta de eventos que ninguém usa. Com `step` e `total` no
+ * parâmetro, o público de "parou na tela 9" sai de uma regra sobre um
+ * evento que já existe.
+ *
+ * É opt-in por formulário (`meta.form_step`): ligá-lo para todo mundo
+ * multiplicaria por vinte o volume que a página com verba manda hoje, e
+ * ninguém pediu isso.
+ */
+export function fireFormStep(
+  tracking: FormTracking | undefined,
+  passo: { numero: number; total: number; ref: string },
+): void {
+  if (!tracking?.meta_browser_pixel || !tracking.meta_pixel_id) return
+  if (!tracking.form_step) return
+  fireMetaEvent("FormStep", {
+    custom: true,
+    params: { step: passo.numero, total: passo.total, ref: passo.ref },
+  })
+}
+
+/**
+ * O `Lead` do contato capturado, antes do fim.
+ *
+ * Metade de quem começa um formulário de 21 telas não chega ao fim, e
+ * quem deixou nome, WhatsApp e e-mail já é lead — o CRM trata assim
+ * desde o cron de abandono. Sem este disparo, a Meta só vê a conversão
+ * de quem termina, e a campanha otimiza para o comportamento errado.
+ *
+ * **O `event_id` é o da SESSÃO, e é ele que impede contar duas vezes.**
+ * Quem completa depois manda outro `Lead` no submit; com ids diferentes
+ * seriam duas conversões do mesmo cadastro. A dedupe da Meta é por
+ * (nome do evento, event_id), então o parcial e o completo compartilham
+ * o id da sessão.
+ */
+export function fireLeadParcial(
+  tracking: FormTracking | undefined,
+  eventId: string | null,
+): void {
+  if (!tracking?.meta_browser_pixel || !tracking.meta_pixel_id) return
+  if (!tracking.lead_no_parcial || !eventId) return
+  fireMetaEvent("Lead", { eventId })
 }

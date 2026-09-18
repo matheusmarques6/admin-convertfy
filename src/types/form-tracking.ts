@@ -97,7 +97,14 @@ export interface MetaAdvancedMatching {
 }
 
 export interface FormTrackingConfig {
-  meta: { enabled: boolean; browser_pixel: boolean }
+  meta: {
+    enabled: boolean
+    browser_pixel: boolean
+    /** Dispara `FormStep` a cada tela do conversacional. Opt-in. */
+    form_step?: boolean
+    /** Dispara `Lead` quando o contato é capturado, antes do fim. Opt-in. */
+    lead_no_parcial?: boolean
+  }
   google: { enabled: boolean }
   qualified_lead: QualifiedLeadConfig
 }
@@ -136,6 +143,10 @@ export function normalizeTrackingConfig(raw: unknown): FormTrackingConfig {
     meta: {
       enabled: Boolean(meta.enabled),
       browser_pixel: meta.browser_pixel === undefined ? true : Boolean(meta.browser_pixel),
+      // Os dois são opt-in: ligá-los por padrão multiplicaria o volume
+      // que a página com verba manda hoje, e ninguém pediu isso.
+      form_step: Boolean(meta.form_step),
+      lead_no_parcial: Boolean(meta.lead_no_parcial),
     },
     google: {
       enabled: Boolean(google.enabled),

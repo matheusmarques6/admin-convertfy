@@ -85,11 +85,14 @@ import { aplicarRecall } from "@/lib/forms/recall"
 import { ESPERA_DO_DESTINO_MS, montarDestino, type DestinoPronto } from "@/lib/forms/destino"
 import {
   fireConversionPixels,
+  fireFormStep,
+  fireLeadParcial,
   matchingDoBrowser,
   useFormPixels,
   type FormTracking,
   type SubmitTracking,
 } from "./form-pixels"
+import { contatoCapturado } from "@/lib/forms/contato-capturado"
 import {
   mascaraDeTelefone,
   paisSugeridoPeloNavegador,
@@ -316,15 +319,70 @@ export function ConversationalFormView({
   }, [tela.tipo, blocoAtual, schema])
 
   // ── progresso ──
+  /**
+   * A contagem de telas — `indice` e `total`, não só a fração.
+   *
+   * A barra usa a fração; o `FormStep` do pixel precisa dos dois
+   * números, e recalculá-los num segundo lugar faria a tela e o evento
+   * discordarem sobre onde a pessoa está.
+   */
+  const passoAtual = useMemo(() => {
+    if (tela.tipo !== "bloco") return null
+    return calcularProgresso(schema, tela.ref, ctx)
+  }, [tela, schema, ctx])
+
   const progresso = useMemo(() => {
     if (tela.tipo === "fim") return 1
     if (tela.tipo === "welcome") return 0
-    return calcularProgresso(schema, tela.ref, ctx).fracao
-  }, [tela, schema, ctx])
+    return passoAtual?.fracao ?? 0
+  }, [tela.tipo, passoAtual])
 
   useEffect(() => {
     setProgressoVisto((p) => progressoMonotonico(p, progresso))
   }, [progresso])
+
+  /**
+   * `FormStep` — uma vez por tela, nunca a cada visita a ela.
+   *
+   * Voltar e avançar de novo não é um passo novo: contá-lo inflaria o
+   * público de "chegou até a tela 9" com quem só corrigiu a resposta
+   * anterior. O `Set` guarda os refs já disparados nesta visita.
+   *
+   * A função é opt-in por formulário e não faz nada no preview.
+   */
+  const passosDisparados = useRef(new Set<string>())
+  useEffect(() => {
+    if (preview || tela.tipo !== "bloco" || !passoAtual) return
+    if (passosDisparados.current.has(tela.ref)) return
+    passosDisparados.current.add(tela.ref)
+    fireFormStep(form.tracking, {
+      numero: passoAtual.indice,
+      total: passoAtual.total,
+      ref: tela.ref,
+    })
+  }, [tela, passoAtual, preview, form.tracking])
+
+  /**
+   * O `Lead` parcial — na hora em que o contato é capturado, não no fim.
+   *
+   * Quem deixou WhatsApp ou e-mail já é lead: o cron de abandono o
+   * manda ao CRM assim. Sem este disparo a Meta só vê quem chega ao
+   * fim de um formulário longo, e a campanha otimiza para terminar o
+   * questionário em vez de para deixar contato.
+   *
+   * Espera o id da SESSÃO existir (ele chega assíncrono) e só então
+   * marca como disparado — marcar antes faria o evento nunca sair, e o
+   * `event_id` é justamente o que impede o parcial e o completo
+   * virarem duas conversões.
+   */
+  const parcialDisparado = useRef(false)
+  useEffect(() => {
+    if (preview || parcialDisparado.current) return
+    if (!sessao.sessionId) return
+    if (!contatoCapturado(schema, answers)) return
+    parcialDisparado.current = true
+    fireLeadParcial(form.tracking, sessao.sessionId)
+  }, [preview, sessao.sessionId, schema, answers, form.tracking])
 
   // ── navegação ──
   const irPara = useCallback(
