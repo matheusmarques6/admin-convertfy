@@ -25,7 +25,8 @@ const log = logger.child("FormMedia")
 export const dynamic = "force-dynamic"
 export const maxDuration = 60
 
-export const BUCKET_DA_MIDIA = "form-media"
+/** Bucket público do Storage. Local: rota do Next só exporta handler e config. */
+const BUCKET_DA_MIDIA = "form-media"
 
 const IMAGENS = ["image/png", "image/jpeg", "image/webp", "image/gif"]
 const VIDEOS = ["video/mp4", "video/webm"]

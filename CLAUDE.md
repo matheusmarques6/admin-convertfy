@@ -9196,6 +9196,45 @@ Telemetria na run: `separacoes_decididas`, `separacoes_inseridas`,
 coisas diferentes e nenhuma substitui a outra (`0` inseridas com modo `on` e
 decisões > 0 é par errado ou upload falho, e o motivo está nos descartes).
 
+## O build quebra onde o typecheck não olha (18/09)
+
+Deploy falhado em `8bd1c3d`: `"BUCKET_DA_MIDIA" is not a valid Route export
+field`. Um `route.ts` do Next só pode exportar handlers e campos de config
+conhecidos — a régua está no arquivo que o próprio Next gera em
+`.next/types/app/**/route.ts`, um `checkFields<Diff<{GET?, POST?, …, dynamic?,
+maxDuration?}, typeof entry>>`: **todo export de VALOR fora da lista vira erro
+de tipo**. `export interface`/`export type` passam, porque tipos são apagados e
+não aparecem em `typeof import(...)` — é por isso que meia dúzia de rotas com
+`export interface` convivem com a régua há meses.
+
+**`npx tsc --noEmit` passava LIMPO com o build quebrado.** A régua não está no
+nosso `tsconfig`; ela vive em arquivos que só existem durante o `next build`.
+E o `tsc` para no PRIMEIRO erro, então um segundo arquivo com o mesmo defeito
+só apareceria no deploy seguinte — que era o caso: a varredura achou
+`conteudo/templates/route.ts` exportando cinco VALORES (`criarSchema`, `COLS`,
+`COLS_SEM_FAMILIA`, `rowToMeuTemplate`, `semColunaFamilia`) e
+`templates/[id]/route.ts` importando os cinco de `../route`. Consertar só o
+primeiro custaria mais um ciclo de deploy para descobrir o segundo.
+
+Rota importando valor de rota é frágil por um segundo motivo, independente do
+Next: arrasta o módulo inteiro do handler vizinho para o bundle de quem
+importa. O compartilhado foi para `lib/conteudo/meus-templates.ts` (o
+`lib/conteudo/templates.ts` que já existia é outra coisa — os moldes fixos da
+casa); `BUCKET_DA_MIDIA` só perdeu a palavra `export`, porque não tinha um
+único importador.
+
+`src/lib/rotas-exports.test.ts` fecha a classe, na linha do
+`crons-agendados.test.ts` e do `colunas-inexistentes.test.ts`: varre
+`src/app/**/route.ts`, extrai os exports de valor (ignorando comentário, `type`
+e `interface`) e reprova o que estiver fora da lista — copiada do arquivo
+gerado, não inventada. Tem caso de auto-verificação: sem ele, um recorte
+quebrado passaria em todos os arquivos por não achar nada, e a régua diria
+"tudo certo" sem ter medido. `page.tsx`/`layout.tsx` ficam de fora (lista
+diferente, e a varredura mostrou que estão limpos).
+
+Verificado com `pnpm run build` local até o fim (`EXIT=0`): o "Checking
+validity of types" que a Vercel derrubava agora atravessa.
+
 ## O CTA que some e o CTA que nasce pequeno (18/09)
 
 Relato: *"ele estava colocando o cta pequeno, na mesma cor do fundo"*. Medido

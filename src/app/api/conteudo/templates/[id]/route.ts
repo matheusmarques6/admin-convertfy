@@ -11,7 +11,7 @@ import { z } from "zod"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { AppError, errorResponse, requireAuth, successResponse } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
-import { COLS, COLS_SEM_FAMILIA, criarSchema, rowToMeuTemplate, semColunaFamilia, type Row } from "../route"
+import { COLS, COLS_SEM_FAMILIA, criarSchema, rowToMeuTemplate, semColunaFamilia, type Row } from "@/lib/conteudo/meus-templates"
 
 export const dynamic = "force-dynamic"
 
