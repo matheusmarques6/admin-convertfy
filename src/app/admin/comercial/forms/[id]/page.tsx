@@ -39,6 +39,7 @@ import type { LayoutDaMidia } from "@/lib/forms/midia"
 import { PreviaDoFormulario } from "@/components/forms/previa-do-formulario"
 import { HistoricoDeVersoes } from "@/components/forms/historico-de-versoes"
 import { FluxoCanvas } from "@/components/forms/fluxo-canvas"
+import { DesignRapido } from "@/components/forms/design-rapido"
 import { noDaSelecao } from "@/lib/forms/fluxo-canvas"
 import { telasDoFluxo } from "@/lib/forms/mapa-do-fluxo"
 import { PublicFormView } from "@/components/forms/public-form-view"
@@ -2158,6 +2159,11 @@ function StyleTab({
   const escolha = logoDoFormulario({ logoUrl, ocultar: theme.hideLogo, modo: theme.mode })
   return (
     <Stack>
+      {/* ── Camada rápida: temas, destaque, formato, fonte ── */}
+      <DesignRapido theme={theme} setTheme={setTheme} modo={modo} />
+
+      <Divider />
+
       {/* ── Logo ── */}
       <SectionTitle
         title="Logo"

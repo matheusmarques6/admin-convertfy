@@ -924,6 +924,24 @@ export function ConversationalFormView({
           onAvancar={() => avancar()}
         />
       )}
+      {/*
+        O rodapé da casa, como no formato de página única — e pelo mesmo
+        interruptor (`hidePoweredBy`). Antes só o clássico o tinha, então o
+        toggle "Feito com Convertfy" da aba Design não mexia em nada aqui.
+      */}
+      {!form.theme?.hidePoweredBy && (
+        <p
+          style={{
+            margin: 0,
+            padding: "10px 20px 14px",
+            fontSize: 10.5,
+            opacity: 0.45,
+            flex: "0 0 auto",
+          }}
+        >
+          Feito com Convertfy
+        </p>
+      )}
     </div>
   )
 }
