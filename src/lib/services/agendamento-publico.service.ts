@@ -69,6 +69,7 @@ interface LinhaDoFormulario {
   slug: string
   created_by: string | null
   settings: Record<string, unknown> | null
+  published_version_id: string | null
 }
 
 /**
@@ -83,7 +84,7 @@ export async function carregarAgenda(slug: string): Promise<AgendaDoFormulario |
   const admin = createAdminClient()
   const { data, error } = await admin
     .from("crm_forms")
-    .select("id, org_id, name, slug, created_by, settings")
+    .select("id, org_id, name, slug, created_by, settings, published_version_id")
     .eq("slug", slug)
     .eq("status", "published")
     .maybeSingle()
@@ -91,13 +92,17 @@ export async function carregarAgenda(slug: string): Promise<AgendaDoFormulario |
   if (error || !data) return null
   const form = data as LinhaDoFormulario
 
-  const { data: versao } = await admin
-    .from("form_versions")
-    .select("schema")
-    .eq("form_id", form.id)
-    .order("version", { ascending: false })
-    .limit(1)
-    .maybeSingle()
+  // A versão PUBLICADA, não a mais alta: quem responde continua na que
+  // abriu, e a agenda tem de concordar com o desfecho que ele leu. Ler
+  // "a última" ofereceria horário por causa de uma versão que ninguém
+  // publicou — e negaria o clique de quem está numa anterior.
+  const { data: versao } = form.published_version_id
+    ? await admin
+        .from("form_versions")
+        .select("schema")
+        .eq("id", form.published_version_id)
+        .maybeSingle()
+    : { data: null }
 
   const schema = normalizarSchema((versao as { schema?: unknown } | null)?.schema)
   const finais = (schema.endings ?? [])
