@@ -12,6 +12,9 @@ import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse, AppError } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { logger } from "@/lib/logger"
+import { normalizarSchema } from "@/lib/forms/schema"
+import { contagemDeTelas, type ResumoDoForm } from "@/lib/forms/lista"
+import { mapaPorPosicao, remapearRefs } from "@/lib/forms/remapear-refs"
 
 const log = logger.child("CrmForms")
 
@@ -30,27 +33,92 @@ export async function GET(request: NextRequest) {
     const status = sp.get("status")
     const scope = sp.get("scope") // sales | cs
 
-    let q = admin
-      .from("crm_forms")
-      .select(
-        `id, name, slug, description, status, scope, theme, pipeline_id, stage_id,
-         submissions_count, views_count, created_at, updated_at,
-         pipeline:pipelines(id, name, color),
-         stage:pipeline_stages!crm_forms_stage_id_fkey(id, name)`,
-      )
-      .eq("org_id", orgId)
-      .order("created_at", { ascending: false })
-
-    if (status) q = q.eq("status", status)
-    if (scope) {
+    // As colunas do conversacional (20261144) entram com retry sem elas:
+    // migration deste repo é aplicada à mão e escorrega, e a lista não
+    // pode sumir por causa de uma pill de versão.
+    type Linha = Record<string, unknown> & {
+      id: string
+      display_mode?: string | null
+      has_unpublished_changes?: boolean | null
+      published_version_id?: string | null
+      fields?: Array<{ count: number }> | null
+    }
+    const montar = (comNovas: boolean) => {
+      const novas = comNovas ? "display_mode, has_unpublished_changes, published_version_id, " : ""
+      let q = admin
+        .from("crm_forms")
+        .select(
+          `id, name, slug, description, status, scope, theme, pipeline_id, stage_id,
+           submissions_count, views_count, created_at, updated_at, ${novas}
+           pipeline:pipelines(id, name, color),
+           stage:pipeline_stages!crm_forms_stage_id_fkey(id, name),
+           fields:crm_form_fields(count)`,
+        )
+        .eq("org_id", orgId)
+        .order("created_at", { ascending: false })
+      if (status) q = q.eq("status", status)
       // 'either' aparece em ambas as listagens
-      q = q.in("scope", [scope, "either"])
+      if (scope) q = q.in("scope", [scope, "either"])
+      return q.returns<Linha[]>()
     }
 
-    const { data, error } = await q
+    let { data, error } = await montar(true)
+    if (error && (error.code === "42703" || /display_mode|has_unpublished|published_version/i.test(error.message))) {
+      log.warn("forms.lista_sem_colunas_do_conversacional", { code: error.code })
+      ;({ data, error } = await montar(false))
+    }
     if (error) throw error
 
-    return successResponse(request, { forms: data || [] })
+    const linhas: Linha[] = data ?? []
+
+    // Versão no ar (número + schema, para contar telas) e o resumo da
+    // janela — as duas leituras são fail-open: a lista existe sem elas.
+    const idsPublicados = linhas
+      .map((f) => f.published_version_id)
+      .filter((v): v is string => typeof v === "string" && v.length > 0)
+    const versoes = new Map<string, { version: number; schema: unknown }>()
+    if (idsPublicados.length > 0) {
+      const { data: vs, error: vErr } = await admin
+        .from("form_versions")
+        .select("id, version, schema")
+        .in("id", idsPublicados)
+      if (vErr) log.warn("forms.lista_sem_versoes", { code: vErr.code })
+      for (const v of vs ?? []) versoes.set(v.id as string, { version: v.version as number, schema: v.schema })
+    }
+
+    const dias = Number(sp.get("dias") ?? 30)
+    const resumos = new Map<string, ResumoDoForm>()
+    const { data: resumoRaw, error: rErr } = await admin.rpc("crm_forms_resumo", {
+      p_org: orgId,
+      p_dias: Number.isFinite(dias) ? dias : 30,
+    })
+    if (rErr) log.warn("forms.lista_sem_resumo", { code: rErr.code, message: rErr.message })
+    for (const r of (Array.isArray(resumoRaw) ? resumoRaw : []) as ResumoDoForm[]) resumos.set(r.form_id, r)
+
+    const forms = linhas.map((f) => {
+      const displayMode: "classic" | "conversational" =
+        f.display_mode === "conversational" ? "conversational" : "classic"
+      const versao = f.published_version_id ? (versoes.get(f.published_version_id) ?? null) : null
+      const camposNaTabela = f.fields?.[0]?.count ?? 0
+      const schema = versao?.schema ? normalizarSchema(versao.schema) : null
+      const { fields: _fields, ...resto } = f
+      return {
+        ...resto,
+        display_mode: displayMode,
+        has_unpublished_changes: f.has_unpublished_changes === true,
+        versao: versao?.version ?? null,
+        telas: contagemDeTelas(schema, camposNaTabela, displayMode),
+        resumo: resumos.get(f.id) ?? null,
+      }
+    })
+
+    return successResponse(request, {
+      forms,
+      // Quem lê a lista precisa saber se a janela foi medida ou se a RPC
+      // caiu — "0 visitas" e "resumo indisponível" pedem ações opostas.
+      resumo_disponivel: !rErr,
+      dias: Number.isFinite(dias) ? dias : 30,
+    })
   } catch (error) {
     log.error("Forms GET error:", error)
     return errorResponse(request, error, "crm-forms-get")
@@ -60,6 +128,12 @@ export async function GET(request: NextRequest) {
 // ── POST ─────────────────────────────────────────────────────────
 
 const fieldSchema = z.object({
+  /**
+   * Endereço provisório do campo no `draft_schema` que vem junto. O
+   * banco dá o id no INSERT; o rascunho é regravado com o id real, casado
+   * por posição — a mesma mecânica do PATCH do editor.
+   */
+  temp_ref: z.string().max(64).optional(),
   field_type: z.enum([
     "text", "email", "phone", "number", "textarea",
     "select", "multi_select", "radio", "checkbox",
@@ -98,6 +172,9 @@ const createFormSchema = z.object({
   redirect_url: z.string().url().nullable().optional().or(z.literal("")),
   fields: z.array(fieldSchema).optional().default([]),
   scope: z.enum(["sales", "cs", "either"]).optional().default("sales"),
+  display_mode: z.enum(["classic", "conversational"]).optional(),
+  /** Rascunho do fluxo (abertura, agrupamento, desvios, finais) do modelo. */
+  draft_schema: z.record(z.string(), z.unknown()).nullable().optional(),
 })
 
 export async function POST(request: NextRequest) {
@@ -125,22 +202,34 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { fields = [], redirect_url, ...formData } = parsed
-    const { data: form, error } = await admin
-      .from("crm_forms")
-      .insert({
-        org_id: orgId,
-        created_by: user.id,
-        // string vazia vira NULL pra nao gerar URL invalida
-        redirect_url: redirect_url || null,
-        ...formData,
-      })
-      .select("id, slug")
-      .single()
+    const { fields = [], redirect_url, draft_schema, display_mode, ...formData } = parsed
+    const inserir = (comModo: boolean) =>
+      admin
+        .from("crm_forms")
+        .insert({
+          org_id: orgId,
+          created_by: user.id,
+          // string vazia vira NULL pra nao gerar URL invalida
+          redirect_url: redirect_url || null,
+          ...formData,
+          ...(comModo && display_mode ? { display_mode } : {}),
+        })
+        .select("id, slug")
+        .single()
 
+    let { data: form, error } = await inserir(true)
+    // Coluna do conversacional ausente (migration atrasada): o formulário
+    // nasce clássico em vez de não nascer.
+    if (error && display_mode && (error.code === "42703" || error.code === "PGRST204")) {
+      log.warn("forms.post_sem_display_mode", { code: error.code })
+      ;({ data: form, error } = await inserir(false))
+    }
     if (error) throw error
+    if (!form) throw new AppError("Falha ao criar o formulário", 500, "forms-insert")
 
-    // Insert dos fields em batch.
+    // Insert dos fields em batch, e os ids de volta na ordem das posições
+    // — é com eles que o rascunho troca o `temp_ref` pelo endereço real.
+    let idsPorPosicao: string[] = []
     if (fields.length > 0) {
       const fieldsPayload = fields.map((f, idx) => {
         const row = f as Record<string, unknown>
@@ -162,7 +251,32 @@ export async function POST(request: NextRequest) {
         .insert(fieldsPayload)
       if (fErr) {
         log.warn("Failed to insert fields, form created without fields", { fErr })
+      } else {
+        const { data: persistidos } = await admin
+          .from("crm_form_fields")
+          .select("id, position")
+          .eq("form_id", form.id)
+          .order("position", { ascending: true })
+        idsPorPosicao = (persistidos ?? []).map((r) => r.id as string)
       }
+    }
+
+    // O rascunho do modelo, com os endereços já trocados. Sem o remap a
+    // regra "faturamento baixo → final" nasceria apontando para `faturamento`
+    // — um ref que nunca existirá — e a publicação a descartaria em silêncio.
+    if (draft_schema && idsPorPosicao.length > 0) {
+      const mapa = mapaPorPosicao(
+        fields
+          .map((f, i) => ({ posicao: (f.position ?? i) as number, ref: f.temp_ref ?? "" }))
+          .filter((x) => x.ref !== ""),
+        idsPorPosicao,
+      )
+      const rascunho = remapearRefs(normalizarSchema(draft_schema), mapa)
+      const { error: dErr } = await admin
+        .from("crm_forms")
+        .update({ draft_schema: rascunho })
+        .eq("id", form.id)
+      if (dErr) log.warn("forms.post_sem_draft_schema", { code: dErr.code, message: dErr.message })
     }
 
     log.info("[Forms] created", { id: form.id, slug: form.slug })
