@@ -121,6 +121,88 @@ const SCRIPT = `
     }
   }
 
+  // ── Pop-up e painel lateral (handoff Compartilhar, set/2026) ──
+  //
+  //   <button data-convertfy-popup="https://app…/forms/slug">Abrir</button>
+  //   <script src="…/form-embed.js" data-convertfy-slider="https://app…/forms/slug" data-convertfy-side="right" data-convertfy-label="Fale com a gente" defer></script>
+  //
+  // O iframe só nasce no clique — a página host não paga o formulário
+  // antes de alguém pedir. O véu fecha por Esc, pelo ✕ e pelo clique
+  // fora; o painel lateral tem uma aba fixa que abre/fecha.
+  var CSS = ".cfy-ov{position:fixed;inset:0;z-index:2147483000;background:rgba(9,10,14,.72);display:flex;align-items:center;justify-content:center;padding:16px;opacity:0;transition:opacity .18s}" +
+    ".cfy-ov.on{opacity:1}.cfy-box{position:relative;width:min(760px,100%);height:min(720px,100%);background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 28px 70px rgba(0,0,0,.35)}" +
+    ".cfy-box iframe{border:0;width:100%;height:100%;display:block}" +
+    ".cfy-x{position:absolute;top:8px;right:8px;width:32px;height:32px;border:0;border-radius:8px;background:rgba(0,0,0,.55);color:#fff;font-size:18px;line-height:32px;cursor:pointer;z-index:2}" +
+    ".cfy-sl{position:fixed;top:0;bottom:0;width:min(480px,100%);z-index:2147483000;background:#fff;box-shadow:0 0 60px rgba(0,0,0,.3);transform:translateX(100%);transition:transform .22s}" +
+    ".cfy-sl.left{left:0;transform:translateX(-100%)}.cfy-sl.right{right:0}.cfy-sl.on{transform:none}.cfy-sl iframe{border:0;width:100%;height:100%;display:block}" +
+    ".cfy-tab{position:fixed;top:50%;z-index:2147483001;transform:rotate(-90deg);transform-origin:bottom right;right:0;background:#4E62D8;color:#fff;border:0;border-radius:8px 8px 0 0;padding:8px 16px;font:600 13px/1 system-ui,sans-serif;cursor:pointer;box-shadow:0 -4px 16px rgba(0,0,0,.18)}" +
+    ".cfy-tab.left{right:auto;left:0;transform:rotate(90deg);transform-origin:bottom left}";
+  function injectCss() {
+    if (document.getElementById("cfy-embed-css")) return;
+    var st = document.createElement("style");
+    st.id = "cfy-embed-css";
+    st.textContent = CSS;
+    document.head.appendChild(st);
+  }
+  function makeIframe(url) {
+    var f = document.createElement("iframe");
+    f.src = decorateUrl(url, { embed: "1" });
+    f.title = "Formul\u00e1rio";
+    f.setAttribute("allowtransparency", "true");
+    return f;
+  }
+  function openPopup(url) {
+    injectCss();
+    var ov = document.createElement("div");
+    ov.className = "cfy-ov";
+    var box = document.createElement("div");
+    box.className = "cfy-box";
+    var x = document.createElement("button");
+    x.className = "cfy-x";
+    x.setAttribute("aria-label", "Fechar");
+    x.innerHTML = "&times;";
+    box.appendChild(x);
+    box.appendChild(makeIframe(url));
+    ov.appendChild(box);
+    document.body.appendChild(ov);
+    var close = function () { ov.classList.remove("on"); setTimeout(function () { ov.remove(); }, 200); document.removeEventListener("keydown", onKey); };
+    var onKey = function (e) { if (e.key === "Escape") close(); };
+    x.addEventListener("click", close);
+    ov.addEventListener("click", function (e) { if (e.target === ov) close(); });
+    document.addEventListener("keydown", onKey);
+    requestAnimationFrame(function () { ov.classList.add("on"); });
+  }
+  document.addEventListener("click", function (ev) {
+    var el = ev.target;
+    while (el && !(el.getAttribute && el.getAttribute("data-convertfy-popup"))) el = el.parentElement;
+    if (!el) return;
+    ev.preventDefault();
+    openPopup(el.getAttribute("data-convertfy-popup"));
+  }, true);
+  function mountSlider() {
+    var me = document.currentScript || document.querySelector("script[data-convertfy-slider]");
+    if (!me) return;
+    var url = me.getAttribute("data-convertfy-slider");
+    if (!url || me.getAttribute("data-convertfy-mounted")) return;
+    me.setAttribute("data-convertfy-mounted", "1");
+    injectCss();
+    var side = me.getAttribute("data-convertfy-side") === "left" ? "left" : "right";
+    var panel = document.createElement("div");
+    panel.className = "cfy-sl " + side;
+    var tab = document.createElement("button");
+    tab.className = "cfy-tab " + side;
+    tab.textContent = me.getAttribute("data-convertfy-label") || "Fale com a gente";
+    var aberto = false, carregado = false;
+    tab.addEventListener("click", function () {
+      if (!carregado) { panel.appendChild(makeIframe(url)); carregado = true; }
+      aberto = !aberto;
+      panel.classList.toggle("on", aberto);
+      tab.textContent = aberto ? "Fechar" : (me.getAttribute("data-convertfy-label") || "Fale com a gente");
+    });
+    document.body.appendChild(panel);
+    document.body.appendChild(tab);
+  }
+
   // Botões/links pra /forms/ ganham os parâmetros no momento do clique.
   document.addEventListener("click", function (ev) {
     var el = ev.target;
@@ -131,9 +213,10 @@ const SCRIPT = `
   }, true);
 
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", mountAll);
+    document.addEventListener("DOMContentLoaded", function () { mountAll(); mountSlider(); });
   } else {
     mountAll();
+    mountSlider();
   }
 })();
 `

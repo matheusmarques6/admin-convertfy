@@ -82,6 +82,7 @@ import {
   proximoPasso,
 } from "@/lib/forms/engine"
 import { validarResposta } from "@/lib/forms/validacao"
+import { textosDoSistema } from "@/lib/forms/pontuacao"
 import { aplicarRecall } from "@/lib/forms/recall"
 import { ESPERA_DO_DESTINO_MS, montarDestino, type DestinoPronto } from "@/lib/forms/destino"
 import {
@@ -199,6 +200,8 @@ export function ConversationalFormView({
   // obrigatório" solto no rodapé não diz qual delas — e a pessoa fica
   // conferindo as quatro.
   const [erros, setErros] = useState<Record<string, string>>({})
+  /** Os textos do sistema (aba Configurar), com os padrões preenchidos. */
+  const textos = useMemo(() => textosDoSistema(schema.settings), [schema.settings])
   const [direcao, setDirecao] = useState<"frente" | "tras">("frente")
   const [enviando, setEnviando] = useState(false)
   const [falhaEnvio, setFalhaEnvio] = useState<string | null>(null)
@@ -503,7 +506,7 @@ export function ConversationalFormView({
       // um por um em vez de dizer o que falta.
       const encontrados: Record<string, string> = {}
       for (const b of daTela) {
-        const v = validarResposta(b, answersEfetivas[b.ref])
+        const v = validarResposta(b, answersEfetivas[b.ref], textos)
         if (!v.valido && v.erro) encontrados[b.ref] = v.erro
       }
       if (Object.keys(encontrados).length > 0) {
@@ -875,7 +878,8 @@ export function ConversationalFormView({
               t={t}
               buttonFill={buttonFill}
               erroCor={erroCor}
-              rotuloAvancar={schema.settings?.rotulo_avancar}
+              rotuloAvancar={textos.rotulo_avancar}
+              dicaTeclado={textos.dica_teclado}
               enviando={enviando}
               registrar={registrar}
               onResponder={responder}
@@ -1198,6 +1202,7 @@ function TelaDePerguntas({
   buttonFill,
   erroCor,
   rotuloAvancar,
+  dicaTeclado,
   enviando,
   registrar,
   onResponder,
@@ -1211,6 +1216,7 @@ function TelaDePerguntas({
   buttonFill: string
   erroCor: string
   rotuloAvancar?: string
+  dicaTeclado?: string
   enviando: boolean
   registrar: (ref: string, el: HTMLElement | null) => void
   onResponder: (ref: string, v: FormAnswers[string], avancarJa?: boolean) => void
@@ -1268,7 +1274,7 @@ function TelaDePerguntas({
         <BotaoPrincipal onClick={onAvancar} t={t} fill={buttonFill} carregando={enviando}>
           {rotuloAvancar ?? "OK"}
         </BotaoPrincipal>
-        <DicaEnter t={t} agrupada={agrupada} />
+        <DicaEnter t={t} agrupada={agrupada} texto={dicaTeclado} />
       </div>
     </div>
   )
@@ -2278,13 +2284,27 @@ function BotaoPrincipal({
  * Enter anda para o campo seguinte. Prometer "Enter avança" e ver o
  * cursor pular para a caixa de baixo é a dica mentindo.
  */
-function DicaEnter({ t, agrupada }: { t: ReturnType<typeof defaults>; agrupada?: boolean }) {
+function DicaEnter({
+  t,
+  agrupada,
+  texto,
+}: {
+  t: ReturnType<typeof defaults>
+  agrupada?: boolean
+  /** O texto da aba Configurar; o padrão "pressione Enter" vira o desenho com o ícone. */
+  texto?: string
+}) {
+  const proprio = texto && texto !== "pressione Enter" ? texto : null
   return (
     <span
       className="cfy-dica"
       style={{ fontSize: t.fontSize - 2, opacity: 0.45, display: "inline-flex", alignItems: "center", gap: 5 }}
     >
-      {agrupada ? (
+      {proprio ? (
+        <>
+          <CornerDownLeft size={12} /> {proprio}
+        </>
+      ) : agrupada ? (
         <>
           <CornerDownLeft size={12} /> Enter passa ao campo seguinte
         </>

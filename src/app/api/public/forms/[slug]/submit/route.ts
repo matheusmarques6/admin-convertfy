@@ -37,6 +37,7 @@ import { buildCrmFormUrl } from "@/lib/utils/form-url"
 import { concluirSessao } from "@/lib/services/form-session.service"
 import { caminhoAte, finalAlcancado, refsDoCaminho, ultimoAlcancavel } from "@/lib/forms/engine"
 import { normalizarSchema } from "@/lib/forms/schema"
+import { acessoAoFormulario, faixaDaPontuacao, politicaDeDuplicado, pontuar } from "@/lib/forms/pontuacao"
 import { desfechoNoCrm } from "@/lib/forms/desfecho"
 import { destinoDoWebhook, enviarWebhook, respostasLegiveis } from "@/lib/forms/webhook"
 import { camposDerivados } from "@/lib/forms/derivados"
@@ -140,7 +141,7 @@ export async function POST(
         `id, org_id, pipeline_id, stage_id, success_message, redirect_url,
          created_by, name, scope, published_version_id,
          facebook_pixel_id, meta_capi_token, meta_test_event_code, tracking_config,
-         settings`,
+         settings, submissions_count`,
       )
       .eq("slug", slug)
       .eq("status", "published")
@@ -186,6 +187,32 @@ export async function POST(
     // versão publicada trocada no meio do preenchimento e resposta que
     // não viajou — e uma ilegítima: alguém escolhendo o próprio final.
     const endingRef = finalCalculado ?? parsed.ending_ref ?? null
+
+    /**
+     * Acesso (aba Configurar): fechado à mão ou limite de envios. A régua
+     * é a do schema PUBLICADO — a mesma que a página lê para mostrar a
+     * mensagem —, e o contador é a coluna que o trigger mantém. 410 e não
+     * 403: o endereço existe, o que acabou foi a janela.
+     */
+    const acesso = acessoAoFormulario(
+      schemaPublicado?.settings,
+      typeof form.submissions_count === "number" ? form.submissions_count : null,
+    )
+    if (!acesso.aberto) {
+      log.info("submit.fechado", { formId: form.id, motivo: acesso.motivo })
+      throw new AppError(acesso.mensagem, 410, "form-closed")
+    }
+
+    /**
+     * Pontuação: soma `pontos[resposta]` das perguntas que pontuam e acha
+     * a faixa. A faixa pode trocar a ETAPA do negócio e acrescentar uma
+     * etiqueta; fora de toda faixa, vale a etapa do formulário.
+     */
+    const pontuacao = schemaPublicado ? pontuar(schemaPublicado, parsed.answers as never) : null
+    const faixa =
+      pontuacao && pontuacao.perguntasQuePontuam > 0
+        ? faixaDaPontuacao(schemaPublicado?.settings?.faixas, pontuacao.total)
+        : null
     if (finalCalculado && parsed.ending_ref && finalCalculado !== parsed.ending_ref) {
       log.warn("submit.final_divergente", {
         formId: form.id,
@@ -382,8 +409,11 @@ export async function POST(
       }
     } else {
       // Fluxo sales/anonimo: cria lead como antes.
-      // 5. Dedup por email.
-      if (leadData.email) {
+      // 5. Dedup por email — conforme a política da aba Configurar:
+      //    `atualiza` (padrão, o de sempre), `novo` (sempre cria outro
+      //    lead) ou `ignora` (reusa o existente sem tocar nele).
+      const politica = politicaDeDuplicado(schemaPublicado?.settings)
+      if (leadData.email && politica !== "novo") {
         const { data: existing } = await admin
           .from("crm_leads")
           .select("id")
@@ -435,6 +465,8 @@ export async function POST(
 
         if (leadRes.error) throw leadRes.error
         leadId = leadRes.data.id
+      } else if (politica === "ignora") {
+        log.info("submit.duplicado_ignorado", { formId: form.id, leadId })
       } else {
         // Lead deduplicado por email — faz merge dos custom fields existentes
         // com os novos (novos sobrescrevem em caso de conflito) e, se o lead
@@ -482,7 +514,21 @@ export async function POST(
       })
     }
     if (form.pipeline_id && leadId && desfecho.criaNegocio) {
+      // A faixa de pontuação vence a etapa do formulário — mas só se a
+      // etapa existir NESTA pipeline: uma faixa apontando para etapa de
+      // outro funil (pipeline trocada depois) mandaria o card para um
+      // kanban que ninguém abre.
       let stageId = form.stage_id
+      if (faixa?.stage_id) {
+        const { data: etapaDaFaixa } = await admin
+          .from("pipeline_stages")
+          .select("id")
+          .eq("id", faixa.stage_id)
+          .eq("pipeline_id", form.pipeline_id)
+          .maybeSingle()
+        if (etapaDaFaixa) stageId = etapaDaFaixa.id
+        else log.warn("submit.faixa_etapa_fora_da_pipeline", { formId: form.id, stage: faixa.stage_id })
+      }
       if (!stageId) {
         const { data: firstStage } = await admin
           .from("pipeline_stages")
@@ -537,12 +583,14 @@ export async function POST(
             // As tags saem do desfecho: as do final mais as das respostas
             // que a pessoa deu NO CAMINHO. "fora-do-corte" continua aqui
             // como rede para o formulário que não configurou nenhuma.
-            tags:
-              desfecho.tags.length > 0
+            tags: [
+              ...(desfecho.tags.length > 0
                 ? desfecho.tags
                 : desqualificado
                   ? ["fora-do-corte"]
-                  : [],
+                  : []),
+              ...(faixa?.tag && !desfecho.tags.includes(faixa.tag) ? [faixa.tag] : []),
+            ],
             lead_id: leadId,
             owner_id: autoOwner ?? effectiveCreatedBy, // rodízio → fallback assignee
             position: nextPos,
@@ -558,7 +606,12 @@ export async function POST(
           await admin.from("crm_deal_activities").insert({
             deal_id: deal.id,
             type: "system",
-            content: textoDaAtividade(form.name, desqualificado, desfecho, parsed.variables),
+            content:
+              textoDaAtividade(form.name, desqualificado, desfecho, parsed.variables) +
+              (pontuacao && pontuacao.perguntasQuePontuam > 0
+                ? ` · Pontuação: ${pontuacao.total} de ${pontuacao.maximo} pts` +
+                  (faixa ? ` (faixa ${faixa.de}–${faixa.ate}${faixa.tag ? `, etiqueta "${faixa.tag}"` : ""})` : "")
+                : ""),
             created_by: effectiveCreatedBy,
             is_internal: true,
           })

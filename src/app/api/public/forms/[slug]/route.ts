@@ -14,6 +14,7 @@ import { errorResponse, successResponse, AppError } from "@/lib/api/errors"
 import { normalizeTrackingConfig } from "@/types/form-tracking"
 import { normalizarDestino } from "@/lib/forms/destino"
 import { normalizarSchema, schemaDeCampos, type CampoLegado } from "@/lib/forms/schema"
+import { acessoAoFormulario } from "@/lib/forms/pontuacao"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("PublicForms")
@@ -38,7 +39,7 @@ export async function GET(
          success_message, redirect_url,
          facebook_pixel_id, google_ads_id, google_analytics_id,
          google_ads_conversion_label, tracking_config,
-         display_mode, published_version_id, locale, settings`,
+         display_mode, published_version_id, locale, settings, submissions_count`,
       )
       .eq("slug", slug)
       .eq("status", "published")
@@ -56,6 +57,7 @@ export async function GET(
       tracking_config,
       google_ads_conversion_label,
       settings,
+      submissions_count,
       ...formRest
     } = form as Record<string, unknown> & {
       facebook_pixel_id?: string | null
@@ -129,6 +131,17 @@ export async function GET(
       log.warn("form.schema_indisponivel", { slug, message: (e as Error)?.message })
     }
 
+    /**
+     * Acesso (aba Configurar): fechado à mão ou limite de envios. Sai no
+     * payload para a página mostrar a mensagem no lugar das perguntas; o
+     * submit recusa pela MESMA régua, então não dá para contornar
+     * apagando o aviso.
+     */
+    const acesso = acessoAoFormulario(
+      schema?.settings,
+      typeof submissions_count === "number" ? submissions_count : null,
+    )
+
     // AWAIT, nunca `void`: promise solta em serverless morre quando o
     // processo congela depois do `return` — era por isso que VISITAS
     // ficava em 0 com 56 envios. A mesma armadilha que perdeu os eventos
@@ -146,6 +159,7 @@ export async function GET(
       fields: fields || [],
       schema,
       display_mode: displayMode,
+      acesso,
     })
   } catch (error) {
     log.error("Public form GET error:", error)

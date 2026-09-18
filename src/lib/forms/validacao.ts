@@ -18,6 +18,7 @@
 
 import type { FormAnswer, FormBlock } from "@/types/forms-conversational"
 import { TIPOS_SEM_RESPOSTA } from "@/types/forms-conversational"
+import { TEXTOS_PADRAO, type TextosDoSistema } from "./pontuacao"
 
 export interface ResultadoValidacao {
   valido: boolean
@@ -113,7 +114,16 @@ export function urlValida(raw: string): boolean {
 }
 
 /** Valida uma resposta contra o bloco. Bloco sem resposta sempre passa. */
-export function validarResposta(block: FormBlock, valor: FormAnswer | undefined): ResultadoValidacao {
+/**
+ * `textos` são os textos do sistema da aba Configurar (`settings.textos`,
+ * já com os padrões preenchidos por `textosDoSistema`). Sem eles valem
+ * os padrões — o submit e o formato de página única chamam assim.
+ */
+export function validarResposta(
+  block: FormBlock,
+  valor: FormAnswer | undefined,
+  textos: Pick<TextosDoSistema, "obrigatorio" | "escolha_obrigatoria" | "email_invalido" | "telefone_invalido"> = TEXTOS_PADRAO,
+): ResultadoValidacao {
   if (TIPOS_SEM_RESPOSTA.has(block.type)) return OK
 
   const vazia = respostaVazia(valor)
@@ -123,8 +133,8 @@ export function validarResposta(block: FormBlock, valor: FormAnswer | undefined)
       block.type === "checkbox"
         ? "Marque para continuar."
         : TIPOS_DE_ESCOLHA_MSG.has(block.type)
-          ? "Escolha uma opção para continuar."
-          : "Preencha para continuar.",
+          ? textos.escolha_obrigatoria
+          : textos.obrigatorio,
     )
   }
 
@@ -146,10 +156,10 @@ export function validarResposta(block: FormBlock, valor: FormAnswer | undefined)
 
   switch (block.type) {
     case "email":
-      if (!emailValido(texto)) return falha("Confira o email — parece faltar algo.")
+      if (!emailValido(texto)) return falha(textos.email_invalido)
       break
     case "phone":
-      if (!telefoneValido(texto)) return falha("Confira o telefone — o número parece incompleto.")
+      if (!telefoneValido(texto)) return falha(textos.telefone_invalido)
       break
     case "url":
       if (!urlValida(texto)) return falha("Confira o endereço do site.")

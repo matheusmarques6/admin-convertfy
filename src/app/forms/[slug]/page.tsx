@@ -47,6 +47,8 @@ interface FormPayload {
   /** O schema publicado (a versão), que o conversacional consome. */
   schema?: unknown
   display_mode?: "classic" | "conversational"
+  /** Fechado à mão ou no limite de envios (aba Configurar → Acesso). */
+  acesso?: { aberto: true } | { aberto: false; motivo: string; mensagem: string }
 }
 
 /**
@@ -71,6 +73,7 @@ const loadForm = cache(async function loadForm(slug: string): Promise<FormPayloa
       fields: json.fields ?? [],
       schema: json.schema ?? null,
       display_mode: json.display_mode === "conversational" ? "conversational" : "classic",
+      acesso: json.acesso ?? { aberto: true },
     }
   } catch {
     return null
@@ -127,6 +130,33 @@ export default async function PublicFormPage({
   const clickIds = {
     fbclid: typeof sp.fbclid === "string" ? sp.fbclid : null,
     gclid: typeof sp.gclid === "string" ? sp.gclid : null,
+  }
+
+  // Fechado (à mão ou pelo limite de envios): a mensagem no lugar das
+  // perguntas, no tema do formulário. O submit recusa pela mesma régua,
+  // então a tela não é o único guarda.
+  if (data.acesso && !data.acesso.aberto) {
+    const tema = (data.form.theme ?? {}) as FormTheme
+    const escuro = tema.mode === "dark"
+    return (
+      <main
+        style={{
+          minHeight: "100dvh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 24,
+          background: tema.backgroundColor ?? (escuro ? "#0B0B14" : "#FFFFFF"),
+          color: tema.textColor ?? (escuro ? "#F1F5F9" : "#0F172A"),
+          fontFamily: tema.fontFamily ?? "Inter, system-ui, sans-serif",
+        }}
+      >
+        <div style={{ maxWidth: 520, textAlign: "center" }}>
+          <h1 style={{ fontSize: 26, fontWeight: 600, lineHeight: 1.25, margin: 0 }}>{data.form.name}</h1>
+          <p style={{ marginTop: 14, fontSize: 16, opacity: 0.75, lineHeight: 1.5 }}>{data.acesso.mensagem}</p>
+        </div>
+      </main>
+    )
   }
 
   // O conversacional é um renderizador DIFERENTE, não uma variação de

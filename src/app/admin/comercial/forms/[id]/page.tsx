@@ -40,6 +40,8 @@ import { PreviaDoFormulario } from "@/components/forms/previa-do-formulario"
 import { HistoricoDeVersoes } from "@/components/forms/historico-de-versoes"
 import { FluxoCanvas } from "@/components/forms/fluxo-canvas"
 import { DesignRapido } from "@/components/forms/design-rapido"
+import { ConfigurarExtras } from "@/components/forms/configurar-extras"
+import { CompartilharExtras } from "@/components/forms/compartilhar-extras"
 import { noDaSelecao } from "@/lib/forms/fluxo-canvas"
 import { telasDoFluxo } from "@/lib/forms/mapa-do-fluxo"
 import { PublicFormView } from "@/components/forms/public-form-view"
@@ -718,6 +720,22 @@ export default function FormEditorPage({
           ...base,
           blocks: base.blocks.map((b) => (b.ref === ref ? { ...b, ...patch } : b)),
         }
+      })
+    },
+    [fluxo, fluxoIndisponivel],
+  )
+
+  /** Merge em `settings` do rascunho — faixas, textos, acesso, duplicado. */
+  const atualizarSettings = useCallback(
+    (patch: Partial<NonNullable<FormSchema["settings"]>>) => {
+      if (fluxoIndisponivel) return
+      setRascunho((atual) => {
+        const base = atual ?? fluxo
+        const settings = { ...(base.settings ?? {}), ...patch }
+        for (const k of Object.keys(settings) as Array<keyof typeof settings>) {
+          if (settings[k] === undefined) delete settings[k]
+        }
+        return { ...base, settings }
       })
     },
     [fluxo, fluxoIndisponivel],
@@ -1504,6 +1522,9 @@ export default function FormEditorPage({
         {activeTab === "share" && (
           <div className="min-h-0 flex-1 overflow-y-auto">
             <div className="mx-auto max-w-[860px] px-4 py-5">
+              <div className="mb-6">
+                <CompartilharExtras publicUrl={publicUrl} slug={slug || "form"} />
+              </div>
               <InstallTab
                 publicUrl={publicUrl}
                 status={status}
@@ -1573,6 +1594,14 @@ export default function FormEditorPage({
                 fields={fields}
                 formId={id}
               />
+              <div className="mt-6 border-t border-black/[0.06] pt-5 dark:border-white/[0.08]">
+                <ConfigurarExtras
+                  fluxo={fluxo}
+                  onSettings={atualizarSettings}
+                  etapas={stagesForPipeline}
+                  desligado={fluxoIndisponivel}
+                />
+              </div>
             </div>
           </div>
         )}
