@@ -116,6 +116,12 @@ export function montarVersao(
       // closer devolve na conversa deixa de ir para o card no primeiro
       // Publicar — e o card continua parecendo completo.
       ...(antigo.destaque ? { destaque: true } : {}),
+      // Os quatro do handoff moram só no schema, pela mesma razão dos
+      // anteriores: a tabela de campos não tem coluna para eles.
+      ...(antigo.outro ? { outro: true } : {}),
+      ...(antigo.embaralhar ? { embaralhar: true } : {}),
+      ...(antigo.pontos ? { pontos: antigo.pontos } : {}),
+      ...(antigo.escala ? { escala: antigo.escala } : {}),
       ...(vivas.length > 0 ? { logic: vivas } : {}),
     }
   })

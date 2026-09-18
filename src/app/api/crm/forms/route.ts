@@ -64,6 +64,7 @@ const fieldSchema = z.object({
     "text", "email", "phone", "number", "textarea",
     "select", "multi_select", "radio", "checkbox",
     "date", "url", "cpf", "cnpj", "cep", "hidden",
+    "statement", "yes_no", "nps", "rating", "schedule",
   ]),
   label: z.string().min(1).max(200),
   placeholder: z.string().nullable().optional(),

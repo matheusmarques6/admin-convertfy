@@ -28,9 +28,22 @@
 export const TIPOS_DE_MIDIA = ["imagem", "video"] as const
 export type TipoDeMidia = (typeof TIPOS_DE_MIDIA)[number]
 
+/**
+ * Onde a mídia pousa na tela conversacional.
+ *
+ * - `acima`: acima do título, faixa 16:7 (o comportamento histórico).
+ * - `direita`: coluna à direita da pergunta, 4:5; no celular empilha.
+ * - `flutuante`: miniatura 160×120 acima do título.
+ * - `fundo`: imagem cobre a tela inteira com um véu para o texto ler.
+ */
+export const LAYOUTS_DE_MIDIA = ["acima", "direita", "flutuante", "fundo"] as const
+export type LayoutDaMidia = (typeof LAYOUTS_DE_MIDIA)[number]
+
 export interface MidiaDaTela {
   tipo: TipoDeMidia
   url: string
+  /** Ausente = `acima`, que é como toda mídia publicada até aqui aparece. */
+  layout?: LayoutDaMidia
   /**
    * Texto alternativo da imagem. Ausente vira string vazia, que é o
    * certo para imagem DECORATIVA — o leitor de tela pula em vez de ler
@@ -114,6 +127,10 @@ export function normalizarMidia(raw: unknown): MidiaDaTela | null {
     : tipoDaExtensao(url)
 
   const poster = typeof m.poster === "string" ? m.poster.trim() : ""
+  const layout =
+    typeof m.layout === "string" && (LAYOUTS_DE_MIDIA as readonly string[]).includes(m.layout)
+      ? (m.layout as LayoutDaMidia)
+      : undefined
 
   return {
     tipo,
@@ -121,6 +138,8 @@ export function normalizarMidia(raw: unknown): MidiaDaTela | null {
     alt: typeof m.alt === "string" ? m.alt : null,
     ...(m.autoplay === true ? { autoplay: true } : {}),
     ...(poster && urlDeMidiaUtil(poster) ? { poster } : {}),
+    // `acima` é o default do renderer; gravá-lo seria ruído no schema.
+    ...(layout && layout !== "acima" ? { layout } : {}),
   }
 }
 

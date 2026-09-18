@@ -21,6 +21,7 @@
  */
 
 import type {
+  FaixaDePontuacao,
   FormBlock,
   FormBlockType,
   FormEnding,
@@ -29,6 +30,7 @@ import type {
   LogicCondition,
   LogicRule,
 } from "@/types/forms-conversational"
+import { POLITICAS_DE_DUPLICADO } from "@/types/forms-conversational"
 import type { QualifiedOperator } from "@/types/form-tracking"
 import { normalizarMidia } from "./midia"
 import { normalizarDestino } from "./destino"
@@ -64,6 +66,10 @@ const TIPOS: ReadonlySet<string> = new Set<FormBlockType>([
   "cep",
   "statement",
   "multi_select",
+  "yes_no",
+  "nps",
+  "rating",
+  "schedule",
 ])
 
 const OPERADORES: ReadonlySet<string> = new Set<QualifiedOperator>([
@@ -221,7 +227,59 @@ function normalizarBloco(raw: unknown): FormBlock | null {
     ...(midia ? { midia } : {}),
     ...(b.destaque === true ? { destaque: true } : {}),
     ...(b.hidden === true || tipoBruto === "hidden" ? { hidden: true } : {}),
+    // Os quatro do handoff. Cada um precisa passar por AQUI, senão o
+    // primeiro Publicar (que normaliza) os apaga em silêncio — foi assim
+    // que o destino do final sumiu uma vez.
+    ...(b.outro === true ? { outro: true } : {}),
+    ...(b.embaralhar === true ? { embaralhar: true } : {}),
+    ...(normalizarPontos(b.pontos) ? { pontos: normalizarPontos(b.pontos)! } : {}),
+    ...(normalizarEscala(b.escala) ? { escala: normalizarEscala(b.escala)! } : {}),
   }
+}
+
+/** `{ value → pontos }`. Chave vazia e número inválido caem fora. */
+export function normalizarPontos(raw: unknown): Record<string, number> | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null
+  const out: Record<string, number> = {}
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (!k.trim()) continue
+    const n = typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : NaN
+    if (Number.isFinite(n)) out[k] = n
+  }
+  return Object.keys(out).length > 0 ? out : null
+}
+
+function normalizarEscala(raw: unknown): FormBlock["escala"] | null {
+  if (!raw || typeof raw !== "object") return null
+  const e = raw as Record<string, unknown>
+  const min = typeof e.min_label === "string" && e.min_label.trim() ? e.min_label.trim() : null
+  const max = typeof e.max_label === "string" && e.max_label.trim() ? e.max_label.trim() : null
+  if (!min && !max) return null
+  return { min_label: min, max_label: max }
+}
+
+/**
+ * Faixas de pontuação, saneadas: `de`/`ate` numéricos, `de <= ate`
+ * (invertida é trocada, não descartada — quem digitou "10 a 3" quis
+ * "3 a 10"). Ordem preservada: a primeira que contém o total vence.
+ */
+export function normalizarFaixas(raw: unknown): FaixaDePontuacao[] {
+  if (!Array.isArray(raw)) return []
+  const out: FaixaDePontuacao[] = []
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue
+    const f = item as Record<string, unknown>
+    const de = Number(f.de)
+    const ate = Number(f.ate)
+    if (!Number.isFinite(de) || !Number.isFinite(ate)) continue
+    out.push({
+      de: Math.min(de, ate),
+      ate: Math.max(de, ate),
+      stage_id: typeof f.stage_id === "string" && f.stage_id ? f.stage_id : null,
+      tag: typeof f.tag === "string" && f.tag.trim() ? f.tag.trim() : null,
+    })
+  }
+  return out
 }
 
 /**
@@ -303,6 +361,22 @@ export function normalizarSchema(raw: unknown): FormSchema {
     | Record<string, unknown>
     | null
 
+  const faixas = normalizarFaixas(cfg.faixas)
+  const textos: Record<string, string> = {}
+  if (cfg.textos && typeof cfg.textos === "object" && !Array.isArray(cfg.textos)) {
+    for (const [k, v] of Object.entries(cfg.textos as Record<string, unknown>)) {
+      if (k.trim() && typeof v === "string" && v.trim()) textos[k] = v
+    }
+  }
+  const limite =
+    typeof cfg.limite_envios === "number" && Number.isFinite(cfg.limite_envios) && cfg.limite_envios > 0
+      ? Math.trunc(cfg.limite_envios)
+      : null
+  const duplicado =
+    typeof cfg.duplicado === "string" && (POLITICAS_DE_DUPLICADO as readonly string[]).includes(cfg.duplicado)
+      ? (cfg.duplicado as (typeof POLITICAS_DE_DUPLICADO)[number])
+      : undefined
+
   return {
     version: typeof s.version === "number" ? s.version : 1,
     display_mode: s.display_mode === "conversational" ? "conversational" : "classic",
@@ -331,6 +405,14 @@ export function normalizarSchema(raw: unknown): FormSchema {
             },
           }
         : {}),
+      ...(faixas.length > 0 ? { faixas } : {}),
+      ...(Object.keys(textos).length > 0 ? { textos } : {}),
+      ...(cfg.fechado === true ? { fechado: true } : {}),
+      ...(typeof cfg.mensagem_fechado === "string" && cfg.mensagem_fechado.trim()
+        ? { mensagem_fechado: cfg.mensagem_fechado.trim() }
+        : {}),
+      ...(limite !== null ? { limite_envios: limite } : {}),
+      ...(duplicado ? { duplicado } : {}),
     },
   }
 }

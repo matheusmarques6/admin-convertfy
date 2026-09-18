@@ -156,6 +156,8 @@ const fieldUpsertSchema = z.object({
     // blocos a partir desta tabela — fora daqui, toda publicação apagaria
     // as telas de conteúdo do formulário, sem erro nenhum.
     "statement",
+    // Handoff set/2026 (migration 20261174).
+    "yes_no", "nps", "rating", "schedule",
   ]),
   label: z.string().min(1).max(200),
   placeholder: z.string().nullable().optional(),

@@ -51,6 +51,15 @@ export type FormBlockType =
   // só conversacional
   | "statement"
   | "multi_select"
+  // handoff set/2026 — os tipos do seletor "estilo Typeform"
+  /** Sim / Não: dois cartões, resposta `"sim"` ou `"nao"`. */
+  | "yes_no"
+  /** Escala 0–10 (NPS): resposta é o número como texto, `"0"`…`"10"`. */
+  | "nps"
+  /** Nota em estrelas: `"1"`…`"5"`. */
+  | "rating"
+  /** Agendar reunião: a nossa agenda dentro da tela. Resposta = ISO do horário. */
+  | "schedule"
 
 /** Tipos que não coletam resposta — avançam sozinhos. */
 export const TIPOS_SEM_RESPOSTA: ReadonlySet<FormBlockType> = new Set(["statement"])
@@ -61,6 +70,43 @@ export const TIPOS_DE_ESCOLHA: ReadonlySet<FormBlockType> = new Set([
   "radio",
   "multi_select",
 ])
+
+/**
+ * Tipos que RAMIFICAM: a resposta é um conjunto fechado, então dá para
+ * escrever "se X → vai para Y" sem digitar texto livre. É o que o
+ * inspetor usa para decidir se mostra a seção de Lógica e a de Pontuação.
+ */
+export const TIPOS_RAMIFICAVEIS: ReadonlySet<FormBlockType> = new Set([
+  "select",
+  "radio",
+  "multi_select",
+  "yes_no",
+  "nps",
+  "rating",
+  "number",
+])
+
+/** As respostas possíveis de `yes_no`, na ordem em que aparecem. */
+export const RESPOSTAS_SIM_NAO = ["sim", "nao"] as const
+
+/**
+ * Faixa de pontuação → etapa do pipeline + etiqueta.
+ *
+ * A soma dos `pontos` das respostas cai numa faixa; a faixa decide em
+ * que etapa o negócio nasce e que tag ele leva. `stage_id` ausente =
+ * a etapa padrão do formulário. Avaliada em ordem; a primeira que contém
+ * o total vence.
+ */
+export interface FaixaDePontuacao {
+  de: number
+  ate: number
+  stage_id?: string | null
+  tag?: string | null
+}
+
+/** O que acontece quando o WhatsApp respondido já existe num lead. */
+export const POLITICAS_DE_DUPLICADO = ["atualiza", "novo", "ignora"] as const
+export type PoliticaDeDuplicado = (typeof POLITICAS_DE_DUPLICADO)[number]
 
 export interface FormOption {
   label: string
@@ -214,6 +260,28 @@ export interface FormBlock {
   destaque?: boolean
   /** Oculto: não é exibido; o valor vem da URL ou do embed. */
   hidden?: boolean
+  /**
+   * Escolha com a opção "Outro…" de texto livre no fim da lista. A
+   * resposta chega como o texto digitado, não como um `value` da lista —
+   * por isso quem qualifica por `in` não a enxerga, de propósito.
+   */
+  outro?: boolean
+  /**
+   * Embaralha a ordem das opções para cada visitante. O atalho de letra
+   * segue a ordem EXIBIDA. Nunca embaralha "Outro", que fica no fim.
+   */
+  embaralhar?: boolean
+  /**
+   * Pontos por resposta (`value` da opção → número). Em `yes_no` as
+   * chaves são `sim`/`nao`; em `nps` e `rating`, o número como texto.
+   * A soma cai numa `FaixaDePontuacao` de `settings.faixas`.
+   */
+  pontos?: Record<string, number>
+  /** Rótulos das pontas de uma escala (`nps`, `rating`). */
+  escala?: {
+    min_label?: string | null
+    max_label?: string | null
+  }
 }
 
 export interface LogicCondition {
@@ -332,6 +400,24 @@ export interface FormSchema {
       /** O vídeo de quem assina o formulário. Ver `lib/forms/midia`. */
       midia?: MidiaDaTela | null
     }
+    /**
+     * Qualificação por pontos: a soma dos `pontos` das respostas decide a
+     * etapa e a etiqueta. Vazio = sem qualificação por pontos.
+     */
+    faixas?: FaixaDePontuacao[]
+    /**
+     * Textos do sistema que o visitante lê — "Preencha este campo",
+     * "pressione Enter". Chave = a mensagem padrão do código; valor = o
+     * texto do operador. Ausente = o padrão.
+     */
+    textos?: Record<string, string>
+    /** Formulário fechado: mostra `mensagem_fechado` no lugar das perguntas. */
+    fechado?: boolean
+    mensagem_fechado?: string | null
+    /** Teto de envios; ao alcançar, o formulário fecha sozinho. */
+    limite_envios?: number | null
+    /** Política quando o WhatsApp respondido já existe num lead. */
+    duplicado?: PoliticaDeDuplicado
   }
 }
 

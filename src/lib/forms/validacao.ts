@@ -170,6 +170,22 @@ export function validarResposta(block: FormBlock, valor: FormAnswer | undefined)
       if (v.max !== undefined && n > v.max) return falha(`O máximo é ${v.max}.`)
       break
     }
+    case "yes_no":
+      if (texto !== "sim" && texto !== "nao") return falha("Escolha Sim ou Não.")
+      break
+    case "nps": {
+      const n = Number(texto)
+      if (!Number.isInteger(n) || n < 0 || n > 10) return falha("Escolha uma nota de 0 a 10.")
+      break
+    }
+    case "rating": {
+      const n = Number(texto)
+      if (!Number.isInteger(n) || n < 1 || n > 5) return falha("Escolha de 1 a 5 estrelas.")
+      break
+    }
+    case "schedule":
+      if (Number.isNaN(new Date(texto).getTime())) return falha("Escolha um horário.")
+      break
     case "date": {
       // `new Date("2026-02-31")` não lança — vira 03/03. Por isso a
       // comparação é com a data reconstruída, não com `isNaN`.
@@ -204,4 +220,12 @@ export function validarResposta(block: FormBlock, valor: FormAnswer | undefined)
   return OK
 }
 
-const TIPOS_DE_ESCOLHA_MSG: ReadonlySet<string> = new Set(["select", "radio", "multi_select"])
+const TIPOS_DE_ESCOLHA_MSG: ReadonlySet<string> = new Set([
+  "select",
+  "radio",
+  "multi_select",
+  "yes_no",
+  "nps",
+  "rating",
+  "schedule",
+])

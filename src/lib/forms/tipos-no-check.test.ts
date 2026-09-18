@@ -63,6 +63,10 @@ const DO_CODIGO: FormBlockType[] = [
   "cep",
   "statement",
   "multi_select",
+  "yes_no",
+  "nps",
+  "rating",
+  "schedule",
 ]
 
 describe("field_type: código e banco", () => {
