@@ -244,3 +244,39 @@ describe("a moeda da conta", () => {
     ).toEqual({})
   })
 })
+
+describe("a escala do dinheiro acima de um milhão", () => {
+  it('não escreve "R$1.260 mil"', () => {
+    // Era o que a loja de 10 mil acessos com ticket acima de R$800
+    // recebia na tela — número que ninguém escreve, na tela que pede
+    // R$3.500 por mês. A conta estava certa; a escala, não.
+    expect(formatarNumero(1_260_000, "dinheiro")).toBe("R$1,2 milhão")
+    expect(formatarNumero(1_260_000, "dinheiro")).not.toContain("mil ")
+  })
+
+  it("o plural segue a parte inteira", () => {
+    expect(formatarNumero(1_950_000, "dinheiro")).toBe("R$1,9 milhão")
+    expect(formatarNumero(2_100_000, "dinheiro")).toBe("R$2,1 milhões")
+  })
+
+  it("um milhão redondo não vira 1,0", () => {
+    expect(formatarNumero(1_000_000, "dinheiro")).toBe("R$1 milhão")
+  })
+
+  it("arredonda para baixo como o resto do módulo", () => {
+    // A conta mostrada nunca pode ser MAIOR que a real: 1,29 vira 1,2.
+    expect(formatarNumero(1_290_000, "dinheiro")).toBe("R$1,2 milhão")
+  })
+
+  it("a fronteira dos 999 mil continua em mil", () => {
+    expect(formatarNumero(999_999, "dinheiro")).toBe("R$999 mil")
+  })
+
+  it("respeita a moeda da trilha", () => {
+    expect(formatarNumero(2_400_000, "dinheiro", "USD")).toBe("US$2,4 milhões")
+  })
+
+  it("contagem nunca ganha escala: 1,2 milhão de pedidos não é pedido", () => {
+    expect(formatarNumero(1_260_000, "numero")).toBe("1.260.000")
+  })
+})

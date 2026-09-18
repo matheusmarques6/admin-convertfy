@@ -93,6 +93,7 @@ import {
   type SubmitTracking,
 } from "./form-pixels"
 import { contatoCapturado } from "@/lib/forms/contato-capturado"
+import { AgendaDoFinal, type CredenciaisDaSessao } from "./agenda-do-final"
 import {
   mascaraDeTelefone,
   paisSugeridoPeloNavegador,
@@ -890,6 +891,8 @@ export function ConversationalFormView({
               recall={recall}
               t={t}
               buttonFill={buttonFill}
+              slug={slug}
+              credenciais={sessao.credenciais}
             />
           )}
 
@@ -1025,6 +1028,8 @@ function TelaFinal({
   recall,
   t,
   buttonFill,
+  slug,
+  credenciais,
 }: {
   ending: ReturnType<typeof acharEnding>
   destino: DestinoPronto | null
@@ -1033,6 +1038,8 @@ function TelaFinal({
   recall: (s: string | null | undefined) => string
   t: ReturnType<typeof defaults>
   buttonFill: string
+  slug: string
+  credenciais: () => CredenciaisDaSessao
 }) {
   const titulo = recall(ending?.title) || fallback || "Recebemos sua resposta."
   const descricao = recall(ending?.description)
@@ -1090,6 +1097,22 @@ function TelaFinal({
           {descricao}
         </p>
       )}
+      {/*
+        A agenda é o próprio desfecho, não um link para ele. Ela vem
+        DEPOIS do texto porque a frase de aprovação é o que faz a pessoa
+        querer escolher o horário; antes dele, o seletor seria um
+        calendário sem motivo.
+      */}
+      {ending?.destino?.tipo === "agenda" && (
+        <AgendaDoFinal
+          slug={slug}
+          credenciais={credenciais}
+          preview={preview}
+          t={t}
+          buttonFill={buttonFill}
+        />
+      )}
+
       {(() => {
         // O destino VENCE o botão legado: ele carrega o dado de quem
         // respondeu (o texto do WhatsApp, o pré-preenchimento do

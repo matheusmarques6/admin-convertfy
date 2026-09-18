@@ -137,6 +137,46 @@ export class GoogleCalendarService {
     await this.request(endpoint, { method: "DELETE" })
   }
 
+  /**
+   * Os intervalos OCUPADOS da agenda, sem ler o conteúdo dos eventos.
+   *
+   * É a chamada certa para oferecer horário a quem vem de fora: `events.list`
+   * traria título, convidados e descrição de cada compromisso — dado que a
+   * página pública não precisa e não deve sequer buscar. Aqui volta só
+   * `{start, end}`.
+   *
+   * A janela do Google é limitada; pedir meses de uma vez faz a API recusar.
+   * Quem chama pede o horizonte da agenda, que é de dias.
+   */
+  async freeBusy(params: {
+    timeMin: string
+    timeMax: string
+    calendarIds?: string[]
+    timeZone?: string
+  }): Promise<Array<{ start: string; end: string }>> {
+    const ids = params.calendarIds?.length ? params.calendarIds : [this.calendarId]
+    const resposta = await this.request<{
+      calendars?: Record<string, { busy?: Array<{ start: string; end: string }>; errors?: unknown[] }>
+    }>("/freeBusy", {
+      method: "POST",
+      body: JSON.stringify({
+        timeMin: params.timeMin,
+        timeMax: params.timeMax,
+        timeZone: params.timeZone,
+        items: ids.map((id) => ({ id })),
+      }),
+    })
+    const ocupados: Array<{ start: string; end: string }> = []
+    for (const cal of Object.values(resposta.calendars ?? {})) {
+      // Calendário que respondeu com erro (sem permissão, id errado) NÃO
+      // entra como "livre": quem chama decide o que fazer com a ausência,
+      // e tratar erro como agenda vazia ofereceria horário já tomado.
+      if (cal?.errors?.length) continue
+      for (const b of cal?.busy ?? []) ocupados.push(b)
+    }
+    return ocupados
+  }
+
   async listEvents(params?: {
     timeMin?: string
     timeMax?: string

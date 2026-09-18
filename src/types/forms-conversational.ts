@@ -232,7 +232,14 @@ export interface LogicRule {
   set?: Array<{ nome: string; operacao: "set" | "add"; valor: string | number }>
 }
 
-export const TIPOS_DE_DESTINO = ["whatsapp", "calendly", "url"] as const
+/**
+ * `agenda` é o único que NÃO leva para fora: ele mostra a nossa agenda
+ * (sincronizada com o Google) dentro da própria tela final. Mandar quem
+ * acabou de ser aprovado para outro domínio custa o instante em que ele
+ * está com a mão no teclado — e um serviço de fora não sabe que aquela
+ * pessoa é um lead nosso, com negócio e histórico.
+ */
+export const TIPOS_DE_DESTINO = ["whatsapp", "calendly", "url", "agenda"] as const
 export type TipoDeDestino = (typeof TIPOS_DE_DESTINO)[number]
 
 /**

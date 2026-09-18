@@ -12,6 +12,7 @@
  */
 
 import { camposDoFunil, rascunhoDoFunil, FORM_ID, FORM_NOME, FORM_SLUG } from "../src/lib/forms/funil-aplicacao"
+import { AGENDA_PADRAO } from "../src/lib/meetings/disponibilidade"
 
 const ORG_ID = "d1ae3cf9-558d-40cc-9272-4a5633894ef8"
 const PIPELINE_ID = "217c6a20-668d-4592-aa1b-4555b35a19cc"
@@ -74,6 +75,21 @@ const tracking = {
   },
 }
 
+/**
+ * A agenda que o final aprovado oferece.
+ *
+ * A regra vai ESCRITA no banco, e não implícita no padrão do código,
+ * para ser ajustada sem deploy — janela, duração e antecedência são
+ * decisões de operação, não de engenharia. `organizador_id` fica de
+ * fora de propósito: sem ele a cascata do serviço resolve (dono do
+ * formulário → dono da org), e um id fixo aqui envelheceria calado no
+ * dia em que essa pessoa saísse.
+ */
+const agenda = {
+  titulo: "Diagnóstico de retenção · {{nome}}",
+  regra: AGENDA_PADRAO,
+}
+
 const out: string[] = []
 out.push(`-- Semeado por scripts/gerar-seed-funil-aplicacao.ts — não edite à mão.`)
 out.push(`-- A definição vive em src/lib/forms/funil-aplicacao.ts (testada em funil-aplicacao.test.ts).`)
@@ -89,7 +105,7 @@ values (
   ${s("Funil de aplicação que recebe tráfego pago direto do anúncio. 21 telas, duas trilhas, cinco finais.")},
   'draft', 'sales', 'conversational', 'pt-BR',
   ${j(tema)}, ${j(tracking)},
-  ${j({ abandono_stage_id: STAGE_ABANDONO })},
+  ${j({ abandono_stage_id: STAGE_ABANDONO, agenda })},
   ${j(rascunho)},
   '${PIXEL}',
   ${s("Aplicação recebida. Eu leio e te respondo em até 2 horas úteis.")}

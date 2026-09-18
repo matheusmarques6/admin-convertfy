@@ -77,6 +77,7 @@ const ROTULO_PADRAO: Record<TipoDeDestino, string> = {
   whatsapp: "Falar no WhatsApp agora",
   calendly: "Escolher o meu horário",
   url: "Continuar",
+  agenda: "Escolher o meu horário",
 }
 
 /** UTMs que o Calendly carrega para dentro do agendamento. */
@@ -134,6 +135,12 @@ export function montarDestino(
   const rotulo = (destino.rotulo ?? "").trim() || ROTULO_PADRAO[destino.tipo]
   const automatico = Boolean(destino.automatico)
 
+  // A agenda não é um ENDEREÇO: ela é desenhada na própria tela final.
+  // Devolver `null` aqui é o que impede a tela tratá-la como link e
+  // navegar para lugar nenhum — quem a renderiza olha o `tipo` do
+  // final, não este retorno.
+  if (destino.tipo === "agenda") return null
+
   if (destino.tipo === "whatsapp") {
     const numero = (destino.numero ?? "").trim()
     if (!numero) return null
@@ -162,6 +169,12 @@ export function montarDestino(
  */
 export function conferirDestino(destino: DestinoDoFinal | null | undefined): FalhaDoDestino | null {
   if (!destino || !ehTipoDeDestino(destino.tipo)) return null
+
+  // A agenda não tem endereço para conferir. O que pode faltar nela
+  // (conta do Google, organizador) é do SERVIDOR, e o editor não tem
+  // como saber daqui — reprovar por "sem_url" mandaria consertar um
+  // campo que não existe neste tipo.
+  if (destino.tipo === "agenda") return null
 
   if (destino.tipo === "whatsapp") {
     const numero = (destino.numero ?? "").trim()

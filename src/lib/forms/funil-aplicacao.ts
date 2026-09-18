@@ -754,6 +754,10 @@ export const FINAIS: FormEnding[] = [
       "",
       "Faltar sem remarcar libera a sua vaga pro próximo da fila. Escolhe um horário que você tem certeza que consegue. Conto com você!",
     ].join("\n"),
+    // A agenda é a NOSSA, desenhada dentro desta tela — sem levar para
+    // outro domínio quem acabou de ser aprovado. `automatico` não se
+    // aplica: não há para onde navegar.
+    destino: { tipo: "agenda" },
   },
   {
     ref: FINAL.faturamento,

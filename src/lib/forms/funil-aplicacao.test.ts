@@ -435,3 +435,101 @@ describe("o que cada desfecho faz no CRM", () => {
     expect(d.destaque?.resposta).toContain("Recupero margem")
   })
 })
+
+describe("caminho 8 · a conta em três combinações de acesso e ticket", () => {
+  /**
+   * O risco aqui não é errar a multiplicação — é o TEXTO ficar torto
+   * depois do arredondamento. Com 8,5 pedidos a frase diria "8 pedidos"
+   * e "R$2.550 por dia", e 8 × 300 não dá 2.550: quem lê confere e
+   * perde a confiança na conta inteira. Por isso a asserção é sobre a
+   * frase renderizada, e não sobre o número solto.
+   */
+  function conta(respostas: FormAnswers) {
+    const { variables } = percorrer({ ...CONTATO, ...respostas })
+    const numeros = variaveisDasRespostas(schema.blocks, { ...CONTATO, ...respostas })
+    const { textos } = calcular(CALCULOS, numeros, moedaDeclarada(variables) ?? "BRL")
+    const render = (ref: string) =>
+      aplicarRecall(schema.blocks.find((b) => b.ref === ref)!.description, {
+        answers: { ...CONTATO, ...respostas },
+        variables: { ...variables, ...textos },
+        blocks: schema.blocks,
+      })
+    return { textos, mat1: render(REF.mat1), mat2: render(REF.mat2) }
+  }
+
+  const base = {
+    [REF.operacao]: "marca",
+    [REF.mercado]: "br",
+    [REF.faturamento_br]: "200_500k",
+    [REF.carrinho]: "nada",
+    [REF.recompra]: "quase_nenhum",
+    [REF.estado_email]: "nada",
+    [REF.o_que_muda]: "previsibilidade",
+    [REF.ja_tentou]: "agencia",
+    [REF.decisao]: "sozinho",
+    [REF.compromisso]: "sim",
+  }
+
+  const combinacoes: Array<[string, string, string, string]> = [
+    // acessos, ticket, pedidos/dia esperados, receita/mês esperada
+    ["ate_300", "ate_100", "1 pedido", "R$2.400"],
+    ["1000_3000", "200_400", "8 pedidos", "R$72 mil"],
+    ["mais_10000", "acima_800", "42 pedidos", "R$1,2 milhão"],
+  ]
+
+  it.each(combinacoes)(
+    "acessos=%s ticket=%s produz texto coerente",
+    (acessos, ticket, pedidos, receita) => {
+      const { mat1 } = conta({ ...base, [REF.acessos]: acessos, [REF.ticket_br]: ticket })
+      expect(mat1, "placeholder não resolvido vira frase pela metade").not.toContain("{{")
+      expect(mat1).toContain(pedidos)
+      expect(mat1).toContain(receita)
+    },
+  )
+
+  it("o número que a frase mostra é o mesmo que a multiplicação seguinte usa", () => {
+    // 300 acessos, ticket R$80: 1 pedido/dia → R$80/dia → R$2.400/mês.
+    // Sem propagar o valor EXIBIDO, a frase diria "1 pedido por dia" e
+    // "R$3.480 por mês" — e 1 × 80 × 30 não dá 3.480.
+    const { textos } = conta({ ...base, [REF.acessos]: "ate_300", [REF.ticket_br]: "ate_100" })
+    expect(textos.pedidos_dia).toBe("1")
+    expect(textos.receita_dia).toBe("R$80")
+    expect(textos.receita_mes).toBe("R$2.400")
+  })
+
+  it("a segunda conta (campanha) também fecha com o que ela mesma imprime", () => {
+    const { mat2, textos } = conta({
+      ...base,
+      [REF.acessos]: "1000_3000",
+      [REF.ticket_br]: "200_400",
+    })
+    expect(mat2).not.toContain("{{")
+    expect(mat2).toContain(textos.pedidos_campanha)
+    expect(mat2).toContain(textos.receita_campanha)
+  })
+})
+
+describe("o final aprovado abre a NOSSA agenda", () => {
+  it("só o aprovado tem destino, e ele é a agenda", () => {
+    const comDestino = (schema.endings ?? []).filter((e) => e.destino)
+    expect(comDestino.map((e) => e.ref)).toEqual([FINAL.aprovado])
+    expect(comDestino[0].destino?.tipo).toBe("agenda")
+  })
+
+  it("a agenda não vira link: quem desenha é a tela final", () => {
+    // Um `url` aqui faria a tela tratar o desfecho como redirecionamento
+    // e mandar quem foi aprovado para lugar nenhum.
+    const d = (schema.endings ?? []).find((e) => e.ref === FINAL.aprovado)?.destino
+    expect(d?.url).toBeNull()
+    expect(d?.automatico).toBe(false)
+  })
+
+  it("nenhum desfecho de recusa oferece horário", () => {
+    // Marcar call com quem acabou de ler "a conta não fecha para você" é
+    // o pior uso possível da agenda.
+    for (const ref of [FINAL.faturamento, FINAL.faturamento_global, FINAL.perfil, FINAL.sem_intencao]) {
+      const e = (schema.endings ?? []).find((x) => x.ref === ref)
+      expect(e?.destino ?? null, `${ref} não pode ter destino`).toBeNull()
+    }
+  })
+})

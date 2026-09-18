@@ -9,6 +9,10 @@ import { NextResponse } from "next/server"
  *   <div data-convertfy-form="https://app.convertfy.me/forms/{slug}"></div>
  *   <script src="https://app.convertfy.me/api/script/form-embed.js" defer></script>
  *
+ * `data-convertfy-height="tela"` faz o iframe ocupar a janela inteira —
+ * é o que um funil conversacional pede, e o que a página
+ * `convertfy.me/aplicacao` usa.
+ *
  * O script roda NA página host (mesmo domínio da landing), então enxerga a
  * query string dela — o que o iframe estático nunca enxerga. Ele:
  *   1. Captura utm_* / gclid / fbclid da URL da página e persiste o FIRST
@@ -98,7 +102,20 @@ const SCRIPT = `
       iframe.style.border = "0";
       iframe.style.background = "transparent";
       iframe.style.width = "100%";
-      iframe.style.minHeight = (parseInt(el.getAttribute("data-convertfy-height"), 10) || 600) + "px";
+      // "tela" = o formulário OCUPA a janela. É o que um funil
+      // conversacional pede: ele já centraliza a pergunta na própria
+      // viewport, e uma altura fixa o deixaria com barra de rolagem
+      // dentro de outra barra de rolagem. \`100dvh\` porque no iOS o
+      // \`100vh\` conta a barra do navegador que some ao rolar, e a
+      // pergunta fica cortada.
+      var altura = el.getAttribute("data-convertfy-height");
+      if (altura === "tela" || altura === "fullscreen") {
+        iframe.style.height = "100vh";
+        iframe.style.height = "100dvh";
+        iframe.style.display = "block";
+      } else {
+        iframe.style.minHeight = (parseInt(altura, 10) || 600) + "px";
+      }
       iframe.setAttribute("allowtransparency", "true");
       el.appendChild(iframe);
     }

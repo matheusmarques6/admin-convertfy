@@ -211,3 +211,31 @@ describe("normalizarDestino", () => {
     })
   })
 })
+
+describe("destino do tipo agenda", () => {
+  const agenda: DestinoDoFinal = { tipo: "agenda", automatico: true }
+
+  it("não vira endereço: quem desenha é a tela final", () => {
+    // Montar uma URL aqui faria a tela tratá-la como link e navegar para
+    // lugar nenhum. A agenda é desenhada DENTRO do final.
+    expect(montarDestino(agenda, ctx)).toBeNull()
+  })
+
+  it("não é reprovado por falta de URL no editor", () => {
+    // Ele não tem endereço para conferir; o que pode faltar (conta do
+    // Google, organizador) é do servidor. "sem_url" mandaria consertar
+    // um campo que este tipo não tem.
+    expect(conferirDestino(agenda)).toBeNull()
+  })
+
+  it("sobrevive à normalização com os campos que não usa vazios", () => {
+    expect(normalizarDestino({ tipo: "agenda" })).toEqual({
+      tipo: "agenda",
+      numero: null,
+      mensagem: null,
+      url: null,
+      automatico: false,
+      rotulo: null,
+    })
+  })
+})

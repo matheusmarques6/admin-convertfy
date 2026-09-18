@@ -195,6 +195,20 @@ export function formatarNumero(
   if (formato !== "dinheiro") return new Intl.NumberFormat("pt-BR").format(v)
 
   const s = SIMBOLO[moeda] ?? SIMBOLO.BRL
+
+  // A partir de um milhão a escala vira "milhão", e não "mil": a loja
+  // de 10 mil acessos com ticket acima de R$800 produzia
+  // **"R$1.260 mil"** — número que ninguém escreve e que faz a conta
+  // inteira parecer amadora, justamente na tela que pede R$3.500 por
+  // mês. Uma casa decimal, para baixo como todo o resto do módulo.
+  if (Math.abs(v) >= 1_000_000) {
+    const decimos = Math.floor(Math.abs(v) / 100_000)
+    const texto = (decimos / 10).toLocaleString("pt-BR", { maximumFractionDigits: 1 })
+    // Plural pela parte INTEIRA: "1,9 milhão" e "2,1 milhões".
+    const unidade = Math.floor(decimos / 10) >= 2 ? "milhões" : "milhão"
+    return `${s}${v < 0 ? "-" : ""}${texto} ${unidade}`
+  }
+
   // Acima de 10 mil o texto fala em "mil"; o número cheio ali só faz a
   // frase parecer relatório. Abaixo disso, o valor exato é o que soa
   // verdadeiro ("R$4.350", não "R$4 mil").

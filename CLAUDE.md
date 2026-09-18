@@ -10069,3 +10069,86 @@ positivos em rotas corretas), e deixa passar join embutido
 auto-verificação: sem ele um recorte quebrado passaria em tudo por não
 achar nada — e foi ele que pegou o percurso parando na primeira letra de
 `.select`.
+
+## Funil de aplicação: o formulário É o funil, e ele marca a call (18/09, migration 20261170)
+
+`/forms/aplicacao` — 21 telas conversacionais que recebem tráfego pago
+**direto do anúncio**, sem página de vendas na frente. Definição
+versionada em `src/lib/forms/funil-aplicacao.ts`, com os caminhos do QA
+percorridos pela **engine de produção** em `funil-aplicacao.test.ts`
+(35 testes); o banco é semeado a partir dela por
+`scripts/gerar-seed-funil-aplicacao.ts`, nunca o contrário. Mapa,
+embed pronto, materiais que faltam e QA em `docs/forms/funil-aplicacao.md`.
+
+**Três bloqueios de código foram medidos e fechados antes de montar o
+funil**: `statement` não sobrevivia à publicação (migration 20261168 + o
+teste que lê o CHECK), não havia mídia por tela (20261167 + bucket
+público 20261169 + campo no editor) e as variáveis só sabiam somar —
+`lib/forms/calculo.ts` é o avaliador de expressão (sem `eval`: número,
+nome, `+ - * /` e parênteses, e mais nada) que faz a tela dizer "com os
+seus 2.000 acessos são R$72 mil por mês passando".
+
+**O que segue na cadeia é o número EXIBIDO, não o bruto.** A conta é
+mostrada linha a linha e o dono da loja a refaz de cabeça: com 8,5
+pedidos o texto diria "8 pedidos" e "R$2.550 por dia", e 8 × 300 não dá
+2.550. A promessa é por LINHA, não da cadeia — numa subtração,
+arredondar o subtraendo para baixo AUMENTA a diferença (105 no lugar de
+104,89), e isso está declarado no módulo. **Achado pelo QA de três
+combinações**: acima de um milhão o texto saía **"R$1.260 mil"** —
+número que ninguém escreve, na tela que pede R$3.500 por mês; a escala
+virou "milhão"/"milhões" com uma casa, para baixo como o resto.
+
+**A Meta passou a ver o caminho, não só quem chega ao fim.** Um funil de
+21 telas perde metade de quem começa. `FormStep` é **um** evento
+parametrizado (`{step, total, ref}`) e não vinte e um nomes custom —
+disparado uma vez por tela, porque voltar e avançar de novo não é passo
+novo. `Lead` sai também no PARCIAL, quando o contato é capturado, pela
+régua do **mapeamento** (`map_to_lead_field` = email/phone) e nunca do
+rótulo ("procurar e-mail no texto da pergunta quebraria no primeiro
+formulário em inglês, e em silêncio"). **O `event_id` dos dois é o da
+SESSÃO** — a dedupe da Meta é por (evento, event_id), então parcial e
+completo compartilham o id; o submit o reusa só quando o token da sessão
+CONFERE. Os dois disparos são opt-in e estão ligados só neste formulário.
+`LeadQualificado` sai pelo DESFECHO (`qualified_lead.endings`), não por
+regra de faturamento: quem chega ao final aprovado já passou pelos três
+cortes duros, e uma segunda régua discordaria do que a pessoa leu.
+
+**A agenda é a NOSSA, dentro da tela final** — `destino.tipo = "agenda"`
+é o único tipo que não leva para fora (`montarDestino` devolve `null` de
+propósito; quem desenha é a tela). A régua de horários é pura
+(`lib/meetings/disponibilidade.ts`, 21 testes) e cada regra dela erra em
+silêncio: o slot tem de CABER inteiro na janela (testar só o início
+oferece 17:45 numa janela que fecha às 18:00), ocupado é meio-aberto
+`[início, fim)` (com `<=` a agenda perde um horário por reunião
+existente), o fuso resolve o DST PELA DATA (offset fixo entrega a call
+uma hora deslocada e o cliente entra na sala vazia), e **o servidor não
+confia no instante recebido**: gerar e aceitar passam pela MESMA função
+(`slotAgendavel`), porque duas réguas divergem e a divergência aqui é um
+POST feito à mão marcando domingo às 3h.
+
+Ocupado vem do `freeBusy` do Google **e** do nosso banco — os dois,
+porque o primeiro vê o compromisso pessoal criado direto no Google e o
+segundo vê a reunião que nasceu aqui e cujo sync falhou. Falha do Google
+**não vira agenda vazia**: a resposta declara `fonte: "somente_banco"` e
+a tela diz que confirma por e-mail. Uma sessão marca no máximo uma call
+(índice único parcial em `meetings.form_session_id`); clique duplo adota
+a que passou primeiro (23505 tratado, não evitado) e escolher outro
+horário REMARCA a mesma reunião. `meetings.source` ganhou `'form'` no
+CHECK — sem o valor próprio a call do lead ficaria indistinguível da
+marcada pelo time, e é justamente ela que a gente vai querer contar.
+
+**Divergência declarada com a especificação**: ela pedia o
+`LeadQualificado` numa página `/aplicacao-aprovada`. O evento é
+**personalizado** e a conversão da Meta casa o NOME, não a URL; navegar
+cancela a requisição do pixel que ainda está no ar; e mandar quem foi
+aprovado para outro domínio custa o instante em que ele está com a mão
+no teclado. O `redirect_url` do final continua existindo para quem
+precisar da URL (ex.: conversão do Google Ads), com o custo à vista.
+
+**Improvisos, à vista**: a publicação não passou pela rota do admin (ela
+exige sessão) — a versão foi gerada pela MESMA `montarVersao` e escrita
+por SQL, conferida contra o código em 12 eixos; `convertfy.me` é
+inalcançável deste ambiente, então os três prints da LP não puderam ser
+abertos para conferência; e **a mídia não estava na versão publicada** —
+os campos tinham as imagens, o editor as mostrava, e o visitante não
+veria nenhuma, o mesmo defeito de fronteira de sempre.
