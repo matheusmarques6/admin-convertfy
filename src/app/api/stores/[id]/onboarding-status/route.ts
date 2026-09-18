@@ -34,7 +34,7 @@ export async function GET(
         "id, status, current_column_id, current_version, payment_status, contract_status, " +
           "briefing_status, form_submitted_at, briefing_confirmed_at, entered_at, " +
           "last_column_change_at, completed_at, pipeline_id, " +
-          "current_column:operational_pipeline_columns!onboardings_current_column_id_fkey(id, position, name, responsible_role, sla_days)",
+          "current_column:operational_pipeline_columns!onboardings_current_column_id_fkey(id, position, name, default_assignee_role, sla_hours)",
       )
       .eq("store_id", id)
       .eq("status", "in_progress")
@@ -71,7 +71,7 @@ export async function GET(
     // Colunas do pipeline
     const { data: columns } = await admin
       .from("operational_pipeline_columns")
-      .select("id, position, name, responsible_role, sla_days, color")
+      .select("id, position, name, default_assignee_role, sla_hours, color")
       .eq("pipeline_id", onb.pipeline_id)
       .order("position", { ascending: true })
 

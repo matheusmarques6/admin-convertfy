@@ -73,8 +73,6 @@ interface StoreMetrics {
   orders30d: number
   attributedRevenue30d: number
   totalLeads?: number
-  campaigns?: number
-  flows?: number
 }
 
 interface StoreActivity {
@@ -525,7 +523,12 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
         supabase
           .from("store_revenue_summary")
           .select(
-            "store_id, store_total_revenue, store_orders, klaviyo_total_revenue, total_leads, total_campaigns, total_flows, period_label",
+            // `total_campaigns` e `total_flows` NÃO existem em
+            // `store_revenue_summary` — e eram carregadas sem nunca
+            // aparecer na tela. O 42703 derrubava o select INTEIRO, então
+            // receita, pedidos, receita atribuída e leads das lojas do
+            // cliente ficavam todos vazios, sem erro em lugar nenhum.
+            "store_id, store_total_revenue, store_orders, klaviyo_total_revenue, total_leads, period_label",
           )
           .in("store_id", storeIds)
           .eq("period_label", "30d"),
@@ -548,6 +551,11 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
           .limit(200),
       ])
 
+      if (revenueRes.error) {
+        // O supabase-js devolve o erro do Postgres aqui, não como throw:
+        // sem esta linha o `?? []` some com a causa.
+        console.error("Erro ao ler métricas das lojas:", revenueRes.error.message)
+      }
       const map: Record<string, StoreMetrics> = {}
       for (const row of revenueRes.data ?? []) {
         map[row.store_id] = {
@@ -555,8 +563,6 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
           orders30d: Number(row.store_orders ?? 0),
           attributedRevenue30d: Number(row.klaviyo_total_revenue ?? 0),
           totalLeads: Number(row.total_leads ?? 0),
-          campaigns: Number(row.total_campaigns ?? 0),
-          flows: Number(row.total_flows ?? 0),
         }
       }
       setMetricsMap(map)

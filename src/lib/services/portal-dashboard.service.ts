@@ -73,12 +73,21 @@ async function resolvePortalMeetings(
       (async () => {
         const { data } = await adminClient
           .from("org_members")
-          .select("id, user_id, profiles:user_id ( full_name, email )")
+          // Três nomes que o schema não tem, na mesma linha: `org_members`
+          // aponta para o perfil por `profile_id` (não `user_id`), a
+          // relação é a FK desse campo, e em `profiles` a coluna é `name`
+          // (não `full_name`). O 42703 voltava em `error`, o `|| []`
+          // virava lista vazia e o portal mostrava toda reunião sem o
+          // nome de quem atende.
+          .select("id, profile:profiles!org_members_profile_id_fkey ( name, email )")
           .in("id", Array.from(orgMemberIds))
         for (const om of data || []) {
-          const profile = om.profiles as unknown as { full_name?: string; email?: string } | null
-          if (profile?.full_name) {
-            nameMap.set(om.id, profile.full_name)
+          const bruto = (om as { profile?: unknown }).profile
+          const profile = (Array.isArray(bruto) ? bruto[0] : bruto) as
+            | { name?: string; email?: string }
+            | null
+          if (profile?.name) {
+            nameMap.set(om.id, profile.name)
           } else if (profile?.email) {
             nameMap.set(om.id, profile.email)
           }
@@ -92,11 +101,11 @@ async function resolvePortalMeetings(
       (async () => {
         const { data } = await adminClient
           .from("profiles")
-          .select("id, full_name, email")
+          .select("id, name, email")
           .in("id", Array.from(profileIds))
         for (const p of data || []) {
-          if (p.full_name) {
-            nameMap.set(p.id, p.full_name)
+          if (p.name) {
+            nameMap.set(p.id, p.name)
           } else if (p.email) {
             nameMap.set(p.id, p.email)
           }

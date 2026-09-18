@@ -31,8 +31,8 @@ export interface StoreRow {
   niche: string | null
   country: string | null
   language: string | null
-  plan: string | null
-  mrr_value: number | null
+  /** O MRR em centavos — `client_stores` não tem `plan` nem `mrr_value`. */
+  mrr_cents: number | null
   brand_thesis: string | null
   brand_about: string | null
   brand_pillars: unknown

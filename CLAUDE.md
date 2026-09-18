@@ -10152,3 +10152,61 @@ inalcançável deste ambiente, então os três prints da LP não puderam ser
 abertos para conferência; e **a mídia não estava na versão publicada** —
 os campos tinham as imagens, o editor as mostrava, e o visitante não
 veria nenhuma, o mesmo defeito de fronteira de sempre.
+
+## Dezesseis colunas que só existiam no código (18/09)
+
+O agendamento do funil de aplicação **nunca teria funcionado**:
+`agendarDaSessao` pedia `form_sessions.hidden_fields` e a coluna se
+chama `hidden` — o nome `hidden_fields` existe no projeto querendo dizer
+OUTRA coisa (no schema do formulário é a lista de NOMES aceitos pela
+URL). O supabase-js entrega o 42703 em `error`, o select inteiro volta
+`null`, e o serviço recusaria **toda** sessão como `sessao_invalida`: a
+pessoa escolhia o horário e recebia "não foi possível agendar", sempre.
+
+Isso motivou conferir **todos** os `.select()` do `src/` contra o
+`information_schema` de produção — 1.944 pares tabela×coluna. Dezesseis
+existiam só no código, e **nenhuma aparecia como erro**: cada uma
+derruba o select inteiro e vira tela vazia.
+
+| onde | pedia | era | sintoma |
+|---|---|---|---|
+| agendamento público | `form_sessions.hidden_fields` | `hidden` | agendar sempre falhava |
+| sync do Google | `org_members.user_id` | join por `profile_id` | membro interno nunca virava attendee |
+| portal do cliente | `org_members.user_id`, `profiles.full_name` | `profile_id`, `name` | reunião sem o nome de quem atende |
+| tela de Reuniões | `profiles.org_id` | `org_members` | seletor de participantes VAZIO |
+| ficha do cliente | `store_revenue_summary.total_campaigns/total_flows` | não existem | receita, pedidos e leads das lojas em branco |
+| dashboard de Conteúdo | `crm_threads.metadata` | não existe | zero leads atribuídos aos posts |
+| conector CRM da IA | `crm_deal_history.created_at` | `changed_at` | histórico do negócio sempre vazio |
+| tela do Time | `clients.account_manager_id` | `owner_id` (→ perfil) | contagem de clientes zerada |
+| portal (branding) | `organizations.logo_url/primary_color` | `settings` | marca do portal sempre a padrão |
+| portal (usuário) | join `client_notification_preferences` | tabela não existe | "Usuário não encontrado" |
+| contexto da task | `client_stores.plan/mrr_value`, `deals.plan_name` | `mrr_cents` | contexto da loja chegava vazio |
+| onboarding da loja | `operational_pipeline_columns.responsible_role/sla_days` | `default_assignee_role`, `sla_hours` | etapa sem responsável nem SLA |
+
+**Três padrões se repetem** e valem para o próximo select: (a) coluna
+**carregada e nunca exibida** derruba o que é exibido ao lado
+(`total_campaigns`, `crm_threads.metadata`, `org_members.user_id` — as
+três eram lixo no select); (b) o mesmo NOME querendo dizer coisas
+diferentes em duas camadas (`hidden_fields`); (c) `{ data }`
+desestruturado sem `error`, que é o que transforma 42703 em "vazio".
+
+`src/lib/crm/colunas-inexistentes.test.ts` (que já existia para
+`deals.org_id`) passou a cobrir as doze — a varredura é por
+encadeamento, ignora comentário e join embutido, e tem caso de
+auto-verificação.
+
+**Duas ficaram fora, com o motivo.**
+`user_google_tokens.selected_calendar_id` e `auto_meet` também não
+existem, mas ali o defeito é o inverso: a tela de configuração do Google
+Calendar **escreve** nas duas. Arrancar o código mataria a
+funcionalidade; o conserto é a migration que as cria (SQL em
+`docs/forms/funil-aplicacao.md`), e até ela rodar o sync usa `primary`
+com Meet ligado pelo fallback que já existia. E
+`client_onboarding_steps`/`client_onboardings` (cinco colunas) são o
+módulo antigo de onboarding, com **zero linhas** nas duas tabelas —
+mexer em caminho morto é risco sem retorno.
+
+**As três imagens da LP foram conferidas** (200 + content-type de
+imagem) usando `pg_net` **de dentro do Postgres**: o proxy deste
+ambiente não alcança `convertfy.me`, e o banco alcança. Foi assim que
+apareceu que o depoimento da tela 17 pesa **1 MB** sem versão WebP.

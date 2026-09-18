@@ -1,6 +1,7 @@
 import { Calendar } from "lucide-react"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
+import { orgDoPerfil } from "@/lib/crm/org-do-negocio"
 
 const log = logger.child("MeetingsPage")
 import { PagePermissionWrapper } from "@/components/page-permission-wrapper"
@@ -128,20 +129,20 @@ export default async function MeetingsPage({
       .filter(Boolean),
   }))
 
-  // Fetch org members for participants selector
-  const { data: profile } = await adminClient
-    .from("profiles")
-    .select("id, org_id")
-    .eq("id", user.id)
-    .single()
+  // A org de quem está na tela sai de `org_members`, não de `profiles`:
+  // `profiles.org_id` NÃO existe, o 42703 devolvia `profile` nulo e o
+  // seletor de participantes internos ficava VAZIO — sem erro nenhum,
+  // ninguém do time podia ser convidado para uma reunião.
+  const orgId = await orgDoPerfil(adminClient, user.id)
 
   let members: { id: string; name: string; email?: string; avatar_url?: string; type: "org_member"; role?: string }[] = []
 
-  if (profile?.org_id) {
+  if (orgId) {
     const { data: orgMembers } = await adminClient
       .from("org_members")
       .select("id, role, profile:profiles!org_members_profile_id_fkey(id, name, email, avatar_url)")
-      .eq("org_id", profile.org_id)
+      .eq("org_id", orgId)
+      .eq("is_active", true)
 
     members = (orgMembers || []).map((m) => {
       const p = Array.isArray(m.profile) ? m.profile[0] : m.profile

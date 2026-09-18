@@ -119,7 +119,11 @@ export async function GET(
       admin
         .from("client_stores")
         .select(
-          `id, store_name, store_url, platform, niche, country, language, plan, mrr_value,
+          // `plan` e `mrr_value` não existem em `client_stores` (o valor
+          // mora em `mrr_cents`), e o 42703 derrubava o select INTEIRO:
+          // o contexto da loja chegava vazio à task — marca, ICP, tom,
+          // cores, tudo.
+          `id, store_name, store_url, platform, niche, country, language, mrr_cents,
           brand_thesis, brand_about, brand_pillars, brand_presence,
           store_story, store_milestones,
           icp_persona, icp_demographics, icp_day_in_life, icp_motivations, icp_frictions,
@@ -138,7 +142,9 @@ export async function GET(
       onboarding?.source_deal_id
         ? admin
             .from("deals")
-            .select("id, value, plan_name")
+            // `deals` não tem `plan_name`; o plano do negócio hoje só
+            // existe nos produtos da venda.
+            .select("id, value")
             .eq("id", onboarding.source_deal_id)
             .maybeSingle()
         : Promise.resolve({ data: null }),
@@ -157,7 +163,7 @@ export async function GET(
       | { id: string; name: string; owner_id: string | null }
       | null
     const deal = dealRes.data as
-      | { id: string; value: number | null; plan_name: string | null }
+      | { id: string; value: number | null }
       | null
 
     // Owner do cliente (CS responsável) — busca depois pra não atrelar ao client query
@@ -198,8 +204,8 @@ export async function GET(
         country: store?.country ?? null,
         language:
           onboarding?.language ?? store?.language ?? "pt-BR",
-        mrr: deal?.value ?? store?.mrr_value ?? null,
-        plan: deal?.plan_name ?? store?.plan ?? null,
+        mrr: deal?.value ?? (store?.mrr_cents != null ? store.mrr_cents / 100 : null),
+        plan: null,
       },
       brand_brain: buildBrandBrain(store, briefing),
       briefing_status: onboarding?.briefing_status,

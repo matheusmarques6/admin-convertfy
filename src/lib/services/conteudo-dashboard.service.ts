@@ -55,10 +55,6 @@ export function normalizarPeriodo(start?: string | null, end?: string | null): {
 
 const IG_SOURCES = ["instagram", "inbox:instagram"]
 
-interface ThreadDb extends ThreadRow {
-  metadata?: Record<string, unknown> | null
-}
-
 interface MsgDb {
   thread_id: string
   body: string | null
@@ -207,7 +203,11 @@ export async function carregarDashboard(admin: Admin, orgId: string, opts: Dashb
     admin.from("conteudo_ig_daily").select("channel_id, day, reach, profile_views, follower_count").in("channel_id", canalIds).gte("day", anterior.start).lte("day", periodo.end),
     admin
       .from("crm_threads")
-      .select("id, channel_id, contact_external_id, contact_name, contact_avatar_url, created_at, last_message_at, lead_id, deal_id, client_id, metadata")
+      // `crm_threads` NÃO tem `metadata` (quem tem é `crm_messages`) e
+      // ela não era lida em lugar nenhum. O 42703 derrubava o select
+      // INTEIRO: zero conversas, e com elas zero leads atribuídos aos
+      // posts — o número que este painel existe para produzir.
+      .select("id, channel_id, contact_external_id, contact_name, contact_avatar_url, created_at, last_message_at, lead_id, deal_id, client_id")
       .in("channel_id", canalIds)
       .gte("last_message_at", `${desdeAtrib}T00:00:00Z`)
       .limit(5000),
@@ -227,7 +227,7 @@ export async function carregarDashboard(admin: Admin, orgId: string, opts: Dashb
   if (mediaRes.error) throw mediaRes.error
   const mediaRows: MediaRow[] = ((mediaRes.data ?? []) as unknown as Array<MediaRow & { documento: { nome: string } | null }>).map((m) => ({ ...m, documento_nome: m.documento?.nome ?? null }))
   const daily = (dailyRes.data ?? []) as DailyRow[]
-  const threadsAll = ((threadsRes.data ?? []) as ThreadDb[]).filter((t) => canalIds.includes(t.channel_id))
+  const threadsAll = ((threadsRes.data ?? []) as ThreadRow[]).filter((t) => canalIds.includes(t.channel_id))
   const commentThreads = threadsAll.filter((t) => t.contact_external_id.startsWith("comment:"))
   const dmThreads: ThreadRow[] = threadsAll.filter((t) => !t.contact_external_id.startsWith("comment:"))
 

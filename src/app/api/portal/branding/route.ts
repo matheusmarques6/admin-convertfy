@@ -52,14 +52,20 @@ export async function GET(request: NextRequest) {
     // Get organization branding
     const { data: org } = await adminClient
       .from("organizations")
-      .select("name, logo_url, primary_color")
+      // `organizations` só tem `name` e `settings` — `logo_url` e
+      // `primary_color` nunca existiram como coluna, e o 42703 derrubava
+      // o select inteiro: o portal do cliente caía no nome e na cor
+      // padrão mesmo quando a org tivesse marca configurada.
+      .select("name, settings")
       .eq("id", client.org_id)
       .single()
 
+    const marca = ((org?.settings ?? {}) as Record<string, unknown>) ?? {}
+    const texto = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null)
     return successResponse(request, {
       name: org?.name || "Convertfy",
-      logo_url: org?.logo_url || null,
-      primary_color: org?.primary_color || "#3b82f6",
+      logo_url: texto(marca.logo_url),
+      primary_color: texto(marca.primary_color) || "#3b82f6",
     })
   } catch (error) {
     log.error("Error fetching branding", error)

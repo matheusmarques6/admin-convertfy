@@ -27,10 +27,14 @@ export async function GET(
 
     const { data: portalUser, error } = await supabase
       .from("client_portal_users")
+      // `client_notification_preferences` é uma TABELA que não existe
+      // neste banco (a rota de preferências do portal já está marcada
+      // como código morto). O join a ela fazia o PostgREST recusar a
+      // requisição inteira, e a ficha do usuário do portal respondia
+      // "Usuário não encontrado" para um usuário que existe.
       .select(`
         *,
-        client:clients(id, name, company, email),
-        notification_preferences:client_notification_preferences(*)
+        client:clients(id, name, company, email)
       `)
       .eq("id", id)
       .single()

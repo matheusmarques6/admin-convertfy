@@ -32,6 +32,13 @@ async function getTeamMembers() {
   const memberIds = (members || []).map((m) => m.id)
   if (memberIds.length === 0) return []
 
+  const membroPorPerfil = new Map<string, string>()
+  for (const m of members || []) {
+    const perfil = (m as { profile_id?: string | null }).profile_id
+    if (perfil) membroPorPerfil.set(perfil, m.id)
+  }
+  const profileIds = Array.from(membroPorPerfil.keys())
+
   // Batch: fetch features, store access, and client assignments
   const [featuresRes, accessRes, clientsRes] = await Promise.all([
     supabase
@@ -44,10 +51,14 @@ async function getTeamMembers() {
       .select("org_member_id, id")
       .in("org_member_id", memberIds)
       .eq("can_view", true),
+    // O dono da conta em `clients` é `owner_id`, e ele aponta para o
+    // PERFIL — `account_manager_id` não existe, e o 42703 zerava a
+    // contagem de clientes de todo mundo na tela do time. Como a linha
+    // aqui é o MEMBRO, o de/para perfil→membro é feito abaixo.
     supabase
       .from("clients")
-      .select("id, account_manager_id")
-      .in("account_manager_id", memberIds),
+      .select("id, owner_id")
+      .in("owner_id", profileIds),
   ])
 
   // Group features by member
@@ -67,9 +78,8 @@ async function getTeamMembers() {
   // Count clients by member
   const clientCountByMember = new Map<string, number>()
   clientsRes.data?.forEach((c) => {
-    if (c.account_manager_id) {
-      clientCountByMember.set(c.account_manager_id, (clientCountByMember.get(c.account_manager_id) || 0) + 1)
-    }
+    const membro = c.owner_id ? membroPorPerfil.get(c.owner_id) : undefined
+    if (membro) clientCountByMember.set(membro, (clientCountByMember.get(membro) || 0) + 1)
   })
 
   return (members || []).map((member) => ({

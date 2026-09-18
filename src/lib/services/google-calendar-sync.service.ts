@@ -98,7 +98,7 @@ async function fetchMeeting(meetingId: string): Promise<MeetingRow | null> {
 
 /**
  * Resolve emails for all participants.
- * - org_member: org_members.user_id -> profiles.email
+ * - org_member: org_members.profile_id -> profiles.email
  * - profile: profiles.email directly
  * - If participant already has email, use it.
  *
@@ -143,7 +143,13 @@ async function resolveParticipantEmails(
   if (orgMemberIds.length > 0) {
     const { data: orgMembers } = await adminClient
       .from("org_members")
-      .select("id, user_id, profile:profiles!org_members_profile_id_fkey(email, name)")
+      // `org_members` não tem `user_id` — quem aponta para o perfil é
+      // `profile_id`, e o join abaixo já o segue. Pedir a coluna
+      // inexistente devolvia 42703, o supabase-js entrega o erro em
+      // `error`, e o `|| []` logo abaixo transformava isso em "nenhum
+      // membro tem e-mail": participante interno nunca virava attendee,
+      // sem erro em lugar nenhum.
+      .select("id, profile:profiles!org_members_profile_id_fkey(email, name)")
       .in("id", orgMemberIds)
 
     for (const om of orgMembers || []) {

@@ -262,7 +262,14 @@ interface LinhaDaSessao {
   deal_id: string | null
   ending_ref: string | null
   answers: FormAnswers | null
-  hidden_fields: Record<string, string> | null
+  /**
+   * Os campos ocultos da SESSÃO. A coluna se chama `hidden`; o schema do
+   * formulário tem um `hidden_fields` que é outra coisa (a lista de
+   * NOMES aceitos pela URL). Pedir o nome do schema aqui devolve 42703,
+   * e o supabase-js entrega o erro em `error`: o select inteiro volta
+   * `null` e o agendamento recusa toda sessão como inválida.
+   */
+  hidden: Record<string, string> | null
 }
 
 export async function agendarDaSessao(params: {
@@ -276,7 +283,7 @@ export async function agendarDaSessao(params: {
 
   const { data } = await admin
     .from("form_sessions")
-    .select("id, form_id, org_id, lead_id, deal_id, ending_ref, answers, hidden_fields")
+    .select("id, form_id, org_id, lead_id, deal_id, ending_ref, answers, hidden")
     .eq("id", params.sessionId)
     .maybeSingle()
   const sessao = data as LinhaDaSessao | null
@@ -313,7 +320,7 @@ export async function agendarDaSessao(params: {
   if (!veredicto.ok) return { ok: false, motivo: veredicto.motivo }
 
   const respostas = sessao.answers ?? {}
-  const ctx = { schema: params.agenda.schema, answers: respostas, hidden: sessao.hidden_fields ?? {} }
+  const ctx = { schema: params.agenda.schema, answers: respostas, hidden: sessao.hidden ?? {} }
   const titulo = aplicarRecall(params.agenda.titulo, ctx).trim() || params.agenda.nomeDoFormulario
   const email = emailDaSessao(params.agenda.schema, respostas)
 

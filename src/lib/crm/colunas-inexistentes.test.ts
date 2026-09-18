@@ -9,9 +9,15 @@
  * `deals.org_id`, e o mesmo defeito já matava em silêncio o botão de
  * automação do Instagram ("Pipeline não encontrada").
  *
- * As tabelas abaixo NÃO têm `org_id` — medido em produção em 18/09
+ * As colunas abaixo NÃO existem — medido em produção em 18/09
  * (`information_schema.columns`). A org de um negócio se DERIVA dos
  * vínculos; ver `lib/crm/org-do-negocio.ts`.
+ *
+ * `form_sessions.hidden_fields` é o caso irmão, e mais traiçoeiro
+ * porque o nome EXISTE no projeto querendo dizer outra coisa: no schema
+ * do formulário `hidden_fields` é a lista de NOMES aceitos pela URL; na
+ * sessão, o que foi recebido mora em `hidden`. Pedir um pelo outro fez
+ * o agendamento público recusar toda sessão como inválida.
  */
 
 import { describe, it, expect } from "vitest"
@@ -26,6 +32,26 @@ const NAO_EXISTEM: Record<string, string[]> = {
   pipelines: ["org_id"],
   pipeline_stages: ["org_id"],
   crm_partners: ["org_id"],
+  form_sessions: ["hidden_fields"],
+  // Varredura de 18/09: os selects de TODO o `src/` foram conferidos
+  // contra `information_schema`. Estas são as colunas que existiam só no
+  // código — cada uma derrubava o select inteiro e virava tela vazia.
+  org_members: ["user_id"],
+  profiles: ["org_id", "full_name"],
+  clients: ["account_manager_id"],
+  organizations: ["logo_url", "primary_color"],
+  crm_threads: ["metadata"],
+  crm_deal_history: ["created_at"],
+  store_revenue_summary: ["total_campaigns", "total_flows"],
+  client_stores: ["plan", "mrr_value"],
+  operational_pipeline_columns: ["responsible_role", "sla_days"],
+  // FORA da lista de propósito: `user_google_tokens.selected_calendar_id`
+  // e `auto_meet` também não existem, mas ali o defeito é o inverso — a
+  // tela de configuração do Google Calendar (GET/PUT de
+  // `/api/integrations/google/calendar/settings`) escreve nas duas, e o
+  // sync as lê com fail-open. O conserto é a migration que as cria, não
+  // arrancar a funcionalidade; até ela rodar, o calendário é sempre o
+  // "primary" com Meet ligado. Ver docs/forms/funil-aplicacao.md.
 }
 
 function arquivos(dir: string, achados: string[] = []): string[] {

@@ -113,6 +113,17 @@ jeito; esse campo é o responsável no registro.
 
 ---
 
+**O teto de 60 slots manda no horizonte, não os 10 dias.** Com a janela
+de seg–sex 09:00–18:00 e passo de 30 min são 18 horários por dia, então
+`maxSlots: 60` corta no **quarto dia útil** — medido em 18/09: sex 18
+(18), seg 21 (18), ter 22 (18), qua 23 (6). Para uma call de vendas isso
+joga a favor (a agenda parece cheia e próxima), mas é bom saber que
+mudar `horizonteDias` sozinho não abre mais dias: quem decide é o
+`maxSlots`, e os dois vivem em `crm_forms.settings.agenda.regra` — dá
+para ajustar sem deploy.
+
+---
+
 ## Rastreamento
 
 | evento | quando | onde |
@@ -160,10 +171,25 @@ Abandono continua indo para o CRM pelo cron de sempre
 
 ## Materiais que ainda faltam
 
-Os prints das telas 9, 12 e 17 saíram da própria página de vendas
-(`convertfy.me/imagens/omnisend-2.webp`, `omnisend-3.webp`,
-`feedback-02.png`). Continuam faltando **dois**, e as telas funcionam
-sem eles:
+Os prints das telas 9, 12 e 17 saíram da própria página de vendas. As
+três URLs foram **conferidas em 18/09** (HTTP 200 e content-type de
+imagem, medido a partir do Postgres com `pg_net`, já que este ambiente
+não alcança `convertfy.me`):
+
+| tela | arquivo | resposta | peso |
+|---|---|---|---|
+| 9 | `/imagens/omnisend-2.webp` | 200 `image/webp` | 14 KB |
+| 12 | `/imagens/omnisend-3.webp` | 200 `image/webp` | 11 KB |
+| 17 | `/imagens/feedback-02.png` | 200 `image/png` | **1.014 KB** |
+
+O depoimento da tela 17 pesa **1 MB** — não existe `.webp` dele na LP
+(404) e a LP não serve o otimizador do Next (404 em `/_next/image`).
+Num funil que recebe celular vindo do anúncio, é o arquivo mais caro da
+peça inteira. Não dá para converter daqui: a imagem precisa ser
+reexportada e subida pelo botão do editor (ou publicada como
+`feedback-02.webp` na LP). Alvo: **≤ 150 KB em WebP**.
+
+Continuam faltando **dois**, e as telas funcionam sem eles:
 
 1. **Print da regra de rastreamento** (a que a tela 13 afirma). O que
    existe na LP são painéis de receita, não a tela de rastreamento.
@@ -233,10 +259,12 @@ módulo. Corrigido com sete testes.
    destinos, variáveis, mídia, finais, cálculos, ocultos). Quando você
    editar pelo editor, o caminho volta a ser o normal.
 
-2. **`convertfy.me` é inalcançável deste ambiente** (o proxy bloqueia a
-   saída). Os endereços dos três prints saíram do HTML que você colou, e
-   **não foi possível abrir nenhum deles para conferir**. Se algum não
-   aparecer, é aí.
+2. **`convertfy.me` é inalcançável pelo proxy deste ambiente.** Os
+   endereços dos três prints saíram do HTML que você colou. A saída que
+   funcionou foi o **Postgres**: `pg_net` faz a requisição de dentro do
+   banco, e foi assim que as três URLs foram confirmadas em 18/09 (200,
+   content-type de imagem) — e foi assim que o 1 MB do depoimento
+   apareceu.
 
 3. **A mídia não estava na versão publicada.** Os campos tinham as
    imagens, o editor as mostrava, e a versão que o visitante lê tinha
@@ -248,3 +276,62 @@ módulo. Corrigido com sete testes.
    conta central, Meet e convite por e-mail — e nenhuma forma de alguém
    de fora escolher um horário. Foi construída aqui (módulo puro, rota
    pública, migration 20261170).
+
+---
+
+## A varredura de 18/09: coluna que só existe no código
+
+O agendamento não funcionaria: `agendarDaSessao` pedia
+`form_sessions.hidden_fields`, e a coluna se chama **`hidden`** — o
+nome `hidden_fields` existe no projeto querendo dizer OUTRA coisa (no
+schema do formulário é a lista de NOMES aceitos pela URL). O supabase-js
+devolve o 42703 em `error`, o select inteiro volta `null`, e o serviço
+recusaria **toda** sessão com `sessao_invalida`: a pessoa escolheria o
+horário e receberia "não foi possível agendar", sempre.
+
+Isso motivou conferir **todos** os `.select()` do `src/` contra o
+`information_schema` de produção. Dezesseis colunas existiam só no
+código, cada uma derrubando o select inteiro e virando tela vazia sem
+erro em lugar nenhum:
+
+| onde | pedia | era | sintoma |
+|---|---|---|---|
+| agendamento público | `form_sessions.hidden_fields` | `hidden` | agendar sempre falhava |
+| sync do Google | `org_members.user_id` | join por `profile_id` | membro interno nunca virava attendee |
+| portal do cliente | `org_members.user_id`, `profiles.full_name` | `profile_id`, `name` | reunião sem o nome de quem atende |
+| tela de Reuniões | `profiles.org_id` | `org_members` | seletor de participantes VAZIO |
+| ficha do cliente | `store_revenue_summary.total_campaigns/total_flows` | não existem | receita, pedidos e leads das lojas em branco |
+| dashboard de Conteúdo | `crm_threads.metadata` | não existe | zero leads atribuídos aos posts |
+| conector CRM da IA | `crm_deal_history.created_at` | `changed_at` | histórico do negócio sempre vazio |
+| tela do Time | `clients.account_manager_id` | `owner_id` (→ perfil) | contagem de clientes zerada |
+| portal (branding) | `organizations.logo_url/primary_color` | `settings` | marca do portal sempre a padrão |
+| portal (usuário) | join `client_notification_preferences` | tabela não existe | "Usuário não encontrado" |
+| contexto da task | `client_stores.plan/mrr_value`, `deals.plan_name` | `mrr_cents` | contexto da loja chegava vazio |
+| onboarding da loja | `operational_pipeline_columns.responsible_role/sla_days` | `default_assignee_role`, `sla_hours` | etapa sem responsável nem SLA |
+
+Todas corrigidas, e o teste de contrato
+(`src/lib/crm/colunas-inexistentes.test.ts`) passou a cobrir cada uma —
+ele já existia para `deals.org_id` e agora é a régua da classe inteira.
+
+**Duas ficaram de fora, com o motivo:**
+
+- `user_google_tokens.selected_calendar_id` e `auto_meet` também não
+  existem, mas ali o defeito é o inverso: a tela de configuração do
+  Google Calendar **escreve** nas duas. Arrancar o código mataria a
+  funcionalidade; o conserto é a migration que as cria. Enquanto ela não
+  roda, o sync usa `primary` com Meet ligado (o fallback já previsto no
+  código) e o PUT daquela tela falha.
+
+  ```sql
+  alter table public.user_google_tokens
+    add column if not exists selected_calendar_id text,
+    add column if not exists auto_meet boolean not null default true;
+  -- rollback: drop column selected_calendar_id, auto_meet;
+  ```
+
+- `client_onboarding_steps` (`phase`, `org_id`, `task_id`,
+  `is_required`, `depends_on_step_ids`) e `client_onboardings.org_id`,
+  em `onboarding-sync.service.ts` e `step-dependency.service.ts`. As
+  duas tabelas têm **zero linhas** — é o módulo antigo de onboarding,
+  substituído por `onboardings`/`onboarding_tasks`. Mexer num caminho
+  morto sem uso é risco sem retorno; fica registrado.

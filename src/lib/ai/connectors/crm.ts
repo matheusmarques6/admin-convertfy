@@ -135,9 +135,12 @@ const detalheNegocio: ConnectorTool = {
         .limit(10),
       ctx.admin
         .from("crm_deal_history")
-        .select("field, old_value, new_value, created_at")
+        // A coluna é `changed_at` — `created_at` não existe aqui, e o
+        // 42703 fazia o histórico do negócio chegar SEMPRE vazio à IA,
+        // que respondia como se nada tivesse acontecido no funil.
+        .select("field, old_value, new_value, changed_at")
         .eq("deal_id", dealId)
-        .order("created_at", { ascending: false })
+        .order("changed_at", { ascending: false })
         .limit(10),
     ])
     if (!deal) return { content: "Negócio não encontrado.", summary: "não encontrado" }
