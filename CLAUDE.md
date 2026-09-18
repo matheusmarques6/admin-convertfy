@@ -9106,6 +9106,96 @@ duas perguntas da tela da loja aparecem, o desvio de contato sai marcado
 "em Sobrenome", configurar o destino da Tela 3 para a Tela 5 muda o rótulo
 e acende o aviso de tela inalcançável com o cartão em vermelho.
 
+## O agente de cor passa a compor a disposição (18/09, migration 20261160)
+
+Queixa: *"e para ele selecionar as cores e disposição das cores do email?"*.
+Medido na run `794b8ae1` (Innova Bay, 17/09) antes de mexer: das **29
+operações, 28 eram conformidade e UMA era disposição** — 16 trocas de valor,
+12 botões recoloridos, e **6 faixas decididas com 1 pintada**. Cinco das seis
+seções saíram brancas, e a única troca foi consertar `#000000`, que está
+fora da paleta. Três achados no output dele:
+
+1. Ele **declarou `superficie: #F2F2F2` no próprio `tokens`** e a usou 5
+   vezes para corrigir cinza DENTRO de bloco — **zero vezes** como fundo de
+   seção. Tinha com que separar products do corpo e não separou.
+2. Na faixa 5 ele citou a R6 (a última antes do rodapé contrasta com ele),
+   viu que `#FFFFFF` e `#FDFDFD` são o mesmo tom pela tolerância de 3%, e
+   escreveu **"aceitável"**. Era a assinatura do freio do prompt.
+3. As duas trocas de fundo saíram **sem transição** (K9 pede zero), e ele
+   registrou a mesma lacuna R4 duas vezes, pedindo o que não podia fazer.
+
+**O teto mudou de eixo: do ESFORÇO para o RESULTADO.** `TETO_DE_FAIXAS = 2`
+limitava quantas trocas ele faz — e das duas vagas uma ia para conformidade,
+sobrando UMA para compor o ritmo de seis seções. Contar trocas contém o
+plano ruim e o bom igualmente. Agora a guarda é `tonsDeFundo`
+(`color-faixas.ts`), que já existia, já era servida a ele no prompt e já era
+medida na telemetria e **não descartava nada**: teto de 3 tons e a lista de
+`estranhos`. Três regras que os testes travam: a conta é sobre o resultado
+**ACUMULADO** (medir cada candidata contra o documento original deixaria
+duas trocas passarem e a peça terminar com um tom a mais que qualquer uma
+previu); **só a troca que ACRESCENTA tom e estoura cai** (uma que reduz
+passa mesmo numa peça que já excede — ali ela é o conserto); e a procedência
+compara as LISTAS de estranhos, não o tamanho (uma troca pode tirar um e pôr
+outro). Sobra um teto de segurança pelo motivo certo: o número de faixas da
+peça. Simulado sobre o plano real: **3 ops, zero descartes** — com a régua
+antiga a terceira cairia.
+
+**O Passo 6 foi ligado.** `ctx.flowType`/`ctx.emailNumber` já existiam no
+runner e o guia tem o passo escrito ("welcome-1: base da marca, acento na
+oferta — não é momento de urgência"); faltava fiação em quatro pontos, e o
+quarto é o que faz falhar alto: `ColorFormatPromptVarsSchema` é FECHADO.
+Vazio quando o chamador não serve, e aí o prompt manda não deduzir. O número
+**zero não vira vazio** (`|| ""` o engoliria, e nenhum flow começa em 0 —
+por isso o defeito passaria).
+
+**A separação entre seções é dele agora** (gate `color_separador_mode`,
+nasce **`on`**; env `EMAIL_SEPARADOR_MODE` vence o banco). Catálogo fechado
+de 8 formas em `separador-catalogo.ts`, com o texto do prompt GERADO da
+mesma lista que o código valida. Os dois grupos não são intercambiáveis:
+`escondeEmenda: true` (onda, diagonal, arco, zigue) só serve onde o fundo
+TROCA — metade do desenho é cada faixa; `false` (filete, traço, pontos,
+losango) só onde o fundo é o MESMO e duas seções se encostam. O código
+recusa o par errado nos dois sentidos, e a régua de "troca" é `mesmoTom`, a
+mesma de `tonsDeFundo` (exportada por isso): `#FFFFFF`/`#FDFDFD` não é
+emenda. Teto de 3 por peça e nunca colada ao rodapé, onde lê como fim do
+e-mail.
+
+**A `<tr>` NÃO pode ter `<table>` dentro** — o runner conta `<table[\s>]`
+antes e depois e o step é fail-open: a conta errada descartaria *todo* o
+plano de cor, não só a separação. O filete é desenhado com três `<tr>`
+(respiro, 1px, respiro) e não vira imagem; o resto é PNG assado por
+`rasterizeSvgToPng` a 1200px (retina) e hospedado com dedupe por SHA no
+`BIBLIOTECA_ASSETS_BUCKET`. **Falhou o upload, a separação não entra**:
+`<tr>` fantasma ocupa altura, quebra o ritmo e não desenha nada. `alt=""`
+(é ornamento) e `bgcolor` da faixa de CIMA, porque imagem bloqueada é rotina
+em e-mail e aí a peça volta à emenda seca em vez de abrir uma tira branca.
+A ordem no array é invariante com teste: `add_separador` vem antes de
+`add_cta` porque as duas escrevem no mesmo ponto e quem aplica primeiro
+acaba embaixo — a separação marca o fim da seção, o botão é conteúdo dela.
+
+**Dois defeitos que só o RENDER pegou**, nenhum quebrando teste:
+
+- **Ornamento com tinta de baixo contraste some da tela.** Medido:
+  `#E3E3E3` sobre `#FFFFFF` dá **1,28:1** e o filete, o traço, os pontos e o
+  losango desaparecem — a separação existiria no HTML, custaria um PNG e não
+  apareceria para ninguém. `tintaDoOrnamento` (`separador-tinta.ts`) põe o
+  piso em **2,0:1** e corrige pela cascata `accent → button_bg → text →
+  button_text → bg`; as duas últimas entraram porque um teste meu passou
+  pelo motivo errado (o acento daquela loja é claro) e sem elas faixa escura
+  de marca com acento escuro ficaria sem ornamento possível.
+- **O botão deixado para trás.** O plano escureceu a faixa da oferta, não
+  disse nada do botão, e o botão verde sumiu no verde novo — o próprio
+  prompt chama isso de "o pior resultado possível deste passo", e até aqui
+  só o texto o impedia. Com duas trocas por peça o esquecimento atingia dois
+  botões; com o ritmo inteiro na mão dele, todos. Agora o código refaz o par
+  (`corDoBotao`) de todo botão em faixa que o plano trocou e que ele não
+  mencionou, e registra em `ajustes`.
+
+Telemetria na run: `separacoes_decididas`, `separacoes_inseridas`,
+`separador_modo` e `separador_assets_falhos` — as três primeiras dizem
+coisas diferentes e nenhuma substitui a outra (`0` inseridas com modo `on` e
+decisões > 0 é par errado ou upload falho, e o motivo está nos descartes).
+
 ---
 
 *Última atualização: Setembro 2026*

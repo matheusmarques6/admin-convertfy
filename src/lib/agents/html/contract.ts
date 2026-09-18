@@ -161,6 +161,15 @@ export const ColorFormatPromptVarsSchema = z.object({
   ctas_json: z.string(),
   email_name: z.string(),
   subject: z.string(),
+  // Passo 6 (o ajuste por momento). O schema é FECHADO: esquecer um campo
+  // aqui derruba a validação inteira em vez de servir a var em silêncio —
+  // é o que já pegou `color_surface`.
+  flow_type: z.string(),
+  email_number: z.string(),
+  // O catálogo de separação, ou "" quando o gate está `off`. Var e não
+  // bloco fixo no system porque ela depende de um interruptor por org, e
+  // porque em `off` o prompt tem de ficar byte a byte o de antes.
+  separacao_bloco: z.string(),
 })
 export type ColorFormatPromptVars = z.infer<typeof ColorFormatPromptVarsSchema>
 

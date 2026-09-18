@@ -106,6 +106,36 @@ describe("contrato builder × schema", () => {
   }
 })
 
+describe("color_format recebe o momento do e-mail (Passo 6)", () => {
+  const base = { brand: null, niche: "Casa", tones: "Educacional" }
+
+  it("flow e número chegam às vars quando o chamador os serve", () => {
+    const vars = buildColorFormatVars(ctx(), DOC, {
+      ...base,
+      flowType: "welcome",
+      emailNumber: 1,
+    })
+    expect(vars.flow_type).toBe("welcome")
+    expect(vars.email_number).toBe("1")
+  })
+
+  it("sem eles as vars saem VAZIAS — o prompt é que manda não deduzir", () => {
+    // O schema é fechado, então a var tem de existir de qualquer jeito; o
+    // que não pode é o builder inventar um flow. String vazia é o sinal que
+    // a alçada lê para não decidir momento nenhum.
+    const vars = buildColorFormatVars(ctx(), DOC, base)
+    expect(vars.flow_type).toBe("")
+    expect(vars.email_number).toBe("")
+  })
+
+  it("o número ZERO não vira vazio", () => {
+    // `extras.emailNumber || ""` engoliria o zero. Nenhum flow da casa
+    // começa em 0 hoje, e é exatamente por isso que o defeito passaria.
+    const vars = buildColorFormatVars(ctx(), DOC, { ...base, emailNumber: 0 })
+    expect(vars.email_number).toBe("0")
+  })
+})
+
 // O caso concreto que originou o teste — explícito, para o dia em que
 // alguém reescrever o builder e a asserção genérica acima parecer abstrata.
 describe("color_format recebe os papéis de painel", () => {

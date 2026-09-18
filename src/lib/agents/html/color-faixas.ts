@@ -701,7 +701,16 @@ export interface TonsDeFundo {
  */
 const TOLERANCIA_DE_TOM = 8
 
-function mesmoTom(a: string, b: string): boolean {
+/**
+ * Dois hex que o olho lê como a MESMA cor de fundo.
+ *
+ * Exportada porque a separação entre seções precisa da mesma régua: o par
+ * `#FFFFFF`/`#FDFDFD` é a diferença que não existe, e uma forma que
+ * "esconde a emenda" entre eles desenharia um degrau invisível — gastando
+ * um PNG para não mudar nada. Duas réguas discordariam na primeira peça
+ * cujas variantes vieram de origens diferentes, que é o caso comum.
+ */
+export function mesmoTom(a: string, b: string): boolean {
   const rgb = (h: string) => {
     const m = /^#?([0-9a-f]{6})$/i.exec(h.trim())
     if (!m) return null

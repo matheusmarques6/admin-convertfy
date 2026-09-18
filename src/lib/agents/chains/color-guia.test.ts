@@ -65,13 +65,22 @@ describe("o conhecimento chega ao agente", () => {
 
   it("o freio explícito saiu do bloco de faixas", () => {
     // A frase dizia, com estas palavras, que não mudar nada era "resposta
-    // legítima e comum" — e era lida como recomendação. O TETO de 2 faixas
-    // fica, porque é do código; o que saiu foi o convite a não usar nenhuma.
+    // legítima e comum" — e era lida como recomendação.
     expect(FAIXAS_E_RITMO).not.toMatch(/resposta\s+legítima/i)
-    expect(FAIXAS_E_RITMO).toMatch(/até 2 faixas por peça/)
-    expect(FAIXAS_E_RITMO).toMatch(/não é uma cota a economizar/)
     // Manter passa a se justificar como qualquer outra decisão.
     expect(FAIXAS_E_RITMO).toMatch(/Manter é uma decisão/)
+  })
+
+  it("a cota de trocas saiu; o que limita é o RESULTADO", () => {
+    // 18/09: `TETO_DE_FAIXAS = 2` limitava o esforço, e das duas vagas uma
+    // ia para conformidade. O código passou a cobrar o resultado (3 tons,
+    // todos da paleta) e o texto tem de dizer a mesma coisa — prompt que
+    // anuncia cota que o código não tem é a pior das duas divergências.
+    expect(FAIXAS_E_RITMO).not.toMatch(/até 2 faixas por peça/)
+    expect(FAIXAS_E_RITMO).not.toMatch(/cota a economizar/)
+    expect(FAIXAS_E_RITMO).toMatch(/Não há cota de trocas/)
+    expect(FAIXAS_E_RITMO).toMatch(/decida TODAS as faixas/)
+    expect(FAIXAS_E_RITMO).toMatch(/3 tons de fundo na peça/)
   })
 
   it("a lista vazia de faixas tem instrução própria — bloco que some faz o modelo caçar", () => {

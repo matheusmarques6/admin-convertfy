@@ -8,7 +8,7 @@ import {
   parsePlanoDeCor,
   planoParaOps,
   recusaDoLabel,
-  TETO_DE_FAIXAS,
+  TETO_DE_SEPARACOES,
   type ContextoDoPlano,
 } from "./plano-de-cor"
 
@@ -116,7 +116,11 @@ describe("planoParaOps — faixas", () => {
     expect(r.descartes[0].motivo).toBe("não existe no documento")
   })
 
-  it("o teto de faixas é do CÓDIGO — o excedente vira registro", () => {
+  it("não há cota de trocas: a peça pode ter TODAS as faixas decididas", () => {
+    // Era o teste do `TETO_DE_FAIXAS = 2`, e é ele que muda de lado. Medido
+    // na run 794b8ae1: seis seções, cinco brancas, e a única troca era
+    // conformidade — com duas vagas, uma ia para conformidade e sobrava uma
+    // para compor o ritmo inteiro.
     const r = planoParaOps(
       {
         faixas: [
@@ -127,8 +131,111 @@ describe("planoParaOps — faixas", () => {
       },
       CTX,
     )
-    expect(r.ops).toHaveLength(TETO_DE_FAIXAS)
-    expect(r.descartes[0].motivo).toMatch(/teto de 2 faixas/)
+    expect(r.ops).toHaveLength(3)
+    expect(r.descartes).toEqual([])
+  })
+})
+
+describe("planoParaOps — o teto é o RESULTADO, não o esforço", () => {
+  const quatroClaras: ContextoDoPlano = {
+    faixas: [0, 1, 2, 3].map((b) => faixa({ ordem: b + 1, bloco: b })),
+    ctas: [],
+    incentivo: { existe: null },
+  }
+
+  it("a troca que levaria a peça acima de 3 tons cai, com o número no motivo", () => {
+    const r = planoParaOps(
+      {
+        faixas: [
+          { ordem: 1, fundo: "#111111" },
+          { ordem: 2, fundo: "#222222" },
+          { ordem: 3, fundo: "#333333" },
+          { ordem: 4, fundo: "#444444" },
+        ],
+      },
+      quatroClaras,
+    )
+    expect(r.ops).toHaveLength(2)
+    expect(r.descartes).toHaveLength(2)
+    expect(r.descartes[0].motivo).toMatch(/acima de 3 tons/)
+    expect(r.descartes[0].motivo).toMatch(/ficariam 4/)
+  })
+
+  it("a conta é sobre o resultado ACUMULADO, não sobre o documento original", () => {
+    // Peça com dois tons (três claras + uma escura). Cada troca sozinha
+    // deixaria a peça em 3 tons e passaria; as duas juntas dão 4. Medir
+    // cada candidata contra o documento original deixaria as duas entrarem.
+    const ctx: ContextoDoPlano = {
+      faixas: [
+        faixa({ ordem: 1, bloco: 0 }),
+        faixa({ ordem: 2, bloco: 1 }),
+        faixa({ ordem: 3, bloco: 2 }),
+        faixa({ ordem: 4, bloco: 3, fundo: "#034326" }),
+      ],
+      ctas: [],
+      incentivo: { existe: null },
+    }
+    const r = planoParaOps(
+      { faixas: [{ ordem: 1, fundo: "#111111" }, { ordem: 2, fundo: "#F2F2F2" }] },
+      ctx,
+    )
+    expect(r.ops).toHaveLength(1)
+    expect(r.descartes[0].motivo).toMatch(/acima de 3 tons/)
+  })
+
+  it("peça que JÁ excede pode ser consertada: a troca que reduz tons passa", () => {
+    const ctx: ContextoDoPlano = {
+      faixas: [
+        faixa({ ordem: 1, bloco: 0, fundo: "#111111" }),
+        faixa({ ordem: 2, bloco: 1, fundo: "#222222" }),
+        faixa({ ordem: 3, bloco: 2, fundo: "#333333" }),
+        faixa({ ordem: 4, bloco: 3, fundo: "#444444" }),
+      ],
+      ctas: [],
+      incentivo: { existe: null },
+    }
+    const r = planoParaOps({ faixas: [{ ordem: 4, fundo: "#111111" }] }, ctx)
+    expect(r.ops).toEqual([{ action: "set_fundo", bloco: 3, para: "#111111" }])
+    expect(r.descartes).toEqual([])
+  })
+
+  it("troca que INTRODUZ cor fora da paleta é descartada (K1)", () => {
+    const r = planoParaOps(
+      { faixas: [{ ordem: 2, fundo: "#FF0000" }] },
+      { ...quatroClaras, fundosAceitos: ["#FFFFFF", "#034326", "#F2F2F2"] },
+    )
+    expect(r.ops).toEqual([])
+    expect(r.descartes[0].motivo).toMatch(/#FF0000 não é da paleta/)
+  })
+
+  it("papel derivado da identidade é fundo legítimo", () => {
+    const r = planoParaOps(
+      { faixas: [{ ordem: 2, fundo: "#F2F2F2" }] },
+      { ...quatroClaras, fundosAceitos: ["#FFFFFF", "#034326", "#F2F2F2"] },
+    )
+    expect(r.ops).toHaveLength(1)
+  })
+
+  it("loja sem paleta cadastrada não tem procedência cobrada", () => {
+    // Sem identidade não há de onde um fundo divergir. Cobrar aqui
+    // descartaria toda troca de uma loja que ainda não cadastrou cor.
+    const r = planoParaOps({ faixas: [{ ordem: 2, fundo: "#FF0000" }] }, quatroClaras)
+    expect(r.ops).toHaveLength(1)
+    expect(r.descartes).toEqual([])
+  })
+
+  it("mais trocas do que faixas é plano malformado, não composição", () => {
+    const umaSo: ContextoDoPlano = {
+      faixas: [faixa({ ordem: 1, bloco: 0 })],
+      ctas: [],
+      incentivo: { existe: null },
+    }
+    const r = planoParaOps(
+      { faixas: [{ ordem: 1, fundo: "#111111" }, { ordem: 1, fundo: "#222222" }] },
+      umaSo,
+    )
+    expect(r.ops).toHaveLength(1)
+    expect(r.descartes[0].motivo).toMatch(/mais trocas do que faixas/)
   })
 })
 
@@ -398,9 +505,9 @@ describe("planoParaOps — gradiente", () => {
     expect(r.descartes[0]?.motivo).toContain("não tem gradiente")
   })
 
-  it("repintar gradiente NÃO consome o teto de faixas", () => {
-    // O teto limita quantas faixas mudam o RITMO; conformar a cor de um
-    // gradiente não muda ritmo nenhum.
+  it("repintar gradiente NÃO conta na conta de tons", () => {
+    // A conta mede quantas cores de fundo a peça acaba tendo; conformar a
+    // cor de um gradiente não acrescenta tom nenhum ao ritmo.
     const faixas = [0, 1, 2].map((b) =>
       faixa({ ordem: b + 1, bloco: b, gradiente: gradiente() }),
     )
@@ -414,7 +521,7 @@ describe("planoParaOps — gradiente", () => {
       },
       { faixas, ctas: [], incentivo: { existe: null } },
     )
-    expect(r.ops.filter((o) => o.action === "set_fundo")).toHaveLength(TETO_DE_FAIXAS)
+    expect(r.ops.filter((o) => o.action === "set_fundo")).toHaveLength(2)
     expect(r.ops.filter((o) => o.action === "set_gradiente")).toHaveLength(1)
   })
 })
@@ -434,14 +541,14 @@ describe("parsePlanoDeCor — gradiente", () => {
   })
 })
 
-describe("planoParaOps — o vocabulário de decisão e a vaga do teto", () => {
+describe("planoParaOps — o vocabulário de decisão e o no-op", () => {
   it("pedir a cor que a faixa já tem não vira op", () => {
     const r = planoParaOps({ faixas: [{ ordem: 2, decisao: "clarear", fundo: "#ffffff" }] }, CTX)
     expect(r.ops).toEqual([])
     expect(r.descartes[0].motivo).toMatch(/já está em/)
   })
 
-  it("o no-op NÃO gasta vaga: a faixa que muda de verdade ainda entra", () => {
+  it("o no-op não entra na conta de tons: as que mudam de verdade seguem", () => {
     const r = planoParaOps(
       {
         faixas: [
@@ -452,8 +559,8 @@ describe("planoParaOps — o vocabulário de decisão e a vaga do teto", () => {
       },
       CTX,
     )
-    expect(r.ops).toHaveLength(TETO_DE_FAIXAS)
-    expect(r.descartes.some((d) => /teto/.test(d.motivo))).toBe(false)
+    expect(r.ops).toHaveLength(2)
+    expect(r.descartes.some((d) => /tons/.test(d.motivo))).toBe(false)
   })
 
   it('"Manter." é manter — caixa e ponto não podem decidir a cor de uma faixa', () => {
@@ -528,7 +635,7 @@ describe("planoParaOps — o raio é unificado por código (R8)", () => {
     expect(r.descartes[0].motivo).toMatch(/FORMA/)
   })
 
-  it("não consome o teto de faixas — raio é conformidade, não ritmo", () => {
+  it("não entra na conta de tons — raio é conformidade, não ritmo", () => {
     const r = planoParaOps(
       {
         faixas: [
@@ -538,7 +645,206 @@ describe("planoParaOps — o raio é unificado por código (R8)", () => {
       },
       ctxComRaios([10, 8]),
     )
-    expect(r.ops.filter((o) => o.action === "set_fundo")).toHaveLength(TETO_DE_FAIXAS)
+    expect(r.ops.filter((o) => o.action === "set_fundo")).toHaveLength(2)
     expect(r.ops.filter((o) => o.action === "set_raio")).toHaveLength(1)
+  })
+})
+
+describe("planoParaOps — a separação entre seções", () => {
+  // Quatro faixas: 1 hero com foto, 2 e 3 claras, 4 rodapé.
+  const PAPEIS = {
+    button_bg: "#034326",
+    button_text: "#FFFFFF",
+    bg: "#FFFFFF",
+    text: "#1F1F1F",
+    surface: "#F2F2F2",
+    accent: "#07A55D",
+  }
+  const ctx = (over: Partial<ContextoDoPlano> = {}): ContextoDoPlano => ({
+    faixas: [
+      faixa({ ordem: 1, bloco: 0, tipo: "hero" }),
+      faixa({ ordem: 2, bloco: 1 }),
+      faixa({ ordem: 3, bloco: 2 }),
+      faixa({ ordem: 4, bloco: 3, tipo: "footer" }),
+    ],
+    ctas: [],
+    incentivo: { existe: null },
+    roles: PAPEIS,
+    ...over,
+  })
+
+  it("fundo igual dos dois lados: a forma de MARCAR seção entra", () => {
+    const r = planoParaOps({ separacoes: [{ depois_da_faixa: 2, forma: "filete" }] }, ctx())
+    expect(r.ops).toEqual([
+      { action: "add_separador", bloco: 1, formaId: "filete", fundo: "#FFFFFF", tinta: "#07A55D" },
+    ])
+  })
+
+  it("fundo que TROCA: a forma de esconder emenda leva a cor de baixo", () => {
+    const r = planoParaOps(
+      {
+        faixas: [{ ordem: 3, decisao: "escurecer", fundo: "#034326" }],
+        separacoes: [{ depois_da_faixa: 2, forma: "onda" }],
+      },
+      ctx(),
+    )
+    // A cor vem da DECISÃO deste plano — a faixa 3 ainda é branca no
+    // documento, e ler dali desenharia a onda branco→branco.
+    expect(r.ops).toContainEqual({
+      action: "add_separador",
+      bloco: 1,
+      formaId: "onda",
+      fundo: "#FFFFFF",
+      tinta: "#034326",
+    })
+  })
+
+  it("o par errado é recusado nos DOIS sentidos", () => {
+    const marcaOndeTroca = planoParaOps(
+      {
+        faixas: [{ ordem: 3, decisao: "escurecer", fundo: "#034326" }],
+        separacoes: [{ depois_da_faixa: 2, forma: "filete" }],
+      },
+      ctx(),
+    )
+    expect(marcaOndeTroca.ops.filter((o) => o.action === "add_separador")).toEqual([])
+    expect(marcaOndeTroca.descartes[0].motivo).toMatch(/o fundo TROCA aqui/)
+
+    const emendaSemTroca = planoParaOps({ separacoes: [{ depois_da_faixa: 2, forma: "onda" }] }, ctx())
+    expect(emendaSemTroca.ops).toEqual([])
+    expect(emendaSemTroca.descartes[0].motivo).toMatch(/degrau que não existe/)
+  })
+
+  it("#FFFFFF e #FDFDFD são o MESMO tom — não há emenda a esconder", () => {
+    const c = ctx({
+      faixas: [
+        faixa({ ordem: 1, bloco: 0, tipo: "hero" }),
+        faixa({ ordem: 2, bloco: 1 }),
+        faixa({ ordem: 3, bloco: 2, fundo: "#FDFDFD" }),
+        faixa({ ordem: 4, bloco: 3, tipo: "footer" }),
+      ],
+    })
+    const r = planoParaOps({ separacoes: [{ depois_da_faixa: 2, forma: "onda" }] }, c)
+    expect(r.descartes[0].motivo).toMatch(/degrau que não existe/)
+  })
+
+  it("nunca imediatamente antes do rodapé", () => {
+    const r = planoParaOps({ separacoes: [{ depois_da_faixa: 3, forma: "filete" }] }, ctx())
+    expect(r.ops).toEqual([])
+    expect(r.descartes[0].motivo).toMatch(/fim do e-mail/)
+  })
+
+  it("a última faixa não tem o que separar", () => {
+    const r = planoParaOps({ separacoes: [{ depois_da_faixa: 4, forma: "filete" }] }, ctx())
+    expect(r.descartes[0].motivo).toMatch(/última faixa/)
+  })
+
+  it("forma inventada é descartada — o código não improvisa desenho", () => {
+    const r = planoParaOps({ separacoes: [{ depois_da_faixa: 2, forma: "espiral" }] }, ctx())
+    expect(r.ops).toEqual([])
+    expect(r.descartes[0].motivo).toMatch(/não existe no catálogo/)
+  })
+
+  it("teto de 3 por peça", () => {
+    const c = ctx({
+      faixas: [0, 1, 2, 3, 4, 5].map((b) => faixa({ ordem: b + 1, bloco: b })),
+    })
+    const r = planoParaOps(
+      {
+        separacoes: [1, 2, 3, 4].map((n) => ({ depois_da_faixa: n, forma: "filete" })),
+      },
+      c,
+    )
+    expect(r.ops).toHaveLength(TETO_DE_SEPARACOES)
+    expect(r.descartes[0].motivo).toMatch(/teto de 3 separações/)
+  })
+
+  it("tinta sem contraste é CORRIGIDA por código, e o ajuste é registrado", () => {
+    const r = planoParaOps(
+      { separacoes: [{ depois_da_faixa: 2, forma: "filete", tinta: "#E3E3E3" }] },
+      ctx(),
+    )
+    expect(r.ops[0]).toMatchObject({ action: "add_separador", tinta: "#07A55D" })
+    expect(r.ajustes[0].motivo).toMatch(/abaixo do piso/)
+  })
+
+  it("a tinta é ignorada na forma que esconde emenda", () => {
+    // Ali as duas cores são os fundos das faixas; deixá-la decidir uma
+    // delas desenharia um degrau falso.
+    const r = planoParaOps(
+      {
+        faixas: [{ ordem: 3, decisao: "escurecer", fundo: "#034326" }],
+        separacoes: [{ depois_da_faixa: 2, forma: "onda", tinta: "#FF0000" }],
+      },
+      ctx(),
+    )
+    expect(r.ops).toContainEqual({
+      action: "add_separador",
+      bloco: 1,
+      formaId: "onda",
+      fundo: "#FFFFFF",
+      tinta: "#034326",
+    })
+  })
+
+  it("faixa com foto não recebe separação — não há fundo sólido", () => {
+    const c = ctx({
+      faixas: [
+        faixa({ ordem: 1, bloco: 0, tipo: "hero", foto: true, fundo: null }),
+        faixa({ ordem: 2, bloco: 1 }),
+      ],
+    })
+    const r = planoParaOps({ separacoes: [{ depois_da_faixa: 1, forma: "filete" }] }, c)
+    expect(r.ops).toEqual([])
+    expect(r.descartes[0].motivo).toMatch(/fundo sólido/)
+  })
+})
+
+describe("planoParaOps — o botão deixado para trás", () => {
+  const PAPEIS = {
+    button_bg: "#034326",
+    button_text: "#FFFFFF",
+    bg: "#FFFFFF",
+    text: "#1F1F1F",
+    surface: "#F2F2F2",
+    accent: "#07A55D",
+  }
+  const ctx: ContextoDoPlano = {
+    faixas: [faixa({ ordem: 1, bloco: 0 }), faixa({ ordem: 2, bloco: 1 })],
+    ctas: [cta({ id: "cta1", bloco: 1, fundo: "#034326", label: "#FFFFFF" })],
+    incentivo: { existe: null },
+    roles: PAPEIS,
+  }
+
+  it("faixa escurecida sem decisão de botão: o código refaz o par", () => {
+    // Achado renderizando a peça: o plano escureceu a faixa da oferta, não
+    // disse nada do botão, e o botão verde sumiu no verde novo. Com o teto
+    // de 2 trocas isso atingia no máximo dois botões; com o ritmo inteiro
+    // na mão dele, todos.
+    const r = planoParaOps({ faixas: [{ ordem: 2, decisao: "escurecer", fundo: "#034326" }] }, ctx)
+    expect(r.ops).toContainEqual({ action: "set_botao", cta: "cta1", fundo: "#FFFFFF", label: "#034326" })
+    expect(r.ajustes.some((a) => /o plano não decidiu o botão/.test(a.motivo))).toBe(true)
+  })
+
+  it("não atropela o botão que o plano DECIDIU", () => {
+    const r = planoParaOps(
+      {
+        faixas: [{ ordem: 2, decisao: "escurecer", fundo: "#034326" }],
+        botoes: [{ id: "cta1", fundo: "#07A55D", label: "#FFFFFF" }],
+      },
+      ctx,
+    )
+    expect(r.ops.filter((o) => o.action === "set_botao")).toHaveLength(1)
+  })
+
+  it("faixa que NÃO mudou não mexe no botão dela", () => {
+    const r = planoParaOps({ faixas: [{ ordem: 2, decisao: "manter" }] }, ctx)
+    expect(r.ops.filter((o) => o.action === "set_botao")).toEqual([])
+  })
+
+  it("sem papéis não há como refazer o par — fica como estava", () => {
+    const { roles: _roles, ...semPapeis } = ctx
+    const r = planoParaOps({ faixas: [{ ordem: 2, decisao: "escurecer", fundo: "#034326" }] }, semPapeis)
+    expect(r.ops.filter((o) => o.action === "set_botao")).toEqual([])
   })
 })

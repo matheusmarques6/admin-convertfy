@@ -153,6 +153,8 @@ export const DEFAULT_COLOR_FORMAT_USER_TEMPLATE = `<store>
 <email>
   <name>{{email_name}}</name>
   <subject>{{subject}}</subject>
+  <flow>{{flow_type}}</flow>
+  <numero_no_flow>{{email_number}}</numero_no_flow>
 </email>
 
 <color_inventory>
@@ -162,6 +164,8 @@ export const DEFAULT_COLOR_FORMAT_USER_TEMPLATE = `<store>
 <faixas>
 {{faixas_json}}
 </faixas>
+
+{{separacao_bloco}}
 
 <fundos_de_secao>
 {{tons_json}}

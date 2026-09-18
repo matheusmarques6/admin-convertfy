@@ -420,3 +420,87 @@ ${bloco(1, "products", `<tr><td width="600" style="background-color:#FFFFFF;">${
     expect(conta(r.html)).toBe(conta(DOC_RAIOS))
   })
 })
+
+describe("add_separador — a separação entre seções", () => {
+  const SEP = (over: Partial<Extract<FormatOp, { action: "add_separador" }>> = {}) =>
+    ({
+      action: "add_separador" as const,
+      bloco: 1,
+      formaId: "filete",
+      fundo: "#FFFFFF",
+      tinta: "#1F1F1F",
+      ...over,
+    })
+
+  it("entra no FIM do bloco endereçado, e não em outro", () => {
+    const r = aplicar(DOC, [SEP()])
+    expect(r.separadoresInseridos).toBe(1)
+    expect(r.skipped).toEqual([])
+    // Depois do bloco 1 (corpo) e antes do 2 (produtos).
+    const fimDoCorpo = r.html.indexOf("cfy:block:1:body:end")
+    const inicioProdutos = r.html.indexOf("cfy:block:2:products:start")
+    const filete = r.html.indexOf('bgcolor="#1F1F1F"')
+    expect(filete).toBeGreaterThan(0)
+    expect(filete).toBeLessThan(fimDoCorpo)
+    expect(filete).toBeLessThan(inicioProdutos)
+  })
+
+  it("não muda a contagem de <table> — é o guard do runner", () => {
+    const antes = (DOC.match(/<table[\s>]/gi) ?? []).length
+    const r = aplicar(DOC, [SEP(), SEP({ bloco: 2, formaId: "onda", src: "https://cdn/o.png" })])
+    expect((r.html.match(/<table[\s>]/gi) ?? []).length).toBe(antes)
+  })
+
+  it("PNG sem src é descartado com motivo — nada de <tr> fantasma", () => {
+    const r = aplicar(DOC, [SEP({ formaId: "onda" })])
+    expect(r.separadoresInseridos).toBe(0)
+    expect(r.skipped[0].reason).toBe("sem_imagem")
+  })
+
+  it("forma inventada é descartada com motivo próprio", () => {
+    const r = aplicar(DOC, [SEP({ formaId: "espiral" })])
+    expect(r.skipped[0].reason).toBe("forma_desconhecida")
+  })
+
+  it("bloco que o documento não tem é descartado, não aplicado no vizinho", () => {
+    const r = aplicar(DOC, [SEP({ bloco: 99 })])
+    expect(r.skipped[0].reason).toBe("endereco_inexistente")
+  })
+
+  it("a separação fica ABAIXO do botão que o mesmo plano inseriu", () => {
+    // As duas escrevem no MESMO ponto (o fim do bloco) e as regionais são
+    // aplicadas de trás para frente: quem é aplicado primeiro acaba
+    // embaixo. A separação marca o fim da seção, o botão é conteúdo dela —
+    // logo `add_separador` vem antes no array. Esta é a única invariante
+    // desta frente que depende da ORDEM das ops, e por isso tem teste.
+    const r = aplicar(DOC, [
+      SEP(),
+      {
+        action: "add_cta",
+        bloco: 1,
+        label: "Ver a coleção",
+        href: "https://loja.com",
+        fundo: "#111111",
+        corLabel: "#FFFFFF",
+      },
+    ])
+    expect(r.separadoresInseridos).toBe(1)
+    expect(r.botoesInseridos).toBe(1)
+    expect(r.html.indexOf("Ver a coleção")).toBeLessThan(r.html.indexOf('bgcolor="#1F1F1F"'))
+  })
+
+  it("convive com set_fundo no mesmo bloco sem invalidar o offset do outro", () => {
+    const r = aplicar(DOC, [
+      { action: "set_fundo", bloco: 1, para: "#F2F2F2" },
+      SEP({ fundo: "#F2F2F2" }),
+    ])
+    expect(r.faixasPintadas).toBe(1)
+    expect(r.separadoresInseridos).toBe(1)
+    expect(extrairFaixas(r.html).map((f) => f.fundo)).toEqual([
+      "#222222",
+      "#F2F2F2",
+      "#FFFFFF",
+      "#FFFFFF",
+    ])
+  })
+})

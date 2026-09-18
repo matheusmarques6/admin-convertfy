@@ -58,6 +58,8 @@ import { htmlSemBlocos } from "./blocos-tokenizados"
 export { classifyFontFamily } from "../typography/font-name"
 import { classifyFontFamily } from "../typography/font-name"
 import { annotateInventoryPairs } from "./color-contrast"
+import { separacaoEntreSecoes } from "../chains/color-guia"
+import { catalogoParaPrompt } from "./separador-catalogo"
 
 const log = logger.child("FormatContext")
 
@@ -604,6 +606,9 @@ export const TYPOGRAPHY_VAR_ORIGINS: Record<string, SegmentOrigin> = {
   inventario_total: { cls: "sistema", rotulo: "Total de declarações de fonte — código" },
   email_name: EMAIL_ROW,
   subject: EMAIL_ROW,
+  flow_type: EMAIL_ROW,
+  email_number: EMAIL_ROW,
+  separacao_bloco: { cls: "agente", rotulo: "Catálogo de separação entre seções — separador-catalogo.ts" },
 }
 
 export const COLOR_FORMAT_VAR_ORIGINS: Record<string, SegmentOrigin> = {
@@ -768,6 +773,25 @@ export function buildColorFormatVars(
      * loja, e o agente não decide sobre o que não vê.
      */
     blocosExcluidos?: readonly number[]
+    /**
+     * Passo 6 do guia (o ajuste por momento). O guia tem um passo inteiro
+     * sobre isto — "welcome-1: base da marca, acento na oferta, não é
+     * momento de urgência" contra "last chance: alto contraste permitido" —
+     * e ele estava desligado por falta de DADO, não por falta de regra: a
+     * alçada mandava não deduzir o momento pelo assunto, e o agente
+     * registrava a ausência na telemetria toda run ("e-mail é Welcome 1,
+     * mas o flow e número não foram fornecidos formalmente").
+     *
+     * Os dois já existiam no runner e filtravam consulta lá; era fiação.
+     */
+    flowType?: string | null
+    emailNumber?: number | null
+    /**
+     * `false` = gate `off`: o catálogo de separação NÃO é servido e a var
+     * sai vazia. O agente não decide o que não vê, e o prompt fica byte a
+     * byte o de antes desta frente.
+     */
+    separacao?: boolean
   },
 ): Record<string, string> {
   // Arquitetura por views (F4): o maior prompt da cadeia (doc inteiro)
@@ -829,6 +853,11 @@ export function buildColorFormatVars(
     ),
     email_name: ctx.emailRow?.name || "",
     subject: ctx.emailRow?.subject || "",
+    // Vazios quando o chamador não os passa — e o prompt trata esse caso:
+    // sem os dois ele NÃO deduz o momento, que é a regra de sempre.
+    flow_type: extras.flowType || "",
+    email_number: extras.emailNumber != null ? String(extras.emailNumber) : "",
+    separacao_bloco: extras.separacao ? separacaoEntreSecoes(catalogoParaPrompt()) : "",
   }
   return validateVars(ColorFormatPromptVarsSchema, vars, "color_format")
 }
