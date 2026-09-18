@@ -310,6 +310,25 @@ export function ConversationalFormView({
   const agrupada = daTela.length > 1
 
   /**
+   * O número da tela ("3 →" acima do título) e a mídia de FUNDO.
+   *
+   * O número é da TELA, não do bloco — uma tela agrupada conta uma. A
+   * mídia com `layout: "fundo"` é da tela inteira (imagem cover + véu),
+   * então sai do bloco e vai para o container.
+   */
+  const numeroDaTela = useMemo(() => {
+    if (tela.tipo !== "bloco") return null
+    let n = 0
+    for (const b of schema.blocks) {
+      if (b.hidden) continue
+      if (n === 0 || !b.mesma_tela) n += 1
+      if (b.ref === tela.ref) return n
+    }
+    return null
+  }, [tela, schema.blocks])
+  const midiaDeFundo = daTela[0]?.midia?.layout === "fundo" ? daTela[0].midia : null
+
+  /**
    * A pergunta que está na tela sumiu do schema.
    *
    * No ar isso não acontece — a versão publicada é imutável e quem está
@@ -774,7 +793,11 @@ export function ConversationalFormView({
         // não rola por causa do preview). Sem isto, tela alta é cortada e
         // não há como chegar ao botão.
         overflowY: moldura ? "auto" : undefined,
-        background: bgFill,
+        // Mídia de fundo: a imagem cover, com o véu por cima para o
+        // texto continuar legível — escuro no tema escuro, claro no claro.
+        background: midiaDeFundo
+          ? `linear-gradient(${t.mode === "dark" ? "rgba(5,8,16,.72), rgba(5,8,16,.72)" : "rgba(255,255,255,.78), rgba(255,255,255,.78)"}), url("${midiaDeFundo.url}") center / cover no-repeat, ${bgFill}`
+          : bgFill,
         color: t.text,
         fontFamily: t.fontFamily,
         display: "flex",
@@ -872,6 +895,7 @@ export function ConversationalFormView({
           {tela.tipo === "bloco" && blocoAtual && (
             <TelaDePerguntas
               blocos={daTela}
+              numero={numeroDaTela}
               answers={answers}
               erros={erros}
               recall={recall}
@@ -970,16 +994,46 @@ export function ConversationalFormView({
  *   com som, e o vídeo ficaria parado no primeiro quadro — que é pior
  *   que não ter autoplay, porque parece defeito.
  */
-function MidiaDaTela({ midia, t }: { midia: MidiaDaTela; t: ReturnType<typeof defaults> }) {
-  const moldura: React.CSSProperties = {
-    display: "block",
-    width: "100%",
-    maxHeight: "34vh",
-    objectFit: "contain",
-    objectPosition: "left center",
-    borderRadius: Math.min(t.inputRadius ?? 8, 12),
-    marginBottom: 22,
-  }
+function MidiaDaTela({
+  midia,
+  t,
+  lateral,
+  flutuante,
+}: {
+  midia: MidiaDaTela
+  t: ReturnType<typeof defaults>
+  /** Ao lado do texto (4:5, cantos 14, sombra). */
+  lateral?: boolean
+  /** Miniatura 160×120 acima do título. */
+  flutuante?: boolean
+}) {
+  const moldura: React.CSSProperties = lateral
+    ? {
+        display: "block",
+        width: "100%",
+        aspectRatio: "4 / 5",
+        objectFit: "cover",
+        borderRadius: 14,
+        boxShadow: "0 18px 40px rgba(0,0,0,0.22)",
+      }
+    : flutuante
+      ? {
+          display: "block",
+          width: 160,
+          height: 120,
+          objectFit: "cover",
+          borderRadius: 12,
+          marginBottom: 18,
+        }
+      : {
+          display: "block",
+          width: "100%",
+          maxHeight: "34vh",
+          objectFit: "contain",
+          objectPosition: "left center",
+          borderRadius: Math.min(t.inputRadius ?? 8, 12),
+          marginBottom: 22,
+        }
 
   if (midia.tipo === "video") {
     return (
@@ -1195,6 +1249,7 @@ function TelaFinal({
  */
 function TelaDePerguntas({
   blocos,
+  numero,
   answers,
   erros,
   recall,
@@ -1209,6 +1264,8 @@ function TelaDePerguntas({
   onAvancar,
 }: {
   blocos: FormBlock[]
+  /** O número da tela — o "3 →" acima do título. */
+  numero: number | null
   answers: FormAnswers
   erros: Record<string, string>
   recall: (s: string | null | undefined) => string
@@ -1227,11 +1284,30 @@ function TelaDePerguntas({
   const titulo = agrupada ? recall(cabeca?.titulo_da_tela) : ""
   // A mídia é da TELA, e a tela é a cabeça: numa tela agrupada, uma
   // imagem por campo empilharia quatro prints acima de quatro perguntas.
-  const midia = cabeca?.midia ?? null
+  // `fundo` é desenhado pelo container, não aqui.
+  const midia = cabeca?.midia && cabeca.midia.layout !== "fundo" ? cabeca.midia : null
+  const layout = midia?.layout ?? "acima"
 
-  return (
+  const conteudo = (
     <div>
-      {midia && <MidiaDaTela midia={midia} t={t} />}
+      {numero !== null && (
+        <p
+          aria-hidden
+          style={{
+            margin: "0 0 10px",
+            fontSize: 13,
+            fontWeight: 600,
+            color: t.primary,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+          }}
+        >
+          {numero} <span style={{ opacity: 0.7 }}>→</span>
+        </p>
+      )}
+      {midia && layout === "flutuante" && <MidiaDaTela midia={midia} t={t} flutuante />}
+      {midia && layout === "acima" && <MidiaDaTela midia={midia} t={t} />}
       {agrupada && titulo && (
         <h2
           style={{
@@ -1278,6 +1354,18 @@ function TelaDePerguntas({
       </div>
     </div>
   )
+
+  if (midia && layout === "direita") {
+    // Grid `1fr | 38%`, como no handoff; empilha no celular (a classe
+    // `cfy-lado` vira coluna única abaixo de 640px, via CSS do escopo).
+    return (
+      <div className="cfy-lado" style={{ display: "grid", gridTemplateColumns: "1fr 38%", gap: 28, alignItems: "center" }}>
+        {conteudo}
+        <MidiaDaTela midia={midia} t={t} lateral />
+      </div>
+    )
+  }
+  return conteudo
 }
 
 function UmaPergunta({
@@ -2373,6 +2461,7 @@ function cssDoEscopo(escopo: string, primaria: string, placeholder?: string): st
     placeholder ? `color: ${placeholder}; opacity: 1;` : "opacity: 0.35;"
   } }
 .${escopo} .cfy-opcao:hover { border-color: ${primaria}; }
+@media (max-width: 640px) { .${escopo} .cfy-lado { grid-template-columns: 1fr !important; } }
 .${escopo} .cfy-opcao:focus-visible, .${escopo} button:focus-visible { outline: 2px solid ${primaria}; outline-offset: 2px; }
 .${escopo} .cfy-girando { animation: cfy-gira 900ms linear infinite; }
 @keyframes cfy-gira { to { transform: rotate(360deg); } }

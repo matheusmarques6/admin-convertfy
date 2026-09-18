@@ -1608,7 +1608,7 @@ export default function FormEditorPage({
 
         {activeTab === "resultados" && (
           <div className="min-h-0 flex-1 overflow-y-auto">
-            <FormResults formId={id} />
+            <FormResults formId={id} slug={slug} />
           </div>
         )}
       </div>

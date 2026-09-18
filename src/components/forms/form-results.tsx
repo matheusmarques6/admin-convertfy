@@ -13,8 +13,16 @@
  * sessão — não mostra zeros que se leem como "ninguém desistiu".
  */
 
+import { useState } from "react"
 import useSWR from "swr"
 import { AlertTriangle, CheckCircle2, TrendingDown, Users } from "lucide-react"
+import { RespostasDoFormulario } from "./respostas-do-formulario"
+
+const PERIODOS: Array<{ dias: number | null; rotulo: string }> = [
+  { dias: 7, rotulo: "7 dias" },
+  { dias: 30, rotulo: "30 dias" },
+  { dias: null, rotulo: "Tudo" },
+]
 
 const fetcher = async (url: string) => {
   const res = await fetch(url)
@@ -63,12 +71,71 @@ interface Payload {
   evento: { habilitado: boolean; nome: string }
 }
 
-export function FormResults({ formId }: { formId: string }) {
+export function FormResults({ formId, slug = "form" }: { formId: string; slug?: string }) {
+  const [aba, setAba] = useState<"funil" | "respostas">("funil")
+  const [dias, setDias] = useState<number | null>(30)
+  // "Tudo" no funil = a janela máxima que as sessões guardam; a rota
+  // trata o número como dias, e 3650 é "desde sempre" na prática.
   const { data, error, isLoading } = useSWR<Payload>(
-    `/api/crm/forms/${formId}/resultados?dias=30`,
+    `/api/crm/forms/${formId}/resultados?dias=${dias ?? 3650}`,
     fetcher,
     { revalidateOnFocus: false },
   )
+
+  const barra = (
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="inline-flex gap-0.5 rounded-[7px] bg-slate-100 p-0.5 dark:bg-white/[0.05]">
+        {(
+          [
+            { key: "funil", rotulo: "Funil por tela" },
+            { key: "respostas", rotulo: "Respostas" },
+          ] as const
+        ).map((o) => (
+          <button
+            key={o.key}
+            type="button"
+            onClick={() => setAba(o.key)}
+            aria-pressed={aba === o.key}
+            className={
+              "h-7 rounded-[5px] px-3 text-[12px] font-medium transition-colors " +
+              (aba === o.key
+                ? "bg-white text-slate-900 shadow-[0_1px_2px_rgba(0,0,0,0.07)] dark:bg-[#1A1D27] dark:text-white"
+                : "text-slate-500 hover:text-slate-900 dark:text-white/55 dark:hover:text-white")
+            }
+          >
+            {o.rotulo}
+          </button>
+        ))}
+      </div>
+      <div className="inline-flex gap-0.5 rounded-[7px] bg-slate-100 p-0.5 dark:bg-white/[0.05]">
+        {PERIODOS.map((p) => (
+          <button
+            key={p.rotulo}
+            type="button"
+            onClick={() => setDias(p.dias)}
+            aria-pressed={dias === p.dias}
+            className={
+              "h-7 rounded-[5px] px-2.5 text-[11.5px] font-medium transition-colors " +
+              (dias === p.dias
+                ? "bg-white text-slate-900 shadow-[0_1px_2px_rgba(0,0,0,0.07)] dark:bg-[#1A1D27] dark:text-white"
+                : "text-slate-500 hover:text-slate-900 dark:text-white/55 dark:hover:text-white")
+            }
+          >
+            {p.rotulo}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+
+  if (aba === "respostas") {
+    return (
+      <div className="p-4 space-y-4">
+        {barra}
+        <RespostasDoFormulario formId={formId} slug={slug} dias={dias} />
+      </div>
+    )
+  }
 
   if (isLoading) {
     return <div className="p-4 text-[12px] text-slate-500 dark:text-white/45">Carregando…</div>
@@ -100,6 +167,7 @@ export function FormResults({ formId }: { formId: string }) {
 
   return (
     <div className="p-4 space-y-5">
+      {barra}
       {/* ── 1. A regra do evento: o que precisa estar certo antes da verba ── */}
       <section>
         <Titulo>Evento de conversão</Titulo>
@@ -139,7 +207,7 @@ export function FormResults({ formId }: { formId: string }) {
 
       {/* ── 2. O funil ── */}
       <section>
-        <Titulo>Últimos 30 dias</Titulo>
+        <Titulo>{dias ? `Últimos ${dias} dias` : "Desde o começo"}</Titulo>
         {data.funil_erro ? (
           <Aviso tom="alerta">
             As sessões ainda não estão disponíveis neste ambiente ({data.funil_erro}). Os números de
@@ -149,7 +217,7 @@ export function FormResults({ formId }: { formId: string }) {
 
         {t && t.visitas === 0 ? (
           <p className="text-[12px] text-slate-500 dark:text-white/45">
-            Nenhuma sessão registrada nos últimos 30 dias. Assim que alguém abrir o formulário, o
+            Nenhuma sessão registrada {dias ? `nos últimos ${dias} dias` : "ainda"}. Assim que alguém abrir o formulário, o
             caminho dela aparece aqui.
           </p>
         ) : t ? (
