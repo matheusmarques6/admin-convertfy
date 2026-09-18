@@ -45,14 +45,42 @@ describe("o conhecimento chega ao agente", () => {
   })
 
   it("a alçada separa o que ele faz do que ele só registra", () => {
-    expect(ALCADA).toMatch(/VOCÊ EXECUTA/)
-    expect(ALCADA).toMatch(/VOCÊ NÃO EXECUTA/)
-    // As quatro regras cujo dono é outro — servir a regra sem a ferramenta é
-    // o modo de falha que o `momento` e o `exige` já custaram a este repo.
+    // 17/09: os títulos deixaram de ser "VOCÊ EXECUTA"/"VOCÊ NÃO EXECUTA".
+    // A lista de proibições vinha primeiro no olho e era metade do bloco —
+    // ler regra que não se pode cumprir é o que produzia a resposta
+    // defensiva (68,2% das faixas decididas saíam como `manter`).
+    expect(ALCADA).toMatch(/O QUE É SEU/)
+    expect(ALCADA).toMatch(/TEM OUTRO DONO/)
+    // As regras cujo dono é outro continuam NOMEADAS — servir a regra sem a
+    // ferramenta é o modo de falha que o `momento` e o `exige` já custaram a
+    // este repo, e apagá-las do texto seria o mesmo erro pelo outro lado.
     for (const fora of ["R1", "R4", "R7", "R8"]) {
       expect(ALCADA).toContain(fora)
     }
     expect(ALCADA).toMatch(/você não reprova nada/i)
+    // O que o agente decide tem de aparecer como obrigação, não como opção.
+    expect(ALCADA).toMatch(/ninguém decide no seu lugar/i)
+    expect(ALCADA).toMatch(/lacuna não substitui decisão/i)
+  })
+
+  it("o freio explícito saiu do bloco de faixas", () => {
+    // A frase dizia, com estas palavras, que não mudar nada era "resposta
+    // legítima e comum" — e era lida como recomendação.
+    expect(FAIXAS_E_RITMO).not.toMatch(/resposta\s+legítima/i)
+    // Manter passa a se justificar como qualquer outra decisão.
+    expect(FAIXAS_E_RITMO).toMatch(/Manter é uma decisão/)
+  })
+
+  it("a cota de trocas saiu; o que limita é o RESULTADO", () => {
+    // 18/09: `TETO_DE_FAIXAS = 2` limitava o esforço, e das duas vagas uma
+    // ia para conformidade. O código passou a cobrar o resultado (3 tons,
+    // todos da paleta) e o texto tem de dizer a mesma coisa — prompt que
+    // anuncia cota que o código não tem é a pior das duas divergências.
+    expect(FAIXAS_E_RITMO).not.toMatch(/até 2 faixas por peça/)
+    expect(FAIXAS_E_RITMO).not.toMatch(/cota a economizar/)
+    expect(FAIXAS_E_RITMO).toMatch(/Não há cota de trocas/)
+    expect(FAIXAS_E_RITMO).toMatch(/decida TODAS as faixas/)
+    expect(FAIXAS_E_RITMO).toMatch(/3 tons de fundo na peça/)
   })
 
   it("a lista vazia de faixas tem instrução própria — bloco que some faz o modelo caçar", () => {

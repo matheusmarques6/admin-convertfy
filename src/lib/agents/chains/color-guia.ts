@@ -145,7 +145,7 @@ queima-de-estoque; monocromatico exige checar a legibilidade do CTA.
 - C6 · A oferta ganha a cor mais forte depois do CTA. [PROPOSTA] código em
   acento se existir; senão, caixa com borda na cor de texto da faixa.
 
-## Passo 6 — Ajuste por momento (referência; ver a alçada)
+## Passo 6 — Ajuste por momento (o \`<flow>\` do bloco \`<email>\`)
 
 welcome-1: base da marca, acento na oferta — não é momento de urgência.
 Fillers editoriais: creme ou cinza-neutro; FAQ e composição: claro, sóbrio.
@@ -227,36 +227,86 @@ se decide aqui.
  * eliminar por um critério que não pode verificar.
  */
 export const ALCADA = `<sua_alcada>
-O guia acima é a especificação COMPLETA. Nem tudo nele é executável POR
-VOCÊ, e confundir os dois é o erro caro aqui.
+O guia acima é a especificação COMPLETA da cor nesta casa. Uma parte dela é
+sua; outra tem outro dono. Confundir as duas é o erro caro aqui — nos dois
+sentidos: decidir o que não é seu estraga a peça, e deixar de decidir o que é
+seu entrega um e-mail que ninguém escolheu.
 
-VOCÊ EXECUTA:
-- Passos 1 e 2 (validar a paleta, atribuir papéis) — é o que você devolve em
-  \`tokens\`.
-- Passo 3 (classificar a loja) — o campo \`paleta_eixo\`.
-- Passo 4, regras R2, R3, R5 e R6 — o ritmo, através de \`faixas\`.
-- Passo 5 inteiro (C1–C6) — através de \`botoes\` e \`adicionar\`.
-- Passo 7: você REPORTA o que decidiu; o código recalcula as checagens sobre
-  o resultado. Nunca afirme uma checagem que você não pode medir.
+O QUE É SEU — e ninguém decide no seu lugar:
+- A paleta e os papéis (Passos 1 e 2) → \`tokens\`.
+- O eixo da loja (Passo 3) → \`paleta_eixo\`.
+- O RITMO da peça (Passo 4: R2, R3, R5, R6) → \`faixas\`. É a decisão de maior
+  alcance que você toma, e a que mais muda o que o leitor vê.
+- O Passo 5 inteiro (C1–C6): a cor de cada botão, a inversão por faixa e o
+  botão que falta → \`botoes\` e \`adicionar\`.
+- As paradas de um gradiente que JÁ existe (R4, metade) → \`gradiente\` na
+  faixa.
+- A SEPARAÇÃO entre seções (R4, a outra metade) → \`separacoes\`, quando o
+  bloco \`<separacao_entre_secoes>\` vier no pedido. Sem ele, não há catálogo
+  e a separação continua sendo lacuna. INSERIR gradiente onde não existe
+  nenhum segue fora — não há op para isso.
+- O ajuste por MOMENTO (Passo 6) — o \`<email>\` traz \`<flow>\` e
+  \`<numero_no_flow>\`. Eles pesam na escolha de \`paleta_eixo\` e no ritmo,
+  e a faixa que mudar por causa disso diz "Passo 6" no \`porque\`. Os DOIS
+  vazios significam que o chamador não os serviu: aí o momento não se
+  decide, e continua valendo não deduzi-lo pelo assunto.
+- A conformidade por valor → \`valores\`.
+- O Passo 7 você REPORTA; o código recalcula as checagens sobre o resultado.
+  Nunca afirme uma checagem que você não pode medir.
 
-VOCÊ NÃO EXECUTA — registre em \`lacunas\` e siga:
-- R1 (hero pela foto): a hero vem enxertada da variante e o texto sobre ela
-  já é tratado por código. Faixa com \`fundo: "foto"\` você deixa.
-- R4 (transição entre faixas), metade: você não INSERE gradiente nem forma
-  onde não há — troca de fundo sem transição segue lacuna. Onde o gradiente
-  JÁ existe, ele é seu: a faixa traz \`gradiente\` e você repinta as paradas
-  (ver <faixas_e_ritmo>).
-- R7 (rodapé fixo por loja): é decisão da loja, não desta peça.
-- R8 (raio e canto): não existe op de raio. Divergência é lacuna. O botão que
-  você mandar criar já nasce com o raio dominante da peça.
-- Passo 6 (ajuste por momento): você NÃO recebe o flow nem o número do
-  e-mail. Não deduza o momento pelo assunto.
-- "Bloqueia a peça": você não reprova nada. Falha grave é lacuna, e o QA
-  decide.
+TEM OUTRO DONO — uma linha em \`lacunas\`, e siga:
+- R1 — faixa com \`fundo: "foto"\`: a hero vem enxertada da variante e o texto
+  sobre ela já é tratado por código. Deixe.
+- R7 — o rodapé é fixo por loja, não se decide nesta peça.
+- R8 — o código unifica o raio dos botões sozinho, e peça que mistura canto
+  vivo com pílula ele deixa para um humano. Não peça nada.
+- "Bloqueia a peça" — você não reprova nada; o QA decide.
 
-Registrar uma lacuna é trabalho feito, não desistência: é assim que o que
-falta chega a quem pode resolver.
+Lacuna é trabalho feito, não desistência: é assim que o que falta chega a
+quem pode resolver. Mas lacuna não substitui decisão. O que está na primeira
+lista é para ser DECIDIDO, mesmo quando a peça já parece aceitável — e
+principalmente aí, porque "aceitável" é o estado em que uma peça sem dono
+chega ao cliente.
 </sua_alcada>`
+
+/**
+ * A separação entre seções — a metade do R4 que era lacuna até 18/09.
+ *
+ * O texto é gerado do MESMO catálogo que o código valida
+ * (`separador-catalogo.ts`). Escrever a tabela à mão aqui criaria duas
+ * listas, e a segunda envelheceria calada na primeira forma acrescentada.
+ *
+ * `""` quando o gate está `off`: bloco que some por completo é melhor que
+ * bloco vazio, porque não sobra cabeçalho pedindo uma decisão que o código
+ * vai descartar.
+ */
+export function separacaoEntreSecoes(catalogo: string): string {
+  if (!catalogo.trim()) return ""
+  return `<separacao_entre_secoes>
+O K9 pede transição em toda troca de fundo, e agora ela é SUA: o catálogo
+abaixo é fechado, e o código desenha a forma que você escolher.
+
+${catalogo}
+
+Como decidir:
+1. Olhe as \`<faixas>\` DEPOIS do seu plano de ritmo, não como elas chegaram.
+   A separação é desenhada com as cores que você acabou de decidir.
+2. Onde o fundo TROCA, use uma forma que esconde emenda. Onde ele é o MESMO
+   dos dois lados e as duas seções contam coisas diferentes, use uma de
+   marcar seção. Trocar os dois grupos é erro: uma onda entre duas seções da
+   mesma cor desenha um degrau que não existe, e um filete no meio de uma
+   troca claro→escuro não esconde nada.
+3. No máximo 3 na peça. Acima disso a separação vira moldura, e moldura é
+   decoração.
+4. Nunca imediatamente antes do rodapé: ali ela lê como fim do e-mail.
+5. Só nas formas de MARCAR seção você indica \`tinta\` — e é preferência: o
+   código mede o contraste contra o fundo e corrige, porque ornamento sem
+   contraste não aparece na tela. Nas de esconder emenda as duas cores são
+   os fundos das faixas, e não há o que escolher.
+
+Cada separação pede um \`porque\` que diga o que ela separa.
+</separacao_entre_secoes>`
+}
 
 /** O ritmo — a parte executável do Passo 4, com o dado que ela lê. */
 export const FAIXAS_E_RITMO = `<faixas_e_ritmo>
@@ -287,9 +337,16 @@ Com \`<faixas>\`, decida nesta ordem:
    Repintar o gradiente NÃO conta no teto de 2 faixas: ele conforma a cor de
    uma faixa, não muda o ritmo.
 
-Mudar faixa é caro: no máximo 2 por peça. Não mudar nenhuma é resposta
-legítima e comum. Toda faixa que você mudar precisa de um \`porque\` que cite
-a regra que ela serve.
+Não há cota de trocas: decida TODAS as faixas. O que o código limita é o
+RESULTADO — no máximo 3 tons de fundo na peça (R2), e todo fundo tem de ser
+da paleta da loja ou um papel derivado dela (K1). Troca que estouraria o teto
+de tons, ou que traria cor de fora, é descartada com o motivo dito. Dentro
+dessas duas réguas, compor o ritmo inteiro é o trabalho — e uma peça que sai
+com cinco seções no mesmo branco não é conservadora, é uma peça sem ritmo.
+
+Toda faixa precisa de um \`porque\` que cite a regra que ela serve — inclusive
+a que você MANTÉM. Manter é uma decisão e se justifica como as outras: diga
+qual regra o fundo atual já cumpre.
 </faixas_e_ritmo>`
 
 /** Os botões: inversão, hierarquia e a regra da casa de que todo bloco tem um. */
@@ -347,6 +404,8 @@ Responda APENAS este JSON, sem cercas e sem comentário:
  "botoes": [{"id": "cta2", "fundo": "#FFFFFF", "label": "#111111", "tipo": "preenchido", "porque": "C3 — ..."}],
  "adicionar": [{"bloco": 1, "label": "Ver a coleção", "destino": "loja", "fundo": "#111111", "cor_label": "#FFFFFF", "porque": "regra da casa — ..."}],
  "valores": [{"de": "#6B46C1", "para": "#111111", "onde": "background", "porque": "..."}],
+ "separacoes": [{"depois_da_faixa": 2, "forma": "onda", "porque": "K9 — ..."},
+                {"depois_da_faixa": 4, "forma": "filete", "tinta": "#E3E3E3", "porque": "R3 — ..."}],
  "rodape": "claro",
  "lacunas": ["..."]}
 
@@ -357,13 +416,15 @@ Responda APENAS este JSON, sem cercas e sem comentário:
 - \`decisao\` aceita: manter, escurecer, clarear, recolorir. \`"manter"\` é
   uma resposta: registra que você olhou e decidiu não mexer.
 - Pedir em \`fundo\` a cor que a faixa JÁ tem é \`"manter"\` escrito de outro
-  jeito. O código descarta, e a vaga de faixa fica para quem muda de verdade
-  — são só duas por peça.
+  jeito: o código descarta, sem custo para as outras.
 - \`gradiente\` é decisão SEPARADA de \`fundo\`: repinta as paradas do
   gradiente daquela faixa, na ordem, com o MESMO número de paradas que ela
   reportou. Convive com \`decisao: "manter"\` — manter o ritmo e conformar a
   cor do gradiente é o caso comum.
-- As quatro listas podem vir vazias. Não emitir nada é decisão valorizada
+- \`separacoes\` só existe quando o bloco \`<separacao_entre_secoes>\` veio no
+  pedido; sem ele, o código a descarta inteira. \`depois_da_faixa\` é a
+  \`ordem\` da faixa de CIMA, e \`forma\` tem de ser um \`id\` do catálogo.
+- As listas podem vir vazias. Não emitir nada é decisão valorizada
   quando o e-mail já está conforme, o ritmo já lê e todo bloco tem seu CTA.
 - NUNCA invente cor fora de \`<color_roles>\`.
 - \`onde\` aceita: background, color, border, bgcolor, css-var, gradiente,

@@ -37,6 +37,9 @@ import { applySplices, type Range, type Splice } from "./dom-locator"
 import { auditContrast, backgroundDeclarations } from "./color-contrast"
 import { contrastingText } from "./color-roles"
 import { linhaDeBotao, pontoDeInsercao } from "./cta-template"
+import { aplicarRaio } from "./raio-do-botao"
+import { formaPorId } from "./separador-catalogo"
+import { linhaDeSeparacao } from "./separador-linha"
 import type { Cta, Faixa } from "./color-faixas"
 import { locateBlockRegions } from "./slot-finder"
 
@@ -75,6 +78,15 @@ export type FormatOp =
   /** Recolore UM botão (fundo e/ou label), pelo id do mapa de CTAs. */
   | { action: "set_botao"; cta: string; fundo?: string; label?: string }
   /**
+   * Unifica o canto de um botão que já existe.
+   *
+   * Não sai de `parseOps`: quem a produz é `plano-de-cor`, por CÓDIGO, a
+   * partir da mediana dos raios da peça (`unificarRaio`). O modelo não
+   * escolhe entre 8 e 10 — não há julgamento nesse empate, e uma volta de
+   * LLM para ele é token gasto à toa.
+   */
+  | { action: "set_raio"; cta: string; de: number; para: number }
+  /**
    * Insere um botão num bloco que não tem nenhum.
    *
    * `href` chega resolvido: o modelo escolhe um destino de um enum fechado
@@ -95,8 +107,24 @@ export type FormatOp =
       paddingH?: number
       fontFamily?: string
     }
+  /**
+   * Insere a separação entre duas seções, no FIM do bloco de cima.
+   *
+   * `src` chega resolvido (o PNG já hospedado) — como o `href` do
+   * `add_cta`, o modelo escolhe de um enum fechado (o `id` da forma) e o
+   * código produz o endereço. Em `render: "html"` o `src` não existe: a
+   * forma é desenhada com as próprias `<tr>`.
+   */
+  | {
+      action: "add_separador"
+      bloco: number
+      formaId: string
+      fundo: string
+      tinta: string
+      src?: string | null
+    }
 
-// As três últimas NÃO saem de `parseOps`: o modelo devolve um plano, e é o
+// As últimas NÃO saem de `parseOps`: o modelo devolve um plano, e é o
 // código que o traduz em ops (ver `plano-de-cor.ts`). Assim ele é
 // fisicamente incapaz de mandar inserir markup ou endereçar um bloco que o
 // documento não tem — a mesma razão pela qual `TypographyOpHumana` não
@@ -125,8 +153,12 @@ export function alvoDaOp(op: FormatOp): string {
       return `bloco ${op.bloco} gradiente → ${op.paradas.join(" → ")}`
     case "set_botao":
       return `${op.cta} → ${op.fundo ?? "="}/${op.label ?? "="}`
+    case "set_raio":
+      return `${op.cta} raio ${op.de}px → ${op.para}px`
     case "add_cta":
       return `bloco ${op.bloco} + "${op.label.slice(0, 40)}"`
+    case "add_separador":
+      return `bloco ${op.bloco} + separação ${op.formaId}`
   }
 }
 
@@ -170,6 +202,14 @@ export interface SkippedOp {
     // declaração. Reportar isso como `find_not_found` faria a sobreposição
     // benigna parecer endereço inventado — que é o oposto do que é.
     | "ja_aplicado"
+    // O `id` da forma de separação não existe no catálogo. O agente escolhe
+    // de uma lista fechada e o código confere: forma inventada não vira
+    // desenho improvisado.
+    | "forma_desconhecida"
+    // A forma precisa de PNG e o upload não entregou um. Melhor emenda seca
+    // — que é o estado de hoje — do que uma `<tr>` que ocupa altura e não
+    // desenha nada.
+    | "sem_imagem"
 }
 
 export interface ApplyOpsResult {
@@ -216,6 +256,10 @@ export interface ApplyOpsResult {
   botoesRecoloridos: number
   /** Botões inseridos (`add_cta`). */
   botoesInseridos: number
+  /** Separações inseridas entre seções (`add_separador`). */
+  separadoresInseridos: number
+  /** Botões cujo canto foi alinhado ao raio da peça (`set_raio`). */
+  raiosUnificados: number
 }
 
 /** Extrai o objeto {"ops":[...]} do output do LLM. Lança OpsParseError. */
@@ -344,20 +388,22 @@ export function applyOps(
     if (
       op.action === "set_fundo" ||
       op.action === "set_gradiente" ||
-      op.action === "add_cta"
+      op.action === "add_cta" ||
+      op.action === "add_separador"
     ) {
       const regiao = regioes.get(op.bloco)
       if (!regiao) {
         skipped.push({ op, reason: "endereco_inexistente" })
         continue
       }
-      // `add_cta` entra no FIM do bloco e `set_fundo` pinta o começo:
-      // ordenar pelo ponto em que cada uma escreve deixa as duas
-      // conviverem no mesmo bloco sem uma invalidar o offset da outra.
-      regionais.push({ op, pos: op.action === "add_cta" ? regiao.end : regiao.start })
+      // `add_cta` e `add_separador` entram no FIM do bloco e `set_fundo`
+      // pinta o começo: ordenar pelo ponto em que cada uma escreve deixa as
+      // duas conviverem no mesmo bloco sem uma invalidar o offset da outra.
+      const noFim = op.action === "add_cta" || op.action === "add_separador"
+      regionais.push({ op, pos: noFim ? regiao.end : regiao.start })
       continue
     }
-    if (op.action === "set_botao") {
+    if (op.action === "set_botao" || op.action === "set_raio") {
       const cta = ctaDe.get(op.cta)
       if (!cta) {
         skipped.push({ op, reason: "endereco_inexistente" })
@@ -427,6 +473,8 @@ export function applyOps(
   let gradientesPintados = 0
   let botoesRecoloridos = 0
   let botoesInseridos = 0
+  let separadoresInseridos = 0
+  let raiosUnificados = 0
   /** Ranges de botão — o conserto de painel abaixo não pode tocá-los. */
   const rangesDeBotao: Range[] = (opts.ctas ?? []).map((c) => c.range)
   /** Cores que as ops de região tiraram do documento nesta rodada. */
@@ -528,6 +576,64 @@ export function applyOps(
       }
       if (op.label && cta.label) substituidos.add(canonicalHex(cta.label))
       botoesRecoloridos++
+      applied++
+      continue
+    }
+
+    if (op.action === "set_raio") {
+      const cta = ctaDe.get(op.cta)
+      if (!cta) {
+        skipped.push({ op, reason: "endereco_inexistente" })
+        continue
+      }
+      // A janela vai ALÉM do elemento, para trás. O raio pode estar
+      // declarado no `<td>` que embrulha o `<a>` — `extrairCtas` já o lê do
+      // ancestral (`color-faixas.ts:523`) — e o `v:roundrect` do Outlook
+      // mora antes do range, fora dele. É a mesma janela de 600 que o
+      // `set_botao` usa para alcançar o par VML da cor.
+      const janela = { start: Math.max(0, cta.range.start - 600), end: cta.range.end }
+      const r = aplicarRaio(out, op.de, op.para, janela, cta.vml)
+      if (r.trocados === 0) {
+        skipped.push({ op, reason: "find_not_found" })
+        continue
+      }
+      out = r.html
+      raiosUnificados++
+      applied++
+      continue
+    }
+
+    if (op.action === "add_separador") {
+      const forma = formaPorId(op.formaId)
+      if (!forma) {
+        skipped.push({ op, reason: "forma_desconhecida" })
+        continue
+      }
+      const regiao = regioes.get(op.bloco)
+      if (!regiao) {
+        skipped.push({ op, reason: "endereco_inexistente" })
+        continue
+      }
+      const at = pontoDeInsercao(out, regiao)
+      if (at == null) {
+        skipped.push({ op, reason: "sem_ponto_de_insercao" })
+        continue
+      }
+      const linha = linhaDeSeparacao({
+        forma,
+        fundo: op.fundo,
+        tinta: op.tinta,
+        ...(op.src ? { src: op.src } : {}),
+      })
+      // Vazio = `render: "png"` sem imagem hospedada. Falhou o upload, a
+      // separação não entra: `<tr>` fantasma ocupa altura, quebra o ritmo
+      // que o plano decidiu e não desenha nada.
+      if (!linha) {
+        skipped.push({ op, reason: "sem_imagem" })
+        continue
+      }
+      out = out.slice(0, at) + linha + out.slice(at)
+      separadoresInseridos++
       applied++
       continue
     }
@@ -723,5 +829,7 @@ export function applyOps(
     gradientesPintados,
     botoesRecoloridos,
     botoesInseridos,
+    separadoresInseridos,
+    raiosUnificados,
   }
 }

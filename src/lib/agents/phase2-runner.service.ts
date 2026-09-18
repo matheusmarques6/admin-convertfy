@@ -182,6 +182,12 @@ import {
 import { resolveRenderedReference } from "./shared/rendered-reference"
 import { alvoDaOp, applyOps } from "./html/apply-patches"
 import { extrairCtas, extrairFaixas, tonsDeFundo } from "./html/color-faixas"
+import {
+  aplicaSeparacoes,
+  loadSeparadorMode,
+  serveCatalogo,
+} from "./html/color-separador-mode"
+import { resolverAssetsDeSeparacao } from "./html/separador-asset.service"
 import { blocosTokenizadosDoSlotMap, tokensDaLoja } from "./html/apply-identity-tokens"
 import { aplicarTokens } from "./html/identity-tokens"
 import { preservarBlocos } from "./html/blocos-tokenizados"
@@ -3906,6 +3912,9 @@ async function runFormattingChain(p: {
     const requisitosCtaPorBloco: Record<number, boolean | null> | null = decisaoParaCor
       ? Object.fromEntries(decisaoParaCor.posicoes.map((p) => [p.block_index, p.requisitos?.cta ?? null]))
       : null
+    // O gate da separação é lido ANTES das vars: em `off` o catálogo nem é
+    // servido, e o prompt fica byte a byte o de antes desta frente.
+    const separadorModo = await loadSeparadorMode(storeId)
     const vars = buildColorFormatVars(fmtCtx, inputHtml, {
       brand: ctx.brand,
       niche: (storeRaw.niche as string) || "",
@@ -3918,6 +3927,11 @@ async function runFormattingChain(p: {
       // usou e ela custava ~30% do input.
       inventarioDeCtas: inventarioCta,
       blocosExcluidos: tokenizados.indices,
+      // Passo 6 do guia: o ajuste por momento existia escrito e estava
+      // desligado por falta de dado. Os dois já estavam aqui.
+      flowType: ctx.flowType,
+      emailNumber: ctx.emailNumber,
+      separacao: serveCatalogo(separadorModo),
     })
     // Var exigida pelo schema que o builder não montou. Em produção isso só
     // virava log.warn — e foi assim que `color_surface`/`color_surface_strong`
@@ -3964,14 +3978,32 @@ async function runFormattingChain(p: {
               inventario: inventarioCta,
               requisitosCta: requisitosCtaPorBloco,
               roles: fmtCtx.roles ?? null,
+              // 18/09: a guarda do ritmo passou a ser o RESULTADO (quantos
+              // tons a peça fica tendo e de onde vêm) no lugar do teto de 2
+              // trocas. A lista é a MESMA que monta o `tons_json` do prompt
+              // — a régua que o código cobra tem de ser a que ele leu.
+              fundosAceitos: fmtCtx.roles
+                ? fundosLegitimos(fmtCtx.roles, ctx.brand ?? null)
+                : [],
             })
           : { ops: r.ops, descartes: [], ajustes: [] }
         // Em `shadow` o plano é decidido e GRAVADO, e nada de faixa ou botão
         // é aplicado: a aparência da peça sai como saía. É a única forma de
         // ler as decisões antes de deixá-las mexer em e-mail de cliente.
-        const opsParaAplicar = aplicaFaixasEBotoes(modo)
+        const opsDoRitmo = aplicaFaixasEBotoes(modo)
           ? traducao.ops
           : traducao.ops.filter((op) => op.action === "recolor" || op.action === "replace")
+        // A separação tem gate PRÓPRIO: em `shadow` o plano dela é decidido
+        // e gravado na run, e nada entra no documento.
+        const opsComSeparacao = aplicaSeparacoes(separadorModo)
+          ? opsDoRitmo
+          : opsDoRitmo.filter((op) => op.action !== "add_separador")
+        // O PNG é assado e hospedado AQUI, antes de aplicar: `planoParaOps`
+        // é puro, e a URL não pode ser inventada por quem não subiu o
+        // arquivo. Falhou o upload, a op fica sem `src` e o aplicador a
+        // descarta com `sem_imagem` — emenda seca, que é o estado de hoje.
+        const assets = await resolverAssetsDeSeparacao(opsComSeparacao)
+        const opsParaAplicar = assets.ops
         const applied = applyOps(inputHtml, opsParaAplicar, {
           allowHero: true,
           faixas,
@@ -4122,6 +4154,20 @@ async function runFormattingChain(p: {
               ctas_no_documento: ctas.length,
               botoes_recoloridos: applied.botoesRecoloridos,
               botoes_inseridos: applied.botoesInseridos,
+              // R8: quantos botões tiveram o canto alinhado ao raio da peça.
+              // Decidido por código, então `0` aqui significa "a peça já era
+              // coerente" — nunca "o agente não quis".
+              raios_unificados: applied.raiosUnificados,
+              // A separação entre seções. As três linhas dizem coisas
+              // diferentes e nenhuma substitui a outra: quantas ele DECIDIU,
+              // quantas ENTRARAM, e em que regime a peça rodou — `0`
+              // entradas com o modo `on` e decisões > 0 é o par forma×fundo
+              // errado ou um upload que falhou, e o motivo está nos
+              // descartes.
+              separacoes_decididas: r.plano?.separacoes?.length ?? 0,
+              separacoes_inseridas: applied.separadoresInseridos,
+              separador_modo: separadorModo,
+              ...(assets.falhas.length > 0 ? { separador_assets_falhos: assets.falhas } : {}),
               // Bloco sem botão é o que a regra da casa cobra. Medido no
               // documento DEPOIS de aplicar (faixas e botões reextraídos do
               // resultado, não os da entrada): é o número que diz se o

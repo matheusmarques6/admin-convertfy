@@ -9106,6 +9106,96 @@ duas perguntas da tela da loja aparecem, o desvio de contato sai marcado
 "em Sobrenome", configurar o destino da Tela 3 para a Tela 5 muda o rótulo
 e acende o aviso de tela inalcançável com o cartão em vermelho.
 
+## O agente de cor passa a compor a disposição (18/09, migration 20261160)
+
+Queixa: *"e para ele selecionar as cores e disposição das cores do email?"*.
+Medido na run `794b8ae1` (Innova Bay, 17/09) antes de mexer: das **29
+operações, 28 eram conformidade e UMA era disposição** — 16 trocas de valor,
+12 botões recoloridos, e **6 faixas decididas com 1 pintada**. Cinco das seis
+seções saíram brancas, e a única troca foi consertar `#000000`, que está
+fora da paleta. Três achados no output dele:
+
+1. Ele **declarou `superficie: #F2F2F2` no próprio `tokens`** e a usou 5
+   vezes para corrigir cinza DENTRO de bloco — **zero vezes** como fundo de
+   seção. Tinha com que separar products do corpo e não separou.
+2. Na faixa 5 ele citou a R6 (a última antes do rodapé contrasta com ele),
+   viu que `#FFFFFF` e `#FDFDFD` são o mesmo tom pela tolerância de 3%, e
+   escreveu **"aceitável"**. Era a assinatura do freio do prompt.
+3. As duas trocas de fundo saíram **sem transição** (K9 pede zero), e ele
+   registrou a mesma lacuna R4 duas vezes, pedindo o que não podia fazer.
+
+**O teto mudou de eixo: do ESFORÇO para o RESULTADO.** `TETO_DE_FAIXAS = 2`
+limitava quantas trocas ele faz — e das duas vagas uma ia para conformidade,
+sobrando UMA para compor o ritmo de seis seções. Contar trocas contém o
+plano ruim e o bom igualmente. Agora a guarda é `tonsDeFundo`
+(`color-faixas.ts`), que já existia, já era servida a ele no prompt e já era
+medida na telemetria e **não descartava nada**: teto de 3 tons e a lista de
+`estranhos`. Três regras que os testes travam: a conta é sobre o resultado
+**ACUMULADO** (medir cada candidata contra o documento original deixaria
+duas trocas passarem e a peça terminar com um tom a mais que qualquer uma
+previu); **só a troca que ACRESCENTA tom e estoura cai** (uma que reduz
+passa mesmo numa peça que já excede — ali ela é o conserto); e a procedência
+compara as LISTAS de estranhos, não o tamanho (uma troca pode tirar um e pôr
+outro). Sobra um teto de segurança pelo motivo certo: o número de faixas da
+peça. Simulado sobre o plano real: **3 ops, zero descartes** — com a régua
+antiga a terceira cairia.
+
+**O Passo 6 foi ligado.** `ctx.flowType`/`ctx.emailNumber` já existiam no
+runner e o guia tem o passo escrito ("welcome-1: base da marca, acento na
+oferta — não é momento de urgência"); faltava fiação em quatro pontos, e o
+quarto é o que faz falhar alto: `ColorFormatPromptVarsSchema` é FECHADO.
+Vazio quando o chamador não serve, e aí o prompt manda não deduzir. O número
+**zero não vira vazio** (`|| ""` o engoliria, e nenhum flow começa em 0 —
+por isso o defeito passaria).
+
+**A separação entre seções é dele agora** (gate `color_separador_mode`,
+nasce **`on`**; env `EMAIL_SEPARADOR_MODE` vence o banco). Catálogo fechado
+de 8 formas em `separador-catalogo.ts`, com o texto do prompt GERADO da
+mesma lista que o código valida. Os dois grupos não são intercambiáveis:
+`escondeEmenda: true` (onda, diagonal, arco, zigue) só serve onde o fundo
+TROCA — metade do desenho é cada faixa; `false` (filete, traço, pontos,
+losango) só onde o fundo é o MESMO e duas seções se encostam. O código
+recusa o par errado nos dois sentidos, e a régua de "troca" é `mesmoTom`, a
+mesma de `tonsDeFundo` (exportada por isso): `#FFFFFF`/`#FDFDFD` não é
+emenda. Teto de 3 por peça e nunca colada ao rodapé, onde lê como fim do
+e-mail.
+
+**A `<tr>` NÃO pode ter `<table>` dentro** — o runner conta `<table[\s>]`
+antes e depois e o step é fail-open: a conta errada descartaria *todo* o
+plano de cor, não só a separação. O filete é desenhado com três `<tr>`
+(respiro, 1px, respiro) e não vira imagem; o resto é PNG assado por
+`rasterizeSvgToPng` a 1200px (retina) e hospedado com dedupe por SHA no
+`BIBLIOTECA_ASSETS_BUCKET`. **Falhou o upload, a separação não entra**:
+`<tr>` fantasma ocupa altura, quebra o ritmo e não desenha nada. `alt=""`
+(é ornamento) e `bgcolor` da faixa de CIMA, porque imagem bloqueada é rotina
+em e-mail e aí a peça volta à emenda seca em vez de abrir uma tira branca.
+A ordem no array é invariante com teste: `add_separador` vem antes de
+`add_cta` porque as duas escrevem no mesmo ponto e quem aplica primeiro
+acaba embaixo — a separação marca o fim da seção, o botão é conteúdo dela.
+
+**Dois defeitos que só o RENDER pegou**, nenhum quebrando teste:
+
+- **Ornamento com tinta de baixo contraste some da tela.** Medido:
+  `#E3E3E3` sobre `#FFFFFF` dá **1,28:1** e o filete, o traço, os pontos e o
+  losango desaparecem — a separação existiria no HTML, custaria um PNG e não
+  apareceria para ninguém. `tintaDoOrnamento` (`separador-tinta.ts`) põe o
+  piso em **2,0:1** e corrige pela cascata `accent → button_bg → text →
+  button_text → bg`; as duas últimas entraram porque um teste meu passou
+  pelo motivo errado (o acento daquela loja é claro) e sem elas faixa escura
+  de marca com acento escuro ficaria sem ornamento possível.
+- **O botão deixado para trás.** O plano escureceu a faixa da oferta, não
+  disse nada do botão, e o botão verde sumiu no verde novo — o próprio
+  prompt chama isso de "o pior resultado possível deste passo", e até aqui
+  só o texto o impedia. Com duas trocas por peça o esquecimento atingia dois
+  botões; com o ritmo inteiro na mão dele, todos. Agora o código refaz o par
+  (`corDoBotao`) de todo botão em faixa que o plano trocou e que ele não
+  mencionou, e registra em `ajustes`.
+
+Telemetria na run: `separacoes_decididas`, `separacoes_inseridas`,
+`separador_modo` e `separador_assets_falhos` — as três primeiras dizem
+coisas diferentes e nenhuma substitui a outra (`0` inseridas com modo `on` e
+decisões > 0 é par errado ou upload falho, e o motivo está nos descartes).
+
 ---
 
 *Última atualização: Setembro 2026*
@@ -9639,6 +9729,93 @@ existia. Regerar o HTML é parte do build, não um passo opcional.
 De passagem, **o indicador de número da tela ("1 →") saiu do formulário
 conversacional** a pedido: `calcularProgresso` fica, porque é ele que
 alimenta a barra de progresso.
+
+## R8: o canto do botão passa a ser do código (17/09)
+
+Etapa 1 do plano de Cores & Botões. A R8 do guia manda "botões com o mesmo
+raio na peça inteira" ([VAULT] misturar raio alto com canto vivo "denuncia
+montagem") e a alçada respondia **"não existe op de raio; divergência é
+lacuna"** — o agente reportava e ninguém consertava. A peça de 17/09 saiu com
+`cta1` em 10px e `cta2` em 8px.
+
+**Decisão por CÓDIGO, não pelo modelo** (`html/raio-do-botao.ts`): escolher
+entre 8 e 10 não tem julgamento, e uma volta de LLM para esse empate é token
+gasto à toa — a mesma razão que tirou a cor do botão das mãos do modelo em
+`cor-do-botao.ts`. O alvo é a mediana de `radius_px`, que `escalaDoBotao` já
+calculava: é o raio que o botão NOVO herda desde 11/09, então a peça fica
+coerente entre o que estava lá e o que o agente acrescentou. A `medianaInferior`
+devolve sempre um valor que EXISTE na peça — `[8,10]` dá 8, nunca 9.
+
+**Onde ele se cala.** Peça que mistura pílula com canto vivo não é acabamento
+inconsistente: são duas decisões de forma, e a mediana escolheria uma no
+sorteio — 8px numa pílula devolve outro botão, não o mesmo melhor acabado. A
+régua é a DISTÂNCIA (`LIMITE_DE_ACABAMENTO = 8`, o dobro do raio padrão da
+casa): acima dela, lacuna registrada e nada tocado. Botão sem raio declarado
+fica fora da conta (não declarar ≠ declarar outro valor), e botão só do
+Outlook também, pelo mesmo motivo que ele não conta como CTA presente.
+
+**O `arcsize` do VML acompanha — e a medição mudou o desenho.** O Outlook não
+lê `border-radius`: lê a porcentagem do `v:roundrect` sobre a ALTURA dele.
+Mexer só no CSS deixaria o botão redondo em todo cliente menos um, em
+silêncio (a lição do par `bgcolor`/`background-color`). Mas a janela olha 600
+caracteres para trás — é o que alcança o `<td>` ancestral, de onde
+`extrairCtas` já lê o raio — e **na peça real convivem `arcsize` de 13%, 16% e
+50%**: recalcular um roundrect que não é deste botão viraria a pílula do
+vizinho num canto reto. Daí `tocarVml` vir de `cta.vml`: botão sem espelho VML
+não mexe em `arcsize` nenhum. O defeito não aparecia em teste — apareceu
+contando os `arcsize` do HTML gravado da run.
+
+O atalho de quatro cantos (`border-radius:8px 8px 0 0`) fica intacto: ele
+desenha um canto por vez, e trocar só o primeiro número — o único que o
+extrator lê — devolveria três cantos de um jeito e um de outro.
+
+**Sem teto**, ao contrário das faixas: isto é conformidade, não ritmo. Duas
+faixas repintadas mudam a leitura do e-mail; dois cantos alinhados só fazem os
+botões parecerem da mesma peça. Telemetria em `ritmo.raios_unificados` — `0`
+ali significa "a peça já era coerente", nunca "o agente não quis".
+
+## O freio do agente de cor sai do prompt (17/09)
+
+Etapa 2 do plano, e ela sobe **sozinha**: soltar a conservadoria e ligar o
+Passo 6 no mesmo deploy tornaria impossível atribuir uma regressão a um dos
+dois.
+
+Medido antes: **68,2% das faixas decididas saíam como `manter`** (45 de 66 em
+30 dias). Duas causas no texto, nenhuma no modelo.
+
+**A frase que recomendava não agir.** `FAIXAS_E_RITMO` dizia, com estas
+palavras: *"Mudar faixa é caro: no máximo 2 por peça. Não mudar nenhuma é
+resposta legítima e comum."* A segunda sentença foi lida como recomendação, e
+o teto virou cota a economizar. O `TETO_DE_FAIXAS = 2` **fica** — ele é do
+código e existe para um plano ruim não repintar o e-mail inteiro —, mas agora
+o texto diz que devolver as duas vagas intactas não é, por si, bom resultado.
+E **manter passou a exigir `porque`** como qualquer outra decisão: dizer qual
+regra o fundo atual já cumpre é mais caro que dizer "está bom".
+
+**A alçada era uma lista de proibições.** Ela abria com o que ele executa em
+seis linhas e gastava o dobro disso em "VOCÊ NÃO EXECUTA", item a item, com
+parágrafo próprio — de 20k chars de especificação, menos da metade era dele.
+Os títulos viraram **"O QUE É SEU — e ninguém decide no seu lugar"** e **"TEM
+OUTRO DONO"**, a segunda lista foi comprimida a uma linha por regra, e o
+fecho passou a dizer que **lacuna não substitui decisão**: o que está na
+primeira lista é para ser decidido mesmo quando a peça já parece aceitável —
+e principalmente aí, porque "aceitável" é o estado em que uma peça sem dono
+chega ao cliente.
+
+**O que NÃO saiu, de propósito:** as regras de outro dono continuam NOMEADAS
+(R1, R4, R7, R8, Passo 6). Apagá-las do texto seria o mesmo erro do `momento`
+e do `exige` pelo lado oposto — o modelo procura o que não recebeu, ou deduz.
+O Passo 6 segue na lista até a Etapa 3 servir o flow e o número do e-mail.
+
+O teste que fixava `/VOCÊ EXECUTA/` foi atualizado, não removido: a
+invariante que ele guarda (a alçada separa os dois grupos, e as regras alheias
+aparecem pelo nome) continua, com duas asserções novas para o que a mudança
+comprou.
+
+**Leitura pós-deploy**: 20 runs antes × 20 depois de `color_format`, com o
+alvo sendo a queda de `manter` **sem** estourar o teto — `ritmo.faixas_pintadas`
+acima de 2 é impossível por construção, então o sinal de excesso é
+`plano_descartes` com motivo de teto.
 
 ## Editor de formulários: três colunas, quatro abas (18/09)
 

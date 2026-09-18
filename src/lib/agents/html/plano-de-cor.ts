@@ -21,21 +21,38 @@
  */
 
 import type { FormatOp } from "./apply-patches"
-import type { Cta, Faixa } from "./color-faixas"
+import { type Cta, type Faixa, mesmoTom, TETO_DE_TONS, tonsDeFundo } from "./color-faixas"
+import { formaPorId } from "./separador-catalogo"
+import { tintaDoOrnamento } from "./separador-tinta"
 import { corDoBotao, type PapeisParaBotao } from "./cor-do-botao"
 import type { InventarioDeCta } from "./cta-inventario"
 import { escalaDoBotao } from "./escala-do-botao"
+import { unificarRaio } from "./raio-do-botao"
 import { canonicalHex, type ColorContext, isColorContext, isColorLiteral } from "./color-inventory"
 
 /**
- * Teto de faixas que uma peça pode ter repintadas.
+ * O teto do ritmo mudou de eixo (18/09): do ESFORÇO para o RESULTADO.
  *
- * No código, não só no prompt: mudar o ritmo é a decisão de maior alcance
- * deste agente, e um plano ruim sem teto repinta o e-mail inteiro. Duas
- * cobrem o que o guia pede (separar uma seção e fechar contra o rodapé); o
- * excedente vira registro, para a telemetria mostrar que ele quis mais.
+ * Era `TETO_DE_FAIXAS = 2` — no máximo duas faixas repintadas por peça.
+ * Medido na run `794b8ae1` (Innova Bay, 17/09), o custo disso: a peça tem
+ * SEIS seções, cinco delas saíram brancas, e a única troca foi
+ * conformidade (`#000000`, fora da paleta, virou o verde da marca). Das
+ * duas vagas, uma vai para conformidade e sobra UMA para compor o ritmo de
+ * seis seções — e compor é decidir todas.
+ *
+ * Contar trocas é limitar a coisa errada: contém o plano ruim e o bom
+ * igualmente. O que precisa de teto é o resultado — quantas cores
+ * distintas a peça acaba tendo e de onde elas vêm —, e essa régua já
+ * existia, já era servida a ele no prompt e já era medida na telemetria:
+ * `tonsDeFundo` (`color-faixas.ts`), teto de {@link TETO_DE_TONS} e a
+ * lista de `estranhos`. Só não descartava nada.
+ *
+ * Agora descarta, e a conta é feita sobre a peça como ela FICARIA depois
+ * das trocas já aceitas — as excedentes caem na ordem, com motivo. Sobra
+ * um teto de segurança no número de trocas, mas pelo motivo certo: o
+ * número de faixas da peça. Ele pode decidir todas, não mais que todas.
  */
-export const TETO_DE_FAIXAS = 2
+export const TETO_DE_FAIXAS_DE_SEGURANCA = (faixas: number) => Math.max(1, faixas)
 
 /**
  * Os verbos que uma decisão de faixa pode usar.
@@ -50,7 +67,7 @@ export const TETO_DE_FAIXAS = 2
  * O vocabulário fechado não DESCARTA a decisão — quem manda é o campo
  * `fundo`, que é dado. Verbo fora da lista vira registro em `ajustes`, e a
  * troca segue: perder uma troca boa por causa da palavra escolhida seria
- * caro, e o teto de 2 faixas já limita o estrago de um plano ruim.
+ * caro, e o teto de TONS já limita o estrago de um plano ruim.
  */
 export const DECISOES_DE_FAIXA = ["manter", "escurecer", "clarear", "recolorir"] as const
 export type VerboDeFaixa = (typeof DECISOES_DE_FAIXA)[number]
@@ -60,8 +77,8 @@ export type VerboDeFaixa = (typeof DECISOES_DE_FAIXA)[number]
  *
  * Caixa e pontuação final não podem decidir se uma faixa muda de cor:
  * `"Manter"` e `"manter."` são a mesma intenção que `"manter"`, e com a
- * comparação crua de antes as duas escapavam do veto, viravam `set_fundo`
- * para a cor que a faixa já tinha e gastavam uma das duas vagas do teto.
+ * comparação crua de antes as duas escapavam do veto e viravam `set_fundo`
+ * para a cor que a faixa já tinha — uma op que não muda um pixel.
  */
 export function verboDaFaixa(decisao: string | undefined): string {
   return (decisao ?? "").trim().toLowerCase().replace(/[.!;,\s]+$/, "")
@@ -115,6 +132,31 @@ export interface DecisaoDeValor {
   porque?: string
 }
 
+/**
+ * Quantas separações uma peça pode receber.
+ *
+ * Três é o que separa um ritmo de um padrão: acima disso a peça vira uma
+ * sequência de ornamentos e a separação deixa de dizer "aqui começa outro
+ * assunto" — passa a ser moldura, que é decoração.
+ */
+export const TETO_DE_SEPARACOES = 3
+
+/** Uma separação entre duas seções vizinhas. */
+export interface DecisaoDeSeparacao {
+  /** A `ordem` da faixa de CIMA. A separação entra no fim dela. */
+  depois_da_faixa: number
+  /** O `id` de uma forma do catálogo. */
+  forma: string
+  /**
+   * Só nas formas que NÃO escondem emenda: a cor do ornamento. Preferência,
+   * não decisão — o código confere o contraste contra o fundo e corrige.
+   * Nas de emenda o campo é ignorado: ali as duas cores são os fundos das
+   * faixas, e deixá-lo decidir uma delas desenharia um degrau falso.
+   */
+  tinta?: string | null
+  porque?: string
+}
+
 export interface PlanoDeCor {
   paleta_eixo?: string
   tokens?: Record<string, string>
@@ -122,6 +164,7 @@ export interface PlanoDeCor {
   botoes?: DecisaoDeBotao[]
   adicionar?: BotaoQueFalta[]
   valores?: DecisaoDeValor[]
+  separacoes?: DecisaoDeSeparacao[]
   rodape?: string
   lacunas?: string[]
 }
@@ -164,6 +207,21 @@ export interface ContextoDoPlano {
    * cor não é dele. Ausente → a cor pedida entra como veio (legado).
    */
   roles?: PapeisParaBotao | null
+  /**
+   * Os fundos que a peça pode usar: a paleta cadastrada da loja MAIS os
+   * papéis derivados dela por luminância (`bg`, `surface`, `surface_strong`).
+   *
+   * É a MESMA lista que `fundosLegitimos` monta para o `tons_json` do
+   * prompt — de propósito: a régua que o código cobra tem de ser a que o
+   * agente leu. Duas listas divergiriam no primeiro ajuste, e o sintoma
+   * seria uma troca que ele justificou pela paleta sendo descartada por
+   * não estar nela.
+   *
+   * Ausente ou vazia = a loja não tem paleta cadastrada. Aí nada é acusado
+   * de estranho (sem identidade não há de onde um fundo divergir) e só o
+   * teto de TONS continua valendo.
+   */
+  fundosAceitos?: readonly string[] | null
 }
 
 export interface AjusteDeCor {
@@ -263,6 +321,27 @@ export function planoParaOps(plano: PlanoDeCor, ctx: ContextoDoPlano): TraducaoD
   const escala = escalaDoBotao(ctx.ctas)
 
   // ── Faixas ───────────────────────────────────────────────────────────
+  //
+  // A conta do teto é sobre a peça como ela FICARIA: cada troca aceita
+  // atualiza este mapa, e a candidata seguinte é medida contra o resultado
+  // acumulado, não contra o documento original. Sem isto, duas trocas para
+  // tons diferentes passariam as duas medidas contra o estado inicial e a
+  // peça terminaria com um tom a mais do que qualquer uma delas previu.
+  const fundoCorrente = new Map<number, string | null>()
+  for (const f of ctx.faixas) fundoCorrente.set(f.ordem, f.fundo)
+  const aceitas = [...(ctx.fundosAceitos ?? [])]
+  const medir = (troca?: { ordem: number; fundo: string }) =>
+    tonsDeFundo(
+      ctx.faixas.map((f) => ({
+        ...f,
+        fundo:
+          troca && f.ordem === troca.ordem
+            ? troca.fundo
+            : (fundoCorrente.get(f.ordem) ?? f.fundo),
+      })),
+      aceitas,
+    )
+
   let pintadas = 0
   for (const d of plano.faixas ?? []) {
     const alvo = `faixa ${d.ordem}`
@@ -287,17 +366,45 @@ export function planoParaOps(plano: PlanoDeCor, ctx: ContextoDoPlano): TraducaoD
     }
     // A faixa já está na cor pedida.
     //
-    // Antes do teto, de propósito: uma op que não muda um pixel não pode
-    // consumir uma das DUAS vagas de `TETO_DE_FAIXAS` — a faixa seguinte,
-    // que muda de verdade, seria descartada por excesso. É o custo escondido
+    // Antes da conta de tons, de propósito: uma op que não muda um pixel
+    // também não muda a paleta da peça, e medi-la faria a candidata seguinte
+    // ser julgada contra um estado que ninguém alcançou. É o custo escondido
     // do verbo livre: qualquer decisão que não seja exatamente `manter`,
-    // ecoando o fundo atual em `fundo`, queimava uma vaga em silêncio.
+    // ecoando o fundo atual em `fundo`, virava troca em silêncio.
     if (faixa.fundo && isColorLiteral(faixa.fundo) && canonicalHex(faixa.fundo) === canonicalHex(d.fundo)) {
       descartes.push({ o_que: alvo, motivo: `já está em ${canonicalHex(d.fundo)}` })
       continue
     }
-    if (pintadas >= TETO_DE_FAIXAS) {
-      descartes.push({ o_que: alvo, motivo: `acima do teto de ${TETO_DE_FAIXAS} faixas por peça` })
+    // Teto de segurança, não de composição: plano malformado que repete a
+    // mesma `ordem` dezenas de vezes não vira dezenas de ops. Decidir todas
+    // as faixas da peça é o trabalho; decidir mais que todas é defeito.
+    if (pintadas >= TETO_DE_FAIXAS_DE_SEGURANCA(ctx.faixas.length)) {
+      descartes.push({ o_que: alvo, motivo: "mais trocas do que faixas na peça" })
+      continue
+    }
+    const antes = medir()
+    const depois = medir({ ordem: d.ordem, fundo: d.fundo })
+    // Só a troca que ACRESCENTA tom e estoura o teto cai. Uma que reduz ou
+    // mantém a contagem passa mesmo numa peça que já excede — ali ela é o
+    // conserto, e descartá-la trancaria a peça no estado ruim.
+    if (depois.excede && depois.tons.length > antes.tons.length) {
+      descartes.push({
+        o_que: alvo,
+        motivo: `acima de ${TETO_DE_TONS} tons de fundo na peça (R2) — ficariam ${depois.tons.length}`,
+      })
+      continue
+    }
+    // Procedência: a troca não pode INTRODUZIR cor que não é da paleta nem
+    // derivada dela. Comparar as listas em vez do tamanho porque uma troca
+    // pode tirar um estranho e pôr outro — o tamanho não mudaria e a cor
+    // nova entraria calada. Com `aceitas` vazia isto nunca dispara: sem
+    // identidade cadastrada, nenhum fundo é estranho.
+    const introduzidos = depois.estranhos.filter((h) => !antes.estranhos.includes(h))
+    if (introduzidos.length > 0) {
+      descartes.push({
+        o_que: alvo,
+        motivo: `${introduzidos.join(", ")} não é da paleta da loja nem papel derivado dela (K1)`,
+      })
       continue
     }
     if (!(DECISOES_DE_FAIXA as readonly string[]).includes(verbo)) {
@@ -310,6 +417,7 @@ export function planoParaOps(plano: PlanoDeCor, ctx: ContextoDoPlano): TraducaoD
     }
     ops.push({ action: "set_fundo", bloco: faixa.bloco, para: d.fundo })
     fundoDecidido.set(faixa.bloco, d.fundo)
+    fundoCorrente.set(d.ordem, d.fundo)
     pintadas++
   }
 
@@ -318,10 +426,9 @@ export function planoParaOps(plano: PlanoDeCor, ctx: ContextoDoPlano): TraducaoD
   // Laço próprio, e não um ramo do de cima: `decisao: "manter"` e a ausência
   // de `fundo` fazem aquele pular a faixa, e "mantenho a cor sólida e
   // repinto o gradiente" é uma decisão legítima — é justamente a da peça que
-  // originou isto. Fora do `TETO_DE_FAIXAS` pelo mesmo motivo: o teto limita
-  // quantas faixas mudam de COR no ritmo; repintar o gradiente de uma faixa
-  // que já está na cor da loja não muda ritmo nenhum, conforma o que já foi
-  // decidido.
+  // originou isto. Fora da conta de tons pelo mesmo motivo: repintar o
+  // gradiente de uma faixa que já está na cor da loja não acrescenta tom ao
+  // ritmo, conforma o que já foi decidido.
   for (const d of plano.faixas ?? []) {
     if (!d.gradiente) continue
     const alvo = `gradiente da faixa ${d.ordem}`
@@ -368,6 +475,91 @@ export function planoParaOps(plano: PlanoDeCor, ctx: ContextoDoPlano): TraducaoD
     return fundoDecidido.get(bloco) ?? f.fundo
   }
 
+  // ── Separação entre seções ───────────────────────────────────────────
+  //
+  // ANTES dos botões, de propósito, e a ordem no array é o que decide o
+  // resultado: `add_separador` e `add_cta` escrevem no MESMO ponto (o fim
+  // do bloco), e as regionais são aplicadas de trás para frente. Quem é
+  // aplicado primeiro acaba embaixo. A separação marca o FIM da seção e o
+  // botão é conteúdo dela — logo a separação entra primeiro, e o botão,
+  // inserido depois no mesmo ponto, fica acima dela.
+  let separacoes = 0
+  for (const d of plano.separacoes ?? []) {
+    const alvo = `separação depois da faixa ${d.depois_da_faixa}`
+    const forma = formaPorId(d.forma)
+    if (!forma) {
+      descartes.push({ o_que: alvo, motivo: `forma "${d.forma}" não existe no catálogo` })
+      continue
+    }
+    const cima = porOrdem.get(d.depois_da_faixa)
+    const baixo = porOrdem.get(d.depois_da_faixa + 1)
+    if (!cima) {
+      descartes.push({ o_que: alvo, motivo: "a faixa não existe no documento" })
+      continue
+    }
+    if (!baixo) {
+      descartes.push({ o_que: alvo, motivo: "é a última faixa da peça — não há o que separar" })
+      continue
+    }
+    // O rodapé já é um fim visual. Uma separação colada nele lê como fim do
+    // e-mail, e o que vem depois vira um segundo e-mail.
+    if (baixo.tipo === "footer") {
+      descartes.push({ o_que: alvo, motivo: "imediatamente antes do rodapé — ali a separação lê como fim do e-mail" })
+      continue
+    }
+    // As cores saem da DECISÃO deste plano, não do documento relido: ele
+    // ainda não recebeu as ops de faixa, e ler dali desenharia a separação
+    // com as cores que a peça está deixando de ter.
+    const fundoCima = fundoDaFaixaDe(cima.bloco)
+    const fundoBaixo = fundoDaFaixaDe(baixo.bloco)
+    if (!fundoCima || !fundoBaixo) {
+      descartes.push({ o_que: alvo, motivo: "uma das faixas não tem fundo sólido (foto ou canvas)" })
+      continue
+    }
+    // A régua de tom é a MESMA de `tonsDeFundo`: `#FFFFFF` e `#FDFDFD` são
+    // a diferença que não existe, e uma forma de emenda entre eles
+    // desenharia um degrau invisível ao custo de um PNG.
+    const troca = !mesmoTom(fundoCima, fundoBaixo)
+    if (forma.escondeEmenda !== troca) {
+      descartes.push({
+        o_que: alvo,
+        motivo: troca
+          ? `"${forma.id}" é de marcar seção e o fundo TROCA aqui (${canonicalHex(fundoCima)} → ${canonicalHex(fundoBaixo)}) — use uma forma que esconda a emenda`
+          : `"${forma.id}" esconde emenda e o fundo é o mesmo nos dois lados (${canonicalHex(fundoCima)}) — ela desenharia um degrau que não existe`,
+      })
+      continue
+    }
+    if (separacoes >= TETO_DE_SEPARACOES) {
+      descartes.push({ o_que: alvo, motivo: `acima do teto de ${TETO_DE_SEPARACOES} separações por peça` })
+      continue
+    }
+    let tinta = fundoBaixo
+    if (!forma.escondeEmenda) {
+      const escolha = tintaDoOrnamento(fundoCima, d.tinta, ctx.roles)
+      if (!escolha.tinta) {
+        descartes.push({ o_que: alvo, motivo: escolha.motivo ?? "sem tinta com contraste suficiente" })
+        continue
+      }
+      if (escolha.trocada) {
+        ajustes.push({
+          o_que: alvo,
+          de: d.tinta ?? "?",
+          para: escolha.tinta,
+          motivo: escolha.motivo ?? "contraste",
+        })
+      }
+      tinta = escolha.tinta
+    }
+    ops.push({
+      action: "add_separador",
+      bloco: cima.bloco,
+      formaId: forma.id,
+      fundo: canonicalHex(fundoCima),
+      tinta: canonicalHex(tinta),
+    })
+    separacoes++
+  }
+
   // ── Botões que existem ───────────────────────────────────────────────
   for (const d of plano.botoes ?? []) {
     if (!idsDeCta.has(d.id)) {
@@ -405,6 +597,42 @@ export function planoParaOps(plano: PlanoDeCor, ctx: ContextoDoPlano): TraducaoD
       ...(fundo ? { fundo } : {}),
       ...(label ? { label } : {}),
     })
+  }
+
+  // ── O botão deixado para trás ────────────────────────────────────────
+  //
+  // Achado RENDERIZANDO a peça de exemplo: o plano escureceu a faixa da
+  // oferta e não disse nada sobre o botão dela. O botão continuou verde
+  // sobre o verde novo e SUMIU — o próprio prompt chama isso de "o pior
+  // resultado possível deste passo", e até aqui só o texto o impedia.
+  //
+  // Isto não é novo, mas ficou caro no dia em que o teto de trocas saiu: com
+  // duas faixas por peça o esquecimento atingia no máximo dois botões; com
+  // o ritmo inteiro na mão dele, atinge todos. A cor é aritmética contra o
+  // fundo real, e aritmética é do código — o mesmo desenho de `corDoBotao`
+  // para o botão que ele DECIDIU.
+  if (ctx.roles) {
+    const decididos = new Set((plano.botoes ?? []).map((d) => d.id))
+    for (const cta of ctx.ctas) {
+      if (decididos.has(cta.id) || cta.bloco == null) continue
+      if (!fundoDecidido.has(cta.bloco)) continue
+      const fundoNovo = fundoDaFaixaDe(cta.bloco)
+      if (!fundoNovo) continue
+      const cor = corDoBotao(fundoNovo, ctx.roles, { fundo: cta.fundo, texto: cta.label })
+      if (!cor.ajustado) continue
+      ops.push({
+        action: "set_botao",
+        cta: cta.id,
+        ...(cor.fundo ? { fundo: cor.fundo } : {}),
+        ...(cor.texto ? { label: cor.texto } : {}),
+      })
+      ajustes.push({
+        o_que: `botão ${cta.id}`,
+        de: cta.fundo ?? "?",
+        para: cor.fundo ?? "?",
+        motivo: `a faixa dele passou a ${canonicalHex(fundoNovo)} e o plano não decidiu o botão — o código refez o par`,
+      })
+    }
   }
 
   // ── Botões que faltam ────────────────────────────────────────────────
@@ -503,6 +731,23 @@ export function planoParaOps(plano: PlanoDeCor, ctx: ContextoDoPlano): TraducaoD
     // sairiam empilhadas.
     blocosComCta.add(d.bloco)
   }
+
+  // ── Raio: o canto é um só na peça (R8) ───────────────────────────────
+  //
+  // Por CÓDIGO, como a cor do botão: escolher entre 8px e 10px não tem
+  // julgamento, e o guia já manda ("botões com o mesmo raio na peça
+  // inteira"). Até 17/09 a alçada respondia "não existe op de raio,
+  // divergência é lacuna" — e ninguém consertava; a peça daquele dia saiu
+  // com `cta1` em 10px e `cta2` em 8px.
+  //
+  // Sem teto: isto é conformidade, não ritmo. Duas faixas repintadas mudam
+  // a leitura do e-mail; dois cantos alinhados não mudam nada além de
+  // parecerem da mesma peça.
+  const raio = unificarRaio(ctx.ctas)
+  for (const t of raio.trocas) {
+    ops.push({ action: "set_raio", cta: t.id, de: t.de, para: t.para })
+  }
+  if (raio.lacuna) descartes.push({ o_que: "raio dos botões", motivo: raio.lacuna })
 
   // ── Valores (a conformidade de identidade de sempre) ─────────────────
   for (const d of plano.valores ?? []) {
@@ -647,6 +892,21 @@ export function parsePlanoDeCor(raw: string): PlanoDeCor {
         de,
         para,
         ...(str(x.onde) ? { onde: str(x.onde) } : {}),
+        ...(str(x.porque) ? { porque: str(x.porque) } : {}),
+      }
+    }),
+    // Sem esta linha o agente podia devolver `separacoes` e o parser as
+    // descartaria em silêncio: a decisão existiria no output da run, a
+    // telemetria a mostraria, e nenhuma op sairia dela. É exatamente o modo
+    // de falha que o `gradiente` já custou aqui.
+    separacoes: lista<DecisaoDeSeparacao>(o.separacoes, (x) => {
+      const depois = Number(x.depois_da_faixa ?? x.depoisDaFaixa)
+      const forma = str(x.forma)
+      if (!Number.isInteger(depois) || !forma) return null
+      return {
+        depois_da_faixa: depois,
+        forma,
+        ...(str(x.tinta) ? { tinta: str(x.tinta) } : {}),
         ...(str(x.porque) ? { porque: str(x.porque) } : {}),
       }
     }),
