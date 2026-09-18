@@ -10238,3 +10238,63 @@ respondido também não serve**: a tentativa disso devolvia `null` no
 caminho completo, porque pergunta opcional não precisa de resposta para
 o salto acontecer — e uma guarda que devolve `null` no caso normal é uma
 guarda inerte, que é como ela deixaria de valer alguma coisa.
+
+## O cron da agenda nunca rodou uma vez (18/09, migrations 20261171-72)
+
+Auditoria do funil `/forms/aplicacao`, que agenda a call na NOSSA agenda
+sincronizada com o Google. Medido antes de mexer em código:
+
+```
+user_google_tokens (1 linha, org)
+  expires_at : 2026-09-15 18:09  ← vencido há 2 dias e 17h
+  updated_at : 2026-09-15 17:09  ← a linha nunca mais foi escrita
+  sync_error : null · is_active : true
+meetings: 123 com google_event_id, TODAS com updated_at idêntico ao
+          microssegundo (15/09 17:09:52.240359)
+cron_locks: sync_reports, campaign_suggestions_cycle, refresh_* …
+            e NENHUM google_calendar_sync
+```
+
+**`acquire_sync_lock` só fazia `UPDATE cron_locks WHERE lock_name = …` —
+nunca inseria.** Sem linha semeada em migration, o UPDATE toca 0 linhas,
+a função devolve `false`, e o cron lê esse `false` como "outra execução
+está rodando": responde `{skipped: true, reason: "lock_active"}` e
+**nunca roda**. O `/api/cron/google-calendar-sync` está agendado desde
+sempre (`17 * * * *`) e jamais executou uma linha de trabalho. Tudo o
+que foi medido é consequência disso: as 123 reuniões com o mesmo carimbo
+são a importação do CALLBACK do OAuth em 15/09 (único caminho fora do
+cron); o token venceu porque o refresh só acontece dentro do sync; e o
+watch de push nunca foi registrado porque `renewExpiringWatches` vive na
+Fase 4. `sync_error` é null porque nada falhou — nada rodou.
+
+**E o sinal foi apagado de propósito**: o "Lock active, skipping
+execution" é `log.info`, rebaixado de `warn` num commit anterior para não
+pintar âmbar no painel da Vercel (o comentário no código conta a
+decisão). A regra que sobra: *rebaixar o log de um caminho que também
+significa falha apaga a falha junto* — se `false` tem duas causas
+("alguém está rodando" e "o lock não existe"), o log não pode tratá-las
+como a mesma.
+
+A irmã `acquire_cron_lock` (refresh do dashboard) **já inseria** — é por
+isso que os `refresh_*` existem sem seed. `acquire_sync_lock` era a
+exceção que dependia de alguém lembrar do seed. Agora ela semeia com
+`ON CONFLICT DO NOTHING`, e a classe fecha por construção: cron novo que
+use este lock funciona sem migration de seed. Semântica inalterada para
+quem já tem linha — provado em transação com ROLLBACK: lock inexistente
+`1º pedido = true`, `2º concorrente = false`, `após soltar = true`.
+
+**O conserto é 100% no banco e vale sem deploy** (o código do cron não
+mudou). Na primeira rodada seguinte o `getValidAccessToken` renova o
+token vencido; se o refresh for recusado, o próprio código marca
+`is_active = false` + `sync_error`, que o card de Integrações mostra.
+
+**Impacto no funil**: `slotsDisponiveis` consulta o `freeBusy` ao vivo,
+então a disponibilidade oferecida ao lead vinha degradada para
+`fonte: "somente_banco"` — a tela já declarava isso, e é a degradação
+prevista. O que não voltava era o RSVP e o que muda do lado do Google.
+
+Junto foi aplicada a 20261171 (`selected_calendar_id`, `auto_meet`), o
+caso inverso da varredura de colunas: a tela de configuração escrevia nas
+duas e o conserto era criá-las. O 42703 delas derrubava o select que
+carrega `calendar_sync_token`, então mesmo com o cron vivo toda rodada
+faria varredura completa em vez do delta.

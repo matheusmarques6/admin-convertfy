@@ -45,13 +45,14 @@ const NAO_EXISTEM: Record<string, string[]> = {
   store_revenue_summary: ["total_campaigns", "total_flows"],
   client_stores: ["plan", "mrr_value"],
   operational_pipeline_columns: ["responsible_role", "sla_days"],
-  // FORA da lista de propósito: `user_google_tokens.selected_calendar_id`
-  // e `auto_meet` também não existem, mas ali o defeito é o inverso — a
-  // tela de configuração do Google Calendar (GET/PUT de
-  // `/api/integrations/google/calendar/settings`) escreve nas duas, e o
-  // sync as lê com fail-open. O conserto é a migration que as cria, não
-  // arrancar a funcionalidade; até ela rodar, o calendário é sempre o
-  // "primary" com Meet ligado. Ver docs/forms/funil-aplicacao.md.
+  // `user_google_tokens.selected_calendar_id` e `auto_meet` eram o caso
+  // INVERSO — a tela de configuração do Google Calendar escrevia nas duas
+  // e o conserto era criá-las, não arrancar a funcionalidade. Aplicado em
+  // 18/09 (migration 20261171), então elas saem desta lista: o defeito que
+  // sobrevivia era o select do sync incremental, que pede
+  // `calendar_sync_token` JUNTO de `selected_calendar_id` e voltava `null`
+  // inteiro — o token gravado nunca era lido e cada rodada do cron varria a
+  // agenda completa em vez do delta.
 }
 
 function arquivos(dir: string, achados: string[] = []): string[] {

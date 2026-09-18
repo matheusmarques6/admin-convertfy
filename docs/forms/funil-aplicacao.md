@@ -381,21 +381,18 @@ Todas corrigidas, e o teste de contrato
 (`src/lib/crm/colunas-inexistentes.test.ts`) passou a cobrir cada uma —
 ele já existia para `deals.org_id` e agora é a régua da classe inteira.
 
-**Duas ficaram de fora, com o motivo:**
+**Uma foi corrigida criando a coluna, não arrancando o código**
+(migration 20261171, aplicada em 18/09):
+`user_google_tokens.selected_calendar_id` e `auto_meet`. A tela de
+configuração do Google Calendar **escreve** nas duas, então o conserto
+era criá-las. O que o 42703 escondia era maior que o PUT daquela tela: o
+select do sync incremental pede `calendar_sync_token` **junto** de
+`selected_calendar_id`, e o erro derrubava o select inteiro — o sync
+token gravado nunca era lido e cada rodada varreria a agenda completa em
+vez do delta. Os defaults (`NULL` → `"primary"`, `true`) reproduzem o
+fallback que o código já aplicava, então nada mudou de comportamento.
 
-- `user_google_tokens.selected_calendar_id` e `auto_meet` também não
-  existem, mas ali o defeito é o inverso: a tela de configuração do
-  Google Calendar **escreve** nas duas. Arrancar o código mataria a
-  funcionalidade; o conserto é a migration que as cria. Enquanto ela não
-  roda, o sync usa `primary` com Meet ligado (o fallback já previsto no
-  código) e o PUT daquela tela falha.
-
-  ```sql
-  alter table public.user_google_tokens
-    add column if not exists selected_calendar_id text,
-    add column if not exists auto_meet boolean not null default true;
-  -- rollback: drop column selected_calendar_id, auto_meet;
-  ```
+**E uma ficou de fora, com o motivo:**
 
 - `client_onboarding_steps` (`phase`, `org_id`, `task_id`,
   `is_required`, `depends_on_step_ids`) e `client_onboardings.org_id`,
