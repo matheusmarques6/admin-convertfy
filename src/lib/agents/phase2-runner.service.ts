@@ -4158,6 +4158,18 @@ async function runFormattingChain(p: {
               // Decidido por código, então `0` aqui significa "a peça já era
               // coerente" — nunca "o agente não quis".
               raios_unificados: applied.raiosUnificados,
+              // A escala com que um botão NOVO nasceria nesta peça, e o
+              // degrau que a respondeu (`secao` é o melhor dado). Sem isto,
+              // botão inserido pequeno demais só aparecia relendo o HTML.
+              ...(traducao.escala
+                ? {
+                    escala_do_botao: {
+                      font_size_px: traducao.escala.fontSizePx,
+                      origem: traducao.escala.origem,
+                      base: traducao.escala.base,
+                    },
+                  }
+                : {}),
               // A separação entre seções. As três linhas dizem coisas
               // diferentes e nenhuma substitui a outra: quantas ele DECIDIU,
               // quantas ENTRARAM, e em que regime a peça rodou — `0`

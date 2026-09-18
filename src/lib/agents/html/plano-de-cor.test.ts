@@ -318,7 +318,7 @@ describe("planoParaOps — botões existentes e valores", () => {
   })
 
   it("plano vazio gera zero ops — é decisão legítima", () => {
-    expect(planoParaOps({}, CTX)).toEqual({ ops: [], descartes: [], ajustes: [] })
+    expect(planoParaOps({}, CTX)).toMatchObject({ ops: [], descartes: [], ajustes: [] })
   })
 })
 
@@ -846,5 +846,72 @@ describe("planoParaOps — o botão deixado para trás", () => {
     const { roles: _roles, ...semPapeis } = ctx
     const r = planoParaOps({ faixas: [{ ordem: 2, decisao: "escurecer", fundo: "#034326" }] }, semPapeis)
     expect(r.ops.filter((o) => o.action === "set_botao")).toEqual([])
+  })
+})
+
+describe("botão vazado — o par é indivisível", () => {
+  const IB = {
+    button_bg: "#034326",
+    button_text: "#FFFFFF",
+    bg: "#FFFFFF",
+    text: "#1F1F1F",
+    surface: "#F2F2F2",
+    accent: "#07A55D",
+  }
+  // O rodapé real da Innova Bay: menu de links vazados, 18px, sobre #FDFDFD.
+  const ctxRodape: ContextoDoPlano = {
+    faixas: [faixa({ ordem: 1, bloco: 0 }), faixa({ ordem: 6, bloco: 5, tipo: "footer", fundo: "#FDFDFD" })],
+    ctas: [
+      cta({ id: "cta7", bloco: 5, faixa: 6, texto: "Energy", fundo: null, label: "#000000", tipo: "vazado", contraste: null, largura_px: 236, font_size_px: 18 }),
+    ],
+    incentivo: { existe: true, percentual: 10, codigo: "WELCOME10" },
+    urlLoja: "https://loja.com",
+    roles: IB,
+  }
+
+  // 17/09: o agente pediu fundo verde + label branco para os seis links do
+  // menu; o aplicador só troca fundo onde já existe um, então entrou só o
+  // label — branco sobre #FDFDFD, 1,01:1, invisível.
+  it("o fundo pedido é descartado com motivo, e a op sai só com label", () => {
+    const r = planoParaOps(
+      { botoes: [{ id: "cta7", fundo: "#034326", label: "#FFFFFF" }] },
+      ctxRodape,
+    )
+    expect(r.ops).toHaveLength(1)
+    expect(r.ops[0]).toEqual({ action: "set_botao", cta: "cta7", label: "#1F1F1F" })
+    expect(r.descartes.map((d) => d.o_que)).toContain("fundo do botão cta7")
+    expect(r.descartes[0].motivo).toContain("hierarquia")
+  })
+
+  it("o label branco que o agente pediu não sobrevive à régua", () => {
+    const r = planoParaOps({ botoes: [{ id: "cta7", label: "#FFFFFF" }] }, ctxRodape)
+    expect(r.ops[0]).toMatchObject({ label: "#1F1F1F" })
+    expect(r.ajustes[0].o_que).toBe("botão cta7 (vazado)")
+  })
+
+  it("label que já lê sobre a faixa passa intacto", () => {
+    const r = planoParaOps({ botoes: [{ id: "cta7", label: "#000000" }] }, ctxRodape)
+    expect(r.ops[0]).toEqual({ action: "set_botao", cta: "cta7", label: "#000000" })
+    expect(r.ajustes).toHaveLength(0)
+  })
+
+  // O guard do "botão deixado para trás", pelo caminho do vazado: ele
+  // chamava `corDoBotao` e recebia um par com fundo que o aplicador não
+  // aplica — o mesmo meio-par, por outra porta.
+  it("faixa que escureceu leva o label do vazado junto", () => {
+    const r = planoParaOps(
+      { faixas: [{ ordem: 6, fundo: "#034326", decisao: "escurecer", porque: "R6" }] },
+      ctxRodape,
+    )
+    const doBotao = r.ops.filter((o) => o.action === "set_botao")
+    expect(doBotao).toEqual([{ action: "set_botao", cta: "cta7", label: "#FFFFFF" }])
+  })
+
+  it("preenchido segue recebendo o par inteiro", () => {
+    const r = planoParaOps(
+      { botoes: [{ id: "cta1", fundo: "#FFFFFF", label: "#FFFFFF" }] },
+      { ...CTX, roles: IB },
+    )
+    expect(r.ops[0]).toMatchObject({ action: "set_botao", fundo: expect.any(String), label: expect.any(String) })
   })
 })

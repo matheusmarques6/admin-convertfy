@@ -24,9 +24,9 @@ import type { FormatOp } from "./apply-patches"
 import { type Cta, type Faixa, mesmoTom, TETO_DE_TONS, tonsDeFundo } from "./color-faixas"
 import { formaPorId } from "./separador-catalogo"
 import { tintaDoOrnamento } from "./separador-tinta"
-import { corDoBotao, type PapeisParaBotao } from "./cor-do-botao"
+import { corDoBotao, corDoLabelVazado, type PapeisParaBotao } from "./cor-do-botao"
 import type { InventarioDeCta } from "./cta-inventario"
-import { escalaDoBotao } from "./escala-do-botao"
+import { escalaDoBotao, type EscalaDoBotao } from "./escala-do-botao"
 import { unificarRaio } from "./raio-do-botao"
 import { canonicalHex, type ColorContext, isColorContext, isColorLiteral } from "./color-inventory"
 
@@ -242,6 +242,18 @@ export interface TraducaoDoPlano {
   descartes: Descarte[]
   /** Cores de botão que o código trocou (Passo 14). Vazio sem `roles`. */
   ajustes: AjusteDeCor[]
+  /**
+   * A escala medida para o botão NOVO — e de onde ela saiu.
+   *
+   * Sobe na telemetria porque, até 18/09, não havia como saber que ela tinha
+   * saído errada sem reler o HTML: a mediana incluía os botões de card de
+   * produto e o botão inserido nascia com 20px numa peça cujos botões de
+   * seção rodam em 22–32.
+   *
+   * Opcional porque o caminho legado (`{"ops":[...]}` cru, sem plano) não
+   * passa por aqui e não tem o que medir.
+   */
+  escala?: EscalaDoBotao
 }
 
 const OFERTA_NO_LABEL =
@@ -566,16 +578,53 @@ export function planoParaOps(plano: PlanoDeCor, ctx: ContextoDoPlano): TraducaoD
       descartes.push({ o_que: `botão ${d.id}`, motivo: "não existe no documento" })
       continue
     }
+    const cta = ctaPorId.get(d.id)
     let fundo = d.fundo && isColorLiteral(d.fundo) ? d.fundo : undefined
     let label = d.label && isColorLiteral(d.label) ? d.label : undefined
     if (!fundo && !label) {
       descartes.push({ o_que: `botão ${d.id}`, motivo: "sem cor válida para aplicar" })
       continue
     }
+    // O botão VAZADO não tem fundo próprio, e o aplicador só troca fundo
+    // onde já existe um (`apply-patches`, `if (op.fundo && cta.fundo)`).
+    // Mandar `fundo` num vazado aplica MEIA op — o label muda, o fundo não
+    // — e foi assim que os seis links do menu do rodapé saíram brancos
+    // sobre branco em 17/09. Converter vazado em preenchido é decisão de
+    // HIERARQUIA (o guia: "secundário é vazado, principal é preenchido"),
+    // não de cor, e quem a toma é a variante.
+    if (cta?.tipo === "vazado") {
+      if (fundo) {
+        descartes.push({
+          o_que: `fundo do botão ${d.id}`,
+          motivo:
+            "o botão é vazado — não existe fundo no documento para trocar; converter vazado em preenchido é decisão de hierarquia, não de cor",
+        })
+        fundo = undefined
+      }
+      if (ctx.roles) {
+        const cor = corDoLabelVazado(fundoDaFaixaDe(cta.bloco), ctx.roles, {
+          texto: label ?? cta.label ?? null,
+        })
+        if (cor.ajustado) {
+          ajustes.push({
+            o_que: `botão ${d.id} (vazado)`,
+            de: label ?? cta.label ?? "?",
+            para: cor.texto,
+            motivo: cor.motivo ?? "ajuste de contraste contra a faixa",
+          })
+        }
+        label = cor.texto
+      }
+      if (!label) {
+        descartes.push({ o_que: `botão ${d.id}`, motivo: "vazado sem cor de label para aplicar" })
+        continue
+      }
+      ops.push({ action: "set_botao", cta: d.id, label })
+      continue
+    }
     // Passo 14: a cor é conferida por código contra o fundo real da faixa.
     // O agente diz "este botão inverte"; o par que garante AA é do código.
     if (ctx.roles) {
-      const cta = ctaPorId.get(d.id)
       const cor = corDoBotao(fundoDaFaixaDe(cta?.bloco ?? null), ctx.roles, {
         fundo: fundo ?? cta?.fundo ?? null,
         texto: label ?? cta?.label ?? null,
@@ -618,6 +667,22 @@ export function planoParaOps(plano: PlanoDeCor, ctx: ContextoDoPlano): TraducaoD
       if (!fundoDecidido.has(cta.bloco)) continue
       const fundoNovo = fundoDaFaixaDe(cta.bloco)
       if (!fundoNovo) continue
+      if (cta.tipo === "vazado") {
+        // Vazado não tem fundo próprio: quando a FAIXA dele muda, o que
+        // precisa acompanhar é o LABEL. Passar por `corDoBotao` devolveria
+        // um par com fundo que o aplicador não aplica — o mesmo meio-par
+        // que apagou o menu do rodapé, por outro caminho.
+        const cor = corDoLabelVazado(fundoNovo, ctx.roles, { texto: cta.label })
+        if (!cor.ajustado) continue
+        ops.push({ action: "set_botao", cta: cta.id, label: cor.texto })
+        ajustes.push({
+          o_que: `botão ${cta.id} (vazado)`,
+          de: cta.label ?? "?",
+          para: cor.texto,
+          motivo: `a faixa dele passou a ${canonicalHex(fundoNovo)} e o plano não decidiu o botão — o código refez o label`,
+        })
+        continue
+      }
       const cor = corDoBotao(fundoNovo, ctx.roles, { fundo: cta.fundo, texto: cta.label })
       if (!cor.ajustado) continue
       ops.push({
@@ -786,7 +851,7 @@ export function planoParaOps(plano: PlanoDeCor, ctx: ContextoDoPlano): TraducaoD
     })
   }
 
-  return { ops, descartes, ajustes }
+  return { ops, descartes, ajustes, escala }
 }
 
 export class PlanoParseError extends Error {

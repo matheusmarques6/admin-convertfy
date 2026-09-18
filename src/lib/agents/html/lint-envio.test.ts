@@ -115,6 +115,29 @@ describe("lintEnvio — regras isoladas", () => {
     expect(c?.evidencia).toContain("#FFFFFF sobre #EEEEEE")
   })
 
+  it("o caso real: link VAZADO branco sobre o rodapé quase-branco bloqueia", () => {
+    // Innova Bay, 17/09. O menu do rodapé é feito de links vazados
+    // (contorno, sem fundo) e os seis saíram `color:#FFFFFF` sobre
+    // `#FDFDFD` — 1,01:1. `extrairCtas` devolve `contraste: null` no vazado
+    // de propósito (não inventa o fundo que o botão não declara), e a régua
+    // olhava só para `preenchido`: o único check capaz de pegar texto
+    // invisível via metade dos botões.
+    const doc = `<table width="600"><tr><td bgcolor="#FDFDFD" style="background-color:#FDFDFD;width:600px">
+      <table><tr><td style="border:2px solid #034326"><a href="https://x" style="display:block;color:#FFFFFF;padding:12px 24px;font-size:18px">Energy</a></td></tr></table>
+      </td></tr></table>`
+    const r = lintEnvio(doc, { ano: 2026 })
+    const c = r.itens.find((i) => i.id === "contraste_botao_container")
+    expect(c?.severidade).toBe("bloqueia")
+    expect(c?.evidencia).toContain("#FFFFFF sobre #FDFDFD")
+  })
+
+  it("link vazado legível sobre a faixa não acusa", () => {
+    const doc = `<table width="600"><tr><td bgcolor="#FDFDFD" style="background-color:#FDFDFD;width:600px">
+      <table><tr><td style="border:2px solid #034326"><a href="https://x" style="display:block;color:#000000;padding:12px 24px;font-size:18px">Energy</a></td></tr></table>
+      </td></tr></table>`
+    expect(lintEnvio(doc, { ano: 2026 }).itens.find((i) => i.id === "contraste_botao_container")).toBeUndefined()
+  })
+
   it("fonte da loja e fonte da whitelist passam; fonte desconhecida avisa", () => {
     const doc = `<table width="600"><tr><td style="font-family:'Playfair Display',Georgia,serif">a</td><td style="font-family:Poppins,Arial">b</td><td style="font-family:'Comic Neue',cursive">c</td></tr></table>`
     const r = lintEnvio(doc, { ano: 2026, fontesDaLoja: ["Poppins"] })

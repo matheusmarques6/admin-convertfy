@@ -34,7 +34,8 @@ import { orphanTextFragments, pareceExemplo } from "./anchor-match"
 import { PLACEHOLDER_RE, TOKEN_OK_RE, enderecoUtil } from "./content-checks"
 import { acharJargao } from "../objecoes/linguagem-do-comprador"
 import { extrairCtas, extrairFaixas } from "./color-faixas"
-import { AA_NORMAL } from "./color-contrast"
+import { AA_NORMAL, contrastRatio, resolveEffectiveBackground } from "./color-contrast"
+import { buildAncestorChain } from "./dom-locator"
 
 export type LintId =
   | "css_var_em_uso"
@@ -267,14 +268,43 @@ export function lintEnvio(html: string, ctx: LintContexto = {}): LintResultado {
     `jargão de plataforma no texto visível: ${jargoes.slice(0, 5).map((j) => `"${j}"`).join(", ")} — quem lê não sabe o que é, e não foi isso que ele perguntou`,
   )
 
-  // contraste_botao_container — label × fundo do botão preenchido.
+  // contraste_botao_container — o label contra o que está DE FATO atrás dele.
+  //
+  // No preenchido é o fundo do próprio botão, e `extrairCtas` já o mede. No
+  // VAZADO o `contraste` vem `null` de propósito: o extrator não inventa um
+  // fundo que o botão não declara. Só que o label pousa no fundo da FAIXA, e
+  // aqui as faixas estão em mãos — então a conta fecha.
+  //
+  // Era a lacuna que deixou passar, em 17/09, os seis links do menu do
+  // rodapé em branco sobre `#FDFDFD` (1,01:1, medido no Chromium): o único
+  // check capaz de pegar texto invisível olhava só para metade dos botões.
   const faixas = safe(() => extrairFaixas(html), [])
   const ctas = safe(() => extrairCtas(html, faixas), [])
-  const ilegiveis = ctas.filter((c) => c.tipo === "preenchido" && c.contraste != null && c.contraste < AA_NORMAL)
+  // O fundo atrás do vazado NÃO pode sair de `extrairFaixas`: o lint mede o
+  // documento FINAL, já sem os marcadores `cfy:block`, e sem eles ela
+  // devolve `[]` — a regra nasceria morta justamente aqui. Quem responde é
+  // `resolveEffectiveBackground`, que sobe a cadeia de ancestrais como o
+  // cliente de e-mail faz, com marcador ou sem.
+  const chainAt = safe(() => buildAncestorChain(html), () => null)
+  const medido = ctas
+    .map((c) => {
+      if (c.tipo === "preenchido") {
+        return c.contraste != null ? { c, razao: c.contraste, atras: c.fundo ?? "?" } : null
+      }
+      if (!c.label) return null
+      const bg = safe(
+        () => resolveEffectiveBackground(html, c.range.start, chainAt),
+        { kind: "unknown" } as ReturnType<typeof resolveEffectiveBackground>,
+      )
+      if (bg.kind !== "color") return null
+      return { c, razao: Number(contrastRatio(c.label, bg.hex).toFixed(2)), atras: bg.hex }
+    })
+    .filter((x): x is { c: (typeof ctas)[number]; razao: number; atras: string } => x != null)
+  const ilegiveis = medido.filter((m) => m.razao < AA_NORMAL)
   push(
     "contraste_botao_container",
     ilegiveis.length,
-    ilegiveis.map((c) => `"${c.texto}" ${c.label} sobre ${c.fundo} = ${c.contraste}:1`).join(" · "),
+    ilegiveis.map((m) => `"${m.c.texto}" ${m.c.label} sobre ${m.atras} = ${m.razao}:1`).join(" · "),
   )
 
   // line_height_menor_que_fonte — na mesma declaração de estilo.

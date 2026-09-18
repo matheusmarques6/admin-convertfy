@@ -9196,6 +9196,69 @@ Telemetria na run: `separacoes_decididas`, `separacoes_inseridas`,
 coisas diferentes e nenhuma substitui a outra (`0` inseridas com modo `on` e
 decisões > 0 é par errado ou upload falho, e o motivo está nos descartes).
 
+## O CTA que some e o CTA que nasce pequeno (18/09)
+
+Relato: *"ele estava colocando o cta pequeno, na mesma cor do fundo"*. Medido
+na run `794b8ae1` (Innova Bay, 17/09): as duas coisas, por causas diferentes,
+e a primeira é pior que "ficou feio".
+
+**Seis links do rodapé saíram INVISÍVEIS.** O menu (Energy, Auto, Home, All
+Products, Warranty, Contact) é feito de links VAZADOS — contorno, `fundo:
+null`. O agente deu fundo verde aos seis ("vazados sem fundo definido recebem
+button_bg da marca para visibilidade mínima") e o aplicador **só troca fundo
+onde já existe um** (`if (op.fundo && cta.fundo)`): o verde nunca entrou, o
+label entrou. Medido no Chromium no HTML gravado: `rgb(255,255,255)` sobre
+`rgb(253,253,253)`, **1,01:1**. O único link legível do rodapé passou a ser o
+de descadastrar. Três coisas deixaram passar: `corDoBotao` aprovou sem ajuste
+(conferiu o par PEDIDO, que o documento nunca recebe inteiro); a telemetria
+disse `botoes_recoloridos: 12` (conta op que mexeu em algo, e o label mexeu);
+e o lint tinha a única régua capaz de pegar texto invisível olhando **só para
+`preenchido`**. Frequência: **5 de 16 runs em 30 dias** — intermitente, e
+quando acontece apaga o menu inteiro.
+
+**`corDoLabelVazado`** (`cor-do-botao.ts`) é o par que faltava: vazado não tem
+fundo próprio, então o label pousa no fundo da FAIXA e é contra ele que a
+régua mede (cascata `text → button_bg → accent → button_text → bg`). **Sem
+faixa conhecida não ajusta nada** — afirmar contraste inventando o fundo é a
+mesma razão pela qual `extrairCtas` devolve `contraste: null` no vazado.
+`planoParaOps` passa a DESCARTAR o fundo pedido em vazado, com motivo
+(*"converter vazado em preenchido é decisão de hierarquia, não de cor"*), nos
+**dois** laços que produzem `set_botao` — o guard do "botão deixado para trás"
+tinha o mesmo buraco por outra porta, e agora o label de um vazado acompanha a
+faixa que escureceu. A alçada no prompt diz isso com todas as letras: tirar a
+possibilidade do código sem dizer no texto é o modo de falha que o `momento` e
+o `exige` já custaram aqui.
+
+**A escala do botão novo saía da mediana de TODOS os preenchidos.** Medido:
+seção 354–405px com fonte 22–32; card de produto 164px com 20. A mediana de
+`[20,20,20,22,25,32]` é **20px** — o botão inserido nascia do tamanho do menor
+botão da peça. É o defeito de 11/09 pela outra ponta: lá o filtro `preenchido`
+tirou os "Link Here" do rodapé, e botão de card também é preenchido. O dado
+para separar já era extraído e **não tinha leitor**: `largura_px` tinha três
+ocorrências no repositório, todas em `color-faixas.ts`.
+`LARGURA_DE_BOTAO_DE_SECAO` (metade de `EMAIL_WIDTH`) abre um degrau novo na
+cascata — **seção preenchida → preenchida → todas → padrão** —, cada um usado
+só quando o de cima está vazio, então peça que não declara largura mede como
+antes. Na peça real: 20px → **25px**, `origem: "secao"`. A escala sobe em
+`ritmo.escala_do_botao`; até aqui não aparecia em lugar nenhum e só dava para
+saber que saiu errada relendo o HTML.
+
+**A rede: o lint passa a medir o vazado** — e NÃO por `extrairFaixas`, que
+devolve `[]` sem os marcadores `cfy:block`; o lint roda no documento final,
+`stripCfyBlockMarkers` já aplicado, e a regra teria nascido morta exatamente
+no caso que a motivou. Quem responde é `resolveEffectiveBackground`, subindo a
+cadeia de ancestrais como o cliente de e-mail faz. Rodado sobre o HTML
+entregue: **6 achados, `bloqueia`, "Energy #FFFFFF sobre #FDFDFD = 1.02:1"**.
+Com `qa_mode`/`lint_mode` em `enforce` esta peça teria sido reprovada, e é o
+certo.
+
+**Fora de escopo, declarado**: op de TAMANHO para botão que já existe (os
+164px do card são o desenho da variante; aumentá-los quebraria a grade) e
+hierarquia entre CTAs (nesta peça o botão da oferta, 22px, é menor que um de
+produto, 32px — o agente já registra como lacuna desde 11/09; corrigir é
+redesenhar a peça, não conformar cor).
+
+
 ---
 
 *Última atualização: Setembro 2026*

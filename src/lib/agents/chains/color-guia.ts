@@ -367,6 +367,13 @@ ali é descartado pelo código. Só use \`adicionar\` quando
   que você escureceu é o pior resultado possível deste passo.
 - Um CTA dominante. Os demais são secundários por hierarquia visual:
   secundário é vazado, principal é preenchido.
+- **Botão \`"tipo": "vazado"\` (\`"fundo": null\`): você decide o LABEL dele,
+  nunca o fundo.** Ele não tem fundo no documento — o \`fundo\` que você
+  mandar não tem onde pousar e é descartado, enquanto o label entra sozinho:
+  é assim que um menu de rodapé inteiro sai na cor errada. O label de um
+  vazado pousa no fundo da FAIXA, e é contra ele que o código o confere.
+  Converter vazado em preenchido é decisão de HIERARQUIA, não de cor, e não
+  é sua: quem a toma é a variante da biblioteca.
 - O acento marca o que importa: no máximo 2 usos na peça (o CTA, um destaque
   de headline OU o código da oferta). Nunca em texto corrido.
 

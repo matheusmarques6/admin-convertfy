@@ -107,3 +107,83 @@ export function corDoBotao(
 function r(texto: string, fundo: string): number {
   return Number(contrastRatio(texto, fundo).toFixed(2))
 }
+
+export interface CorDoLabel {
+  texto: string
+  /** O código trocou o que o agente pediu. */
+  ajustado: boolean
+  motivo: string | null
+  /** Contraste do label contra o fundo da FAIXA. */
+  contraste: number | null
+}
+
+/**
+ * A cor do LABEL de um botão VAZADO — o par dele não é com um fundo próprio.
+ *
+ * 17/09, Innova Bay: o agente decidiu dar fundo aos seis links do menu do
+ * rodapé ("vazados sem fundo definido recebem button_bg da marca para
+ * visibilidade mínima") e o aplicador só troca fundo onde já existe um
+ * (`apply-patches.ts`, `if (op.fundo && cta.fundo)`). O verde nunca entrou;
+ * o label entrou. Os seis saíram BRANCOS sobre o rodapé `#FDFDFD` —
+ * 1,01:1 medido no Chromium, invisíveis, e o único link legível do rodapé
+ * passou a ser o de descadastrar.
+ *
+ * `corDoBotao` aprovou sem ajuste porque conferiu o par PEDIDO, que o
+ * documento nunca recebe inteiro. Vazado pousa no fundo da FAIXA, e é
+ * contra ele que o label tem de ser medido.
+ *
+ * Sem faixa conhecida não ajusta nada: afirmar contraste inventando o fundo
+ * daria um número que ninguém pode conferir — a mesma razão pela qual
+ * `extrairCtas` devolve `contraste: null` no vazado.
+ */
+export function corDoLabelVazado(
+  fundoDaFaixa: string | null,
+  roles: PapeisParaBotao,
+  pedido: { texto?: string | null } = {},
+): CorDoLabel {
+  const pt = ok(pedido.texto) ? canonicalHex(pedido.texto) : null
+  const faixa = ok(fundoDaFaixa) ? canonicalHex(fundoDaFaixa) : null
+  if (!faixa) {
+    return {
+      texto: pt ?? canonicalHex(ok(roles.text) ? roles.text : "#000000"),
+      ajustado: false,
+      motivo: null,
+      contraste: null,
+    }
+  }
+  if (pt && contrastRatio(pt, faixa) >= AA_NORMAL) {
+    return { texto: pt, ajustado: false, motivo: null, contraste: r(pt, faixa) }
+  }
+  // A tinta da peça primeiro: é a escolha neutra e sempre legível sobre o
+  // fundo dela. Depois a cor da marca (que é o que o vazado costuma usar na
+  // borda), o acento, e por fim os extremos.
+  const ordem: Array<[string | undefined, string]> = [
+    [roles.text, "tinta da peça"],
+    [roles.button_bg, "cor da marca"],
+    [roles.accent, "acento"],
+    [roles.button_text, "cor do label do botão"],
+    [roles.bg, "fundo da peça"],
+  ]
+  for (const [c, nome] of ordem) {
+    if (!ok(c)) continue
+    const cc = canonicalHex(c)
+    if (contrastRatio(cc, faixa) < AA_NORMAL) continue
+    return {
+      texto: cc,
+      ajustado: true,
+      motivo: pt
+        ? `o botão é vazado e o label pousa no fundo da faixa (${faixa}); ${pt} não atinge AA ali — usada a ${nome}`
+        : `botão vazado: label definido por código contra a faixa (${faixa}) — ${nome}`,
+      contraste: r(cc, faixa),
+    }
+  }
+  // Nenhum papel da paleta atinge AA sobre esta faixa: mantém o que está lá
+  // em vez de trocar por outro ilegível, e a telemetria diz o número.
+  const atual = pt ?? canonicalHex(ok(roles.text) ? roles.text : "#000000")
+  return {
+    texto: atual,
+    ajustado: false,
+    motivo: `nenhum papel da paleta atinge AA sobre ${faixa} — label mantido (${r(atual, faixa)}:1)`,
+    contraste: r(atual, faixa),
+  }
+}

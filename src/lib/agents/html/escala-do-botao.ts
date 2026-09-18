@@ -30,7 +30,28 @@
  * Puro (zero I/O) — testável.
  */
 
+import { EMAIL_WIDTH } from "@/lib/email-workspace/email-width"
 import type { Cta } from "./color-faixas"
+
+/**
+ * Piso de largura para um botão ser de SEÇÃO.
+ *
+ * O botão que o agente manda criar é de seção: entra numa `<tr>` própria,
+ * centralizado, na largura da faixa. Um botão de CARD de produto vive numa
+ * coluna e é pequeno por DESENHO — aumentá-lo quebraria a grade —, então
+ * ele não pode decidir a escala do outro.
+ *
+ * Medido no Chromium em 17/09 (Innova Bay, welcome 1): os botões de seção
+ * fazem 354–405px com fonte de 22–32px; os três de card fazem 164px com
+ * fonte de 20px. A mediana dos seis preenchidos dava **20px** — o botão
+ * novo nascia do tamanho do menor botão da peça. É o defeito de 11/09 pela
+ * outra ponta: lá o filtro `preenchido` tirou os "Link Here" do rodapé, e
+ * botão de card também é preenchido.
+ *
+ * Metade da largura canônica: os de seção passam com folga, os de card e
+ * os de menu de rodapé (236px, em duas colunas) ficam de fora.
+ */
+export const LARGURA_DE_BOTAO_DE_SECAO = Math.round(EMAIL_WIDTH / 2)
 
 /** O padrão da casa, de `default-reference.ts`. Vale quando a peça não fala. */
 export const ESCALA_PADRAO = {
@@ -47,8 +68,12 @@ export interface EscalaDoBotao {
   paddingV: number
   paddingH: number
   radiusPx: number
-  /** `peca` = medida dos botões existentes; `padrao` = a peça não falou. */
-  origem: "peca" | "padrao"
+  /**
+   * Qual degrau respondeu: `secao` = os botões de seção da peça (o melhor
+   * dado); `peca` = todos os preenchidos, ou todos, quando nenhum é de
+   * seção; `padrao` = a peça não declarou nada.
+   */
+  origem: "secao" | "peca" | "padrao"
   /** Quantos botões entraram na conta — 0 quando a origem é o padrão. */
   base: number
 }
@@ -74,7 +99,13 @@ function medianaOu(valores: Array<number | null | undefined>, padrao: number): n
  */
 export function escalaDoBotao(ctas: Cta[]): EscalaDoBotao {
   const preenchidos = ctas.filter((c) => c.tipo === "preenchido")
-  const base = preenchidos.length > 0 ? preenchidos : ctas
+  const deSecao = preenchidos.filter(
+    (c) => c.largura_px != null && c.largura_px >= LARGURA_DE_BOTAO_DE_SECAO,
+  )
+  // Cada degrau só é usado quando o de cima está vazio — peça que não
+  // declara largura nenhuma continua medindo como antes.
+  const base = deSecao.length > 0 ? deSecao : preenchidos.length > 0 ? preenchidos : ctas
+  const classe: "secao" | "peca" = deSecao.length > 0 ? "secao" : "peca"
   if (base.length === 0) {
     return { ...ESCALA_PADRAO, peso: ESCALA_PADRAO.peso, origem: "padrao", base: 0 }
   }
@@ -89,7 +120,7 @@ export function escalaDoBotao(ctas: Cta[]): EscalaDoBotao {
     paddingV: medianaOu(base.map((c) => c.padding_v), ESCALA_PADRAO.paddingV),
     paddingH: medianaOu(base.map((c) => c.padding_h), ESCALA_PADRAO.paddingH),
     radiusPx: medianaOu(base.map((c) => c.radius_px), ESCALA_PADRAO.radiusPx),
-    origem: declarou ? "peca" : "padrao",
+    origem: declarou ? classe : "padrao",
     base: declarou ? base.length : 0,
   }
 }

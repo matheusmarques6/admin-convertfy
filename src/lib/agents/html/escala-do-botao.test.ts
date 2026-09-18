@@ -43,6 +43,48 @@ describe("escalaDoBotao", () => {
     expect(e.base).toBe(1)
   })
 
+  it("o caso real 2: os botões de CARD de produto não decidem a escala", () => {
+    // Innova Bay, welcome 1, 17/09. Medido no Chromium: os botões de seção
+    // fazem 354–405px com fonte 22–32; os três de card fazem 164px com 20.
+    // A mediana dos SEIS preenchidos dava 20px — o botão novo nascia do
+    // tamanho do menor botão da peça. É o defeito de 11/09 pela outra
+    // ponta: o filtro `preenchido` não separa card de seção.
+    const peca = [
+      cta({ id: "cta1", largura_px: 387, font_size_px: 25, peso: 900 }),
+      cta({ id: "cta2", largura_px: 354, font_size_px: 32, peso: 400 }),
+      cta({ id: "cta3", largura_px: 164, font_size_px: 20, peso: 900 }),
+      cta({ id: "cta4", largura_px: 164, font_size_px: 20, peso: 900 }),
+      cta({ id: "cta5", largura_px: 164, font_size_px: 20, peso: 900 }),
+      cta({ id: "cta6", largura_px: 390, font_size_px: 22, peso: 400 }),
+    ]
+    const e = escalaDoBotao(peca)
+    expect(e.fontSizePx).toBe(25)
+    expect(e.origem).toBe("secao")
+    expect(e.base).toBe(3)
+  })
+
+  it("peça só de botões de card: eles valem, porque é o que existe", () => {
+    // Cada degrau só é usado quando o de cima está vazio — não sobra peça
+    // sem escala por causa do filtro.
+    const e = escalaDoBotao([
+      cta({ id: "a", largura_px: 164, font_size_px: 20 }),
+      cta({ id: "b", largura_px: 164, font_size_px: 20 }),
+    ])
+    expect(e.fontSizePx).toBe(20)
+    expect(e.origem).toBe("peca")
+  })
+
+  it("peça que não declara largura mede como antes", () => {
+    // Zero regressão: sem `largura_px` nenhum botão é de seção e a cascata
+    // cai no degrau dos preenchidos, que é o comportamento de 11/09.
+    const e = escalaDoBotao([
+      cta({ id: "a", font_size_px: 24 }),
+      cta({ id: "b", font_size_px: 24 }),
+    ])
+    expect(e.fontSizePx).toBe(24)
+    expect(e.origem).toBe("peca")
+  })
+
   it("sem botão preenchido, o conjunto vale", () => {
     const e = escalaDoBotao([
       cta({ id: "a", tipo: "vazado", fundo: null, font_size_px: 20 }),
