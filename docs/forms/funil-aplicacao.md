@@ -201,6 +201,19 @@ silêncio.
 Os casos 5, 6, 7, 9 e 10 dependem de tráfego real e de olhar o
 Gerenciador de Eventos: confira-os na primeira hora de anúncio.
 
+### Dois defeitos que o RENDER achou
+
+A tela final foi renderizada no Chromium (900px e 390px) nos cinco
+estados da agenda: carregando, lista, marcado, horário tomado e agenda
+cheia. Nenhum teste pegaria o que apareceu:
+
+- **dois check na mesma altura** — o círculo verde da tela final mais o
+  "✔" que o título do desfecho trazia escrito;
+- **duas frases opostas na mesma tela** — o título dizia "agora é só
+  escolher o seu horário" ao lado do cartão dizendo "Horário
+  confirmado". O título agora AFIRMA o desfecho e não instrui; quem
+  instrui é o cabeçalho do seletor, que some depois de marcado.
+
 ### O defeito que o caso 8 achou
 
 A loja de 10 mil acessos com ticket acima de R$800 lia **"R$1.260 mil"**

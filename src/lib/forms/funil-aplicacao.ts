@@ -748,11 +748,18 @@ export const FINAIS: FormEnding[] = [
   {
     ref: FINAL.aprovado,
     tags: ["qualificado"],
-    title: "✔ Aplicação pré-aprovada, {{nome}}. Agora é só escolher o seu horário.",
+    // O título AFIRMA o desfecho e não instrui: quem instrui é o
+    // cabeçalho do seletor de horário, que some depois de marcado. Com
+    // "agora é só escolher o seu horário" fixo aqui, a tela mandava
+    // escolher ao lado do cartão dizendo "Horário confirmado" — duas
+    // frases opostas, achadas renderizando. O "✔" também saiu: o
+    // círculo verde da tela final já é o sinal, e dois check na mesma
+    // altura só competem.
+    title: "Aplicação pré-aprovada, {{nome}}.",
     description: [
       "Na conversa eu abro a sua conta comigo e a gente refaz essa conta com os seus números de verdade, não com média de mercado. Se fizer sentido, a operação entra no ar em 7 dias.",
       "",
-      "Faltar sem remarcar libera a sua vaga pro próximo da fila. Escolhe um horário que você tem certeza que consegue. Conto com você!",
+      "Faltar sem remarcar libera a sua vaga pro próximo da fila — conto com você.",
     ].join("\n"),
     // A agenda é a NOSSA, desenhada dentro desta tela — sem levar para
     // outro domínio quem acabou de ser aprovado. `automatico` não se
