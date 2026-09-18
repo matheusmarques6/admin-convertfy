@@ -10350,8 +10350,30 @@ a próxima rodada a ser full sync, que TEM janela na API, e é a mitigação
 que vale enquanto a correção de código não é deployada. O token novo
 nasce no fim da primeira varredura que terminar.
 
-**Ainda nulo, com o motivo**: `calendar_channel_id`. O watch de push vive
-na Fase 4 e nunca foi alcançado; quando for, ele ainda exige domínio
-verificado no Google para o `address` do webhook — o próprio comentário
-do código diz isso. O cron horário é a rede de segurança declarada, e o
-funil não depende dele: `slotsDisponiveis` consulta o `freeBusy` ao vivo.
+### A rodada das 13:17 fechou o ciclo (18/09)
+
+Com o `calendar_sync_token` zerado, a rodada seguinte foi full sync — que
+TEM janela na própria API — e **terminou em 9 segundos**: lock aberto
+13:17:08 e fechado 13:17:17 (o `finally` rodou), `last_synced_at` de hoje,
+token gravado, 7 reuniões criadas, a mais futura em **17/12/2026** e
+**zero linhas além de 95 dias**. O ciclo se fecha sozinho a partir daqui:
+o token novo nasceu de uma varredura completa, então a próxima rodada é
+delta de verdade.
+
+A correção de código (commit `65d9fa6e`: `maxDuration` 300, deadline
+interno e a janela no delta) **continua sendo necessária** e é a rede para
+quando a agenda crescer — o que a mitigação provou é que o full sync com
+janela cabe no orçamento HOJE, não que 60 s bastam.
+
+**A Fase 4 foi alcançada pela primeira vez**: `calendar_channel_id` e
+`calendar_resource_id` deixaram de ser nulos e o watch de push expira em
+**25/09 13:17** (7 dias, o padrão do Google). Ele não exigiu domínio
+verificado, ao contrário do que o comentário do código supunha. A
+renovação está fiada e não depende de ninguém lembrar:
+`renewExpiringWatches` roda a cada hora e re-registra quando falta menos
+de 24 h — na rodada de 24/09 o canal cai dentro dessa janela. Ela endereça
+por `user_id`, que **está preenchido** na linha da org (foi conferido: a
+função falharia calada se fosse nulo).
+
+O funil segue não dependendo do push: `slotsDisponiveis` consulta o
+`freeBusy` ao vivo, e o cron é a rede de segurança declarada.
