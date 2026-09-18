@@ -107,7 +107,7 @@ const linhas = campos.map(
       c.description ?? null,
     )}, ${c.required ? "true" : "false"}, ${c.position}, ${j(c.options ?? [])}, ${j(
       c.validation ?? {},
-    )}, ${s(c.map_to_lead_field ?? null)}, null)`,
+    )}, ${s(c.map_to_lead_field ?? null)}, ${c.media ? j(c.media) : "null"})`,
 )
 out.push(`
 insert into public.crm_form_fields
@@ -123,7 +123,8 @@ on conflict (id) do update set
   position = excluded.position,
   options = excluded.options,
   validation = excluded.validation,
-  map_to_lead_field = excluded.map_to_lead_field;`)
+  map_to_lead_field = excluded.map_to_lead_field,
+  media = excluded.media;`)
 
 out.push(`
 commit;`)

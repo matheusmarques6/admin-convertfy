@@ -59,6 +59,8 @@ import {
   type ProblemaDoFluxo,
 } from "@/lib/forms/diagnostico-fluxo"
 import { DestinoEditor } from "./destino-editor"
+import { MediaField } from "./media-field"
+import type { MidiaDaTela } from "@/lib/forms/midia"
 import {
   alvosDoFluxo,
   rotuloDaTela,
@@ -136,12 +138,15 @@ export function FlowEditor({
   onChange,
   temAbertura,
   foco,
+  formId,
 }: {
   fluxo: FormSchema
   onChange: (f: FormSchema) => void
   /** Só o conversacional tem tela de abertura e barra de progresso. */
   temAbertura: boolean
   foco?: FocoDoFluxo
+  /** O upload da mídia da abertura precisa dele. */
+  formId?: string
 }) {
   const problemas = useMemo(() => diagnosticarFluxo(fluxo), [fluxo])
   const contagem = contarProblemas(problemas)
@@ -184,7 +189,7 @@ export function FlowEditor({
     if (foco.tipo === "abertura") {
       return temAbertura ? (
         <div className="space-y-4 p-3">
-          <Abertura fluxo={fluxo} set={set} semCabecalho />
+          <Abertura fluxo={fluxo} set={set} semCabecalho formId={formId} />
           <Comportamento fluxo={fluxo} set={set} semCabecalho />
         </div>
       ) : null
@@ -271,7 +276,7 @@ export function FlowEditor({
         </div>
       )}
 
-      {temAbertura && <Abertura fluxo={fluxo} set={set} />}
+      {temAbertura && <Abertura fluxo={fluxo} set={set} formId={formId} />}
 
       <section>
         <Cabecalho
@@ -357,11 +362,14 @@ function Abertura({
   fluxo,
   set,
   semCabecalho,
+  formId,
 }: {
   fluxo: FormSchema
   set: (patch: Partial<FormSchema>) => void
   /** No inspetor o título já está na espinha e no topo do painel. */
   semCabecalho?: boolean
+  /** Para o upload da mídia da abertura. */
+  formId?: string
 }) {
   const w = fluxo.settings?.welcome
   const ligar = (on: boolean) =>
@@ -418,6 +426,18 @@ function Abertura({
               placeholder="Começar"
             />
           </Campo>
+          {/*
+            A abertura é a tela onde a imagem ou o vídeo mais pesa: é ali
+            que a pessoa decide se continua. Sem este campo, a mídia da
+            abertura existia no schema e não tinha por onde entrar.
+          */}
+          <MediaField
+            formId={formId}
+            valor={w.midia ?? null}
+            onChange={(m: MidiaDaTela | null) => trocar({ midia: m })}
+            rotulo="Imagem ou vídeo da abertura"
+            ajuda="Entra acima do título. Vídeo curto do rosto de quem assina funciona melhor que imagem."
+          />
         </div>
       )}
     </section>

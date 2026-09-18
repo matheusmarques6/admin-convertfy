@@ -94,14 +94,8 @@ export const FINAL = {
 /** `ending:<ref>` — o vocabulário de destino da engine. */
 const fim = (ref: string) => `ending:${ref}`
 
-/**
- * O preço da tela 19 ainda não foi confirmado.
- *
- * Fica como marcador VISÍVEL de propósito: um número inventado aqui
- * chegaria ao anúncio como se fosse a nossa tabela, e é o tipo de erro
- * que ninguém percebe revisando — o texto lê bem com qualquer valor.
- */
-export const PRECO_A_CONFIRMAR = "R$[VALOR A CONFIRMAR]"
+/** O ponto de entrada da operação, confirmado pelo dono em 18/09. */
+export const PRECO_MENSAL = "R$3.500"
 
 // ────────────────────────────── opções ──────────────────────────────
 
@@ -328,10 +322,52 @@ const TEXTO_REDUCAO = [
 ].join("\n")
 
 const TEXTO_PRECO = [
-  `A nossa operação começa em ${PRECO_A_CONFIRMAR} por mês. E está no contrato: se em 30 dias o e-mail não trouxer 10% do seu faturamento, você não paga nada.`,
+  `A nossa operação começa em ${PRECO_MENSAL} por mês. E está no contrato: se em 30 dias o e-mail não trouxer 10% do seu faturamento, você não paga nada.`,
   "",
   "Faturando {{fat_mes}}, esses 10% pagam a operação várias vezes já no primeiro mês.",
 ].join("\n")
+
+
+// ───────────────────────── as provas na tela ────────────────────────
+
+/**
+ * Os prints, tirados da própria página de vendas (convertfy.me).
+ *
+ * A escolha é por **o que cada print PROVA**, não por preencher espaço:
+ * a tela que acabou de projetar receita de e-mail recebe um painel com
+ * receita de e-mail; a que afirma "25% a 35%" recebe o painel que marca
+ * 25,4%. Print bonito numa tela que afirma outra coisa é enfeite, e
+ * enfeite numa página que pede o WhatsApp de alguém custa confiança.
+ *
+ * **Endereço da página de vendas, não cópia nossa.** Trocar a imagem lá
+ * troca aqui, o que é o certo enquanto são a mesma prova — e é também o
+ * risco: apagar o arquivo lá deixa a tela sem imagem aqui, em silêncio.
+ * Quando o print for exclusivo do funil, suba pelo botão do editor, que
+ * grava no nosso bucket.
+ */
+const LP = "https://convertfy.me/imagens"
+
+const PROVAS: Partial<Record<ApelidoDoBloco, { url: string; alt: string }>> = {
+  // A conta acabou de projetar receita de e-mail; o painel mostra
+  // receita de e-mail de uma loja real, no mesmo mês.
+  mat1: {
+    url: `${LP}/omnisend-2.webp`,
+    alt: "Painel de uma loja brasileira em julho de 2026: 26,9% do faturamento veio do e-mail, R$372.564 no mês.",
+  },
+  // A tela afirma "de 25% a 35% do faturamento". Este painel marca 25,4%
+  // — o piso da faixa que o texto acabou de citar.
+  mat2: {
+    url: `${LP}/omnisend-3.webp`,
+    alt: "Painel de outra loja brasileira em julho de 2026: 25,4% do faturamento veio do e-mail, R$467.061 no mês.",
+  },
+  // A pergunta é "o que você já tentou, e por que parou". A resposta mais
+  // comum é agência que não deu resultado; o contraponto certo é um
+  // cliente dizendo o que aconteceu, não mais um número nosso.
+  ja_tentou: {
+    url: `${LP}/feedback-02.png`,
+    alt: "Print de conversa com um cliente relatando 20% de crescimento depois da operação.",
+  },
+}
 
 // ────────────────────────────── os campos ───────────────────────────
 
@@ -540,7 +576,7 @@ export function camposDoFunil(): CampoLegado[] {
     })),
     validation: d.validation ?? {},
     map_to_lead_field: d.map_to_lead_field ?? null,
-    media: null,
+    media: PROVAS[d.apelido] ? { tipo: "imagem", ...PROVAS[d.apelido] } : (d.media ?? null),
   }))
 }
 
@@ -797,14 +833,27 @@ export function rascunhoDoFunil(version = 1): FormSchema {
       mostrar_progresso: true,
       enter_avanca: true,
       calculos: CALCULOS,
+      /**
+       * Sem vídeo, por decisão do dono em 18/09.
+       *
+       * A abertura tinha sido escrita PARA acompanhar um vídeo de 40
+       * segundos: era ele que dizia quem fala e por que o leitor deveria
+       * responder. Tirar o vídeo e deixar o texto como estava entregaria
+       * uma primeira tela sem nenhuma dessas duas coisas — e a primeira
+       * tela é onde a pessoa decide se continua. O roteiro do vídeo não
+       * foi jogado fora: ele virou as duas primeiras linhas, com os
+       * números que o próprio roteiro afirmava.
+       */
       welcome: {
         title: "Seja bem-vindo!",
         description: [
+          "Aqui é o Bruno. Comecei no e-commerce há 6 anos com a minha própria loja, e hoje a gente cuida da retenção de mais de 250 lojas, no Brasil, na Europa e nos Estados Unidos.",
+          "",
           "Em 7 dias eu coloco no ar a operação de e-mail e SMS da sua loja, com garantia no contrato: 10% do seu faturamento vindo de e-mail em 30 dias.",
           "",
-          "Antes de conversar eu preciso entender a sua loja, e no meio do caminho eu te mostro a conta do que ela está deixando passar hoje. Eu mesmo analiso as respostas, bora lá?",
+          "Antes de conversar eu preciso entender a sua loja, e no meio do caminho eu te mostro, com os seus números, quanto ela está deixando passar todo mês. Quem lê as respostas sou eu.",
           "",
-          "Leva menos de 2 minutos.",
+          "Leva menos de 2 minutos. Bora lá?",
         ].join("\n"),
         button_label: "Vamos lá!",
       },

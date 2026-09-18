@@ -19,6 +19,7 @@ import {
 import { blocosDaTela, primeiroBloco, proximoPasso } from "./engine"
 import { calcular, moedaDeclarada, variaveisDasRespostas } from "./calculo"
 import { aplicarRecall } from "./recall"
+import { normalizarMidia, urlDeMidiaUtil } from "./midia"
 import { montarVersao } from "./publicar"
 import type { FormAnswers } from "@/types/forms-conversational"
 
@@ -319,5 +320,49 @@ describe("a forma do funil", () => {
       if (d.startsWith("ending:")) expect(finais.has(d.slice(7))).toBe(true)
       else expect(refs.has(d)).toBe(true)
     }
+  })
+})
+
+describe("as provas na tela", () => {
+  const campos = camposDoFunil()
+  const por = (ref: string) => campos.find((c) => c.id === ref)!
+
+  it("a prova entra como mídia normalizada nas três telas escolhidas", () => {
+    for (const ref of [REF.mat1, REF.mat2, REF.ja_tentou]) {
+      const m = normalizarMidia(por(ref).media)
+      expect(m, ref).not.toBeNull()
+      expect(m!.tipo).toBe("imagem")
+      // Sem alt, o leitor de tela anuncia o nome do arquivo de um print
+      // que carrega o número que a tela inteira existe para provar.
+      expect(m!.alt).toBeTruthy()
+    }
+  })
+
+  it("a tela sem prova disponível fica SEM imagem, não com uma emprestada", () => {
+    // A página de vendas não tem print da régua de rastreio nem da
+    // cláusula em imagem. Pôr ali um painel de receita ilustraria outra
+    // afirmação — enfeite numa tela que pede confiança.
+    expect(por(REF.reducao_danos).media).toBeNull()
+    expect(por(REF.preco).media).toBeNull()
+  })
+
+  it("toda prova aponta para endereço que abre sem login", () => {
+    for (const c of campos) {
+      if (!c.media) continue
+      const url = (c.media as { url: string }).url
+      expect(urlDeMidiaUtil(url), url).toBe(true)
+      expect(url.startsWith("https://"), url).toBe(true)
+    }
+  })
+
+  it("a prova sobrevive à publicação", () => {
+    // `media` é coluna da tabela de campos, então ela volta pelo `base`
+    // do montarVersao — mas é justamente o tipo de coisa que some numa
+    // refatoração do mapeamento, e só o lead veria.
+    const { schema: novo } = montarVersao(camposDoFunil(), rascunhoDoFunil(), {
+      display_mode: "conversational",
+      version: 1,
+    })
+    expect(novo.blocks.find((b) => b.ref === REF.mat1)?.midia?.url).toContain("omnisend-2")
   })
 })

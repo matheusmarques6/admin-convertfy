@@ -62,12 +62,39 @@ export function urlDeMidiaUtil(url: string | null | undefined): boolean {
   if (typeof url !== "string") return false
   const limpo = url.trim()
   if (!limpo) return false
+  if (exigeSessaoOuExpira(limpo)) return false
   if (limpo.startsWith("/") && !limpo.startsWith("//")) return true
   try {
     return ESQUEMAS_PERMITIDOS.has(new URL(limpo).protocol)
   } catch {
     return false
   }
+}
+
+/**
+ * Endereços que abrem PARA QUEM EDITA e falham para quem responde.
+ *
+ * Quem carrega a imagem é o visitante do formulário: anônimo, sem
+ * sessão no admin, e é ele quem precisa ver a prova. Duas famílias de
+ * endereço passam despercebidas porque funcionam perfeitamente na tela
+ * de quem está montando:
+ *
+ * 1. **A rota de imagem da ConvertIA** (`/api/ai/convertia/imagem/...`),
+ *    que é o que o upload do Estúdio devolve. Ela exige `requireAuth` e
+ *    escopa por org — para o lead, 401.
+ * 2. **A signed URL do Storage**, que EXPIRA. Ela funciona hoje, entra
+ *    no schema publicado e quebra dias depois, sem ninguém mexer em
+ *    nada — o pior dos dois, porque não há um momento em que alguém
+ *    possa relacionar a causa ao efeito.
+ *
+ * Recusar na entrada é melhor que gravar: a tela sem imagem é visível
+ * na hora para quem edita; a imagem quebrada só é visível para o lead.
+ */
+function exigeSessaoOuExpira(url: string): boolean {
+  const u = url.toLowerCase()
+  if (u.includes("/api/ai/convertia/imagem/")) return true
+  if (u.includes("/storage/v1/object/sign/")) return true
+  return false
 }
 
 /**

@@ -51,6 +51,8 @@ import {
 import { normalizarDestino } from "@/lib/forms/destino"
 import type { DestinoDoFinal } from "@/types/forms-conversational"
 import { montarVersao } from "@/lib/forms/publicar"
+import { MediaField } from "@/components/forms/media-field"
+import type { MidiaDaTela } from "@/lib/forms/midia"
 import { remapearRefs } from "@/lib/forms/remapear-refs"
 import { normalizarSchema } from "@/lib/forms/schema"
 import { contarProblemas, diagnosticarFluxo } from "@/lib/forms/diagnostico-fluxo"
@@ -89,6 +91,8 @@ interface FormField {
   options?: Array<string | { label: string; value: string }>
   validation?: Record<string, unknown>
   map_to_lead_field?: string | null
+  /** Imagem ou vídeo acima do título. Coluna `media`; ver lib/forms/midia. */
+  media?: MidiaDaTela | null
 }
 
 /**
@@ -469,6 +473,9 @@ export default function FormEditorPage({
       options: f.options ?? [],
       validation: f.validation ?? {},
       map_to_lead_field: f.map_to_lead_field ?? null,
+      // Sem isto a prévia mostra a tela SEM a imagem que está gravada —
+      // e é na prévia que se confere se a prova ficou no lugar certo.
+      media: f.media ?? null,
     }))
     return montarVersao(campos, rascunho, {
       display_mode: displayMode,
@@ -842,6 +849,7 @@ export default function FormEditorPage({
         options: f.options ?? [],
         validation: f.validation ?? {},
         map_to_lead_field: f.map_to_lead_field ?? null,
+        media: f.media ?? null,
       })),
     }
   }, [id, name, slug, description, theme, logoUrl, successMessage, redirectUrl, destinoQualificado, fields])
@@ -1279,6 +1287,7 @@ export default function FormEditorPage({
                 theme={theme}
                 setTheme={setTheme}
                 onSelecionar={setSelecao}
+                formId={id}
               />
             </div>
           </>
@@ -1560,6 +1569,7 @@ function Inspetor({
   theme,
   setTheme,
   onSelecionar,
+  formId,
 }: {
   selecao: Selecao
   espinha: Espinha
@@ -1579,6 +1589,8 @@ function Inspetor({
   theme: FormTheme
   setTheme: (t: FormTheme) => void
   onSelecionar: (s: Selecao) => void
+  /** Id do formulário — o upload da mídia precisa dele. */
+  formId: string
 }) {
   const candidatasDeRegiao = useMemo(
     () =>
@@ -1630,6 +1642,8 @@ function Inspetor({
             onChange={(patch) => updateField(idx, patch)}
             onRemove={() => removeField(idx)}
             semMoldura
+            conversacional={modo === "conversational"}
+            formId={formId}
           />
           {modo === "conversational" && tela && (
             <button
@@ -1704,6 +1718,7 @@ function Inspetor({
             onChange={onFluxo}
             temAbertura
             foco={{ tipo: "abertura" }}
+            formId={formId}
           />
         </div>
       </div>
@@ -3474,6 +3489,8 @@ function FieldEditor({
   onMoveUp,
   onMoveDown,
   semMoldura,
+  conversacional,
+  formId,
 }: {
   field: FormField
   desvios: number
@@ -3502,6 +3519,10 @@ function FieldEditor({
    * aninhado que a régua de craft recusa.
    */
   semMoldura?: boolean
+  /** Só o conversacional desenha mídia por tela. */
+  conversacional?: boolean
+  /** Para o upload. Ausente enquanto o formulário não tem id. */
+  formId?: string
 }) {
   const totalCustomFields = leadCustomFields.length + dealCustomFields.length
   const [open, setOpen] = useState(false)
@@ -3668,6 +3689,20 @@ function FieldEditor({
                 className="crm-input text-[11px]"
               />
             </Field>
+          )}
+          {/*
+            A mídia é CONTEÚDO da tela, como a descrição — por isso fica
+            aqui em cima e não junto das opções de resposta. No formato
+            de página única ela não é desenhada por ninguém, então nem
+            aparece: campo que o renderizador ignora é campo fantasma.
+          */}
+          {conversacional && (
+            <MediaField
+              formId={formId}
+              valor={field.media ?? null}
+              onChange={(m) => onChange({ media: m })}
+              ajuda="A prova entra acima do título: print do painel, da campanha, da cláusula."
+            />
           )}
           <div className="space-y-2">
             <Field label="Tipo de resposta">

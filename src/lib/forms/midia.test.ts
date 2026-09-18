@@ -65,3 +65,32 @@ describe("normalizarMidia", () => {
     expect(normalizarMidia({ url: "  /a.png  " })?.url).toBe("/a.png")
   })
 })
+
+describe("endereço que só abre para quem edita", () => {
+  it("recusa a rota de imagem da ConvertIA — ela exige login", () => {
+    // O upload do Estúdio devolve exatamente isto. Gravado aqui, a prova
+    // da tela 9 abriria no admin e apareceria quebrada para todo lead.
+    expect(
+      normalizarMidia({
+        tipo: "imagem",
+        url: "https://app.convertfy.me/api/ai/convertia/imagem/stores/org-1/email-assets/slide-x.png",
+      }),
+    ).toBeNull()
+    expect(urlDeMidiaUtil("/api/ai/convertia/imagem/stores/org-1/x.png")).toBe(false)
+  })
+
+  it("recusa signed URL do Storage — ela expira depois de publicada", () => {
+    expect(
+      urlDeMidiaUtil(
+        "https://x.supabase.co/storage/v1/object/sign/form-media/a.png?token=eyJhbGciOi",
+      ),
+    ).toBe(false)
+  })
+
+  it("aceita a URL pública do Storage, que é a que o upload devolve", () => {
+    const m = normalizarMidia({
+      url: "https://x.supabase.co/storage/v1/object/public/form-media/org-1/prova.png",
+    })
+    expect(m?.tipo).toBe("imagem")
+  })
+})
