@@ -25,12 +25,20 @@ import { logger } from "@/lib/logger"
 
 const log = logger.child("GoogleCalendarCron")
 
-export const maxDuration = 60
+// 300s é o orçamento das rotas pesadas deste projeto. Com 60 (o padrão do
+// Next) a função era MORTA no meio da importação: medido em 18/09, 722
+// eventos escritos em 59s, o `finally` do lock nunca rodou (lock preso com
+// `finished_at` nulo) e o `nextSyncToken` não foi gravado — então toda
+// rodada refazia a varredura completa e a Fase 4 (watch) nunca era
+// alcançada.
+export const maxDuration = 300
 export const dynamic = "force-dynamic"
 
 const LOCK_NAME = "google_calendar_sync"
-const STALE_LOCK_MS = 5 * 60 * 1000 // 5 minutes
-const MAX_DURATION_MS = 50_000 // 50s safety — stop before Vercel 60s timeout
+// O lease tem de cobrir a função inteira: menor que ela, outra invocação
+// reivindica o lock enquanto esta ainda escreve.
+const STALE_LOCK_MS = 6 * 60 * 1000 // 6 min > maxDuration
+const MAX_DURATION_MS = 250_000 // 250s — sai pela porta antes do teto de 300s
 const INTER_USER_DELAY_MS = 500 // 500ms between users
 const RETRY_LOOKBACK_DAYS = 7
 
@@ -310,9 +318,18 @@ export async function GET(request: NextRequest) {
           }
           if (!token.org_id) continue
           try {
-            const res = await importMeetingsFromGoogle(token.org_id)
+            const res = await importMeetingsFromGoogle(token.org_id, {
+              deadlineAt: startTime + MAX_DURATION_MS,
+            })
             orgImported += res.imported
             orgUpdated += res.updated
+            if (res.incompleto) {
+              log.warn("Import da org não terminou no orçamento desta rodada", {
+                orgId: token.org_id,
+                imported: res.imported,
+                updated: res.updated,
+              })
+            }
           } catch (err) {
             if (err instanceof GoogleTokenRevokedError) {
               log.warn("Org calendar token revoked, skipping import", { orgId: token.org_id })

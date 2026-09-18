@@ -22,6 +22,11 @@ import {
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 import { randomUUID } from "crypto"
+import {
+  dentroDaJanela,
+  janelaDeImport,
+  type JanelaDeImport,
+} from "@/lib/meetings/janela-de-import"
 
 const log = logger.child("GoogleCalendarSync")
 
@@ -1047,6 +1052,15 @@ interface ImportContext {
   calendarId: string
   emailToProfileId: Map<string, string>
   fallbackOrganizerId: string | null
+  /**
+   * Horizonte que interessa ao hub de Reuniões, em ms epoch. O full sync já
+   * pede essa janela ao Google (`timeMin`/`timeMax`); o INCREMENTAL não pode
+   * — a API proíbe combinar `syncToken` com as duas —, então quem recorta é
+   * este contexto. Sem ele, uma recorrência semanal alterada volta no delta
+   * com TODAS as instâncias: medido em 18/09, 722 linhas de um evento de
+   * inglês expandido de 2027 a 2040.
+   */
+  janela: JanelaDeImport
 }
 
 /** Campos da meeting derivados de um evento do Google. */
@@ -1138,6 +1152,11 @@ async function applyGoogleEvent(
   if (isCancelled) return "skipped"
   if (!ev.start?.dateTime) return "skipped" // ignora all-day / sem horario
 
+  // A guarda é só na CRIAÇÃO: reunião que já está no banco continua sendo
+  // atualizada e cancelada acima, mesmo fora do horizonte. Recortar aqui
+  // impede a enxurrada da recorrência sem perder nada que já existe.
+  if (!dentroDaJanela(ev.start.dateTime, ctx.janela)) return "skipped"
+
   // user_id (organizador local) e NOT NULL: casa email do organizer/attendee
   // com um profile da org; senao usa um admin/owner de fallback.
   const candidateEmails = [
@@ -1220,8 +1239,9 @@ async function applyGoogleEvent(
  * refaz full sync se o token vencer (410).
  */
 export async function importMeetingsFromGoogle(
-  orgId: string
-): Promise<{ imported: number; updated: number }> {
+  orgId: string,
+  opts?: { deadlineAt?: number }
+): Promise<{ imported: number; updated: number; incompleto?: boolean }> {
   const adminClient = createAdminClient()
 
   let accessToken: string | null
@@ -1264,7 +1284,14 @@ export async function importMeetingsFromGoogle(
     fallbackOrganizerId = prof?.id || null
   }
 
-  const ctx: ImportContext = { orgId, calendarId, emailToProfileId, fallbackOrganizerId }
+  const janela = janelaDeImport()
+  const ctx: ImportContext = {
+    orgId,
+    calendarId,
+    emailToProfileId,
+    fallbackOrganizerId,
+    janela,
+  }
 
   let syncToken: string | undefined = tokenRow?.calendar_sync_token || undefined
   let pageToken: string | undefined
@@ -1272,14 +1299,28 @@ export async function importMeetingsFromGoogle(
   let imported = 0
   let updated = 0
 
+  // Quem é morto pelo runtime não roda `finally`: o lock fica preso e o
+  // `nextSyncToken` nunca é gravado, então TODA rodada seguinte refaz a
+  // varredura completa (medido em 18/09: 722 eventos escritos em 59s e a
+  // função cortada no meio). O deadline existe para sair pela porta.
+  const deadlineAt = opts?.deadlineAt
+  const semTempo = () => deadlineAt !== undefined && Date.now() > deadlineAt
+  let incompleto = false
+
   // Loop de paginas (limitado p/ nao rodar infinito)
   for (let i = 0; i < 25; i++) {
+    if (semTempo()) {
+      incompleto = true
+      break
+    }
     const res = await service.listEventsForSync({
       syncToken,
       pageToken,
       maxResults: 250,
-      timeMin: syncToken ? undefined : new Date(Date.now() - 7 * 86_400_000).toISOString(),
-      timeMax: syncToken ? undefined : new Date(Date.now() + 90 * 86_400_000).toISOString(),
+      // A MESMA janela do `ctx`: recalcular a cada página movia o `timeMax`
+      // entre chamadas do mesmo percurso paginado.
+      timeMin: syncToken ? undefined : new Date(janela.min).toISOString(),
+      timeMax: syncToken ? undefined : new Date(janela.max).toISOString(),
     })
 
     if (res.expired) {
@@ -1290,6 +1331,10 @@ export async function importMeetingsFromGoogle(
     }
 
     for (const ev of res.items as GoogleSyncEvent[]) {
+      if (semTempo()) {
+        incompleto = true
+        break
+      }
       try {
         const r = await applyGoogleEvent(ctx, ev)
         if (r === "imported") imported++
@@ -1302,12 +1347,26 @@ export async function importMeetingsFromGoogle(
       }
     }
 
+    if (incompleto) break
+
     if (res.nextPageToken) {
       pageToken = res.nextPageToken
       continue
     }
     nextSyncToken = res.nextSyncToken
     break
+  }
+
+  // Token PARCIAL não vale: o Google só garante o delta a partir de um
+  // sync token emitido no fim de uma varredura completa. Gravar o de uma
+  // rodada cortada faria a próxima pular o que faltou, em silêncio.
+  if (incompleto) {
+    log.warn("Import do Google interrompido por tempo — sync token não gravado", {
+      orgId,
+      imported,
+      updated,
+    })
+    return { imported, updated, incompleto: true }
   }
 
   if (nextSyncToken) {

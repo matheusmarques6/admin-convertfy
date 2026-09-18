@@ -10298,3 +10298,60 @@ caso inverso da varredura de colunas: a tela de configuração escrevia nas
 duas e o conserto era criá-las. O 42703 delas derrubava o select que
 carrega `calendar_sync_token`, então mesmo com o cron vivo toda rodada
 faria varredura completa em vez do delta.
+
+### A primeira rodada do cron, e o que ela mostrou (18/09)
+
+O cron rodou às 12:17 — e foi **morto aos 60 segundos no meio do
+trabalho**. O que ficou medido:
+
+```
+lock    : started_at 12:17:08 · is_running TRUE · finished_at NULL  ← o finally não rodou
+token   : expires_at 13:17:07 (RENOVADO) · is_active true · sync_error null
+meetings: 722 CRIADAS entre 12:17:09 e 12:18:08 — 59s exatos, e para
+last_synced_at: continua 15/09  ← o nextSyncToken nunca foi gravado
+```
+
+O refresh do token **funcionou** (o Google aceitou o refresh de 15/09).
+Os outros dois achados são defeitos novos, e o segundo é o caro.
+
+**1. `maxDuration = 60` num cron que importa a agenda.** É o padrão do
+Next; as rotas pesadas deste projeto usam 300. Quem é morto pelo runtime
+não roda `catch` nem `finally`: o lock ficou preso (só sai pela régua de
+stale, 5 min depois) e — pior — o `nextSyncToken` só é gravado no FIM do
+laço, então toda rodada seguinte refazia a varredura do zero e a Fase 4
+(o watch de push) nunca era alcançada. Agora são **300s**, com
+`MAX_DURATION_MS` em 250s, `STALE_LOCK_MS` maior que o `maxDuration` (um
+lease menor que a função deixa outra invocação reivindicar o lock
+enquanto esta ainda escreve) e um **deadline** dentro de
+`importMeetingsFromGoogle`: estourou, sai pela porta, devolve
+`incompleto: true` e **não grava o token** — parcial não vale, porque o
+Google só garante o delta a partir de um token emitido no fim de uma
+varredura completa; gravá-lo faria a próxima rodada pular o que faltou,
+em silêncio.
+
+**2. O delta não tem janela, e nada do nosso lado recortava.** As 722
+linhas não eram a agenda inteira: eram **52 por ano, de 2027 a 2040** —
+um evento semanal ("Bruno <> Inglês") alterado depois de 15/09, com
+todas as instâncias no delta. O full sync pede `timeMin`/`timeMax` ao
+Google; o incremental **não pode** (a API recusa `syncToken` combinado
+com as duas), então o horizonte tem de ser nosso.
+`lib/meetings/janela-de-import.ts` (puro, 6 testes) é a régua, e ela vale
+**só na CRIAÇÃO**: reunião que já está no banco continua sendo atualizada
+e cancelada fora do horizonte — senão uma reunião antiga deixaria de
+receber o cancelamento, que é o oposto do que se quer. O full sync passou
+a usar a MESMA janela do contexto: recalcular `Date.now()` a cada página
+movia o `timeMax` no meio de um percurso paginado.
+
+**Estado deixado em produção**: as 719 linhas fora do horizonte foram
+apagadas (com os 718 participantes; zero tinham cliente, negócio, loja ou
+call de CS), as 3 que caíram dentro dos 90 dias ficaram, o lock órfão foi
+solto, e o `calendar_sync_token` foi **zerado de propósito** — isso força
+a próxima rodada a ser full sync, que TEM janela na API, e é a mitigação
+que vale enquanto a correção de código não é deployada. O token novo
+nasce no fim da primeira varredura que terminar.
+
+**Ainda nulo, com o motivo**: `calendar_channel_id`. O watch de push vive
+na Fase 4 e nunca foi alcançado; quando for, ele ainda exige domínio
+verificado no Google para o `address` do webhook — o próprio comentário
+do código diz isso. O cron horário é a rede de segurança declarada, e o
+funil não depende dele: `slotsDisponiveis` consulta o `freeBusy` ao vivo.
