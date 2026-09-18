@@ -116,15 +116,32 @@ function refDeFinalNovo(existentes: readonly FormEnding[]): string {
   return `final-${n}`
 }
 
+/**
+ * O que o construtor mostra quando está dentro do inspetor da aba Criar
+ * — um item por vez, o que está selecionado na espinha.
+ *
+ * É o MESMO componente, filtrado, e não uma segunda cópia dos painéis:
+ * duas implementações do editor de desvio divergiriam na primeira
+ * correção, e o sintoma seria uma regra que funciona num lugar e não no
+ * outro. Sem `foco`, ele desenha o fluxo inteiro como sempre desenhou.
+ */
+export type FocoDoFluxo =
+  | { tipo: "abertura" }
+  | { tipo: "tela"; ref: string }
+  | { tipo: "final"; ref: string }
+  | { tipo: "comportamento" }
+
 export function FlowEditor({
   fluxo,
   onChange,
   temAbertura,
+  foco,
 }: {
   fluxo: FormSchema
   onChange: (f: FormSchema) => void
   /** Só o conversacional tem tela de abertura e barra de progresso. */
   temAbertura: boolean
+  foco?: FocoDoFluxo
 }) {
   const problemas = useMemo(() => diagnosticarFluxo(fluxo), [fluxo])
   const contagem = contarProblemas(problemas)
@@ -158,6 +175,59 @@ export function FlowEditor({
 
   const trocarFinal = (ref: string, patch: Partial<FormEnding>) =>
     set({ endings: finais.map((e) => (e.ref === ref ? { ...e, ...patch } : e)) })
+
+  // Com foco, o inspetor desenha SÓ o item escolhido: o cabeçalho de
+  // seção, o diagnóstico e os vizinhos já estão na espinha e no topo da
+  // aba, e repeti-los dentro de um painel de 320px seria a parede que
+  // este redesenho existe para desfazer.
+  if (foco) {
+    if (foco.tipo === "abertura") {
+      return temAbertura ? (
+        <div className="space-y-4 p-3">
+          <Abertura fluxo={fluxo} set={set} semCabecalho />
+          <Comportamento fluxo={fluxo} set={set} semCabecalho />
+        </div>
+      ) : null
+    }
+    if (foco.tipo === "comportamento") {
+      return (
+        <div className="p-3">
+          <Comportamento fluxo={fluxo} set={set} semCabecalho />
+        </div>
+      )
+    }
+    if (foco.tipo === "tela") {
+      const tela = telas.find((t) => t.cabeca === foco.ref)
+      if (!tela) return null
+      return (
+        <div className="p-3">
+          <TelaNoFluxo
+            tela={tela}
+            alvos={alvos}
+            sujeitos={sujeitosDaCondicao(fluxo, tela.cabeca)}
+            problemas={problemas.filter((p) => tela.blocos.some((b) => b.ref === p.ref))}
+            onChangeBloco={trocarBloco}
+            onChangeProximo={(goto) => trocarProximoDaTela(tela, goto)}
+            semMoldura
+          />
+        </div>
+      )
+    }
+    const i = finais.findIndex((e) => e.ref === foco.ref)
+    if (i < 0) return null
+    return (
+      <div className="p-3">
+        <FinalDoFluxo
+          fim={finais[i]}
+          padrao={i === 0}
+          orfao={problemas.some((p) => p.tipo === "final_orfao" && p.ref === foco.ref)}
+          onChange={(patch) => trocarFinal(foco.ref, patch)}
+          onRemove={() => set({ endings: finais.filter((e) => e.ref !== foco.ref) })}
+          semMoldura
+        />
+      </div>
+    )
+  }
 
   return (
     <div className="p-4 space-y-5">
@@ -286,9 +356,12 @@ export function FlowEditor({
 function Abertura({
   fluxo,
   set,
+  semCabecalho,
 }: {
   fluxo: FormSchema
   set: (patch: Partial<FormSchema>) => void
+  /** No inspetor o título já está na espinha e no topo do painel. */
+  semCabecalho?: boolean
 }) {
   const w = fluxo.settings?.welcome
   const ligar = (on: boolean) =>
@@ -308,7 +381,11 @@ function Abertura({
       <div className="flex items-start justify-between gap-3">
         <Cabecalho
           titulo="Tela de abertura"
-          apoio="A primeira tela, antes da primeira pergunta. Sem ela, o formulário começa perguntando."
+          apoio={
+            semCabecalho
+              ? undefined
+              : "A primeira tela, antes da primeira pergunta. Sem ela, o formulário começa perguntando."
+          }
         />
         <Chave ligada={Boolean(w)} onChange={ligar} rotulo="Tela de abertura" />
       </div>
@@ -350,15 +427,20 @@ function Abertura({
 function Comportamento({
   fluxo,
   set,
+  semCabecalho,
 }: {
   fluxo: FormSchema
   set: (patch: Partial<FormSchema>) => void
+  semCabecalho?: boolean
 }) {
   const s = fluxo.settings ?? {}
   const trocar = (patch: Partial<typeof s>) => set({ settings: { ...s, ...patch } })
   return (
     <section>
-      <Cabecalho titulo="Comportamento" apoio="Como a pessoa anda pelas perguntas." />
+      <Cabecalho
+        titulo="Comportamento"
+        apoio={semCabecalho ? undefined : "Como a pessoa anda pelas perguntas."}
+      />
       <div className="mt-2 space-y-2 rounded-[6px] border border-black/[0.07] dark:border-white/[0.10] p-2.5">
         <LinhaDeChave
           rotulo="Barra de progresso"
@@ -413,6 +495,7 @@ function TelaNoFluxo({
   problemas,
   onChangeBloco,
   onChangeProximo,
+  semMoldura,
 }: {
   tela: TelaDoFluxo
   alvos: AlvoDoFluxo[]
@@ -420,6 +503,8 @@ function TelaNoFluxo({
   problemas: ProblemaDoFluxo[]
   onChangeBloco: (ref: string, patch: Partial<FormBlock>) => void
   onChangeProximo: (goto: string | null) => void
+  /** No inspetor não há acordeão: a tela já foi escolhida na espinha. */
+  semMoldura?: boolean
 }) {
   // Tela que AGRUPA nasce aberta: é exatamente nela que as perguntas de
   // dentro somem da vista, que era a queixa. Tela de pergunta única já
@@ -429,6 +514,7 @@ function TelaNoFluxo({
   )
   const temErro = problemas.some((p) => p.gravidade === "erro")
   const juntas = tela.blocos.length > 1
+  const visivel = semMoldura || aberto
 
   const adicionarDesvio = (ref: string) => {
     const bloco = tela.blocos.find((b) => b.ref === ref)
@@ -450,12 +536,15 @@ function TelaNoFluxo({
   return (
     <div
       className={
-        "rounded-[6px] border bg-white dark:bg-white/[0.02] " +
-        (temErro
-          ? "border-red-300 dark:border-red-400/35"
-          : "border-slate-200 dark:border-white/[0.10]")
+        semMoldura
+          ? ""
+          : "rounded-[6px] border bg-white dark:bg-white/[0.02] " +
+            (temErro
+              ? "border-red-300 dark:border-red-400/35"
+              : "border-slate-200 dark:border-white/[0.10]")
       }
     >
+      {!semMoldura && (
       <button
         type="button"
         onClick={() => setAberto((o) => !o)}
@@ -485,8 +574,9 @@ function TelaNoFluxo({
           }
         />
       </button>
+      )}
 
-      {!aberto && (
+      {!visivel && (
         <p className="flex items-center gap-1.5 px-2.5 pb-2 text-[11px] text-slate-500 dark:text-white/45">
           <CornerDownRight className="h-3 w-3 shrink-0" />
           {tela.regras.length > 0 ? "Sem desvio, vai para" : "Vai para"}{" "}
@@ -504,8 +594,14 @@ function TelaNoFluxo({
         </p>
       )}
 
-      {aberto && (
-        <div className="space-y-2.5 border-t border-slate-100 px-2.5 pb-2.5 pt-2.5 dark:border-white/[0.06]">
+      {visivel && (
+        <div
+          className={
+            semMoldura
+              ? "space-y-2.5"
+              : "space-y-2.5 border-t border-slate-100 px-2.5 pb-2.5 pt-2.5 dark:border-white/[0.06]"
+          }
+        >
           {/*
             As perguntas DENTRO da tela, listadas.
             Sem esta lista, uma tela de quatro campos aparece como uma
@@ -1014,18 +1110,29 @@ function FinalDoFluxo({
   fim,
   padrao,
   orfao,
+  semMoldura,
   onChange,
   onRemove,
 }: {
   fim: FormEnding
   padrao: boolean
   orfao: boolean
+  /** No inspetor não há acordeão: o item já foi escolhido na espinha. */
+  semMoldura?: boolean
   onChange: (patch: Partial<FormEnding>) => void
   onRemove: () => void
 }) {
   const [aberto, setAberto] = useState(false)
+  const visivel = semMoldura || aberto
   return (
-    <div className="rounded-[6px] border border-slate-200 bg-white dark:border-white/[0.10] dark:bg-white/[0.02]">
+    <div
+      className={
+        semMoldura
+          ? ""
+          : "rounded-[6px] border border-slate-200 bg-white dark:border-white/[0.10] dark:bg-white/[0.02]"
+      }
+    >
+      {!semMoldura && (
       <button
         type="button"
         onClick={() => setAberto((o) => !o)}
@@ -1053,9 +1160,16 @@ function FinalDoFluxo({
           }
         />
       </button>
+      )}
 
-      {aberto && (
-        <div className="space-y-2 border-t border-slate-100 px-2.5 pb-2.5 pt-2.5 dark:border-white/[0.06]">
+      {visivel && (
+        <div
+          className={
+            semMoldura
+              ? "space-y-2"
+              : "space-y-2 border-t border-slate-100 px-2.5 pb-2.5 pt-2.5 dark:border-white/[0.06]"
+          }
+        >
           <Campo rotulo="Título">
             <input
               type="text"

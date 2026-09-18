@@ -17,16 +17,13 @@ import {
   FileText,
   Palette,
   ListChecks,
-  Send,
   BarChart3,
-  Code,
   Smartphone,
   Monitor,
-  Eye,
   ChevronDown,
+  ChevronRight,
   CornerDownRight,
-  Target,
-  Workflow,
+  Settings2,
   RotateCcw,
   MessagesSquare,
   Rows3,
@@ -42,6 +39,15 @@ import { FormPublishPanel } from "@/components/forms/form-publish-panel"
 import { ConversationalFormView } from "@/components/forms/conversational-form-view"
 import { FlowEditor } from "@/components/forms/flow-editor"
 import { DestinoEditor } from "@/components/forms/destino-editor"
+import { EditorEstrutura, type AlvoDoArrasto } from "@/components/forms/editor-estrutura"
+import {
+  montarEspinha,
+  podarSelecao,
+  selecaoDeReserva,
+  telaDaPrevia,
+  type Espinha,
+  type Selecao,
+} from "@/lib/forms/estrutura-do-editor"
 import { normalizarDestino } from "@/lib/forms/destino"
 import type { DestinoDoFinal } from "@/types/forms-conversational"
 import { montarVersao } from "@/lib/forms/publicar"
@@ -210,26 +216,29 @@ const LEAD_FIELD_MAP: Array<{ value: string | ""; label: string }> = [
 
 
 // Tabs
-type TabKey = "fields" | "flow" | "content" | "style" | "after" | "tracking" | "results" | "install"
+type TabKey = "criar" | "design" | "config" | "resultados"
 
 /**
- * As abas seguem o FORMATO, e não uma lista fixa.
+ * Quatro abas, e o critério é a PERGUNTA que cada uma responde.
  *
- * "Fluxo" só existe no conversacional porque só ali ele significa alguma
- * coisa: no formato de página única todas as perguntas aparecem de uma
- * vez, e "o que acontece depois desta resposta" não tem para onde
- * desviar. Deixar a aba visível e inerte ensinaria a montar uma regra que
- * o formulário nunca vai executar.
+ * As oito antigas (Perguntas · Fluxo · Textos · Estilo · Destino ·
+ * Anúncios · Resultados · Instalar) tinham todas o mesmo peso: a aba
+ * onde se constrói o formulário pesava igual à de instalar, e três delas
+ * — Perguntas, Fluxo e Textos — eram a mesma coisa, o que o visitante
+ * vê, partida em três lugares que não se falavam.
+ *
+ * - **Criar**: o que o visitante vê e por onde ele anda. Perguntas,
+ *   telas, desvios, abertura, finais e os textos públicos.
+ * - **Design**: como ele vê. Tema, cores, logo.
+ * - **Configurar**: o que acontece com a resposta e como o formulário
+ *   chega até alguém. Pipeline, destino, anúncios, instalação.
+ * - **Resultados**: o que aconteceu.
  */
-const TABS: Array<{ key: TabKey; label: string; icon: typeof FileText; so?: "conversational" }> = [
-  { key: "fields", label: "Perguntas", icon: ListChecks },
-  { key: "flow", label: "Fluxo", icon: Workflow, so: "conversational" },
-  { key: "content", label: "Textos", icon: FileText },
-  { key: "style", label: "Estilo", icon: Palette },
-  { key: "after", label: "Destino", icon: Send },
-  { key: "tracking", label: "Anúncios", icon: Target },
-  { key: "results", label: "Resultados", icon: BarChart3 },
-  { key: "install", label: "Instalar", icon: Code },
+const TABS: Array<{ key: TabKey; label: string; icon: typeof FileText }> = [
+  { key: "criar", label: "Criar", icon: ListChecks },
+  { key: "design", label: "Design", icon: Palette },
+  { key: "config", label: "Configurar", icon: Settings2 },
+  { key: "resultados", label: "Resultados", icon: BarChart3 },
 ]
 
 // ────────────────────────────────────────────────────────────────────
@@ -326,7 +335,8 @@ export default function FormEditorPage({
    */
   const [rascunho, setRascunho] = useState<FormSchema | null>(null)
 
-  const [activeTab, setActiveTab] = useState<TabKey>("fields")
+  const [activeTab, setActiveTab] = useState<TabKey>("criar")
+  const [selecao, setSelecao] = useState<Selecao>(null)
   const [previewMode, setPreviewMode] = useState<"desktop" | "mobile">("desktop")
   // No mobile os 2 painéis (config + preview) não cabem lado a lado —
   // alterna entre eles com um segmented control. Ignorado no desktop (md+).
@@ -400,18 +410,32 @@ export default function FormEditorPage({
   const stagesForPipeline =
     pipelines.find((p) => p.id === pipelineId)?.stages ?? []
 
+  /**
+   * Cria a pergunta e a SELECIONA.
+   *
+   * Sem a seleção, clicar em "Pergunta" acrescentava uma linha no fim de
+   * uma lista rolada e o painel continuava mostrando outra coisa — quem
+   * acabou de pedir uma pergunta quer escrevê-la, não procurá-la.
+   *
+   * O endereço é `novo-<i>`, o mesmo provisório que `montarVersao` usa
+   * para a pergunta ainda não salva.
+   */
   const addField = () => {
-    setFields((arr) => [
-      ...arr,
-      {
-        field_type: "text",
-        label: "Novo campo",
-        placeholder: "",
-        required: false,
-        position: arr.length,
-        map_to_lead_field: null,
-      },
-    ])
+    setFields((arr) => {
+      const proximo = arr.length
+      setSelecao({ tipo: "pergunta", ref: `novo-${proximo}` })
+      return [
+        ...arr,
+        {
+          field_type: "text",
+          label: "",
+          placeholder: "",
+          required: false,
+          position: proximo,
+          map_to_lead_field: null,
+        },
+      ]
+    })
   }
   const updateField = (idx: number, patch: Partial<FormField>) =>
     setFields((arr) => arr.map((f, i) => (i === idx ? { ...f, ...patch } : f)))
@@ -419,14 +443,6 @@ export default function FormEditorPage({
     setFields((arr) =>
       arr.filter((_, i) => i !== idx).map((f, i) => ({ ...f, position: i })),
     )
-  const moveField = (idx: number, dir: "up" | "down") =>
-    setFields((arr) => {
-      const next = [...arr]
-      const swap = dir === "up" ? idx - 1 : idx + 1
-      if (swap < 0 || swap >= next.length) return next
-      ;[next[idx], next[swap]] = [next[swap], next[idx]]
-      return next.map((f, i) => ({ ...f, position: i }))
-    })
 
   /**
    * O fluxo de hoje: as perguntas do editor mais a lógica do rascunho,
@@ -491,6 +507,53 @@ export default function FormEditorPage({
       ),
     [fluxo],
   )
+
+  /**
+   * A espinha: a lista que a coluna da esquerda desenha, derivada do
+   * FORMATO. Ela é a fonte de tudo o que a aba Criar mostra — o que o
+   * formato não desenha não nasce aqui, então não há campo fantasma a
+   * esconder com um `if` na UI.
+   */
+  const espinha = useMemo(
+    () =>
+      montarEspinha(
+        fields.map((f, i) => ({
+          ref: f.id ?? `novo-${i}`,
+          label: f.label,
+          field_type: f.field_type,
+          required: f.required,
+        })),
+        fluxo,
+        displayMode,
+      ),
+    [fields, fluxo, displayMode],
+  )
+
+  // A seleção pode ter deixado de existir (pergunta apagada, formato
+  // trocado). Podar aqui, e não no clique, é o que impede o inspetor de
+  // mostrar um item que já não está na lista.
+  const selecaoAtiva = useMemo(
+    () => podarSelecao(selecao, espinha, displayMode),
+    [selecao, espinha, displayMode],
+  )
+  const refDaPrevia = useMemo(() => telaDaPrevia(selecaoAtiva, espinha), [selecaoAtiva, espinha])
+
+  /**
+   * Abre na primeira pergunta.
+   *
+   * O inspetor vazio dizendo "escolha um item" é um passo a mais antes
+   * de qualquer trabalho, e quem abre o editor quase sempre vai mexer no
+   * começo do formulário. Só roda uma vez, quando a espinha existe: um
+   * `useState` inicial não serve porque os campos chegam por fetch.
+   */
+  const semeou = useRef(false)
+  useEffect(() => {
+    if (semeou.current || selecao !== null) return
+    const reserva = selecaoDeReserva(espinha)
+    if (!reserva) return
+    semeou.current = true
+    setSelecao(reserva)
+  }, [espinha, selecao])
 
   /**
    * O arrasto: solta a pergunta sobre outra (entra na tela dela) ou na
@@ -801,236 +864,298 @@ export default function FormEditorPage({
   const status = data.form.status
   const modoSalvo: "classic" | "conversational" =
     data.form.display_mode === "conversational" ? "conversational" : "classic"
-  const abas = TABS.filter((t) => !t.so || t.so === displayMode)
-  // A aba pode ter deixado de existir entre renders (troca de formato).
-  // Sem este desvio o painel ficaria em branco, sem nada explicando.
-  const abaVisivel: TabKey = abas.some((t) => t.key === activeTab) ? activeTab : "fields"
   const publicUrl =
     typeof window !== "undefined"
       ? `${window.location.origin}/forms/${slug}`
       : `/forms/${slug}`
 
+  /**
+   * O vocabulário do arrasto da espinha traduzido para o do módulo puro.
+   *
+   * São dois nomes para a mesma coisa porque a espinha fala do que o
+   * operador VÊ ("a faixa entre telas") e `moverPergunta` fala do que
+   * acontece ("vira cabeça de tela nova"). A tradução mora aqui, num
+   * lugar só.
+   */
+  const soltarPergunta = (ref: string, alvo: AlvoDoArrasto) =>
+    arrastarPergunta(
+      ref,
+      alvo.tipo === "pergunta"
+        ? { tipo: "pergunta", ref: alvo.ref }
+        : { tipo: "nova_tela", antesDe: alvo.antesDe },
+    )
+
+  /** Cria um final e o seleciona — mesma razão do `addField`. */
+  const adicionarFinal = () => {
+    if (fluxoIndisponivel) return
+    const existentes = fluxo.endings ?? []
+    const usados = new Set(existentes.map((e) => e.ref))
+    let ref = "final"
+    for (let i = 2; usados.has(ref); i++) ref = `final-${i}`
+    setRascunho({
+      ...fluxo,
+      endings: [
+        ...existentes,
+        {
+          ref,
+          title: existentes.length === 0 ? "Recebemos sua resposta." : "Obrigado!",
+          description: null,
+        },
+      ],
+    })
+    setSelecao({ tipo: "final", ref })
+  }
+
   // ────────────────────────────────────────────────────
   // Render
   // ────────────────────────────────────────────────────
 
-  return (
-    <div className="relative flex -m-4 md:-m-6 lg:-m-8 h-[calc(100dvh-1rem)] md:h-[calc(100dvh-1.5rem)] lg:h-[calc(100dvh-2rem)] overflow-hidden bg-white dark:bg-[#0F1117]">
-      {/* Alternador flutuante Editor/Preview — só no mobile (md:hidden) */}
-      <div className="md:hidden absolute bottom-4 left-1/2 z-20 flex -translate-x-1/2 gap-1 rounded-full border border-black/[0.08] bg-white p-1 shadow-lg dark:border-white/[0.10] dark:bg-[#1A1D27]">
-        <button
-          type="button"
-          onClick={() => setMobilePane("editor")}
-          className={`h-8 rounded-full px-4 text-[12px] font-medium transition-colors ${mobilePane === "editor" ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900" : "text-slate-600 dark:text-white/70"}`}
-        >
-          Editor
-        </button>
-        <button
-          type="button"
-          onClick={() => setMobilePane("preview")}
-          className={`h-8 rounded-full px-4 text-[12px] font-medium transition-colors ${mobilePane === "preview" ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900" : "text-slate-600 dark:text-white/70"}`}
-        >
-          Preview
-        </button>
-      </div>
-
-      {/* ─── PAINEL ESQUERDO: configuração ─── */}
-      <div className={`${mobilePane === "editor" ? "flex" : "hidden md:flex"} w-full shrink-0 flex-col border-r border-black/[0.06] md:w-[480px] xl:w-[520px] dark:border-white/[0.08]`}>
-        {/* Top bar */}
-        <div className="shrink-0 px-5 pt-5 pb-3 border-b border-black/[0.06] dark:border-white/[0.08]">
-          <div className="flex items-center justify-between gap-2 mb-3">
-            <Link
-              href={formsListHref}
-              className="inline-flex items-center gap-1.5 text-[12px] font-medium text-slate-500 dark:text-white/55 hover:text-slate-900 dark:hover:text-white transition-colors"
-            >
-              <ArrowLeft className="h-3.5 w-3.5" />
-              Voltar
-            </Link>
-            <StatusBadge status={status} />
+  /**
+   * A prévia é a MESMA peça em todas as abas que a mostram — montada uma
+   * vez e posicionada pelo layout de cada uma. Dois blocos de preview
+   * divergiriam no primeiro ajuste, e o sintoma seria o operador ver uma
+   * coisa em Criar e outra em Design.
+   */
+  const palco = (
+    <div
+      className="h-full overflow-auto transition-colors"
+      style={{
+        background:
+          previewBg === "auto"
+            ? theme.mode === "dark"
+              ? "#0B0F19"
+              : "#F8FAFC"
+            : previewBg === "white"
+              ? "#FFFFFF"
+              : previewBg === "gray"
+                ? "#E5E7EB"
+                : previewBg === "dark"
+                  ? "#0B0F19"
+                  : "repeating-conic-gradient(#D1D5DB 0% 25%, transparent 0% 50%) 0 0/16px 16px",
+      }}
+    >
+      {displayMode === "conversational" ? (
+        /**
+         * O palco do conversacional é uma TELA, não um card: ele ocupa a
+         * janela inteira no ar, e mostrá-lo encaixotado faria o preview
+         * parecer outro produto.
+         *
+         * O schema é o `fluxo` — a saída da MESMA `montarVersao` que a
+         * publicação chama —, então o que se navega aqui é o que vai ao
+         * ar, incluindo os saltos. `comecarEm` entra no `key` porque é
+         * estado INICIAL: sem remontar, escolher outra pergunta na
+         * espinha não moveria a prévia.
+         */
+        <div className="flex min-h-full items-start justify-center p-4 md:p-6">
+          <div
+            className={
+              "overflow-hidden transition-all duration-200 " +
+              (previewMode === "mobile"
+                ? "h-[700px] max-h-[calc(100dvh-11rem)] w-[380px] max-w-full rounded-[24px] border border-slate-300/40 shadow-[0_24px_48px_rgba(0,0,0,0.18)] dark:border-white/10"
+                : "h-[calc(100dvh-11rem)] min-h-[480px] w-full max-w-[860px] rounded-[10px] shadow-[0_24px_48px_rgba(0,0,0,0.10)]")
+            }
+          >
+            <ConversationalFormView
+              key={`${previewMode}-${previewReset}-${refDaPrevia ?? ""}`}
+              slug={slug || "preview"}
+              schema={fluxo}
+              comecarEm={refDaPrevia}
+              form={{
+                id,
+                name,
+                logo_url: logoUrl || null,
+                theme,
+                success_message: successMessage || null,
+                redirect_url: redirectUrl || null,
+              }}
+              preview
+              moldura
+            />
           </div>
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Nome do formulário"
-            className="w-full text-[18px] font-semibold leading-tight bg-transparent text-slate-900 dark:text-white outline-none border-0 px-0 focus:ring-0"
-          />
-          <p className="mt-1 text-[11px] text-slate-500 dark:text-white/45 font-mono truncate">
-            /forms/{slug || "..."}
-          </p>
+        </div>
+      ) : (
+        <div className="flex min-h-full items-start justify-center p-4 md:p-8">
+          <div
+            className={
+              "transition-all duration-200 " +
+              (previewMode === "mobile"
+                ? "w-[380px] max-w-full overflow-hidden rounded-[24px] border border-slate-300/40 shadow-[0_24px_48px_rgba(0,0,0,0.18)] dark:border-white/10"
+                : "w-full max-w-[680px] overflow-hidden rounded-[8px] shadow-[0_24px_48px_rgba(0,0,0,0.10)]")
+            }
+          >
+            {/* Modo EMBED: é a forma que o formulário assume em qualquer
+                landing, então é o que o operador precisa conferir. */}
+            <PublicFormView
+              slug={slug || "preview"}
+              payload={previewPayload}
+              utm={{
+                utm_source: null,
+                utm_medium: null,
+                utm_campaign: null,
+                utm_term: null,
+                utm_content: null,
+                gclid: null,
+                fbclid: null,
+              }}
+              preview
+              embed
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  )
+
+  const barraDoPalco = (
+    <div className="flex h-10 shrink-0 items-center justify-between gap-3 border-b border-black/[0.06] bg-white px-3 dark:border-white/[0.08] dark:bg-[#0F1117]">
+      <div className="flex min-w-0 items-center gap-2">
+        <div className="inline-flex items-center gap-0.5 rounded-[6px] bg-slate-100 p-0.5 dark:bg-white/[0.05]">
+          {(
+            [
+              { key: "desktop", label: "Computador", icon: Monitor },
+              { key: "mobile", label: "Celular", icon: Smartphone },
+            ] as const
+          ).map((m) => {
+            const active = previewMode === m.key
+            const Icon = m.icon
+            return (
+              <button
+                key={m.key}
+                type="button"
+                onClick={() => setPreviewMode(m.key)}
+                title={m.label}
+                className={
+                  "inline-flex h-6 w-7 items-center justify-center rounded-[4px] transition-colors " +
+                  (active
+                    ? "bg-white text-slate-900 shadow-[0_1px_2px_rgba(0,0,0,0.06)] dark:bg-[#1A1D27] dark:text-white"
+                    : "text-slate-500 hover:text-slate-900 dark:text-white/55 dark:hover:text-white")
+                }
+                aria-label={m.label}
+                aria-pressed={active}
+              >
+                <Icon className="h-3.5 w-3.5" />
+              </button>
+            )
+          })}
+        </div>
+        {displayMode === "conversational" && (
+          <button
+            type="button"
+            onClick={() => setPreviewReset((n) => n + 1)}
+            className="inline-flex items-center gap-1 rounded-[5px] px-1.5 py-1 text-[11px] font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-white/60 dark:hover:bg-white/[0.05] dark:hover:text-white"
+          >
+            <RotateCcw className="h-3 w-3" />
+            Recomeçar
+          </button>
+        )}
+      </div>
+      <div className="flex shrink-0 items-center gap-1.5">
+        <span className="hidden text-[10px] font-medium uppercase tracking-wide text-slate-500 dark:text-white/55 lg:inline">
+          Fundo
+        </span>
+        <div className="inline-flex items-center gap-0.5 rounded-[6px] bg-slate-100 p-0.5 dark:bg-white/[0.05]">
+          {(
+            [
+              { key: "auto", label: "Automático", swatch: null },
+              { key: "white", label: "Claro", swatch: "#FFFFFF" },
+              { key: "gray", label: "Cinza", swatch: "#E5E7EB" },
+              { key: "dark", label: "Escuro", swatch: "#0B0F19" },
+              { key: "checker", label: "Transparente", swatch: "checker" },
+            ] as const
+          ).map((b) => {
+            const active = previewBg === b.key
+            return (
+              <button
+                key={b.key}
+                type="button"
+                onClick={() => setPreviewBg(b.key)}
+                title={b.label}
+                aria-label={`Fundo ${b.label}`}
+                aria-pressed={active}
+                className={
+                  "inline-flex h-6 items-center justify-center gap-1 rounded-[4px] px-1.5 transition-colors " +
+                  (active
+                    ? "bg-white text-slate-900 shadow-[0_1px_2px_rgba(0,0,0,0.06)] dark:bg-[#1A1D27] dark:text-white"
+                    : "text-slate-500 hover:text-slate-900 dark:text-white/55 dark:hover:text-white")
+                }
+              >
+                {b.swatch === "checker" ? (
+                  <span
+                    className="h-3 w-3 rounded-[2px] border border-slate-300 dark:border-white/15"
+                    style={{
+                      background:
+                        "repeating-conic-gradient(#D1D5DB 0% 25%, transparent 0% 50%) 0 0/6px 6px",
+                    }}
+                    aria-hidden
+                  />
+                ) : b.swatch ? (
+                  <span
+                    className="h-3 w-3 rounded-[2px] border border-slate-300 dark:border-white/15"
+                    style={{ background: b.swatch }}
+                    aria-hidden
+                  />
+                ) : (
+                  <span className="text-[10px] font-medium">Auto</span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+
+  return (
+    <div className="relative -m-4 flex h-[calc(100dvh-1rem)] flex-col overflow-hidden bg-white md:-m-6 md:h-[calc(100dvh-1.5rem)] lg:-m-8 lg:h-[calc(100dvh-2rem)] dark:bg-[#0F1117]">
+      {/* ─── TOPO: identidade, abas e ações ─── */}
+      <header className="shrink-0 border-b border-black/[0.06] dark:border-white/[0.08]">
+        <div className="flex items-center gap-3 px-4 py-2.5">
+          <Link
+            href={formsListHref}
+            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[5px] text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-white/55 dark:hover:bg-white/[0.06] dark:hover:text-white"
+            aria-label="Voltar para a lista de formulários"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
+          <div className="min-w-0 flex-1">
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Nome do formulário"
+              aria-label="Nome do formulário"
+              className="w-full truncate border-0 bg-transparent px-0 text-[15px] font-semibold leading-tight text-slate-900 outline-none focus:ring-0 dark:text-white"
+            />
+            <p className="truncate font-mono text-[10.5px] text-slate-500 dark:text-white/45">
+              /forms/{slug || "..."}
+            </p>
+          </div>
+
           <FormatoDoFormulario
             modo={displayMode}
             modoSalvo={modoSalvo}
             noAr={status === "published"}
-            onChange={(m) => {
-              setDisplayMode(m)
-              // Trocar para página única com a aba Fluxo aberta deixaria
-              // o painel vazio sem dizer por quê.
-              if (m === "classic" && activeTab === "flow") setActiveTab("fields")
-            }}
+            onChange={setDisplayMode}
           />
-        </div>
 
-        {/* Tab nav */}
-        <div className="shrink-0 border-b border-black/[0.06] dark:border-white/[0.08]">
-          <div className="flex">
-            {abas.map((t) => {
-              const active = abaVisivel === t.key
-              const Icon = t.icon
-              const alerta = t.key === "flow" && contagemDoFluxo.erros > 0
-              return (
-                <button
-                  key={t.key}
-                  type="button"
-                  onClick={() => setActiveTab(t.key)}
-                  aria-current={active ? "page" : undefined}
-                  className={
-                    "relative flex-1 flex flex-col items-center gap-1 py-2.5 text-[10px] font-medium leading-none transition-colors border-b-2 " +
-                    (active
-                      ? "border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400"
-                      : "border-transparent text-slate-500 dark:text-white/55 hover:text-slate-900 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-white/[0.03]")
-                  }
-                >
-                  <span className="relative">
-                    <Icon className="h-4 w-4" />
-                    {alerta && (
-                      <span
-                        className="absolute -right-1 -top-0.5 h-1.5 w-1.5 rounded-full bg-red-500 ring-2 ring-white dark:ring-[#0F1117]"
-                        aria-hidden
-                      />
-                    )}
-                  </span>
-                  {t.label}
-                </button>
-              )
-            })}
-          </div>
-        </div>
+          <div className="hidden h-5 w-px bg-black/[0.08] dark:bg-white/[0.10] lg:block" />
 
-        {/* Tab content (scroll) */}
-        <div className="flex-1 overflow-y-auto">
-          {abaVisivel === "flow" && (
-            <>
-              {rascunho === null && (
-                <div className="mx-4 mt-4 rounded-[6px] border border-red-300/70 bg-red-50 px-3 py-2 text-[11.5px] leading-relaxed text-red-900 dark:border-red-400/25 dark:bg-red-400/[0.07] dark:text-red-200">
-                  Não foi possível ler a versão publicada, então o fluxo abaixo pode não ser o que
-                  está no ar. Nada daqui será gravado até recarregar a página com a leitura
-                  funcionando.
-                </div>
-              )}
-              {montagem.regras_descartadas.length > 0 && (
-                <div className="mx-4 mt-4 rounded-[6px] border border-amber-300/70 bg-amber-50 px-3 py-2 text-[11.5px] leading-relaxed text-amber-900 dark:border-amber-400/25 dark:bg-amber-400/[0.07] dark:text-amber-200">
-                  {montagem.regras_descartadas.length === 1
-                    ? "1 regra apontava para uma pergunta ou final que não existe mais e saiu do fluxo."
-                    : `${montagem.regras_descartadas.length} regras apontavam para perguntas ou finais que não existem mais e saíram do fluxo.`}
-                </div>
-              )}
-              <FlowEditor
-                fluxo={fluxo}
-                onChange={setRascunho}
-                temAbertura={displayMode === "conversational"}
-              />
-            </>
-          )}
-          {abaVisivel === "content" && (
-            <ContentTab
-              name={name}
-              setName={setName}
-              slug={slug}
-              setSlug={setSlug}
-              description={description}
-              setDescription={setDescription}
-              theme={theme}
-              setTheme={setTheme}
-              displayMode={displayMode}
-            />
-          )}
-          {abaVisivel === "style" && (
-            <StyleTab
-              theme={theme}
-              setTheme={setTheme}
-              logoUrl={logoUrl}
-              setLogoUrl={setLogoUrl}
-              modo={displayMode}
-            />
-          )}
-          {abaVisivel === "fields" && (
-            <FieldsTab
-              fields={fields}
-              leadCustomFields={leadCustomFields}
-              dealCustomFields={dealCustomFields}
-              addField={addField}
-              updateField={updateField}
-              removeField={removeField}
-              moveField={moveField}
-              modo={displayMode}
-              regrasPorRef={regrasPorRef}
-              telaPorRef={telaPorRef}
-              agruparPergunta={agruparPergunta}
-              arrastarPergunta={arrastarPergunta}
-              faixasPorMoeda={faixasPorMoeda}
-              blocosDoFluxo={fluxo.blocks}
-              irParaFluxo={() => setActiveTab("flow")}
-            />
-          )}
-          {abaVisivel === "after" && (
-            <AfterTab
-              pipelines={pipelines}
-              stagesForPipeline={stagesForPipeline}
-              pipelineId={pipelineId}
-              setPipelineId={(v) => {
-                setPipelineId(v)
-                setStageId("")
-              }}
-              stageId={stageId}
-              setStageId={setStageId}
-              successMessage={successMessage}
-              setSuccessMessage={setSuccessMessage}
-              redirectUrl={redirectUrl}
-              destinoQualificado={destinoQualificado}
-              setDestinoQualificado={setDestinoQualificado}
-              setRedirectUrl={setRedirectUrl}
-            />
-          )}
-          {abaVisivel === "tracking" && (
-            <TrackingTab
-              tracking={tracking}
-              setTracking={setTracking}
-              fields={fields}
-              formId={id}
-            />
-          )}
-          {abaVisivel === "results" && <FormResults formId={id} />}
-          {abaVisivel === "install" && (
-            <InstallTab
-              publicUrl={publicUrl}
-              status={status}
-              copied={copied}
-              setCopied={setCopied}
-              name={name}
-            />
-          )}
-        </div>
-
-        {/* Footer com ações */}
-        <div className="shrink-0 px-4 py-3 border-t border-black/[0.06] dark:border-white/[0.08] bg-slate-50/60 dark:bg-white/[0.02] flex items-center justify-between gap-2">
-          <div className="text-[10px] text-slate-500 dark:text-white/45 truncate">
-            {error ? (
-              <span className="text-red-600 dark:text-red-400">{error}</span>
-            ) : savedAt ? (
-              <span className="inline-flex items-center gap-1">
-                <CheckCircle2 className="h-3 w-3 text-emerald-500" />
-                Salvo {savedAt.toLocaleTimeString("pt-BR")}
-              </span>
-            ) : (
-              <span>Cmd/Ctrl + S para salvar</span>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <StatusBadge status={status} />
+            {status === "published" && (
+              <a
+                href={publicUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex h-7 items-center gap-1 rounded-[5px] px-2 text-[11.5px] font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-white/65 dark:hover:bg-white/[0.06] dark:hover:text-white"
+              >
+                Abrir <ExternalLink className="h-3 w-3" />
+              </a>
             )}
-          </div>
-          <div className="flex items-center gap-1.5">
             <button
               type="button"
               onClick={togglePublish}
-              className="h-8 px-3 rounded-[6px] text-[11px] font-medium text-slate-700 dark:text-white/80 border border-black/[0.08] dark:border-white/[0.10] hover:bg-white dark:hover:bg-white/[0.06] transition-colors"
+              className="h-7 rounded-[5px] border border-black/[0.10] px-2.5 text-[11.5px] font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-white/[0.12] dark:text-white/80 dark:hover:bg-white/[0.06]"
             >
               {status === "published" ? "Tirar do ar" : "Colocar no ar"}
             </button>
@@ -1038,224 +1163,632 @@ export default function FormEditorPage({
               type="button"
               onClick={save}
               disabled={saving}
-              className="inline-flex items-center gap-1.5 h-8 px-3 rounded-[6px] text-[11px] font-semibold text-white bg-[#1F1F1F] hover:bg-black dark:bg-white dark:text-black dark:hover:bg-white/90 disabled:opacity-50 transition-colors"
+              className="inline-flex h-7 items-center gap-1.5 rounded-[5px] bg-[#1F1F1F] px-3 text-[11.5px] font-semibold text-white transition-colors hover:bg-black disabled:opacity-50 dark:bg-white dark:text-black dark:hover:bg-white/90"
             >
-              {saving ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              ) : (
-                <Save className="h-3 w-3" />
-              )}
+              {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
               Salvar
             </button>
           </div>
         </div>
+
+        <div className="flex items-center justify-between gap-3 px-4">
+          <nav className="flex gap-0.5" aria-label="Seções do editor">
+            {TABS.map((t) => {
+              const active = activeTab === t.key
+              const Icon = t.icon
+              const alerta = t.key === "criar" && contagemDoFluxo.erros > 0
+              return (
+                <button
+                  key={t.key}
+                  type="button"
+                  onClick={() => setActiveTab(t.key)}
+                  aria-current={active ? "page" : undefined}
+                  className={
+                    "relative -mb-px inline-flex items-center gap-1.5 border-b-2 px-2.5 py-2 text-[12.5px] font-medium transition-colors " +
+                    (active
+                      ? "border-slate-900 text-slate-900 dark:border-white dark:text-white"
+                      : "border-transparent text-slate-500 hover:text-slate-900 dark:text-white/55 dark:hover:text-white")
+                  }
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  {t.label}
+                  {alerta && (
+                    <span
+                      className="h-1.5 w-1.5 rounded-full bg-red-500"
+                      aria-label={`${contagemDoFluxo.erros} problemas no fluxo`}
+                    />
+                  )}
+                </button>
+              )
+            })}
+          </nav>
+          <div className="hidden min-w-0 items-center gap-2 pb-1.5 text-[10.5px] text-slate-500 dark:text-white/45 md:flex">
+            {error ? (
+              <span className="truncate text-red-600 dark:text-red-400">{error}</span>
+            ) : savedAt ? (
+              <span className="inline-flex items-center gap-1">
+                <CheckCircle2 className="h-3 w-3 text-emerald-500" />
+                Salvo {savedAt.toLocaleTimeString("pt-BR")}
+              </span>
+            ) : (
+              <span>Cmd/Ctrl + S salva</span>
+            )}
+          </div>
+        </div>
+      </header>
+
+      {/* ─── CORPO ─── */}
+      <div className="flex min-h-0 flex-1">
+        {activeTab === "criar" && (
+          <>
+            {/* Coluna 1 — a espinha */}
+            <div
+              className={
+                "min-h-0 w-full shrink-0 border-r border-black/[0.06] dark:border-white/[0.08] lg:w-[264px] " +
+                (mobilePane === "editor" ? "block" : "hidden lg:block")
+              }
+            >
+              <EditorEstrutura
+                espinha={espinha}
+                selecao={selecaoAtiva}
+                modo={displayMode}
+                problemas={contagemDoFluxo.erros}
+                onSelecionar={setSelecao}
+                onAdicionarPergunta={addField}
+                onAdicionarFinal={adicionarFinal}
+                onArrastar={soltarPergunta}
+              />
+            </div>
+
+            {/* Coluna 2 — a prévia. Some antes das outras duas em tela
+                estreita: é onde se CONFERE, e as outras são onde se
+                trabalha. */}
+            <div className="hidden min-w-0 flex-1 flex-col bg-slate-100 dark:bg-[#0A0B12] xl:flex">
+              {barraDoPalco}
+              {/* A publicação encostada no palco: a pergunta que ela
+                  responde é sobre o que este preview mostra. */}
+              <div className="shrink-0 border-b border-black/[0.06] bg-white dark:border-white/[0.08] dark:bg-[#0F1117]">
+                <FormPublishPanel formId={id} modo={displayMode} />
+              </div>
+              <div className="min-h-0 flex-1">{palco}</div>
+            </div>
+
+            {/* Coluna 3 — o inspetor */}
+            <div
+              className={
+                "min-h-0 w-full shrink-0 overflow-y-auto border-l border-black/[0.06] dark:border-white/[0.08] lg:w-[340px] " +
+                (mobilePane === "preview" ? "block" : "hidden lg:block")
+              }
+            >
+              <Inspetor
+                selecao={selecaoAtiva}
+                espinha={espinha}
+                modo={displayMode}
+                fluxo={fluxo}
+                onFluxo={setRascunho}
+                fields={fields}
+                updateField={updateField}
+                removeField={removeField}
+                leadCustomFields={leadCustomFields}
+                dealCustomFields={dealCustomFields}
+                telaPorRef={telaPorRef}
+                regrasPorRef={regrasPorRef}
+                agruparPergunta={agruparPergunta}
+                faixasPorMoeda={faixasPorMoeda}
+                blocosDoFluxo={fluxo.blocks}
+                theme={theme}
+                setTheme={setTheme}
+                onSelecionar={setSelecao}
+              />
+            </div>
+          </>
+        )}
+
+        {activeTab === "design" && (
+          <>
+            <div className="min-h-0 w-full shrink-0 overflow-y-auto border-r border-black/[0.06] dark:border-white/[0.08] lg:w-[380px]">
+              <StyleTab
+                theme={theme}
+                setTheme={setTheme}
+                logoUrl={logoUrl}
+                setLogoUrl={setLogoUrl}
+                modo={displayMode}
+              />
+            </div>
+            <div className="hidden min-w-0 flex-1 flex-col bg-slate-100 dark:bg-[#0A0B12] lg:flex">
+              {barraDoPalco}
+              <div className="min-h-0 flex-1">{palco}</div>
+            </div>
+          </>
+        )}
+
+        {activeTab === "config" && (
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="mx-auto max-w-[760px] px-4 py-5">
+              <ConfigurarTab
+                name={name}
+                slug={slug}
+                setSlug={setSlug}
+                description={description}
+                setDescription={setDescription}
+                pipelines={pipelines}
+                stagesForPipeline={stagesForPipeline}
+                pipelineId={pipelineId}
+                setPipelineId={(v) => {
+                  setPipelineId(v)
+                  setStageId("")
+                }}
+                stageId={stageId}
+                setStageId={setStageId}
+                successMessage={successMessage}
+                setSuccessMessage={setSuccessMessage}
+                redirectUrl={redirectUrl}
+                setRedirectUrl={setRedirectUrl}
+                destinoQualificado={destinoQualificado}
+                setDestinoQualificado={setDestinoQualificado}
+                tracking={tracking}
+                setTracking={setTracking}
+                fields={fields}
+                formId={id}
+                publicUrl={publicUrl}
+                status={status}
+                copied={copied}
+                setCopied={setCopied}
+              />
+            </div>
+          </div>
+        )}
+
+        {activeTab === "resultados" && (
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <FormResults formId={id} />
+          </div>
+        )}
       </div>
 
-      {/* ─── PAINEL DIREITO: preview live ─── */}
-      <div className={`${mobilePane === "preview" ? "flex" : "hidden md:flex"} flex-1 flex-col min-w-0 bg-slate-100 dark:bg-[#0A0B12]`}>
-        {/* Toolbar */}
-        <div className="shrink-0 h-12 px-4 flex items-center justify-between gap-3 border-b border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-[#0F1117]">
-          <div className="inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-500 dark:text-white/55 min-w-0">
-            <Eye className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">Preview ao vivo</span>
-          </div>
-          <div className="flex items-center gap-3 shrink-0">
-            {/* Toggle de fundo simulado */}
-            <div className="flex items-center gap-1.5">
-              <span className="text-[10px] font-medium text-slate-400 dark:text-white/45 uppercase tracking-wide">
-                Fundo
-              </span>
-              <div className="inline-flex items-center gap-0.5 rounded-[6px] bg-slate-100 dark:bg-white/[0.04] p-0.5">
-                {(
-                  [
-                    { key: "auto", label: "Auto", swatch: null },
-                    { key: "white", label: "Claro", swatch: "#FFFFFF" },
-                    { key: "gray", label: "Cinza", swatch: "#E5E7EB" },
-                    { key: "dark", label: "Escuro", swatch: "#0B0F19" },
-                    { key: "checker", label: "Transparente", swatch: "checker" },
-                  ] as const
-                ).map((b) => {
-                  const active = previewBg === b.key
-                  return (
-                    <button
-                      key={b.key}
-                      type="button"
-                      onClick={() => setPreviewBg(b.key)}
-                      title={b.label}
-                      className={
-                        "inline-flex items-center justify-center h-6 px-1.5 rounded-[4px] gap-1 " +
-                        (active
-                          ? "bg-white dark:bg-[#1A1D27] shadow-[0_1px_2px_rgba(0,0,0,0.06)] text-slate-900 dark:text-white"
-                          : "text-slate-500 dark:text-white/55 hover:text-slate-900 dark:hover:text-white")
-                      }
-                      aria-label={`Fundo ${b.label}`}
-                    >
-                      {b.swatch === "checker" ? (
-                        <span
-                          className="h-3 w-3 rounded-[2px] border border-slate-300 dark:border-white/15"
-                          style={{
-                            background:
-                              "repeating-conic-gradient(#D1D5DB 0% 25%, transparent 0% 50%) 0 0/6px 6px",
-                          }}
-                          aria-hidden
-                        />
-                      ) : b.swatch ? (
-                        <span
-                          className="h-3 w-3 rounded-[2px] border border-slate-300 dark:border-white/15"
-                          style={{ background: b.swatch }}
-                          aria-hidden
-                        />
-                      ) : null}
-                      <span className="text-[10px] font-medium">{b.label}</span>
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-
-            {displayMode === "conversational" && (
-              <button
-                type="button"
-                onClick={() => setPreviewReset((n) => n + 1)}
-                className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-600 hover:text-slate-900 dark:text-white/60 dark:hover:text-white"
-              >
-                <RotateCcw className="h-3 w-3" />
-                Recomeçar
-              </button>
-            )}
-            {status === "published" && (
-              <a
-                href={publicUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-[11px] font-medium text-blue-600 dark:text-blue-400 hover:underline"
-              >
-                Abrir publicado <ExternalLink className="h-3 w-3" />
-              </a>
-            )}
-            <div className="inline-flex items-center gap-0.5 rounded-[6px] bg-slate-100 dark:bg-white/[0.04] p-0.5">
-              {(
-                [
-                  { key: "desktop", label: "Desktop", icon: Monitor },
-                  { key: "mobile", label: "Mobile", icon: Smartphone },
-                ] as const
-              ).map((m) => {
-                const active = previewMode === m.key
-                const Icon = m.icon
-                return (
-                  <button
-                    key={m.key}
-                    type="button"
-                    onClick={() => setPreviewMode(m.key)}
-                    className={
-                      "inline-flex items-center justify-center h-6 w-7 rounded-[4px] " +
-                      (active
-                        ? "bg-white dark:bg-[#1A1D27] shadow-[0_1px_2px_rgba(0,0,0,0.06)] text-slate-900 dark:text-white"
-                        : "text-slate-500 dark:text-white/55 hover:text-slate-900 dark:hover:text-white")
-                    }
-                    aria-label={m.label}
-                  >
-                    <Icon className="h-3.5 w-3.5" />
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-        </div>
-
-        {/* A publicação encostada no palco: a pergunta que ela responde é
-            sobre o que este preview mostra. */}
-        <div className="shrink-0 border-b border-black/[0.06] bg-white dark:border-white/[0.08] dark:bg-[#0F1117]">
-          <FormPublishPanel formId={id} modo={displayMode} />
-        </div>
-
-        {/* Preview frame com fundo simulado pra simular onde o form ficara */}
-        <div
-          className="flex-1 overflow-auto transition-colors"
-          style={{
-            background: (() => {
-              // 'auto': adapta ao mode do tema (dark form -> dark bg, light form -> white bg).
-              // Garante que dark mode + transparent nao fique invisivel no preview.
-              if (previewBg === "auto") {
-                return theme.mode === "dark" ? "#0B0F19" : "#F8FAFC"
+      {/* Alternador Estrutura/Detalhes — só onde as três colunas não cabem */}
+      {activeTab === "criar" && (
+        <div className="absolute bottom-4 left-1/2 z-20 flex -translate-x-1/2 gap-1 rounded-full border border-black/[0.08] bg-white p-1 shadow-lg lg:hidden dark:border-white/[0.10] dark:bg-[#1A1D27]">
+          {(
+            [
+              { key: "editor", label: "Estrutura" },
+              { key: "preview", label: "Detalhes" },
+            ] as const
+          ).map((b) => (
+            <button
+              key={b.key}
+              type="button"
+              onClick={() => setMobilePane(b.key)}
+              className={
+                "h-8 rounded-full px-4 text-[12px] font-medium transition-colors " +
+                (mobilePane === b.key
+                  ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900"
+                  : "text-slate-600 dark:text-white/70")
               }
-              if (previewBg === "white") return "#FFFFFF"
-              if (previewBg === "gray") return "#E5E7EB"
-              if (previewBg === "dark") return "#0B0F19"
-              // checker: padrao xadrez universal pra "transparente"
-              return "repeating-conic-gradient(#D1D5DB 0% 25%, transparent 0% 50%) 0 0/16px 16px"
-            })(),
-          }}
-        >
-          {displayMode === "conversational" ? (
-            /**
-             * O palco do conversacional é uma TELA, não um card: ele
-             * ocupa a janela inteira no ar, e mostrá-lo encaixotado num
-             * cartão de 680px faria o preview parecer outro produto.
-             *
-             * O schema é o `fluxo` — a saída da MESMA `montarVersao` que
-             * a publicação chama —, então o que se navega aqui é o que
-             * vai ao ar, incluindo os saltos.
-             */
-            <div className="flex min-h-full items-start justify-center p-4 md:p-8">
-              <div
-                className={
-                  "overflow-hidden transition-all duration-200 " +
-                  (previewMode === "mobile"
-                    ? "h-[720px] max-h-[calc(100dvh-13rem)] w-[380px] max-w-full rounded-[24px] border border-slate-300/40 shadow-[0_24px_48px_rgba(0,0,0,0.18)] dark:border-white/10"
-                    : "h-[calc(100dvh-13rem)] min-h-[520px] w-full max-w-[900px] rounded-[10px] shadow-[0_24px_48px_rgba(0,0,0,0.10)]")
-                }
-              >
-                <ConversationalFormView
-                  key={`${previewMode}-${previewReset}`}
-                  slug={slug || "preview"}
-                  schema={fluxo}
-                  form={{
-                    id,
-                    name,
-                    logo_url: logoUrl || null,
-                    theme,
-                    success_message: successMessage || null,
-                    redirect_url: redirectUrl || null,
-                  }}
-                  preview
-                  moldura
-                />
-              </div>
+            >
+              {b.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+/**
+ * Configurar: tudo o que não é o que o visitante vê nem como ele vê.
+ *
+ * Junta as quatro abas antigas que respondiam à MESMA pergunta — o que
+ * acontece com a resposta e como o formulário chega até alguém —, em
+ * seções que se leem na ordem em que o trabalho acontece: identificação,
+ * para onde o lead vai, o que ele vê depois de enviar, os anúncios que o
+ * trazem, e como instalar.
+ *
+ * A identificação (slug, descrição interna) estava em "Textos", ao lado
+ * do título público. São coisas de mundos diferentes: uma é como o time
+ * acha o formulário no admin, a outra é o que o visitante lê.
+ */
+function ConfigurarTab({
+  name,
+  slug,
+  setSlug,
+  description,
+  setDescription,
+  pipelines,
+  stagesForPipeline,
+  pipelineId,
+  setPipelineId,
+  stageId,
+  setStageId,
+  successMessage,
+  setSuccessMessage,
+  redirectUrl,
+  setRedirectUrl,
+  destinoQualificado,
+  setDestinoQualificado,
+  tracking,
+  setTracking,
+  fields,
+  formId,
+  publicUrl,
+  status,
+  copied,
+  setCopied,
+}: {
+  name: string
+  slug: string
+  setSlug: (v: string) => void
+  description: string
+  setDescription: (v: string) => void
+  pipelines: PipelineLite[]
+  stagesForPipeline: Array<{ id: string; name: string }>
+  pipelineId: string
+  setPipelineId: (v: string) => void
+  stageId: string
+  setStageId: (v: string) => void
+  successMessage: string
+  setSuccessMessage: (v: string) => void
+  redirectUrl: string
+  setRedirectUrl: (v: string) => void
+  destinoQualificado: DestinoDoFinal | null
+  setDestinoQualificado: (d: DestinoDoFinal | null) => void
+  tracking: TrackingState
+  setTracking: React.Dispatch<React.SetStateAction<TrackingState>>
+  fields: FormField[]
+  formId: string
+  publicUrl: string
+  status: "draft" | "published" | "archived"
+  copied: string | null
+  setCopied: (v: string | null) => void
+}) {
+  const [secao, setSecao] = useState<"destino" | "anuncios" | "instalar">("destino")
+  return (
+    <div className="space-y-4">
+      <nav className="flex gap-1 rounded-[6px] bg-slate-100 p-0.5 dark:bg-white/[0.05]" aria-label="Configurações">
+        {(
+          [
+            { key: "destino", label: "Lead e destino" },
+            { key: "anuncios", label: "Anúncios" },
+            { key: "instalar", label: "Instalar" },
+          ] as const
+        ).map((x) => (
+          <button
+            key={x.key}
+            type="button"
+            onClick={() => setSecao(x.key)}
+            aria-current={secao === x.key ? "page" : undefined}
+            className={
+              "flex-1 rounded-[5px] px-3 py-1.5 text-[12px] font-medium transition-colors " +
+              (secao === x.key
+                ? "bg-white text-slate-900 shadow-[0_1px_2px_rgba(0,0,0,0.06)] dark:bg-[#1A1D27] dark:text-white"
+                : "text-slate-600 hover:text-slate-900 dark:text-white/60 dark:hover:text-white")
+            }
+          >
+            {x.label}
+          </button>
+        ))}
+      </nav>
+
+      {secao === "destino" && (
+        <Stack>
+          <SectionTitle title="Identificação" hint="Como o time acha este formulário — não aparece para quem responde." />
+          <Field label="Endereço público" hint="Só letras minúsculas, números e hífen.">
+            <div className="flex items-center gap-1">
+              <span className="shrink-0 font-mono text-[12px] text-slate-500 dark:text-white/45">/forms/</span>
+              <input
+                type="text"
+                value={slug}
+                onChange={(e) => setSlug(e.target.value)}
+                className="crm-input w-full font-mono text-[12px]"
+              />
             </div>
-          ) : (
-            <div className="min-h-full flex items-start justify-center p-4 md:p-10">
-              <div
-                className={
-                  "transition-all duration-200 " +
-                  (previewMode === "mobile"
-                    ? "w-[380px] max-w-full rounded-[24px] overflow-hidden border border-slate-300/40 dark:border-white/10 shadow-[0_24px_48px_rgba(0,0,0,0.18)]"
-                    : "w-full max-w-[680px] rounded-[8px] overflow-hidden shadow-[0_24px_48px_rgba(0,0,0,0.10)]")
-                }
-              >
-                {/* Renderiza o form publico em modo EMBED (mesma forma que
-                    ficara em qualquer landing). Mostrar embed por default
-                    garante que o que o usuario ve aqui e o que o visitante
-                    vera quando o form for embedado na pagina de vendas. */}
-                <PublicFormView
-                  slug={slug || "preview"}
-                  payload={previewPayload}
-                  utm={{
-                    utm_source: null,
-                    utm_medium: null,
-                    utm_campaign: null,
-                    utm_term: null,
-                    utm_content: null,
-                    gclid: null,
-                    fbclid: null,
-                  }}
-                  preview
-                  embed
-                />
-              </div>
-            </div>
+          </Field>
+          <Field label="Descrição interna" hint="Notas para o time.">
+            <textarea
+              rows={2}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="crm-input w-full"
+              placeholder={`Notas sobre "${name}".`}
+            />
+          </Field>
+
+          <Divider />
+
+          <AfterTab
+            pipelines={pipelines}
+            stagesForPipeline={stagesForPipeline}
+            pipelineId={pipelineId}
+            setPipelineId={setPipelineId}
+            stageId={stageId}
+            setStageId={setStageId}
+            successMessage={successMessage}
+            setSuccessMessage={setSuccessMessage}
+            redirectUrl={redirectUrl}
+            setRedirectUrl={setRedirectUrl}
+            destinoQualificado={destinoQualificado}
+            setDestinoQualificado={setDestinoQualificado}
+          />
+        </Stack>
+      )}
+
+      {secao === "anuncios" && (
+        <TrackingTab tracking={tracking} setTracking={setTracking} fields={fields} formId={formId} />
+      )}
+
+      {secao === "instalar" && (
+        <InstallTab
+          publicUrl={publicUrl}
+          status={status}
+          copied={copied}
+          setCopied={setCopied}
+          name={name}
+        />
+      )}
+    </div>
+  )
+}
+
+// ────────────────────────────────────────────────────────────────────
+// Inspetor — a coluna da direita
+// ────────────────────────────────────────────────────────────────────
+
+/**
+ * O painel do item escolhido na espinha.
+ *
+ * Um despachante, não um acúmulo: cada tipo de item tem UM painel, e o
+ * que ele mostra é só o que aquele item tem. É o que desfaz a aba
+ * "Textos" antiga, que juntava identificação interna com conteúdo
+ * público e precisava de um parágrafo explicando que metade dos campos
+ * não valia no formato escolhido.
+ */
+function Inspetor({
+  selecao,
+  espinha,
+  modo,
+  fluxo,
+  onFluxo,
+  fields,
+  updateField,
+  removeField,
+  leadCustomFields,
+  dealCustomFields,
+  telaPorRef,
+  regrasPorRef,
+  agruparPergunta,
+  faixasPorMoeda,
+  blocosDoFluxo,
+  theme,
+  setTheme,
+  onSelecionar,
+}: {
+  selecao: Selecao
+  espinha: Espinha
+  modo: "classic" | "conversational"
+  fluxo: FormSchema
+  onFluxo: (f: FormSchema) => void
+  fields: FormField[]
+  updateField: (idx: number, patch: Partial<FormField>) => void
+  removeField: (idx: number) => void
+  leadCustomFields: Array<{ id: string; key: string; label: string; field_type: string }>
+  dealCustomFields: Array<{ id: string; key: string; label: string; field_type: string }>
+  telaPorRef: Record<string, { numero: number; tamanho: number; cabeca: boolean; titulo: string }>
+  regrasPorRef: Record<string, number>
+  agruparPergunta: (ref: string, patch: { mesma_tela?: boolean; titulo_da_tela?: string | null }) => void
+  faixasPorMoeda: (ref: string, v: { ligado: boolean; moeda_de: string | null }) => void
+  blocosDoFluxo: FormBlock[]
+  theme: FormTheme
+  setTheme: (t: FormTheme) => void
+  onSelecionar: (s: Selecao) => void
+}) {
+  const candidatasDeRegiao = useMemo(
+    () =>
+      fields
+        .map((f, i) => ({ ref: f.id ?? `novo-${i}`, label: f.label, tipo: f.field_type }))
+        .filter((f) => f.tipo === "select" || f.tipo === "radio"),
+    [fields],
+  )
+  const blocoPorRef = useMemo(() => new Map(blocosDoFluxo.map((b) => [b.ref, b])), [blocosDoFluxo])
+
+  if (!selecao) {
+    return (
+      <PainelVazio
+        titulo="Escolha um item à esquerda"
+        apoio="Cada pergunta, tela e final tem as suas opções aqui."
+      />
+    )
+  }
+
+  if (selecao.tipo === "pergunta") {
+    const idx = fields.findIndex((f, i) => (f.id ?? `novo-${i}`) === selecao.ref)
+    if (idx < 0) return <PainelVazio titulo="Pergunta não encontrada" apoio="Ela pode ter sido removida." />
+    const field = fields[idx]
+    const ref = field.id ?? `novo-${idx}`
+    const tela = telaPorRef[ref]
+    const bloco = blocoPorRef.get(ref)
+    const numero = espinha.telas.findIndex((t) => t.perguntas.some((p) => p.ref === ref)) + 1
+    return (
+      <div className="flex h-full flex-col">
+        <CabecalhoDoInspetor
+          titulo={field.label || "Nova pergunta"}
+          apoio={modo === "conversational" && numero > 0 ? `Tela ${numero}` : "Pergunta"}
+        />
+        <div className="min-h-0 flex-1 overflow-y-auto p-3">
+          <FieldEditor
+            field={field}
+            desvios={regrasPorRef[ref] ?? 0}
+            tela={tela}
+            podeJuntar={modo === "conversational" && idx > 0}
+            onAgrupar={(patch) => agruparPergunta(ref, patch)}
+            faixasPorMoeda={{
+              ligado: Boolean(bloco?.opcoes_por_moeda),
+              moeda_de: bloco?.moeda_de ?? null,
+            }}
+            onFaixasPorMoeda={(v) => faixasPorMoeda(ref, v)}
+            candidatasDeRegiao={candidatasDeRegiao.filter((c) => c.ref !== ref)}
+            leadCustomFields={leadCustomFields}
+            dealCustomFields={dealCustomFields}
+            onChange={(patch) => updateField(idx, patch)}
+            onRemove={() => removeField(idx)}
+            semMoldura
+          />
+          {modo === "conversational" && tela && (
+            <button
+              type="button"
+              onClick={() => onSelecionar({ tipo: "tela", ref: tela.cabeca ? ref : espinha.telas.find((t) => t.perguntas.some((p) => p.ref === ref))?.ref ?? ref })}
+              className="mt-3 flex w-full items-center justify-between gap-2 rounded-[6px] border border-black/[0.08] px-2.5 py-2 text-left transition-colors hover:bg-slate-50 dark:border-white/[0.12] dark:hover:bg-white/[0.04]"
+            >
+              <span className="min-w-0">
+                <span className="block text-[11.5px] font-medium text-slate-800 dark:text-white/85">
+                  Desvios e destino da tela
+                </span>
+                <span className="block text-[10.5px] text-slate-500 dark:text-white/45">
+                  Para onde a pessoa vai depois de responder
+                </span>
+              </span>
+              <ChevronRight className="h-3.5 w-3.5 shrink-0 text-slate-400 dark:text-white/40" />
+            </button>
           )}
         </div>
+      </div>
+    )
+  }
+
+  if (selecao.tipo === "tela") {
+    const tela = espinha.telas.find((t) => t.ref === selecao.ref)
+    return (
+      <div className="flex h-full flex-col">
+        <CabecalhoDoInspetor
+          titulo={tela?.titulo || `Tela ${tela?.numero ?? ""}`.trim()}
+          apoio={
+            tela && tela.perguntas.length > 1
+              ? `${tela.perguntas.length} perguntas juntas`
+              : "Uma pergunta"
+          }
+        />
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <FlowEditor
+            fluxo={fluxo}
+            onChange={onFluxo}
+            temAbertura={modo === "conversational"}
+            foco={{ tipo: "tela", ref: selecao.ref }}
+          />
+        </div>
+      </div>
+    )
+  }
+
+  if (selecao.tipo === "final") {
+    const fim = espinha.finais.find((f) => f.ref === selecao.ref)
+    return (
+      <div className="flex h-full flex-col">
+        <CabecalhoDoInspetor titulo={fim?.titulo || "Tela final"} apoio="Tela final" />
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <FlowEditor
+            fluxo={fluxo}
+            onChange={onFluxo}
+            temAbertura={modo === "conversational"}
+            foco={{ tipo: "final", ref: selecao.ref }}
+          />
+        </div>
+      </div>
+    )
+  }
+
+  if (selecao.tipo === "abertura") {
+    return (
+      <div className="flex h-full flex-col">
+        <CabecalhoDoInspetor titulo="Tela de abertura" apoio="Antes da primeira pergunta" />
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <FlowEditor
+            fluxo={fluxo}
+            onChange={onFluxo}
+            temAbertura
+            foco={{ tipo: "abertura" }}
+          />
+        </div>
+      </div>
+    )
+  }
+
+  // Cabeçalho e botão de envio: só existem no formato de página única, e
+  // é por isso que eles moram na espinha DELE. Escritos numa aba comum
+  // aos dois formatos, eram campo que ninguém desenhava.
+  if (selecao.tipo === "cabecalho") {
+    return (
+      <div className="flex h-full flex-col">
+        <CabecalhoDoInspetor titulo="Cabeçalho" apoio="O topo da página" />
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
+          <Field label="Badge" hint="Opcional. O chip pequeno acima do título.">
+            <input
+              type="text"
+              value={theme.badge ?? ""}
+              onChange={(e) => setTheme({ ...theme, badge: e.target.value })}
+              className="crm-input w-full"
+              placeholder="Aceleradora #1"
+            />
+          </Field>
+          <Field label="Título">
+            <input
+              type="text"
+              value={theme.headline ?? ""}
+              onChange={(e) => setTheme({ ...theme, headline: e.target.value })}
+              className="crm-input w-full"
+              placeholder="Diagnóstico gratuito"
+            />
+          </Field>
+          <Field label="Subtítulo">
+            <textarea
+              rows={2}
+              value={theme.subheadline ?? ""}
+              onChange={(e) => setTheme({ ...theme, subheadline: e.target.value })}
+              className="crm-input w-full"
+              placeholder="Em uma linha, por que vale preencher."
+            />
+          </Field>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex h-full flex-col">
+      <CabecalhoDoInspetor titulo="Botão de envio" apoio="O fecho da página" />
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
+        <Field label="Texto do botão">
+          <input
+            type="text"
+            value={theme.buttonText ?? ""}
+            onChange={(e) => setTheme({ ...theme, buttonText: e.target.value })}
+            className="crm-input w-full"
+            placeholder="Enviar"
+          />
+        </Field>
+        <p className="text-[11px] leading-relaxed text-slate-500 dark:text-white/45">
+          O que acontece depois do envio — mensagem, redirecionamento e o destino do lead
+          qualificado — fica em <span className="font-medium text-slate-700 dark:text-white/70">Configurar</span>.
+        </p>
+      </div>
+    </div>
+  )
+}
+
+function CabecalhoDoInspetor({ titulo, apoio }: { titulo: string; apoio: string }) {
+  return (
+    <div className="shrink-0 border-b border-slate-200/70 px-3 py-2 dark:border-white/[0.07]">
+      <p className="truncate text-[12.5px] font-semibold text-slate-900 dark:text-white">{titulo}</p>
+      <p className="truncate text-[10.5px] text-slate-500 dark:text-white/45">{apoio}</p>
+    </div>
+  )
+}
+
+function PainelVazio({ titulo, apoio }: { titulo: string; apoio: string }) {
+  return (
+    <div className="flex h-full items-center justify-center p-6 text-center">
+      <div>
+        <p className="text-[12.5px] font-medium text-slate-700 dark:text-white/75">{titulo}</p>
+        <p className="mx-auto mt-1 max-w-[28ch] text-[11px] leading-relaxed text-slate-500 dark:text-white/45">
+          {apoio}
+        </p>
       </div>
     </div>
   )
@@ -1334,126 +1867,6 @@ function FormatoDoFormulario({
         </p>
       )}
     </div>
-  )
-}
-
-function ContentTab({
-  name,
-  setName,
-  slug,
-  setSlug,
-  description,
-  setDescription,
-  theme,
-  setTheme,
-  displayMode,
-}: {
-  name: string
-  setName: (v: string) => void
-  slug: string
-  setSlug: (v: string) => void
-  description: string
-  setDescription: (v: string) => void
-  theme: FormTheme
-  setTheme: (fn: FormTheme | ((t: FormTheme) => FormTheme)) => void
-  displayMode: "classic" | "conversational"
-}) {
-  return (
-    <Stack>
-      <SectionTitle title="Identificação" hint="Para encontrar o form no admin." />
-      <Field label="Nome do formulário">
-        <input
-          type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          className="crm-input w-full"
-        />
-      </Field>
-      <Field
-        label="Slug (URL pública)"
-        hint="Apenas letras minúsculas, números e hífen."
-      >
-        <div className="flex items-center gap-1.5">
-          <span className="text-[11px] text-slate-500 dark:text-white/45 font-mono shrink-0">
-            /forms/
-          </span>
-          <input
-            type="text"
-            value={slug}
-            onChange={(e) =>
-              setSlug(
-                e.target.value
-                  .toLowerCase()
-                  .replace(/[^a-z0-9-]/g, "-")
-                  .replace(/-+/g, "-"),
-              )
-            }
-            className="crm-input flex-1 font-mono text-[12px]"
-          />
-        </div>
-      </Field>
-      <Field
-        label="Descrição interna"
-        hint="Visível apenas para o time. Não aparece no formulário público."
-      >
-        <textarea
-          rows={2}
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          className="crm-input w-full"
-          placeholder="Notas internas sobre esse form."
-        />
-      </Field>
-
-      <Divider />
-
-      <SectionTitle
-        title="Conteúdo do form público"
-        hint={
-          displayMode === "conversational"
-            ? "O logo e as cores valem; o título e o subtítulo aqui não são desenhados no conversacional — quem abre a peça é a tela de abertura, na aba Fluxo."
-            : "O que o visitante vê na página."
-        }
-      />
-      <Field
-        label="Badge (chip pequeno acima do título)"
-        hint="Opcional. Ex: 'Aceleradora #1'"
-      >
-        <input
-          type="text"
-          value={theme.badge ?? ""}
-          onChange={(e) => setTheme((t) => ({ ...t, badge: e.target.value || undefined }))}
-          className="crm-input w-full"
-          placeholder="Aceleradora #1 de E-mail Marketing"
-        />
-      </Field>
-      <Field label="Headline (título grande)">
-        <input
-          type="text"
-          value={theme.headline ?? ""}
-          onChange={(e) => setTheme((t) => ({ ...t, headline: e.target.value }))}
-          className="crm-input w-full"
-          placeholder={name}
-        />
-      </Field>
-      <Field label="Subtítulo">
-        <input
-          type="text"
-          value={theme.subheadline ?? ""}
-          onChange={(e) => setTheme((t) => ({ ...t, subheadline: e.target.value }))}
-          className="crm-input w-full"
-          placeholder="Descreva em uma linha por que vale preencher."
-        />
-      </Field>
-      <Field label="Texto do botão de envio">
-        <input
-          type="text"
-          value={theme.buttonText ?? "Enviar"}
-          onChange={(e) => setTheme((t) => ({ ...t, buttonText: e.target.value }))}
-          className="crm-input w-full"
-        />
-      </Field>
-    </Stack>
   )
 }
 
@@ -1999,238 +2412,6 @@ function StyleTab({
       >
         Resetar tema (volta ao padrão)
       </button>
-    </Stack>
-  )
-}
-
-function FieldsTab({
-  fields,
-  leadCustomFields,
-  dealCustomFields,
-  addField,
-  updateField,
-  removeField,
-  moveField,
-  modo,
-  regrasPorRef,
-  telaPorRef,
-  agruparPergunta,
-  arrastarPergunta,
-  faixasPorMoeda,
-  blocosDoFluxo,
-  irParaFluxo,
-}: {
-  fields: FormField[]
-  leadCustomFields: Array<{ id: string; key: string; label: string; field_type: string }>
-  dealCustomFields: Array<{ id: string; key: string; label: string; field_type: string }>
-  addField: () => void
-  updateField: (idx: number, patch: Partial<FormField>) => void
-  removeField: (idx: number) => void
-  moveField: (idx: number, dir: "up" | "down") => void
-  modo: "classic" | "conversational"
-  /** Quantos desvios cada pergunta tem — o vínculo com a aba Fluxo. */
-  regrasPorRef: Record<string, number>
-  /** Em que tela cada pergunta cai. Só o conversacional tem telas. */
-  telaPorRef: Record<string, { numero: number; tamanho: number; cabeca: boolean; titulo: string }>
-  agruparPergunta: (ref: string, patch: { mesma_tela?: boolean; titulo_da_tela?: string | null }) => void
-  arrastarPergunta: (ref: string, alvo: Alvo) => void
-  faixasPorMoeda: (ref: string, v: { ligado: boolean; moeda_de: string | null }) => void
-  /** Os blocos do fluxo de hoje — onde `opcoes_por_moeda` mora. */
-  blocosDoFluxo: FormBlock[]
-  irParaFluxo: () => void
-}) {
-  /**
-   * O arrasto vive AQUI e não no pai: é estado de gesto, morre quando o
-   * dedo solta, e subi-lo re-renderizaria o editor inteiro a cada
-   * `dragover` — que dispara dezenas de vezes por segundo.
-   */
-  const [arrastado, setArrastado] = useState<string | null>(null)
-  const [alvoPergunta, setAlvoPergunta] = useState<string | null>(null)
-  const [alvoFaixa, setAlvoFaixa] = useState<string | null>(null)
-  const limparArrasto = () => {
-    setArrastado(null)
-    setAlvoPergunta(null)
-    setAlvoFaixa(null)
-  }
-
-  const blocoPorRef = useMemo(
-    () => new Map(blocosDoFluxo.map((b) => [b.ref, b])),
-    [blocosDoFluxo],
-  )
-  /**
-   * Quem pode decidir a moeda: qualquer pergunta de ESCOLHA. A régua de
-   * "é mesmo uma pergunta de região" é o conteúdo das opções, e ela
-   * mora em `lib/forms/moeda` — a lista aqui é só o que dá para
-   * oferecer sem adivinhar a intenção de quem monta.
-   */
-  const candidatasDeRegiao = useMemo(
-    () =>
-      fields
-        .map((f, i) => ({ ref: f.id ?? `novo-${i}`, label: f.label, tipo: f.field_type }))
-        .filter((f) => f.tipo === "select" || f.tipo === "radio"),
-    [fields],
-  )
-
-  return (
-    <Stack>
-      <div className="flex items-center justify-between">
-        <SectionTitle
-          title={`Perguntas (${fields.length})`}
-          hint={
-            modo === "conversational"
-              ? "Uma por tela — ou várias na mesma, com o botão «Junta»."
-              : "Todas de uma vez, na ordem daqui."
-          }
-        />
-        <button
-          type="button"
-          onClick={addField}
-          className="inline-flex items-center gap-1 h-7 px-2.5 rounded-[5px] bg-[#1F1F1F] dark:bg-white text-white dark:text-black text-[11px] font-semibold"
-        >
-          <Plus className="h-3 w-3" />
-          Adicionar
-        </button>
-      </div>
-
-      {fields.length === 0 && (
-        <div className="rounded-[6px] border border-dashed border-slate-300 dark:border-white/[0.10] p-6 text-center">
-          <p className="text-[12px] font-medium text-slate-700 dark:text-white/75">
-            Nenhum campo ainda
-          </p>
-          <p className="mt-1 text-[11px] text-slate-500 dark:text-white/45">
-            Adicione pelo menos 1 campo pra coletar dados.
-          </p>
-        </div>
-      )}
-
-      <div className="space-y-2">
-        {fields.map((field, idx) => {
-          // `novo-<i>` é o mesmo endereço provisório que o `montarVersao`
-          // do editor usa para a pergunta ainda não salva: sem ele, a
-          // recém-criada não apareceria em tela nenhuma.
-          const ref = field.id ?? `novo-${idx}`
-          const tela = telaPorRef[ref]
-          const conversa = modo === "conversational"
-          const abreTela = !conversa || !tela || tela.cabeca
-          const arrastando = Boolean(arrastado) && arrastado !== ref
-          return (
-            <div key={field.id ?? `new-${idx}`}>
-              {/*
-                O cabeçalho de tela é o que torna o agrupamento VISÍVEL na
-                lista. Sem ele, "junta com a de cima" mudaria o formulário
-                e a lista continuaria com a mesma cara — e o operador não
-                teria como conferir o que montou sem ir ao preview.
-              */}
-              {conversa && tela && tela.cabeca && (
-                <>
-                  {/*
-                    A faixa ENTRE telas é o alvo de "tirar da tela": sem
-                    ela, soltar sempre juntaria, e desagrupar arrastando
-                    seria impossível — o operador só teria o botão.
-                  */}
-                  {arrastando && (
-                    <FaixaDeSoltar
-                      ativa={alvoFaixa === ref}
-                      onEntrar={() => setAlvoFaixa(ref)}
-                      onSair={() => setAlvoFaixa((a) => (a === ref ? null : a))}
-                      onSoltar={() => {
-                        if (arrastado) arrastarPergunta(arrastado, { tipo: "nova_tela", antesDe: ref })
-                        limparArrasto()
-                      }}
-                    />
-                  )}
-                  <div className="flex items-center gap-2 px-0.5 pb-1 pt-2 first:pt-0">
-                    <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-white/40">
-                      Tela {tela.numero}
-                    </span>
-                    {tela.tamanho > 1 && (
-                      <span className="text-[10px] text-slate-400 dark:text-white/35">
-                        {tela.tamanho} perguntas juntas
-                      </span>
-                    )}
-                    <div className="h-px flex-1 bg-slate-200 dark:bg-white/[0.08]" />
-                  </div>
-                </>
-              )}
-              <div
-                className={`${abreTela ? "" : "ml-3 border-l-2 border-slate-200 pl-2 dark:border-white/[0.10]"} ${
-                  arrastado === ref ? "opacity-40" : ""
-                } ${
-                  alvoPergunta === ref
-                    ? "rounded-[6px] outline outline-2 outline-offset-2 outline-blue-500"
-                    : ""
-                }`}
-                onDragOver={
-                  conversa && arrastando
-                    ? (e) => {
-                        e.preventDefault()
-                        e.dataTransfer.dropEffect = "move"
-                        setAlvoPergunta(ref)
-                        setAlvoFaixa(null)
-                      }
-                    : undefined
-                }
-                onDragLeave={
-                  conversa ? () => setAlvoPergunta((a) => (a === ref ? null : a)) : undefined
-                }
-                onDrop={
-                  conversa && arrastando
-                    ? (e) => {
-                        e.preventDefault()
-                        if (arrastado) arrastarPergunta(arrastado, { tipo: "pergunta", ref })
-                        limparArrasto()
-                      }
-                    : undefined
-                }
-              >
-                <FieldEditor
-                  field={field}
-                  desvios={field.id ? (regrasPorRef[field.id] ?? 0) : 0}
-                  irParaFluxo={conversa ? irParaFluxo : undefined}
-                  tela={conversa ? tela : undefined}
-                  podeJuntar={conversa && idx > 0}
-                  onAgrupar={(patch) => agruparPergunta(ref, patch)}
-                  faixasPorMoeda={
-                    conversa
-                      ? {
-                          ligado: Boolean(blocoPorRef.get(ref)?.opcoes_por_moeda),
-                          moeda_de: blocoPorRef.get(ref)?.moeda_de ?? null,
-                        }
-                      : undefined
-                  }
-                  onFaixasPorMoeda={conversa ? (v) => faixasPorMoeda(ref, v) : undefined}
-                  candidatasDeRegiao={candidatasDeRegiao.filter((c) => c.ref !== ref)}
-                  arrastavel={conversa && fields.length > 1}
-                  onArrastarInicio={() => {
-                    setArrastado(ref)
-                    setAlvoPergunta(null)
-                    setAlvoFaixa(null)
-                  }}
-                  onArrastarFim={limparArrasto}
-                  leadCustomFields={leadCustomFields}
-                  dealCustomFields={dealCustomFields}
-                  onChange={(patch) => updateField(idx, patch)}
-                  onRemove={() => removeField(idx)}
-                  onMoveUp={idx > 0 ? () => moveField(idx, "up") : undefined}
-                  onMoveDown={idx < fields.length - 1 ? () => moveField(idx, "down") : undefined}
-                />
-              </div>
-            </div>
-          )
-        })}
-        {/* A última faixa: solta no fim, como tela própria. */}
-        {modo === "conversational" && arrastado && (
-          <FaixaDeSoltar
-            ativa={alvoFaixa === "__fim__"}
-            onEntrar={() => setAlvoFaixa("__fim__")}
-            onSair={() => setAlvoFaixa((a) => (a === "__fim__" ? null : a))}
-            onSoltar={() => {
-              if (arrastado) arrastarPergunta(arrastado, { tipo: "nova_tela", antesDe: null })
-              limparArrasto()
-            }}
-          />
-        )}
-      </div>
     </Stack>
   )
 }
@@ -3268,46 +3449,6 @@ function PlatformGuide({
   )
 }
 
-/**
- * A faixa entre duas telas — o alvo de "tirar desta tela".
- *
- * Só existe durante o arrasto: fora dele seria uma linha vazia entre
- * cada tela, e o operador leria como separador quebrado. A altura é
- * generosa de propósito; alvo de 2px é alvo que ninguém acerta.
- */
-function FaixaDeSoltar({
-  ativa,
-  onEntrar,
-  onSair,
-  onSoltar,
-}: {
-  ativa: boolean
-  onEntrar: () => void
-  onSair: () => void
-  onSoltar: () => void
-}) {
-  return (
-    <div
-      onDragOver={(e) => {
-        e.preventDefault()
-        e.dataTransfer.dropEffect = "move"
-        onEntrar()
-      }}
-      onDragLeave={onSair}
-      onDrop={(e) => {
-        e.preventDefault()
-        onSoltar()
-      }}
-      className={`my-1 flex h-7 items-center justify-center rounded-[5px] border border-dashed text-[10px] transition-colors ${
-        ativa
-          ? "border-blue-500 bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-300"
-          : "border-slate-200 text-slate-400 dark:border-white/[0.12] dark:text-white/35"
-      }`}
-    >
-      Soltar aqui = tela própria
-    </div>
-  )
-}
 
 // ────────────────────────────────────────────────────────────────────
 // Field editor
@@ -3332,6 +3473,7 @@ function FieldEditor({
   onRemove,
   onMoveUp,
   onMoveDown,
+  semMoldura,
 }: {
   field: FormField
   desvios: number
@@ -3354,9 +3496,16 @@ function FieldEditor({
   onRemove: () => void
   onMoveUp?: () => void
   onMoveDown?: () => void
+  /**
+   * No inspetor não há acordeão nem moldura: a pergunta já foi escolhida
+   * na espinha, e um cartão dentro de um painel de 340px é o cartão
+   * aninhado que a régua de craft recusa.
+   */
+  semMoldura?: boolean
 }) {
   const totalCustomFields = leadCustomFields.length + dealCustomFields.length
   const [open, setOpen] = useState(false)
+  const aberto = semMoldura || open
   /**
    * `draggable` só liga enquanto a ALÇA está pressionada.
    *
@@ -3378,7 +3527,11 @@ function FieldEditor({
 
   return (
     <div
-      className="rounded-[6px] border border-slate-200 dark:border-white/[0.10] bg-white dark:bg-white/[0.02] overflow-hidden"
+      className={
+        semMoldura
+          ? ""
+          : "rounded-[6px] border border-slate-200 dark:border-white/[0.10] bg-white dark:bg-white/[0.02] overflow-hidden"
+      }
       draggable={Boolean(arrastavel) && pelaAlca}
       onDragStart={(e) => {
         // `setData` é obrigatório no Firefox: sem ele o arrasto nem
@@ -3392,7 +3545,12 @@ function FieldEditor({
         onArrastarFim?.()
       }}
     >
-      <div className="flex items-center gap-2 px-2.5 py-2">
+      <div
+        className={
+          semMoldura ? "flex items-center gap-2 pb-2" : "flex items-center gap-2 px-2.5 py-2"
+        }
+      >
+        {!semMoldura && (
         <span
           onMouseDown={() => {
             if (arrastavel) setPelaAlca(true)
@@ -3409,12 +3567,18 @@ function FieldEditor({
             }`}
           />
         </span>
+        )}
         <input
           type="text"
-          placeholder="Label do campo"
+          placeholder={semMoldura ? "O que você quer perguntar?" : "Label do campo"}
+          aria-label="Pergunta"
           value={field.label}
           onChange={(e) => onChange({ label: e.target.value })}
-          className="flex-1 min-w-0 bg-transparent text-[13px] font-medium text-slate-900 dark:text-white outline-none"
+          className={
+            semMoldura
+              ? "min-w-0 flex-1 rounded-[5px] border border-black/[0.10] bg-white px-2 py-1.5 text-[13px] font-medium text-slate-900 outline-none focus-visible:border-blue-500 dark:border-white/[0.14] dark:bg-white/[0.04] dark:text-white"
+              : "flex-1 min-w-0 bg-transparent text-[13px] font-medium text-slate-900 dark:text-white outline-none"
+          }
         />
         {podeJuntar && onAgrupar && (
           <button
@@ -3450,19 +3614,23 @@ function FieldEditor({
             {desvios} {desvios === 1 ? "desvio" : "desvios"}
           </button>
         )}
-        <span className="shrink-0 text-[10px] uppercase tracking-wide text-slate-400 dark:text-white/40 font-mono">
-          {field.field_type}
-        </span>
-        <button
-          type="button"
-          onClick={() => setOpen((o) => !o)}
-          className="shrink-0 text-slate-400 dark:text-white/40 hover:text-slate-700 dark:hover:text-white/85 p-0.5"
-          aria-label={open ? "Fechar" : "Editar"}
-        >
-          <ChevronDown
-            className={"h-3.5 w-3.5 transition-transform " + (open ? "rotate-180" : "")}
-          />
-        </button>
+        {!semMoldura && (
+          <>
+            <span className="shrink-0 text-[10px] uppercase tracking-wide text-slate-400 dark:text-white/40 font-mono">
+              {field.field_type}
+            </span>
+            <button
+              type="button"
+              onClick={() => setOpen((o) => !o)}
+              className="shrink-0 text-slate-400 dark:text-white/40 hover:text-slate-700 dark:hover:text-white/85 p-0.5"
+              aria-label={open ? "Fechar" : "Editar"}
+            >
+              <ChevronDown
+                className={"h-3.5 w-3.5 transition-transform " + (open ? "rotate-180" : "")}
+              />
+            </button>
+          </>
+        )}
         <button
           type="button"
           onClick={onRemove}
@@ -3473,8 +3641,14 @@ function FieldEditor({
         </button>
       </div>
 
-      {open && (
-        <div className="px-2.5 pb-2.5 space-y-2 border-t border-slate-100 dark:border-white/[0.06] pt-2.5">
+      {aberto && (
+        <div
+          className={
+            semMoldura
+              ? "space-y-2"
+              : "px-2.5 pb-2.5 space-y-2 border-t border-slate-100 dark:border-white/[0.06] pt-2.5"
+          }
+        >
           {/*
             O título só aparece na CABEÇA de uma tela com mais de uma
             pergunta. Numa tela de pergunta única ele seria um segundo
@@ -3495,7 +3669,8 @@ function FieldEditor({
               />
             </Field>
           )}
-          <div className="grid grid-cols-2 gap-1.5">
+          <div className="space-y-2">
+            <Field label="Tipo de resposta">
             <select
               value={field.field_type}
               onChange={(e) => {
@@ -3523,6 +3698,8 @@ function FieldEditor({
                 </option>
               ))}
             </select>
+            </Field>
+            <Field label="Guarda no CRM como">
             <select
               value={field.map_to_lead_field ?? ""}
               onChange={(e) => onChange({ map_to_lead_field: e.target.value || null })}
@@ -3556,6 +3733,7 @@ function FieldEditor({
                 </optgroup>
               )}
             </select>
+            </Field>
           </div>
           {totalCustomFields === 0 ? (
             <p className="text-[10px] text-slate-500 dark:text-white/45 leading-relaxed">
@@ -3582,15 +3760,18 @@ function FieldEditor({
               </a>
             </p>
           )}
-          <input
-            type="text"
-            placeholder="Placeholder (opcional)"
-            value={field.placeholder ?? ""}
-            onChange={(e) => onChange({ placeholder: e.target.value })}
-            className="crm-input w-full text-[12px]"
-          />
+          <Field label="Texto de exemplo" hint="Fica apagado dentro do campo, até a pessoa digitar.">
+            <input
+              type="text"
+              placeholder="Ex.: voce@sualoja.com"
+              value={field.placeholder ?? ""}
+              onChange={(e) => onChange({ placeholder: e.target.value })}
+              className="crm-input w-full text-[12px]"
+            />
+          </Field>
 
           {showOptions && (
+            <Field label="Opções" hint="Uma por linha. É o que a pessoa escolhe.">
             <textarea
               rows={3}
               value={optionsText}
@@ -3602,9 +3783,10 @@ function FieldEditor({
                     .filter(Boolean),
                 })
               }
-              placeholder="Uma opção por linha..."
+              placeholder={"Sim\nNão\nTalvez"}
               className="crm-input w-full text-[11px]"
             />
+            </Field>
           )}
 
           {/*

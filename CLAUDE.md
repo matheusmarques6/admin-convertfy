@@ -9639,3 +9639,91 @@ existia. Regerar o HTML é parte do build, não um passo opcional.
 De passagem, **o indicador de número da tela ("1 →") saiu do formulário
 conversacional** a pedido: `calcularProgresso` fica, porque é ele que
 alimenta a barra de progresso.
+
+## Editor de formulários: três colunas, quatro abas (18/09)
+
+Relatado: "as abas estão muito difíceis de entender", "o construtor de
+fluxo, perguntas e texto está difícil para criar do zero", "a navegação
+está difícil e ainda está feia". Pedido explícito: copiar o Typeform. E
+o limite, também dele: **"somente a parte de admin, a parte do usuário
+está bem feita"** — o formulário público não foi tocado.
+
+**O que o Typeform faz** (pesquisado, não suposto): três colunas — a
+lista de perguntas à esquerda, o formulário no centro, as propriedades
+do item escolhido à direita — e o topo dividido em três camadas,
+conteúdo → apresentação → distribuição. O editor daqui tinha **oito abas
+de peso igual**: a de construir pesava o mesmo que a de instalar, e três
+delas (Perguntas · Fluxo · Textos) eram a MESMA coisa — o que o visitante
+vê — partida em três lugares que não se falavam.
+
+Agora são quatro: **Criar** (perguntas, telas, desvios, abertura, finais
+e textos públicos) · **Design** · **Configurar** (identificação, lead e
+destino, anúncios, instalar) · **Resultados**. A aba Criar é o que ganhou
+as três colunas, e o que une as três antigas é a SELEÇÃO: o que está
+escolhido na espinha decide o que a prévia mostra e o que o painel da
+direita edita.
+
+**A espinha é DERIVADA do formato** (`lib/forms/estrutura-do-editor.ts`,
+puro, 19 testes), e é isso que mata o campo fantasma por construção. A
+aba "Textos" antiga oferecia "Headline (título grande)" e "Subtítulo" no
+conversacional com um parágrafo explicando que ali eles não valem — quem
+os preenchia escrevia para ninguém. Hoje o formato de página única tem
+**Cabeçalho** e **Botão de envio** na lista, e o conversacional tem
+**Tela de abertura** e **Finais**; nenhum dos dois tem o do outro,
+porque `montarEspinha` não os produz. `podarSelecao` fecha o outro lado:
+apagar a pergunta selecionada ou trocar de formato devolve a seleção
+para a primeira pergunta, nunca para um item que já não existe.
+
+**A linha da TELA só aparece quando ela agrupa alguma coisa** — várias
+perguntas ou um título próprio. Numa tela de pergunta única a pergunta É
+a tela, e uma linha "Tela" por cima de cada uma seria uma segunda lista
+falando da primeira; ali o número vai na própria pergunta. Foi o render
+que mostrou isso: a primeira versão desenhava seis linhas "Tela" vazias.
+
+**A prévia é o renderizador de PRODUÇÃO e continua intocada.** O que ela
+ganhou foi `comecarEm`, uma prop opcional que só afeta o estado INICIAL
+e só o editor passa — com o `key` mudando junto, escolher uma pergunta
+remonta a prévia naquela tela. `telaDaPrevia` endereça a CABEÇA da tela:
+pousar no meio de um grupo mostraria meia tela, que é o que a engine já
+proíbe para quem responde. O `ref` pedido é conferido contra o schema de
+agora, senão uma pergunta apagada entre a seleção e o render deixaria a
+prévia em branco.
+
+**Nenhum painel foi duplicado.** O construtor de fluxo ganhou `foco` e é
+o MESMO componente filtrado — duas implementações do editor de desvio
+divergiriam na primeira correção, e o sintoma seria uma regra que
+funciona num lugar e não no outro. `FieldEditor`, `TelaNoFluxo` e
+`FinalDoFluxo` ganharam `semMoldura`: no inspetor não há acordeão (o
+item já foi escolhido) nem cartão (cartão dentro de painel de 340px é o
+cartão aninhado que a régua de craft recusa).
+
+**O que o render pegou e nenhum teste pegaria**: `white/35` a 10px mede
+**3,2** de contraste contra o fundo do painel (mínimo 4,5) — era o
+rótulo do tipo em toda linha da lista; o select "Guarda no CRM como"
+**transbordava 13px** da coluna de 340px em duas colunas, porque nome de
+campo do CRM é longo por natureza ("Nome (só o primeiro)"); e a seção
+**Finais vazia ficava muda** enquanto a prévia mostrava um desfecho (o
+fallback da mensagem de sucesso), fazendo procurar onde editar o que se
+está vendo. Medido depois: zero reprovações de contraste nos dois temas,
+zero transbordo, e a composição fecha em 1280/1440/1920 sem barra
+horizontal — a PRÉVIA é a primeira coluna a ceder, porque é onde se
+confere e as outras duas são onde se trabalha.
+
+**Verificado renderizando**, e não só lendo: as quatro abas, os dois
+formatos, o formulário VAZIO (o caso de quem cria do zero), o inspetor
+de pergunta, de tela e de final, o modo claro, o foco de teclado (os
+únicos focáveis sem anel são os campos dentro da prévia, isto é, do
+formulário público) e o arrasto de pergunta entre telas — que exige
+`mousedown` na alça antes do `dragstart`, e é por isso que a primeira
+tentativa de teste não moveu nada.
+
+**Do arnês de render**, que já mentiu três vezes neste repositório: ele
+precisa do `index.html` REGERADO (o bundle vai inline), do Tailwind
+recompilado (classe nova não existe no CSS antigo) e dos CSS globais do
+app (sem `crm-tokens.css` os controles saem sem estilo e a conferência é
+sobre outra tela). As três coisas silenciam, nenhuma dá erro.
+
+**Ficou de fora, com o motivo**: editar o texto clicando dentro da
+prévia. É o gesto que faz o Typeform parecer fácil e exigiria mexer no
+renderizador público — o que o pedido excluiu. A edição acontece no
+painel da direita, e a prévia acompanha o que se digita.

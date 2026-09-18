@@ -60,6 +60,7 @@ import {
 import type { FormAnswers, FormBlock, FormOption, FormSchema } from "@/types/forms-conversational"
 import { TIPOS_DE_ESCOLHA, TIPOS_SEM_RESPOSTA } from "@/types/forms-conversational"
 import {
+  acharBloco,
   acharEnding,
   atalhoDaOpcao,
   blocosDaTela,
@@ -125,6 +126,17 @@ export interface ConversationalFormProps {
    * coisa que não o formulário.
    */
   moldura?: boolean
+  /**
+   * Em que tela a PRÉVIA abre — o `ref` da pergunta escolhida na espinha
+   * do editor.
+   *
+   * Existe só para o editor e só afeta o estado INICIAL: com o `key` do
+   * componente mudando junto, selecionar uma pergunta remonta a prévia
+   * já naquela tela. No formulário público a prop não é passada e o
+   * começo continua sendo a abertura ou a primeira pergunta — o
+   * comportamento de quem responde não muda em nada.
+   */
+  comecarEm?: string | null
   /** Callback do preview para navegar sem enviar. */
   onSubmitFake?: () => void
 }
@@ -153,6 +165,7 @@ export function ConversationalFormView({
   retomarToken = null,
   preview = false,
   moldura = false,
+  comecarEm = null,
   onSubmitFake,
 }: ConversationalFormProps) {
   const t = defaults(form.theme ?? {})
@@ -163,9 +176,13 @@ export function ConversationalFormView({
 
   const [answers, setAnswers] = useState<FormAnswers>({})
   const [variables, setVariables] = useState<Record<string, string | number>>({})
-  const [tela, setTela] = useState<Tela>(() =>
-    schema.settings?.welcome ? { tipo: "welcome" } : telaDoDestino(primeiroBloco(schema)),
-  )
+  const [tela, setTela] = useState<Tela>(() => {
+    // A tela pedida pelo editor tem de EXISTIR no schema de agora: o
+    // `ref` pode ter sido apagado entre a seleção e o render, e abrir a
+    // prévia numa tela inexistente a deixaria em branco.
+    if (comecarEm && acharBloco(schema, comecarEm)) return { tipo: "bloco", ref: comecarEm }
+    return schema.settings?.welcome ? { tipo: "welcome" } : telaDoDestino(primeiroBloco(schema))
+  })
   // Um erro por CAMPO. Com quatro perguntas na mesma tela, "campo
   // obrigatório" solto no rodapé não diz qual delas — e a pessoa fica
   // conferindo as quatro.
