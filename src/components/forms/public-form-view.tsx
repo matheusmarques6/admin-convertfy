@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, useMemo, useId } from "react"
-import { CheckCircle2, AlertCircle, Loader2, ChevronDown } from "lucide-react"
+import { CheckCircle2, AlertCircle, Loader2, ChevronDown, Star } from "lucide-react"
 import {
   fireConversionPixels,
   matchingDoBrowser,
@@ -823,6 +823,131 @@ function FieldRenderer({
             onChange={(e) => onChange(e.target.value)}
             required={field.required}
             style={inputStyle}
+            onFocus={(e) => (e.currentTarget.style.boxShadow = focusRing)}
+            onBlur={(e) => (e.currentTarget.style.boxShadow = "none")}
+          />
+          {descEl}
+        </div>
+      )
+
+    case "yes_no":
+      return (
+        <div>
+          {labelEl}
+          <div style={{ display: "flex", gap: 8 }}>
+            {[
+              { v: "sim", l: "Sim" },
+              { v: "nao", l: "Não" },
+            ].map((o) => {
+              const ativo = value === o.v
+              return (
+                <button
+                  key={o.v}
+                  type="button"
+                  role="radio"
+                  aria-checked={ativo}
+                  onClick={() => onChange(o.v)}
+                  style={{
+                    ...inputStyle,
+                    flex: "1 1 0",
+                    cursor: "pointer",
+                    textAlign: "center",
+                    fontWeight: 500,
+                    border: `1.5px solid ${ativo ? t.primary : t.inputBorder}`,
+                    background: ativo ? `${t.primary}14` : inputStyle.background,
+                  }}
+                >
+                  {o.l}
+                </button>
+              )
+            })}
+          </div>
+          {descEl}
+        </div>
+      )
+
+    case "nps":
+      return (
+        <div>
+          {labelEl}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(11, minmax(0, 1fr))", gap: 4 }}>
+            {Array.from({ length: 11 }, (_, n) => {
+              const ativo = value === String(n)
+              return (
+                <button
+                  key={n}
+                  type="button"
+                  role="radio"
+                  aria-checked={ativo}
+                  onClick={() => onChange(String(n))}
+                  style={{
+                    height: 40,
+                    minWidth: 0,
+                    borderRadius: 8,
+                    border: `1.5px solid ${ativo ? t.primary : t.inputBorder}`,
+                    background: ativo ? t.primary : inputStyle.background,
+                    color: ativo ? "#fff" : t.inputText,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    fontFamily: t.fontFamily,
+                    cursor: "pointer",
+                  }}
+                >
+                  {n}
+                </button>
+              )
+            })}
+          </div>
+          {descEl}
+        </div>
+      )
+
+    case "rating":
+      return (
+        <div>
+          {labelEl}
+          <div role="radiogroup" style={{ display: "flex", gap: 4 }}>
+            {[1, 2, 3, 4, 5].map((n) => {
+              const acesa = n <= (Number(value) || 0)
+              return (
+                <button
+                  key={n}
+                  type="button"
+                  role="radio"
+                  aria-checked={value === String(n)}
+                  aria-label={`${n} ${n === 1 ? "estrela" : "estrelas"}`}
+                  onClick={() => onChange(String(n))}
+                  style={{
+                    width: 36,
+                    height: 36,
+                    border: "none",
+                    background: "transparent",
+                    color: acesa ? t.primary : t.inputBorder,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Star size={28} fill={acesa ? t.primary : "none"} strokeWidth={1.75} />
+                </button>
+              )
+            })}
+          </div>
+          {descEl}
+        </div>
+      )
+
+    case "schedule":
+      return (
+        <div>
+          {labelEl}
+          <input
+            type="datetime-local"
+            value={String(value ?? "")}
+            onChange={(e) => onChange(e.target.value)}
+            required={field.required}
+            style={{ ...inputStyle, colorScheme: "light dark" }}
             onFocus={(e) => (e.currentTarget.style.boxShadow = focusRing)}
             onBlur={(e) => (e.currentTarget.style.boxShadow = "none")}
           />

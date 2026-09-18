@@ -15,6 +15,9 @@
  */
 
 import { useState } from "react"
+import type { FormBlockType } from "@/types/forms-conversational"
+import { SeletorDeTipos } from "./seletor-de-tipos"
+import { TipoIcone } from "./tipo-icone"
 import {
   AlertTriangle,
   ArrowRight,
@@ -59,7 +62,8 @@ export function EditorEstrutura({
   /** Quantos erros o fluxo tem — acende o aviso na seção dos finais. */
   problemas: number
   onSelecionar: (s: Selecao) => void
-  onAdicionarPergunta: () => void
+  /** Recebe o TIPO escolhido no seletor. */
+  onAdicionarPergunta: (tipo: FormBlockType) => void
   onAdicionarFinal: () => void
   onArrastar: (ref: string, alvo: AlvoDoArrasto) => void
 }) {
@@ -77,14 +81,15 @@ export function EditorEstrutura({
         <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-white/45">
           {conversa ? "Telas" : "Perguntas"}
         </span>
-        <button
-          type="button"
-          onClick={onAdicionarPergunta}
-          className="inline-flex h-6 items-center gap-1 rounded-[5px] bg-[#1F1F1F] px-2 text-[11px] font-semibold text-white transition-colors hover:bg-[#333] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 dark:bg-white dark:text-black dark:hover:bg-white/85"
-        >
-          <Plus className="h-3 w-3" />
-          Pergunta
-        </button>
+        <SeletorDeTipos modo={modo} onEscolher={onAdicionarPergunta}>
+          <button
+            type="button"
+            className="inline-flex h-6 items-center gap-1 rounded-[5px] bg-[#1F1F1F] px-2 text-[11px] font-semibold text-white transition-colors hover:bg-[#333] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 dark:bg-white dark:text-black dark:hover:bg-white/85"
+          >
+            <Plus className="h-3 w-3" />
+            Adicionar
+          </button>
+        </SeletorDeTipos>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
@@ -112,14 +117,15 @@ export function EditorEstrutura({
             <p className="mx-auto mt-1 max-w-[30ch] text-[11px] leading-relaxed text-slate-500 dark:text-white/45">
               Comece por uma: nome e contato costumam vir primeiro.
             </p>
-            <button
-              type="button"
-              onClick={onAdicionarPergunta}
-              className="mt-3 inline-flex h-7 items-center gap-1 rounded-[5px] bg-[#1F1F1F] px-2.5 text-[11px] font-semibold text-white dark:bg-white dark:text-black"
-            >
-              <Plus className="h-3 w-3" />
-              Primeira pergunta
-            </button>
+            <SeletorDeTipos modo={modo} onEscolher={onAdicionarPergunta} align="center">
+              <button
+                type="button"
+                className="mt-3 inline-flex h-7 items-center gap-1 rounded-[5px] bg-[#1F1F1F] px-2.5 text-[11px] font-semibold text-white dark:bg-white dark:text-black"
+              >
+                <Plus className="h-3 w-3" />
+                Primeira pergunta
+              </button>
+            </SeletorDeTipos>
           </div>
         ) : (
           <div className="mt-1">
@@ -295,6 +301,9 @@ export function EditorEstrutura({
           </div>
         )}
       </div>
+      <div className="shrink-0 border-t border-slate-200/70 px-3 py-1.5 text-[10px] text-slate-400 dark:border-white/[0.07] dark:text-white/35">
+        Arraste para reordenar · ⌘D duplica
+      </div>
     </div>
   )
 }
@@ -400,12 +409,20 @@ function LinhaDePergunta({
       >
         <GripVertical className="h-3 w-3" />
       </span>
-      {numero !== null && <NumeroDaTela n={numero} />}
       <button
         type="button"
         onClick={onClick}
-        className="flex min-w-0 flex-1 items-center gap-2 py-1.5 text-left"
+        className="flex min-w-0 flex-1 items-center gap-2 py-1 text-left"
+        title={rotuloDoTipo(pergunta.tipo)}
       >
+        <span className="relative shrink-0">
+          <TipoIcone tipo={pergunta.tipo} tamanho={numero !== null ? 24 : 20} />
+          {numero !== null && (
+            <span className="absolute -bottom-1 -right-1.5 flex h-[15px] min-w-[15px] items-center justify-center rounded-full border border-white bg-slate-200 px-[3px] text-[9px] font-bold tabular-nums text-slate-700 dark:border-[#0F1117] dark:bg-white/[0.18] dark:text-white/85">
+              {numero}
+            </span>
+          )}
+        </span>
         <span
           className={
             "min-w-0 flex-1 truncate text-[12px] " +
@@ -416,13 +433,10 @@ function LinhaDePergunta({
         >
           {pergunta.rotulo || "Sem pergunta"}
           {pergunta.obrigatoria && (
-            <span className="ml-1 text-slate-500 dark:text-white/55" aria-label="obrigatória">
+            <span className="ml-1 text-red-500 dark:text-red-400" aria-label="obrigatória">
               *
             </span>
           )}
-        </span>
-        <span className="shrink-0 text-[10px] text-slate-500 dark:text-white/55">
-          {rotuloDoTipo(pergunta.tipo)}
         </span>
       </button>
       {desvios > 0 && (

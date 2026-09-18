@@ -1,19 +1,18 @@
 "use client"
 
 import { use, useCallback, useEffect, useMemo, useRef, useState } from "react"
-import Link from "next/link"
 import { usePathname } from "next/navigation"
 import useSWR from "swr"
 import {
-  ArrowLeft,
-  Save,
   Plus,
+  Share2,
+  GitBranch,
+  Copy as DuplicarIcon,
   Trash2,
   GripVertical,
   Copy as CopyIcon,
   CheckCircle2,
   Loader2,
-  ExternalLink,
   FileText,
   Palette,
   ListChecks,
@@ -30,6 +29,15 @@ import {
   AlertTriangle,
 } from "lucide-react"
 import { ROUTES } from "@/lib/routes"
+import { useSWRConfig } from "swr"
+import { CabecalhoDoEditor, type AbaDoEditor } from "@/components/forms/cabecalho-do-editor"
+import { SeletorDeTipos } from "@/components/forms/seletor-de-tipos"
+import { TipoIcone } from "@/components/forms/tipo-icone"
+import { nomeDoTipo, perguntaNova, tipoTemOpcoes } from "@/lib/forms/tipos-de-pergunta"
+import { AUTOSAVE_MS, podeSalvarSozinho, type EstadoDoSave } from "@/lib/forms/autosave"
+import type { LayoutDaMidia } from "@/lib/forms/midia"
+import { PreviaDoFormulario } from "@/components/forms/previa-do-formulario"
+import { HistoricoDeVersoes } from "@/components/forms/historico-de-versoes"
 import { PublicFormView } from "@/components/forms/public-form-view"
 import { QUALIFIED_OPERATORS, type QualifiedRule } from "@/types/form-tracking"
 import { metaEventName, willRenameEvent } from "@/lib/tracking/meta-event-name"
@@ -65,7 +73,7 @@ import {
   logoDoFormulario,
 } from "@/lib/forms/logo"
 import { gradientCss, type FormTheme as TemaDoFormulario } from "@/components/forms/form-theme"
-import type { FormBlock, FormSchema } from "@/types/forms-conversational"
+import type { FormBlock, FormBlockType, FormSchema } from "@/types/forms-conversational"
 
 // ────────────────────────────────────────────────────────────────────
 // Types
@@ -148,6 +156,8 @@ interface FormDetail {
     status: "draft" | "published" | "archived"
     /** Qual renderizador o público recebe. Muda no SALVAR, não no publicar versão. */
     display_mode?: "classic" | "conversational" | null
+    /** O rascunho está à frente da versão no ar. */
+    has_unpublished_changes?: boolean | null
     theme: FormTheme
     pipeline_id: string | null
     stage_id: string | null
@@ -191,21 +201,10 @@ interface FormDetail {
   }>
 }
 
-const FIELD_TYPES: Array<{ value: string; label: string }> = [
-  { value: "text", label: "Texto curto" },
-  { value: "textarea", label: "Texto longo" },
-  { value: "email", label: "Email" },
-  { value: "phone", label: "Telefone / WhatsApp" },
-  { value: "number", label: "Número" },
-  { value: "select", label: "Seleção (dropdown)" },
-  { value: "radio", label: "Múltipla escolha (radio)" },
-  { value: "checkbox", label: "Checkbox" },
-  { value: "date", label: "Data" },
-  { value: "url", label: "URL" },
-  { value: "cpf", label: "CPF" },
-  { value: "cnpj", label: "CNPJ" },
-  { value: "cep", label: "CEP" },
-]
+/** Tipos em que "texto de exemplo" não aparece em lugar nenhum. */
+const SEM_PLACEHOLDER: ReadonlySet<string> = new Set([
+  "radio", "multi_select", "yes_no", "nps", "rating", "schedule", "statement", "checkbox",
+])
 
 const LEAD_FIELD_MAP: Array<{ value: string | ""; label: string }> = [
   { value: "", label: "Não mapear" },
@@ -220,7 +219,7 @@ const LEAD_FIELD_MAP: Array<{ value: string | ""; label: string }> = [
 
 
 // Tabs
-type TabKey = "criar" | "design" | "config" | "resultados"
+type TabKey = "criar" | "fluxo" | "design" | "config" | "share" | "resultados"
 
 /**
  * Quatro abas, e o critério é a PERGUNTA que cada uma responde.
@@ -240,8 +239,10 @@ type TabKey = "criar" | "design" | "config" | "resultados"
  */
 const TABS: Array<{ key: TabKey; label: string; icon: typeof FileText }> = [
   { key: "criar", label: "Criar", icon: ListChecks },
+  { key: "fluxo", label: "Fluxo", icon: GitBranch },
   { key: "design", label: "Design", icon: Palette },
   { key: "config", label: "Configurar", icon: Settings2 },
+  { key: "share", label: "Compartilhar", icon: Share2 },
   { key: "resultados", label: "Resultados", icon: BarChart3 },
 ]
 
@@ -358,9 +359,15 @@ export default function FormEditorPage({
   const [previewReset, setPreviewReset] = useState(0)
 
   const [saving, setSaving] = useState(false)
-  const [savedAt, setSavedAt] = useState<Date | null>(null)
+  const [estadoDoSave, setEstadoDoSave] = useState<EstadoDoSave>({ tipo: "nunca" })
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
+  const [previaAberta, setPreviaAberta] = useState(false)
+  const [historicoAberto, setHistoricoAberto] = useState(false)
+  const [publicando, setPublicando] = useState(false)
+  /** Edição local desde a última publicação — acende o selo antes do save. */
+  const [editouDesdePublicar, setEditouDesdePublicar] = useState(false)
+  const { mutate: mutateGlobal } = useSWRConfig()
 
   // Hidrata o estado local SO UMA VEZ quando o data chega. Sem essa guard,
   // qualquer re-fetch SWR (foco, mutate, etc) sobrescreveria as edicoes do
@@ -424,21 +431,11 @@ export default function FormEditorPage({
    * O endereço é `novo-<i>`, o mesmo provisório que `montarVersao` usa
    * para a pergunta ainda não salva.
    */
-  const addField = () => {
+  const addField = (tipo: FormBlockType = "text") => {
     setFields((arr) => {
       const proximo = arr.length
       setSelecao({ tipo: "pergunta", ref: `novo-${proximo}` })
-      return [
-        ...arr,
-        {
-          field_type: "text",
-          label: "",
-          placeholder: "",
-          required: false,
-          position: proximo,
-          map_to_lead_field: null,
-        },
-      ]
+      return [...arr, { ...perguntaNova(tipo), position: proximo }]
     })
   }
   const updateField = (idx: number, patch: Partial<FormField>) =>
@@ -692,6 +689,78 @@ export default function FormEditorPage({
     [fluxo, fluxoIndisponivel],
   )
 
+  /**
+   * Escreve no bloco do rascunho pelo `ref` o que só o schema guarda:
+   * `outro`, `embaralhar`, `pontos`, `escala`, `mesma_tela`… A tabela de
+   * campos não tem coluna para isso, e é por isso que o inspetor escreve
+   * em dois lugares — o campo e o bloco — pela mesma chave.
+   */
+  const atualizarBloco = useCallback(
+    (ref: string, patch: Partial<FormBlock>) => {
+      if (fluxoIndisponivel) return
+      setRascunho((atual) => {
+        const base = atual ?? fluxo
+        return {
+          ...base,
+          blocks: base.blocks.map((b) => (b.ref === ref ? { ...b, ...patch } : b)),
+        }
+      })
+    },
+    [fluxo, fluxoIndisponivel],
+  )
+
+  /**
+   * Duplica a pergunta selecionada (⌘D).
+   *
+   * A cópia vai para o FIM, não para logo abaixo: inserir no meio troca o
+   * endereço posicional (`novo-<i>`) de toda pergunta ainda não salva
+   * depois dela, e a regra de salto que aponta para uma delas passaria a
+   * apontar para outra. No fim ninguém muda de endereço; quem quer a
+   * cópia ao lado arrasta — e o arrasto já sabe remapear.
+   */
+  const duplicarPergunta = useCallback(
+    (ref: string) => {
+      const idx = fields.findIndex((f, i) => (f.id ?? `novo-${i}`) === ref)
+      if (idx < 0) return
+      const origem = fields[idx]
+      const bloco = fluxo.blocks.find((b) => b.ref === ref)
+      const proximo = fields.length
+      const novoRef = `novo-${proximo}`
+      setFields((arr) => [
+        ...arr,
+        {
+          ...origem,
+          id: undefined,
+          label: origem.label ? `${origem.label} (cópia)` : "",
+          position: proximo,
+          // A resposta duplicada não pode mapear duas vezes o mesmo campo
+          // do lead — a segunda sobrescreveria a primeira em silêncio.
+          map_to_lead_field: null,
+        },
+      ])
+      if (bloco && !fluxoIndisponivel) {
+        setRascunho((atual) => {
+          const base = atual ?? fluxo
+          const copia: FormBlock = {
+            ...bloco,
+            ref: novoRef,
+            label: origem.label ? `${origem.label} (cópia)` : bloco.label,
+            map_to_lead_field: null,
+            mesma_tela: undefined,
+            titulo_da_tela: undefined,
+            alias: undefined,
+            // A lógica não viaja: os saltos são da pergunta original.
+            logic: undefined,
+            proximo: undefined,
+          }
+          return { ...base, blocks: [...base.blocks, copia] }
+        })
+      }
+      setSelecao({ tipo: "pergunta", ref: novoRef })
+    },
+    [fields, fluxo, fluxoIndisponivel],
+  )
+
   /** Quantos desvios cada pergunta tem — o selo na lista de Perguntas. */
   const regrasPorRef = useMemo(() => {
     const out: Record<string, number> = {}
@@ -701,14 +770,17 @@ export default function FormEditorPage({
   const problemasDoFluxo = useMemo(() => diagnosticarFluxo(fluxo), [fluxo])
   const contagemDoFluxo = contarProblemas(problemasDoFluxo)
 
-  const save = useCallback(async () => {
-    setSaving(true)
-    setError(null)
-    try {
-      const res = await fetch(`/api/crm/forms/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+  /**
+   * O corpo do PATCH, calculado UMA vez por estado.
+   *
+   * É a mesma coisa que o save manda e que o autosave compara: a
+   * assinatura (JSON) deste objeto é o que decide se há algo por salvar.
+   * Comparar por assinatura, e não por "algum setState rodou", é o que
+   * impede o laço — o próprio save troca `novo-<i>` por id e regrava o
+   * rascunho remapeado, e isso dispararia outro save para sempre.
+   */
+  const corpoDoSave = useMemo(
+    () => ({
           name,
           slug,
           description: description || null,
@@ -751,14 +823,42 @@ export default function FormEditorPage({
           ...(tracking.meta_capi_token.trim()
             ? { meta_capi_token: tracking.meta_capi_token.trim() }
             : {}),
-        }),
+    }),
+    [name, slug, description, pipelineId, stageId, theme, logoUrl, successMessage, redirectUrl, destinoQualificado, displayMode, fields, fluxo, rascunho, fluxoIndisponivel, tracking],
+  )
+  const assinaturaDoSave = useMemo(() => JSON.stringify(corpoDoSave), [corpoDoSave])
+  /** A assinatura do que está GRAVADO. `null` = ainda sem linha de base. */
+  const assinaturaSalvaRef = useRef<string | null>(null)
+  /** O save acabou de adotar ids/remapear: a próxima mudança é dele, não do operador. */
+  const adotandoRef = useRef(false)
+  const savingRef = useRef(false)
+  const savePendenteRef = useRef(false)
+
+  const save = useCallback(async () => {
+    if (savingRef.current) {
+      savePendenteRef.current = true
+      return
+    }
+    savingRef.current = true
+    setSaving(true)
+    setEstadoDoSave({ tipo: "salvando" })
+    setError(null)
+    const enviado = assinaturaDoSave
+    try {
+      const res = await fetch(`/api/crm/forms/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: enviado,
       })
       const json = await res.json()
       if (!res.ok || json.error) {
-        setError(json.error?.message || "Erro ao salvar")
+        const msg = json.error?.message || json.error || "Erro ao salvar"
+        setError(typeof msg === "string" ? msg : "Erro ao salvar")
+        setEstadoDoSave({ tipo: "erro", mensagem: typeof msg === "string" ? msg : "Erro ao salvar" })
         return
       }
-      setSavedAt(new Date())
+      assinaturaSalvaRef.current = enviado
+      setEstadoDoSave({ tipo: "salvo", em: new Date() })
       /**
        * Adotar os ids devolvidos é o que impede a pergunta nova de trocar
        * de identidade a cada save: sem `id` no estado local, o save
@@ -767,13 +867,20 @@ export default function FormEditorPage({
        * para o id antigo pararia de casar sem nada acusar.
        */
       const ids: unknown = json.field_ids
+      const mapa = (json.refs_remapeados ?? {}) as Record<string, string>
+      // A flag só liga quando o save vai MUDAR o estado — flag ligada sem
+      // mudança seguinte engoliria a próxima edição do operador como se
+      // fosse adoção, e ela nunca seria salva.
+      adotandoRef.current =
+        (Array.isArray(ids) && fields.some((f) => !f.id)) ||
+        Object.keys(mapa).length > 0 ||
+        tracking.meta_capi_token.trim() !== ""
       if (Array.isArray(ids) && ids.length === fields.length) {
         setFields((arr) =>
           arr.map((f, i) => (f.id ? f : { ...f, id: ids[i] as string })),
         )
       }
       if (rascunho !== null) {
-        const mapa = (json.refs_remapeados ?? {}) as Record<string, string>
         setRascunho(Object.keys(mapa).length > 0 ? remapearRefs(fluxo, mapa) : fluxo)
       }
       // Reflete o token salvo sem revela-lo: limpa o input e marca "configurado".
@@ -781,10 +888,94 @@ export default function FormEditorPage({
         setTracking((t) => ({ ...t, meta_capi_token: "", has_meta_capi_token: true }))
       }
       mutate()
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Erro ao salvar"
+      setError(msg)
+      setEstadoDoSave({ tipo: "erro", mensagem: msg })
     } finally {
+      savingRef.current = false
       setSaving(false)
     }
-  }, [id, name, slug, description, pipelineId, stageId, theme, logoUrl, successMessage, redirectUrl, destinoQualificado, displayMode, fields, fluxo, rascunho, fluxoIndisponivel, tracking, mutate])
+  }, [id, assinaturaDoSave, fields, rascunho, fluxo, tracking.meta_capi_token, mutate])
+
+  /**
+   * Autosave: 700 ms depois da última tecla, se a régua deixar.
+   *
+   * A primeira assinatura depois da hidratação é a LINHA DE BASE, não
+   * uma edição — sem isso o editor gravaria assim que abrisse. O que o
+   * save muda no estado (ids adotados, refs remapeados) é reconhecido
+   * pela flag e vira a nova base, não uma edição.
+   */
+  useEffect(() => {
+    if (!hydratedRef.current) return
+    if (assinaturaSalvaRef.current === null || adotandoRef.current) {
+      assinaturaSalvaRef.current = assinaturaDoSave
+      adotandoRef.current = false
+      return
+    }
+    if (assinaturaDoSave === assinaturaSalvaRef.current) return
+    setEditouDesdePublicar(true)
+    setEstadoDoSave((e) => (e.tipo === "salvando" ? e : { tipo: "pendente" }))
+    const decisao = podeSalvarSozinho({
+      hidratado: true,
+      fluxoIndisponivel,
+      emVoo: savingRef.current,
+    })
+    if (decisao === "nao") return
+    const t = window.setTimeout(() => {
+      if (savingRef.current) savePendenteRef.current = true
+      else void save()
+    }, AUTOSAVE_MS)
+    return () => window.clearTimeout(t)
+  }, [assinaturaDoSave, fluxoIndisponivel, save])
+
+  // O save que ficou esperando o anterior terminar.
+  useEffect(() => {
+    if (saving || !savePendenteRef.current) return
+    savePendenteRef.current = false
+    if (assinaturaDoSave !== assinaturaSalvaRef.current) void save()
+  }, [saving, assinaturaDoSave, save])
+
+  /**
+   * Publica: salva o que estiver pendente e grava a versão. O painel de
+   * publicação (SWR) e a ficha são revalidados juntos, senão o selo diz
+   * "no ar" e o painel ainda mostra "rascunho à frente".
+   */
+  const publicar = useCallback(async () => {
+    if (publicando) return
+    setPublicando(true)
+    setError(null)
+    try {
+      if (assinaturaDoSave !== assinaturaSalvaRef.current && !fluxoIndisponivel) {
+        await save()
+      }
+      const res = await fetch(`/api/crm/forms/${id}/publish`, { method: "POST" })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        const e = (body as { error?: unknown })?.error
+        throw new Error(typeof e === "string" && e ? e : `Erro ${res.status}`)
+      }
+      setEditouDesdePublicar(false)
+      await Promise.all([mutate(), mutateGlobal(`/api/crm/forms/${id}/publish`)])
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Falha ao publicar")
+    } finally {
+      setPublicando(false)
+    }
+  }, [publicando, assinaturaDoSave, fluxoIndisponivel, save, id, mutate, mutateGlobal])
+
+  /** Duplica o formulário inteiro e abre a cópia. */
+  const duplicarFormulario = useCallback(async () => {
+    if (assinaturaDoSave !== assinaturaSalvaRef.current && !fluxoIndisponivel) await save()
+    const res = await fetch(`/api/crm/forms/${id}/duplicate`, { method: "POST" })
+    const body = await res.json().catch(() => ({}))
+    if (!res.ok || !body?.id) {
+      const e = (body as { error?: unknown })?.error
+      setError(typeof e === "string" && e ? e : "Não foi possível duplicar")
+      return
+    }
+    window.location.assign(`${formsListHref}/${body.id}`)
+  }, [assinaturaDoSave, fluxoIndisponivel, save, id, formsListHref])
 
   /**
    * Põe o formulário no ar ou tira.
@@ -812,17 +1003,27 @@ export default function FormEditorPage({
     mutate()
   }
 
-  // Atalho Cmd/Ctrl+S
+  // Atalhos: ⌘S salva, ⌘D duplica a pergunta selecionada, Esc fecha a prévia.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "s") {
         e.preventDefault()
-        save()
+        void save()
+        return
       }
+      if ((e.metaKey || e.ctrlKey) && e.key === "d") {
+        const sel = selecaoAtiva
+        if (sel && sel.tipo === "pergunta") {
+          e.preventDefault()
+          duplicarPergunta(sel.ref)
+        }
+        return
+      }
+      if (e.key === "Escape" && previaAberta) setPreviaAberta(false)
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [save])
+  }, [save, selecaoAtiva, duplicarPergunta, previaAberta])
 
   // Payload do preview live (calculado do estado atual sem salvar).
   const previewPayload = useMemo(() => {
@@ -1116,114 +1317,81 @@ export default function FormEditorPage({
   return (
     <div className="relative -m-4 flex h-[calc(100dvh-1rem)] flex-col overflow-hidden bg-white md:-m-6 md:h-[calc(100dvh-1.5rem)] lg:-m-8 lg:h-[calc(100dvh-2rem)] dark:bg-[#0F1117]">
       {/* ─── TOPO: identidade, abas e ações ─── */}
-      <header className="shrink-0 border-b border-black/[0.06] dark:border-white/[0.08]">
-        <div className="flex items-center gap-3 px-4 py-2.5">
-          <Link
-            href={formsListHref}
-            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[5px] text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-white/55 dark:hover:bg-white/[0.06] dark:hover:text-white"
-            aria-label="Voltar para a lista de formulários"
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
-          <div className="min-w-0 flex-1">
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Nome do formulário"
-              aria-label="Nome do formulário"
-              className="w-full truncate border-0 bg-transparent px-0 text-[15px] font-semibold leading-tight text-slate-900 outline-none focus:ring-0 dark:text-white"
-            />
-            <p className="truncate font-mono text-[10.5px] text-slate-500 dark:text-white/45">
-              /forms/{slug || "..."}
-            </p>
-          </div>
-
-          <FormatoDoFormulario
-            modo={displayMode}
-            modoSalvo={modoSalvo}
-            noAr={status === "published"}
-            onChange={setDisplayMode}
-          />
-
-          <div className="hidden h-5 w-px bg-black/[0.08] dark:bg-white/[0.10] lg:block" />
-
-          <div className="flex shrink-0 items-center gap-1.5">
-            <StatusBadge status={status} />
-            {status === "published" && (
-              <a
-                href={publicUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex h-7 items-center gap-1 rounded-[5px] px-2 text-[11.5px] font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-white/65 dark:hover:bg-white/[0.06] dark:hover:text-white"
-              >
-                Abrir <ExternalLink className="h-3 w-3" />
-              </a>
-            )}
-            <button
-              type="button"
-              onClick={togglePublish}
-              className="h-7 rounded-[5px] border border-black/[0.10] px-2.5 text-[11.5px] font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-white/[0.12] dark:text-white/80 dark:hover:bg-white/[0.06]"
-            >
-              {status === "published" ? "Tirar do ar" : "Colocar no ar"}
-            </button>
-            <button
-              type="button"
-              onClick={save}
-              disabled={saving}
-              className="inline-flex h-7 items-center gap-1.5 rounded-[5px] bg-[#1F1F1F] px-3 text-[11.5px] font-semibold text-white transition-colors hover:bg-black disabled:opacity-50 dark:bg-white dark:text-black dark:hover:bg-white/90"
-            >
-              {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-              Salvar
-            </button>
-          </div>
+      <CabecalhoDoEditor<TabKey>
+        voltarHref={formsListHref}
+        name={name}
+        onName={setName}
+        slug={slug}
+        modoRotulo={displayMode === "conversational" ? "conversacional" : "página única"}
+        abas={TABS.map((t) => ({
+          key: t.key,
+          label: t.label,
+          icon: t.icon,
+          alerta: t.key === "fluxo" ? contagemDoFluxo.erros : 0,
+        })) as Array<AbaDoEditor<TabKey>>}
+        abaAtiva={activeTab}
+        onAba={setActiveTab}
+        save={estadoDoSave}
+        status={status}
+        versao={data.versao_publicada ?? 0}
+        rascunhoPendente={Boolean(data.form.has_unpublished_changes) || editouDesdePublicar}
+        publicando={publicando}
+        onPrevia={() => setPreviaAberta(true)}
+        onPublicar={() => void publicar()}
+        onAbrirNoAr={() => window.open(publicUrl, "_blank", "noopener,noreferrer")}
+        onCopiarLink={() => void navigator.clipboard.writeText(publicUrl)}
+        onHistorico={() => setHistoricoAberto(true)}
+        onDuplicar={() => void duplicarFormulario()}
+        onTirarDoAr={() => void togglePublish()}
+        onSalvarAgora={() => void save()}
+        publicUrl={publicUrl}
+      />
+      {(error || fluxoIndisponivel) && (
+        <div className="shrink-0 border-b border-amber-200 bg-amber-50 px-4 py-1.5 text-[11.5px] text-amber-900 dark:border-amber-400/25 dark:bg-amber-400/[0.07] dark:text-amber-200">
+          {error ??
+            "A versão publicada não pôde ser lida: o salvamento automático está desligado para não gravar por cima da lógica que está no ar. Recarregue a página."}
         </div>
-
-        <div className="flex items-center justify-between gap-3 px-4">
-          <nav className="flex gap-0.5" aria-label="Seções do editor">
-            {TABS.map((t) => {
-              const active = activeTab === t.key
-              const Icon = t.icon
-              const alerta = t.key === "criar" && contagemDoFluxo.erros > 0
-              return (
-                <button
-                  key={t.key}
-                  type="button"
-                  onClick={() => setActiveTab(t.key)}
-                  aria-current={active ? "page" : undefined}
-                  className={
-                    "relative -mb-px inline-flex items-center gap-1.5 border-b-2 px-2.5 py-2 text-[12.5px] font-medium transition-colors " +
-                    (active
-                      ? "border-slate-900 text-slate-900 dark:border-white dark:text-white"
-                      : "border-transparent text-slate-500 hover:text-slate-900 dark:text-white/55 dark:hover:text-white")
-                  }
-                >
-                  <Icon className="h-3.5 w-3.5" />
-                  {t.label}
-                  {alerta && (
-                    <span
-                      className="h-1.5 w-1.5 rounded-full bg-red-500"
-                      aria-label={`${contagemDoFluxo.erros} problemas no fluxo`}
-                    />
-                  )}
-                </button>
-              )
-            })}
-          </nav>
-          <div className="hidden min-w-0 items-center gap-2 pb-1.5 text-[10.5px] text-slate-500 dark:text-white/45 md:flex">
-            {error ? (
-              <span className="truncate text-red-600 dark:text-red-400">{error}</span>
-            ) : savedAt ? (
-              <span className="inline-flex items-center gap-1">
-                <CheckCircle2 className="h-3 w-3 text-emerald-500" />
-                Salvo {savedAt.toLocaleTimeString("pt-BR")}
-              </span>
-            ) : (
-              <span>Cmd/Ctrl + S salva</span>
-            )}
-          </div>
-        </div>
-      </header>
+      )}
+      {/* Formato — fica logo abaixo do topo, porque decide o que as abas mostram. */}
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-black/[0.06] px-4 py-1 dark:border-white/[0.08] md:hidden">
+        <nav className="flex gap-0.5 overflow-x-auto" aria-label="Seções do editor">
+          {TABS.map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setActiveTab(t.key)}
+              aria-current={activeTab === t.key ? "page" : undefined}
+              className={
+                "shrink-0 rounded-[6px] px-2 py-1 text-[12px] font-medium " +
+                (activeTab === t.key
+                  ? "bg-slate-100 text-slate-900 dark:bg-white/[0.08] dark:text-white"
+                  : "text-slate-500 dark:text-white/55")
+              }
+            >
+              {t.label}
+            </button>
+          ))}
+        </nav>
+      </div>
+      <PreviaDoFormulario
+        aberta={previaAberta}
+        onFechar={() => setPreviaAberta(false)}
+        modo={displayMode}
+        conversacional={{
+          slug: slug || "preview",
+          schema: fluxo,
+          form: {
+            id,
+            name,
+            logo_url: logoUrl || null,
+            theme,
+            success_message: successMessage || null,
+            redirect_url: redirectUrl || null,
+          },
+        }}
+        classico={{ slug: slug || "preview", payload: previewPayload }}
+      />
+      <HistoricoDeVersoes formId={id} aberto={historicoAberto} onFechar={() => setHistoricoAberto(false)} />
 
       {/* ─── CORPO ─── */}
       <div className="flex min-h-0 flex-1">
@@ -1255,8 +1423,8 @@ export default function FormEditorPage({
               {barraDoPalco}
               {/* A publicação encostada no palco: a pergunta que ela
                   responde é sobre o que este preview mostra. */}
-              <div className="shrink-0 border-b border-black/[0.06] bg-white dark:border-white/[0.08] dark:bg-[#0F1117]">
-                <FormPublishPanel formId={id} modo={displayMode} />
+              <div className="shrink-0 bg-white dark:bg-[#0F1117]">
+                <FormPublishPanel formId={id} modo={displayMode} compacto />
               </div>
               <div className="min-h-0 flex-1">{palco}</div>
             </div>
@@ -1283,6 +1451,8 @@ export default function FormEditorPage({
                 regrasPorRef={regrasPorRef}
                 agruparPergunta={agruparPergunta}
                 faixasPorMoeda={faixasPorMoeda}
+                atualizarBloco={atualizarBloco}
+                duplicarPergunta={duplicarPergunta}
                 blocosDoFluxo={fluxo.blocks}
                 theme={theme}
                 setTheme={setTheme}
@@ -1291,6 +1461,33 @@ export default function FormEditorPage({
               />
             </div>
           </>
+        )}
+
+        {activeTab === "fluxo" && (
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="mx-auto max-w-[900px] px-4 py-4">
+              <FlowEditor
+                fluxo={fluxo}
+                onChange={setRascunho}
+                temAbertura={displayMode === "conversational"}
+                formId={id}
+              />
+            </div>
+          </div>
+        )}
+
+        {activeTab === "share" && (
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="mx-auto max-w-[860px] px-4 py-5">
+              <InstallTab
+                publicUrl={publicUrl}
+                status={status}
+                copied={copied}
+                setCopied={setCopied}
+                name={name}
+              />
+            </div>
+          </div>
         )}
 
         {activeTab === "design" && (
@@ -1314,6 +1511,17 @@ export default function FormEditorPage({
         {activeTab === "config" && (
           <div className="min-h-0 flex-1 overflow-y-auto">
             <div className="mx-auto max-w-[760px] px-4 py-5">
+              <div className="mb-4 rounded-[8px] border border-black/[0.08] px-4 pb-3 pt-2 dark:border-white/[0.10]">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.05em] text-slate-900 dark:text-white/90">
+                  Formato
+                </p>
+                <FormatoDoFormulario
+                  modo={displayMode}
+                  modoSalvo={modoSalvo}
+                  noAr={status === "published"}
+                  onChange={setDisplayMode}
+                />
+              </div>
               <ConfigurarTab
                 name={name}
                 slug={slug}
@@ -1339,10 +1547,6 @@ export default function FormEditorPage({
                 setTracking={setTracking}
                 fields={fields}
                 formId={id}
-                publicUrl={publicUrl}
-                status={status}
-                copied={copied}
-                setCopied={setCopied}
               />
             </div>
           </div>
@@ -1418,10 +1622,6 @@ function ConfigurarTab({
   setTracking,
   fields,
   formId,
-  publicUrl,
-  status,
-  copied,
-  setCopied,
 }: {
   name: string
   slug: string
@@ -1444,12 +1644,8 @@ function ConfigurarTab({
   setTracking: React.Dispatch<React.SetStateAction<TrackingState>>
   fields: FormField[]
   formId: string
-  publicUrl: string
-  status: "draft" | "published" | "archived"
-  copied: string | null
-  setCopied: (v: string | null) => void
 }) {
-  const [secao, setSecao] = useState<"destino" | "anuncios" | "instalar">("destino")
+  const [secao, setSecao] = useState<"destino" | "anuncios">("destino")
   return (
     <div className="space-y-4">
       <nav className="flex gap-1 rounded-[6px] bg-slate-100 p-0.5 dark:bg-white/[0.05]" aria-label="Configurações">
@@ -1457,7 +1653,6 @@ function ConfigurarTab({
           [
             { key: "destino", label: "Lead e destino" },
             { key: "anuncios", label: "Anúncios" },
-            { key: "instalar", label: "Instalar" },
           ] as const
         ).map((x) => (
           <button
@@ -1523,16 +1718,6 @@ function ConfigurarTab({
       {secao === "anuncios" && (
         <TrackingTab tracking={tracking} setTracking={setTracking} fields={fields} formId={formId} />
       )}
-
-      {secao === "instalar" && (
-        <InstallTab
-          publicUrl={publicUrl}
-          status={status}
-          copied={copied}
-          setCopied={setCopied}
-          name={name}
-        />
-      )}
     </div>
   )
 }
@@ -1565,6 +1750,8 @@ function Inspetor({
   regrasPorRef,
   agruparPergunta,
   faixasPorMoeda,
+  atualizarBloco,
+  duplicarPergunta,
   blocosDoFluxo,
   theme,
   setTheme,
@@ -1585,6 +1772,8 @@ function Inspetor({
   regrasPorRef: Record<string, number>
   agruparPergunta: (ref: string, patch: { mesma_tela?: boolean; titulo_da_tela?: string | null }) => void
   faixasPorMoeda: (ref: string, v: { ligado: boolean; moeda_de: string | null }) => void
+  atualizarBloco: (ref: string, patch: Partial<FormBlock>) => void
+  duplicarPergunta: (ref: string) => void
   blocosDoFluxo: FormBlock[]
   theme: FormTheme
   setTheme: (t: FormTheme) => void
@@ -1620,13 +1809,49 @@ function Inspetor({
     const numero = espinha.telas.findIndex((t) => t.perguntas.some((p) => p.ref === ref)) + 1
     return (
       <div className="flex h-full flex-col">
-        <CabecalhoDoInspetor
-          titulo={field.label || "Nova pergunta"}
-          apoio={modo === "conversational" && numero > 0 ? `Tela ${numero}` : "Pergunta"}
-        />
+        <div className="flex shrink-0 items-center gap-1.5 border-b border-slate-200/70 px-3 py-2 dark:border-white/[0.07]">
+          <SeletorDeTipos
+            modo={modo}
+            titulo="Mudar tipo"
+            onEscolher={(tipo) => {
+              const patch: Partial<FormField> = { field_type: tipo }
+              if (tipo === "phone" && (field.validation as { countryCode?: boolean } | undefined)?.countryCode === undefined) {
+                patch.validation = { ...(field.validation ?? {}), countryCode: true }
+              }
+              if (tipoTemOpcoes(tipo) && (field.options ?? []).length === 0) {
+                patch.options = ["Opção A", "Opção B"]
+              }
+              updateField(idx, patch)
+            }}
+          >
+            <button
+              type="button"
+              title="Mudar o tipo da pergunta"
+              className="inline-flex h-7 min-w-0 flex-1 items-center gap-2 rounded-[7px] border border-black/[0.10] px-1.5 text-left text-[12px] font-medium text-slate-800 transition-colors hover:bg-slate-50 dark:border-white/[0.12] dark:text-white/85 dark:hover:bg-white/[0.06]"
+            >
+              <TipoIcone tipo={field.field_type} tamanho={20} />
+              <span className="min-w-0 flex-1 truncate">{nomeDoTipo(field.field_type)}</span>
+              <ChevronDown className="h-3 w-3 shrink-0 text-slate-400" />
+            </button>
+          </SeletorDeTipos>
+          {modo === "conversational" && numero > 0 && (
+            <span className="shrink-0 text-[10.5px] text-slate-500 dark:text-white/45">tela {numero}</span>
+          )}
+          <button
+            type="button"
+            onClick={() => duplicarPergunta(ref)}
+            title="Duplicar (⌘D)"
+            aria-label="Duplicar pergunta"
+            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px] text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:text-white/40 dark:hover:bg-white/[0.06] dark:hover:text-white/80"
+          >
+            <DuplicarIcon className="h-3.5 w-3.5" />
+          </button>
+        </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-3">
           <FieldEditor
             field={field}
+            bloco={bloco}
+            onBloco={(patch) => atualizarBloco(ref, patch)}
             desvios={regrasPorRef[ref] ?? 0}
             tela={tela}
             podeJuntar={modo === "conversational" && idx > 0}
@@ -3116,37 +3341,6 @@ function InstallTab({
 // Sub-componentes / helpers
 // ────────────────────────────────────────────────────────────────────
 
-function StatusBadge({
-  status,
-}: {
-  status: "draft" | "published" | "archived"
-}) {
-  const map = {
-    published: {
-      label: "Publicado",
-      cls: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300",
-    },
-    draft: {
-      label: "Rascunho",
-      cls: "bg-slate-100 text-slate-600 dark:bg-white/[0.06] dark:text-white/65",
-    },
-    archived: {
-      label: "Arquivado",
-      cls: "bg-slate-100 text-slate-500 dark:bg-white/[0.04] dark:text-white/45",
-    },
-  } as const
-  const m = map[status]
-  return (
-    <span
-      className={
-        "inline-flex text-[10px] font-medium px-1.5 py-0.5 rounded-[3px] " + m.cls
-      }
-    >
-      {m.label}
-    </span>
-  )
-}
-
 function Stack({ children }: { children: React.ReactNode }) {
   return <div className="px-5 py-4 space-y-4">{children}</div>
 }
@@ -3471,6 +3665,8 @@ function PlatformGuide({
 
 function FieldEditor({
   field,
+  bloco,
+  onBloco,
   desvios,
   irParaFluxo,
   tela,
@@ -3493,6 +3689,9 @@ function FieldEditor({
   formId,
 }: {
   field: FormField
+  /** O bloco do rascunho — onde moram `outro`, `embaralhar`, `pontos`, `escala`. */
+  bloco?: FormBlock
+  onBloco?: (patch: Partial<FormBlock>) => void
   desvios: number
   irParaFluxo?: () => void
   /** A tela desta pergunta. Ausente no formato de página única. */
@@ -3537,14 +3736,19 @@ function FieldEditor({
    */
   const [pelaAlca, setPelaAlca] = useState(false)
 
-  const showOptions =
-    field.field_type === "select" ||
-    field.field_type === "radio" ||
-    field.field_type === "multi_select"
-
-  const optionsText = (field.options ?? [])
-    .map((o) => (typeof o === "string" ? o : o.label))
-    .join("\n")
+  const showOptions = tipoTemOpcoes(field.field_type)
+  const opcoes = (field.options ?? []).map((o) => (typeof o === "string" ? o : o.label))
+  /** As "opções" de quem não tem lista: é sobre elas que a pontuação incide. */
+  const opcoesDePontuacao: string[] =
+    field.field_type === "yes_no"
+      ? ["sim", "nao"]
+      : field.field_type === "rating"
+        ? ["1", "2", "3", "4", "5"]
+        : opcoes
+  const rotuloDaOpcao = (v: string) => (v === "sim" ? "Sim" : v === "nao" ? "Não" : v)
+  const pontuando = Boolean(bloco?.pontos)
+  const podePontuar =
+    Boolean(onBloco) && (showOptions || field.field_type === "yes_no" || field.field_type === "rating")
 
   return (
     <div
@@ -3697,43 +3901,22 @@ function FieldEditor({
             aparece: campo que o renderizador ignora é campo fantasma.
           */}
           {conversacional && (
-            <MediaField
-              formId={formId}
-              valor={field.media ?? null}
-              onChange={(m) => onChange({ media: m })}
-              ajuda="A prova entra acima do título: print do painel, da campanha, da cláusula."
-            />
+            <>
+              <MediaField
+                formId={formId}
+                valor={field.media ?? null}
+                onChange={(m) => onChange({ media: m })}
+                ajuda="A prova entra acima do título: print do painel, da campanha, da cláusula."
+              />
+              {field.media && (
+                <PosicaoDaMidia
+                  valor={field.media.layout ?? "acima"}
+                  onChange={(layout) => onChange({ media: { ...field.media!, layout } })}
+                />
+              )}
+            </>
           )}
           <div className="space-y-2">
-            <Field label="Tipo de resposta">
-            <select
-              value={field.field_type}
-              onChange={(e) => {
-                const newType = e.target.value
-                const patch: Partial<FormField> = { field_type: newType }
-                // Telefone/WhatsApp: ativa seletor de pais + mascara por
-                // default. Quase todo phone field e BR/WhatsApp e usuario
-                // espera ja vir formatado.
-                if (
-                  newType === "phone" &&
-                  (field.validation as { countryCode?: boolean } | undefined)?.countryCode === undefined
-                ) {
-                  patch.validation = {
-                    ...(field.validation ?? {}),
-                    countryCode: true,
-                  }
-                }
-                onChange(patch)
-              }}
-              className="crm-input text-[11px]"
-            >
-              {FIELD_TYPES.map((t) => (
-                <option key={t.value} value={t.value}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
-            </Field>
             <Field label="Guarda no CRM como">
             <select
               value={field.map_to_lead_field ?? ""}
@@ -3795,6 +3978,7 @@ function FieldEditor({
               </a>
             </p>
           )}
+          {SEM_PLACEHOLDER.has(field.field_type) ? null : (
           <Field label="Texto de exemplo" hint="Fica apagado dentro do campo, até a pessoa digitar.">
             <input
               type="text"
@@ -3804,24 +3988,136 @@ function FieldEditor({
               className="crm-input w-full text-[12px]"
             />
           </Field>
+          )}
 
           {showOptions && (
-            <Field label="Opções" hint="Uma por linha. É o que a pessoa escolhe.">
-            <textarea
-              rows={3}
-              value={optionsText}
-              onChange={(e) =>
-                onChange({
-                  options: e.target.value
-                    .split("\n")
-                    .map((s) => s.trim())
-                    .filter(Boolean),
-                })
-              }
-              placeholder={"Sim\nNão\nTalvez"}
-              className="crm-input w-full text-[11px]"
-            />
+            <Field label="Opções" hint="É o que a pessoa escolhe. Cole uma lista para criar várias de uma vez.">
+              <OpcoesEditor valor={opcoes} onChange={(lista) => onChange({ options: lista })} />
+              {onBloco && (
+                <div className="mt-2 space-y-1.5">
+                  <Interruptor
+                    ligado={Boolean(bloco?.outro)}
+                    onChange={(v) => onBloco({ outro: v || undefined })}
+                    rotulo="Opção Outro"
+                    apoio="Acrescenta um campo livre no fim da lista."
+                  />
+                  <Interruptor
+                    ligado={Boolean(bloco?.embaralhar)}
+                    onChange={(v) => onBloco({ embaralhar: v || undefined })}
+                    rotulo="Embaralhar"
+                    apoio="A ordem muda a cada pessoa — tira o viés da primeira opção."
+                  />
+                  {field.field_type === "multi_select" && (
+                    <label className="flex items-center justify-between gap-2 text-[11px] text-slate-700 dark:text-white/75">
+                      Limite de seleções
+                      <select
+                        value={String((field.validation as { maxEscolhas?: number } | undefined)?.maxEscolhas ?? "")}
+                        onChange={(e) => {
+                          const { maxEscolhas: _m, ...resto } = (field.validation ?? {}) as Record<string, unknown> & { maxEscolhas?: number }
+                          onChange({
+                            validation: e.target.value ? { ...resto, maxEscolhas: Number(e.target.value) } : resto,
+                          })
+                        }}
+                        className="crm-input w-[120px] text-[11px]"
+                      >
+                        <option value="">Sem limite</option>
+                        {Array.from({ length: Math.max(opcoes.length, 2) }, (_, i) => i + 1)
+                          .slice(1)
+                          .map((n) => (
+                            <option key={n} value={n}>
+                              até {n}
+                            </option>
+                          ))}
+                      </select>
+                    </label>
+                  )}
+                </div>
+              )}
             </Field>
+          )}
+
+          {field.field_type === "nps" && onBloco && (
+            <Field label="Escala" hint="Os rótulos das pontas da régua de 0 a 10.">
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  type="text"
+                  value={bloco?.escala?.min_label ?? ""}
+                  onChange={(e) =>
+                    onBloco({ escala: { ...(bloco?.escala ?? {}), min_label: e.target.value || undefined } })
+                  }
+                  placeholder="Rótulo do 0 (ex.: Nada provável)"
+                  className="crm-input w-full text-[11px]"
+                />
+                <input
+                  type="text"
+                  value={bloco?.escala?.max_label ?? ""}
+                  onChange={(e) =>
+                    onBloco({ escala: { ...(bloco?.escala ?? {}), max_label: e.target.value || undefined } })
+                  }
+                  placeholder="Rótulo do 10 (ex.: Muito provável)"
+                  className="crm-input w-full text-[11px]"
+                />
+              </div>
+            </Field>
+          )}
+
+          {field.field_type === "text" && (
+            <Field label="Máximo de caracteres" hint="Vazio = sem limite.">
+              <input
+                type="number"
+                min={1}
+                value={String((field.validation as { maxLength?: number } | undefined)?.maxLength ?? "")}
+                onChange={(e) => {
+                  const { maxLength: _m, ...resto } = (field.validation ?? {}) as Record<string, unknown> & { maxLength?: number }
+                  onChange({
+                    validation: e.target.value ? { ...resto, maxLength: Number(e.target.value) } : resto,
+                  })
+                }}
+                className="crm-input w-[120px] text-[11px]"
+              />
+            </Field>
+          )}
+
+          {podePontuar && (
+            <div className="rounded-[5px] border border-slate-200 p-2 dark:border-white/[0.10]">
+              <Interruptor
+                ligado={pontuando}
+                onChange={(v) => {
+                  if (!v) {
+                    onBloco?.({ pontos: undefined })
+                    return
+                  }
+                  const inicial: Record<string, number> = {}
+                  opcoesDePontuacao.forEach((o, i) => {
+                    inicial[o] = field.field_type === "rating" ? i + 1 : 0
+                  })
+                  onBloco?.({ pontos: inicial })
+                }}
+                rotulo="Pontuação"
+                apoio="Cada resposta soma pontos; as faixas em Configurar decidem etapa e etiqueta."
+              />
+              {pontuando && (
+                <div className="mt-2 space-y-1">
+                  {opcoesDePontuacao.map((o) => (
+                    <label key={o} className="flex items-center gap-2 text-[11px] text-slate-700 dark:text-white/75">
+                      <span className="min-w-0 flex-1 truncate">{rotuloDaOpcao(o)}</span>
+                      <input
+                        type="number"
+                        value={String(bloco?.pontos?.[o] ?? 0)}
+                        onChange={(e) =>
+                          onBloco?.({ pontos: { ...(bloco?.pontos ?? {}), [o]: Number(e.target.value) || 0 } })
+                        }
+                        className="crm-input w-[56px] text-right text-[11px]"
+                      />
+                      <span className="w-6 text-[10px] text-slate-400">pts</span>
+                    </label>
+                  ))}
+                  {opcoesDePontuacao.length === 0 && (
+                    <p className="text-[10px] text-slate-500">Crie opções acima para pontuá-las.</p>
+                  )}
+                </div>
+              )}
+            </div>
           )}
 
           {/*
@@ -3929,5 +4225,186 @@ function FieldEditor({
         </div>
       )}
     </div>
+  )
+}
+
+/**
+ * A lista de opções com letra, no lugar do textarea "uma por linha".
+ *
+ * A letra é o atalho de teclado que o visitante vê (A, B, C…), então
+ * mostrá-la aqui é mostrar o que ele recebe. Colar uma lista com quebras
+ * de linha ainda cria várias de uma vez — é o caminho de quem já tem as
+ * opções numa planilha.
+ */
+function OpcoesEditor({ valor, onChange }: { valor: string[]; onChange: (v: string[]) => void }) {
+  const editar = (i: number, texto: string) => onChange(valor.map((o, j) => (j === i ? texto : o)))
+  const remover = (i: number) => onChange(valor.filter((_, j) => j !== i))
+  return (
+    <div className="space-y-1">
+      {valor.map((o, i) => (
+        <div key={i} className="flex items-center gap-1.5">
+          <span className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-[4px] border border-black/[0.10] text-[10px] font-semibold text-slate-500 dark:border-white/[0.14] dark:text-white/55">
+            {String.fromCharCode(65 + (i % 26))}
+          </span>
+          <input
+            type="text"
+            value={o}
+            onChange={(e) => editar(i, e.target.value)}
+            onPaste={(e) => {
+              const texto = e.clipboardData.getData("text")
+              const linhas = texto.split(/\r?\n/).map((x) => x.trim()).filter(Boolean)
+              if (linhas.length > 1) {
+                e.preventDefault()
+                onChange([...valor.slice(0, i), ...linhas, ...valor.slice(i + 1)])
+              }
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault()
+                onChange([...valor.slice(0, i + 1), "", ...valor.slice(i + 1)])
+              }
+              if (e.key === "Backspace" && o === "" && valor.length > 1) {
+                e.preventDefault()
+                remover(i)
+              }
+            }}
+            placeholder={`Opção ${String.fromCharCode(65 + (i % 26))}`}
+            className="crm-input h-[30px] min-w-0 flex-1 text-[11.5px]"
+          />
+          <button
+            type="button"
+            onClick={() => remover(i)}
+            aria-label="Remover opção"
+            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[4px] text-slate-400 hover:bg-slate-100 hover:text-red-600 dark:text-white/40 dark:hover:bg-white/[0.06]"
+          >
+            ×
+          </button>
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={() => onChange([...valor, ""])}
+        className="inline-flex items-center gap-1 rounded-[4px] px-1 py-0.5 text-[11px] font-medium text-slate-600 hover:text-slate-900 dark:text-white/60 dark:hover:text-white"
+      >
+        <Plus className="h-3 w-3" />
+        Adicionar opção <span className="font-normal text-slate-400">· ou cole uma lista</span>
+      </button>
+    </div>
+  )
+}
+
+function Interruptor({
+  ligado,
+  onChange,
+  rotulo,
+  apoio,
+}: {
+  ligado: boolean
+  onChange: (v: boolean) => void
+  rotulo: string
+  apoio?: string
+}) {
+  return (
+    <label className="flex cursor-pointer items-start justify-between gap-2">
+      <span className="min-w-0">
+        <span className="block text-[11px] font-medium text-slate-700 dark:text-white/75">{rotulo}</span>
+        {apoio && <span className="block text-[10px] text-slate-500 dark:text-white/45">{apoio}</span>}
+      </span>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={ligado}
+        onClick={() => onChange(!ligado)}
+        className={
+          "relative mt-0.5 h-[18px] w-[30px] shrink-0 rounded-full p-0 transition-colors " +
+          (ligado ? "bg-[#4E62D8]" : "bg-slate-300 dark:bg-white/20")
+        }
+      >
+        <span
+          className={
+            "absolute left-0 top-[2px] h-[14px] w-[14px] rounded-full bg-white shadow transition-transform " +
+            (ligado ? "translate-x-[14px]" : "translate-x-[2px]")
+          }
+        />
+      </button>
+    </label>
+  )
+}
+
+/**
+ * Onde a mídia pousa na tela — os quatro cards do handoff. Cada card
+ * desenha a POSIÇÃO em miniatura, porque "flutuante" e "fundo" não
+ * dizem nada a quem nunca viu o resultado.
+ */
+function PosicaoDaMidia({ valor, onChange }: { valor: LayoutDaMidia; onChange: (l: LayoutDaMidia) => void }) {
+  const cards: Array<{ key: LayoutDaMidia; rotulo: string; desenho: React.ReactNode }> = [
+    {
+      key: "direita",
+      rotulo: "Ao lado",
+      desenho: (
+        <span className="grid h-full w-full grid-cols-[1fr_38%] gap-[2px]">
+          <span className="self-center space-y-[2px]"><i className="block h-[3px] w-full rounded bg-current opacity-60" /><i className="block h-[2px] w-2/3 rounded bg-current opacity-30" /></span>
+          <span className="rounded-[2px] bg-current opacity-40" />
+        </span>
+      ),
+    },
+    {
+      key: "acima",
+      rotulo: "Acima",
+      desenho: (
+        <span className="flex h-full w-full flex-col gap-[2px]">
+          <span className="h-[45%] rounded-[2px] bg-current opacity-40" />
+          <i className="block h-[3px] w-full rounded bg-current opacity-60" />
+          <i className="block h-[2px] w-2/3 rounded bg-current opacity-30" />
+        </span>
+      ),
+    },
+    {
+      key: "flutuante",
+      rotulo: "Miniatura",
+      desenho: (
+        <span className="flex h-full w-full flex-col gap-[2px]">
+          <span className="h-[35%] w-[40%] rounded-[2px] bg-current opacity-40" />
+          <i className="block h-[3px] w-full rounded bg-current opacity-60" />
+          <i className="block h-[2px] w-2/3 rounded bg-current opacity-30" />
+        </span>
+      ),
+    },
+    {
+      key: "fundo",
+      rotulo: "Fundo",
+      desenho: (
+        <span className="flex h-full w-full flex-col justify-center gap-[2px] rounded-[2px] bg-current/20 p-[3px]">
+          <i className="block h-[3px] w-full rounded bg-current opacity-80" />
+          <i className="block h-[2px] w-2/3 rounded bg-current opacity-40" />
+        </span>
+      ),
+    },
+  ]
+  return (
+    <Field label="Posição">
+      <div className="grid grid-cols-4 gap-1.5">
+        {cards.map((c) => {
+          const ativo = valor === c.key
+          return (
+            <button
+              key={c.key}
+              type="button"
+              onClick={() => onChange(c.key)}
+              aria-pressed={ativo}
+              className={
+                "rounded-[6px] border p-1.5 text-slate-700 transition-colors dark:text-white/75 " +
+                (ativo
+                  ? "border-[#4E62D8] bg-[#4E62D8]/[0.08]"
+                  : "border-black/[0.10] hover:bg-slate-50 dark:border-white/[0.12] dark:hover:bg-white/[0.04]")
+              }
+            >
+              <span className="block h-7">{c.desenho}</span>
+              <span className="mt-1 block text-[10px] font-medium">{c.rotulo}</span>
+            </button>
+          )
+        })}
+      </div>
+    </Field>
   )
 }

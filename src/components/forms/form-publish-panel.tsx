@@ -48,9 +48,17 @@ export function FormPublishPanel({
   formId,
   /** Conversacional: só ali a versão publicada decide o que o público vê. */
   modo,
+  /**
+   * Só os AVISOS. O cabeçalho do editor já carrega o selo de versão e
+   * o botão de publicar; repetir os dois aqui era o mesmo estado dito
+   * duas vezes na mesma tela, e o que este painel ainda sabe que o
+   * cabeçalho não sabe são as regras descartadas e os finais órfãos.
+   */
+  compacto = false,
 }: {
   formId: string
   modo: "classic" | "conversational"
+  compacto?: boolean
 }) {
   const { data, error, mutate, isLoading } = useSWR<Estado>(
     `/api/crm/forms/${formId}/publish`,
@@ -86,14 +94,27 @@ export function FormPublishPanel({
     }
   }, [formId, mutate])
 
+  if (compacto) {
+    if (!data) return null
+    const temAviso =
+      data.regras_descartadas.length > 0 ||
+      data.finais_orfaos.length > 0 ||
+      (data.novos.length > 0 && data.versao_atual > 0) ||
+      !data.publicavel ||
+      resultado ||
+      falha
+    if (!temAviso) return null
+  }
+
   return (
-    <div className="px-4 py-2">
+    <div className={compacto ? "px-4 pb-1" : "px-4 py-2"}>
       {isLoading ? (
           <p className="text-[11.5px] text-slate-500 dark:text-white/45">Verificando…</p>
         ) : error ? (
           <p className="text-[11.5px] text-red-600 dark:text-red-400">{(error as Error).message}</p>
         ) : data ? (
           <>
+            {!compacto && (
             <div className="flex items-center justify-between gap-3">
               <p className="min-w-0 truncate text-[11.5px] text-slate-600 dark:text-white/60">
                 <span className="font-medium text-slate-900 dark:text-white/90">
@@ -124,8 +145,9 @@ export function FormPublishPanel({
                 Publicar versão v{data.proxima_versao}
               </button>
             </div>
+            )}
 
-            {data.tem_alteracoes && data.versao_atual > 0 && (
+            {!compacto && data.tem_alteracoes && data.versao_atual > 0 && (
               <Faixa tom="alerta">
                 O rascunho está à frente do que está no ar. Publique para que a mudança chegue a quem
                 responde.

@@ -62,11 +62,28 @@ async function publicar(
       .maybeSingle()
     if (!membro) throw new AppError("Sem acesso a este formulário", 403, "FORBIDDEN")
 
-    const { data: campos } = await admin
-      .from("crm_form_fields")
-      .select("id, field_type, label, placeholder, description, required, position, options, validation, map_to_lead_field")
-      .eq("form_id", id)
-      .order("position", { ascending: true })
+    /**
+     * `media` entra na seleção porque `schemaDeCampos` lê `c.media` e
+     * `montarVersao` NÃO a transporta da versão anterior: sem a coluna
+     * aqui, publicar apagava a imagem de toda tela — o editor mostrava a
+     * prova no lugar e o visitante recebia a tela sem ela. Coluna ausente
+     * (migration 20261167 atrasada) → releitura sem ela.
+     */
+    const lerCampos = (comMedia: boolean) =>
+      admin
+        .from("crm_form_fields")
+        .select(
+          `id, field_type, label, placeholder, description, required, position, options, validation, map_to_lead_field${comMedia ? ", media" : ""}`,
+        )
+        .eq("form_id", id)
+        .order("position", { ascending: true })
+        .returns<CampoLegado[]>()
+    let { data: campos, error: cErr } = await lerCampos(true)
+    if (cErr && (cErr.code === "42703" || cErr.code === "PGRST204")) {
+      log.warn("form.publish_sem_media", { code: cErr.code })
+      ;({ data: campos, error: cErr } = await lerCampos(false))
+    }
+    if (cErr) throw cErr
 
     /**
      * De onde vem a lógica que a nova versão carrega.

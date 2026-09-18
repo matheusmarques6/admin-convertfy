@@ -18,6 +18,7 @@ import { readFileSync, readdirSync } from "node:fs"
 import { join } from "node:path"
 import { TIPOS_SEM_RESPOSTA } from "@/types/forms-conversational"
 import type { FormBlockType } from "@/types/forms-conversational"
+import { TIPOS_DE_PERGUNTA } from "./tipos-de-pergunta"
 
 const DIR = join(process.cwd(), "supabase", "migrations")
 const NOME_DO_CHECK = "crm_form_fields_field_type_check"
@@ -47,27 +48,7 @@ function tiposNoCheck(): string[] {
  * bloco comum com a marca `hidden: true`, e `camposDoSchema` o traduz
  * na volta.
  */
-const DO_CODIGO: FormBlockType[] = [
-  "text",
-  "textarea",
-  "email",
-  "phone",
-  "number",
-  "select",
-  "radio",
-  "checkbox",
-  "date",
-  "url",
-  "cpf",
-  "cnpj",
-  "cep",
-  "statement",
-  "multi_select",
-  "yes_no",
-  "nps",
-  "rating",
-  "schedule",
-]
+const DO_CODIGO: FormBlockType[] = TIPOS_DE_PERGUNTA.map((t) => t.tipo)
 
 describe("field_type: código e banco", () => {
   it("todo tipo do código é aceito pelo CHECK", () => {
@@ -76,6 +57,17 @@ describe("field_type: código e banco", () => {
     expect(faltando, `acrescente ao CHECK em supabase/migrations: ${faltando.join(", ")}`).toEqual(
       [],
     )
+  })
+
+  it("o vocabulário cobre todo tipo de FormBlockType (sem tipo órfão)", () => {
+    // Tipo declarado no TS e ausente daqui não tem nome, grupo nem
+    // renderer — apareceria na espinha com o nome cru.
+    const esperados: FormBlockType[] = [
+      "text", "textarea", "email", "phone", "number", "select", "radio", "checkbox",
+      "date", "url", "cpf", "cnpj", "cep", "statement", "multi_select",
+      "yes_no", "nps", "rating", "schedule",
+    ]
+    expect([...DO_CODIGO].sort()).toEqual([...esperados].sort())
   })
 
   it("o CHECK tem `hidden`, que o código grava sem estar em FormBlockType", () => {

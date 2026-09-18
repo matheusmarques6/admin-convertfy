@@ -56,6 +56,7 @@ import {
   CornerDownLeft,
   Info,
   Loader2,
+  Star,
 } from "lucide-react"
 import type { FormAnswers, FormBlock, FormOption, FormSchema } from "@/types/forms-conversational"
 import { TIPOS_DE_ESCOLHA, TIPOS_SEM_RESPOSTA } from "@/types/forms-conversational"
@@ -1342,7 +1343,7 @@ function UmaPergunta({
             registrar={registrar}
             erro={Boolean(erro)}
             erroCor={erroCor}
-            onChange={(v) => onResponder(v)}
+            onChange={(v, avancarJa) => onResponder(v, avancarJa)}
             descrito={erro ? idErro : undefined}
           />
         )}
@@ -1467,6 +1468,25 @@ function Opcoes({
     : typeof valor === "string" && valor
       ? [valor]
       : []
+  /**
+   * `embaralhar`: a ordem muda por PESSOA, não por render — a semente
+   * nasce com o componente e a lista só é rebaralhada quando as opções
+   * mudam. Sem isso as opções trocariam de lugar a cada tecla.
+   */
+  const semente = useRef(Math.random())
+  const lista = useMemo(
+    () => (bloco.embaralhar ? embaralhar(opcoes, semente.current) : opcoes),
+    [opcoes, bloco.embaralhar],
+  )
+  /** "Outro": a resposta é o TEXTO digitado, não a palavra "Outro". */
+  const valoresDeclarados = useMemo(() => new Set(opcoes.map((o) => o.value)), [opcoes])
+  const outroAtivo =
+    Boolean(bloco.outro) &&
+    !multipla &&
+    typeof valor === "string" &&
+    valor !== "" &&
+    !valoresDeclarados.has(valor)
+  const textoDoOutro = outroAtivo ? (valor === OUTRO_VAZIO ? "" : (valor as string)) : ""
 
   return (
     <div
@@ -1475,7 +1495,7 @@ function Opcoes({
       aria-describedby={descrito}
       style={{ display: "grid", gap: 9 }}
     >
-      {opcoes.map((o, i) => {
+      {lista.map((o, i) => {
         const ativo = selecionados.includes(o.value)
         const letra = atalhoDaOpcao(i, o.atalho)
         return (
@@ -1535,6 +1555,19 @@ function Opcoes({
           </button>
         )
       })}
+      {bloco.outro && !multipla && (
+        <OpcaoOutro
+          ativo={outroAtivo}
+          texto={textoDoOutro}
+          letra={atalhoDaOpcao(lista.length, undefined)}
+          t={t}
+          onAtivar={() => onEscolher(OUTRO_VAZIO)}
+          onTexto={(txt) => onEscolher(txt === "" ? OUTRO_VAZIO : txt)}
+          onConfirmar={() => {
+            if (textoDoOutro.trim()) onEscolher(textoDoOutro, true)
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -1555,9 +1588,22 @@ function CampoLivre({
   registrar: (ref: string, el: HTMLElement | null) => void
   erro?: boolean
   erroCor: string
-  onChange: (v: FormAnswers[string]) => void
+  onChange: (v: FormAnswers[string], avancarJa?: boolean) => void
   descrito?: string
 }) {
+  if (bloco.type === "yes_no") {
+    return <SimNao bloco={bloco} valor={valor} t={t} registrar={registrar} onEscolher={onChange} descrito={descrito} />
+  }
+  if (bloco.type === "nps") {
+    return <Escala010 bloco={bloco} valor={valor} t={t} registrar={registrar} onEscolher={onChange} descrito={descrito} />
+  }
+  if (bloco.type === "rating") {
+    return <Estrelas bloco={bloco} valor={valor} t={t} registrar={registrar} onEscolher={onChange} descrito={descrito} />
+  }
+  if (bloco.type === "schedule") {
+    return <Agendamento bloco={bloco} valor={valor} t={t} erro={erro} erroCor={erroCor} registrar={registrar} onChange={onChange} descrito={descrito} />
+  }
+
   const estilo: React.CSSProperties = {
     width: "100%",
     padding: "12px 2px",
@@ -1641,6 +1687,7 @@ function CampoLivre({
       type={tipoHtml}
       value={String(valor ?? "")}
       placeholder={bloco.placeholder ?? ""}
+      maxLength={bloco.validation?.maxLength}
       onChange={(e) => onChange(e.target.value)}
       aria-describedby={descrito}
       inputMode={tipoHtml === "tel" ? "tel" : tipoHtml === "number" ? "numeric" : undefined}
@@ -1648,6 +1695,435 @@ function CampoLivre({
       className="cfy-campo"
       style={estilo}
     />
+  )
+}
+
+// ───────────────────────── os tipos do handoff ──────────────────────────
+
+/** A opção "Outro" escolhida e ainda sem texto — não é resposta válida. */
+const OUTRO_VAZIO = "\u200b"
+
+/** Embaralha com semente fixa (Fisher–Yates sobre um LCG) — determinístico por sessão. */
+function embaralhar<T>(lista: readonly T[], semente: number): T[] {
+  const out = [...lista]
+  let x = Math.floor(semente * 2147483647) || 1
+  for (let i = out.length - 1; i > 0; i--) {
+    x = (x * 48271) % 2147483647
+    const j = x % (i + 1)
+    ;[out[i], out[j]] = [out[j], out[i]]
+  }
+  return out
+}
+
+function OpcaoOutro({
+  ativo,
+  texto,
+  letra,
+  t,
+  onAtivar,
+  onTexto,
+  onConfirmar,
+}: {
+  ativo: boolean
+  texto: string
+  letra: string | null
+  t: ReturnType<typeof defaults>
+  onAtivar: () => void
+  onTexto: (v: string) => void
+  onConfirmar: () => void
+}) {
+  return (
+    <div
+      role="radio"
+      aria-checked={ativo}
+      tabIndex={0}
+      onClick={onAtivar}
+      onKeyDown={(e) => {
+        if (e.key === " " || e.key === "Enter") {
+          e.preventDefault()
+          onAtivar()
+        }
+      }}
+      className="cfy-opcao"
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+        padding: "13px 15px",
+        borderRadius: t.inputRadius,
+        border: `1.5px solid ${ativo ? t.primary : t.inputBorder}`,
+        background: ativo ? tintar(t.primary) : t.inputBg,
+        color: t.inputText,
+        fontSize: t.fontSize + 2,
+        cursor: "pointer",
+      }}
+    >
+      {letra && (
+        <span
+          aria-hidden
+          style={{
+            flex: "0 0 auto",
+            width: 22,
+            height: 22,
+            borderRadius: 4,
+            border: `1px solid ${ativo ? t.primary : t.inputBorder}`,
+            color: ativo ? t.primary : "currentColor",
+            opacity: ativo ? 1 : 0.55,
+            fontSize: 11,
+            fontWeight: 600,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          {letra}
+        </span>
+      )}
+      {ativo ? (
+        <input
+          autoFocus
+          type="text"
+          value={texto}
+          placeholder="Escreva aqui"
+          aria-label="Outro — escreva sua resposta"
+          onClick={(e) => e.stopPropagation()}
+          onChange={(e) => onTexto(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault()
+              onConfirmar()
+            }
+          }}
+          style={{
+            flex: 1,
+            background: "transparent",
+            border: "none",
+            borderBottom: `1.5px solid ${t.primary}`,
+            color: t.inputText,
+            fontSize: "inherit",
+            fontFamily: "inherit",
+            outline: "none",
+            padding: "2px 0",
+          }}
+        />
+      ) : (
+        <span style={{ flex: 1 }}>Outro</span>
+      )}
+    </div>
+  )
+}
+
+/** Sim / Não: dois cartões, teclas S e N. */
+function SimNao({
+  bloco,
+  valor,
+  t,
+  registrar,
+  onEscolher,
+  descrito,
+}: {
+  bloco: FormBlock
+  valor: FormAnswers[string]
+  t: ReturnType<typeof defaults>
+  registrar: (ref: string, el: HTMLElement | null) => void
+  onEscolher: (v: FormAnswers[string], avancarJa?: boolean) => void
+  descrito?: string
+}) {
+  const opcoes = [
+    { value: "sim", label: "Sim", tecla: "S" },
+    { value: "nao", label: "Não", tecla: "N" },
+  ]
+  return (
+    <div
+      role="radiogroup"
+      aria-labelledby={`campo-${bloco.ref}`}
+      aria-describedby={descrito}
+      style={{ display: "flex", gap: 12, flexWrap: "wrap" }}
+      onKeyDown={(e) => {
+        const k = e.key.toLowerCase()
+        if (k === "s") onEscolher("sim", true)
+        if (k === "n") onEscolher("nao", true)
+      }}
+    >
+      {opcoes.map((o, i) => {
+        const ativo = valor === o.value
+        return (
+          <button
+            key={o.value}
+            type="button"
+            role="radio"
+            aria-checked={ativo}
+            id={i === 0 ? `campo-${bloco.ref}` : undefined}
+            ref={i === 0 ? (el) => registrar(bloco.ref, el) : undefined}
+            onClick={() => onEscolher(o.value, true)}
+            className="cfy-opcao"
+            style={{
+              flex: "1 1 160px",
+              maxWidth: 220,
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              padding: "16px 16px",
+              borderRadius: t.inputRadius,
+              border: `1.5px solid ${ativo ? t.primary : t.inputBorder}`,
+              background: ativo ? tintar(t.primary) : t.inputBg,
+              color: t.inputText,
+              fontSize: t.fontSize + 3,
+              fontFamily: "inherit",
+              cursor: "pointer",
+            }}
+          >
+            <span
+              aria-hidden
+              style={{
+                width: 24,
+                height: 24,
+                borderRadius: 5,
+                border: `1px solid ${ativo ? t.primary : t.inputBorder}`,
+                color: ativo ? t.primary : "currentColor",
+                opacity: ativo ? 1 : 0.55,
+                fontSize: 11,
+                fontWeight: 600,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              {o.tecla}
+            </span>
+            <span style={{ flex: 1, textAlign: "left" }}>{o.label}</span>
+            {ativo && <Check size={16} color={t.primary} />}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+/** Escala 0–10: onze células e os rótulos das pontas. */
+function Escala010({
+  bloco,
+  valor,
+  t,
+  registrar,
+  onEscolher,
+  descrito,
+}: {
+  bloco: FormBlock
+  valor: FormAnswers[string]
+  t: ReturnType<typeof defaults>
+  registrar: (ref: string, el: HTMLElement | null) => void
+  onEscolher: (v: FormAnswers[string], avancarJa?: boolean) => void
+  descrito?: string
+}) {
+  const atual = typeof valor === "string" ? valor : ""
+  return (
+    <div aria-describedby={descrito}>
+      <div
+        role="radiogroup"
+        aria-labelledby={`campo-${bloco.ref}`}
+        style={{ display: "grid", gridTemplateColumns: "repeat(11, minmax(0, 1fr))", gap: 6 }}
+      >
+        {Array.from({ length: 11 }, (_, n) => {
+          const v = String(n)
+          const ativo = atual === v
+          return (
+            <button
+              key={v}
+              type="button"
+              role="radio"
+              aria-checked={ativo}
+              id={n === 0 ? `campo-${bloco.ref}` : undefined}
+              ref={n === 0 ? (el) => registrar(bloco.ref, el) : undefined}
+              onClick={() => onEscolher(v, true)}
+              className="cfy-opcao"
+              style={{
+                height: 44,
+                minWidth: 0,
+                borderRadius: Math.min(t.inputRadius, 10),
+                border: `1.5px solid ${ativo ? t.primary : t.inputBorder}`,
+                background: ativo ? t.primary : t.inputBg,
+                color: ativo ? "#fff" : t.inputText,
+                fontSize: t.fontSize + 1,
+                fontWeight: 600,
+                fontFamily: "inherit",
+                cursor: "pointer",
+                transition: "background 120ms, border-color 120ms",
+              }}
+            >
+              {n}
+            </button>
+          )
+        })}
+      </div>
+      {(bloco.escala?.min_label || bloco.escala?.max_label) && (
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            marginTop: 8,
+            fontSize: t.fontSize - 2,
+            opacity: 0.6,
+          }}
+        >
+          <span>{bloco.escala?.min_label ?? ""}</span>
+          <span>{bloco.escala?.max_label ?? ""}</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** Cinco estrelas; a resposta é "1"…"5". */
+function Estrelas({
+  bloco,
+  valor,
+  t,
+  registrar,
+  onEscolher,
+  descrito,
+}: {
+  bloco: FormBlock
+  valor: FormAnswers[string]
+  t: ReturnType<typeof defaults>
+  registrar: (ref: string, el: HTMLElement | null) => void
+  onEscolher: (v: FormAnswers[string], avancarJa?: boolean) => void
+  descrito?: string
+}) {
+  const [sobre, setSobre] = useState(0)
+  const atual = typeof valor === "string" ? Number(valor) || 0 : 0
+  const acesa = sobre || atual
+  return (
+    <div
+      role="radiogroup"
+      aria-labelledby={`campo-${bloco.ref}`}
+      aria-describedby={descrito}
+      style={{ display: "flex", gap: 6 }}
+      onMouseLeave={() => setSobre(0)}
+    >
+      {[1, 2, 3, 4, 5].map((n) => (
+        <button
+          key={n}
+          type="button"
+          role="radio"
+          aria-checked={atual === n}
+          aria-label={`${n} ${n === 1 ? "estrela" : "estrelas"}`}
+          id={n === 1 ? `campo-${bloco.ref}` : undefined}
+          ref={n === 1 ? (el) => registrar(bloco.ref, el) : undefined}
+          onMouseEnter={() => setSobre(n)}
+          onClick={() => onEscolher(String(n), true)}
+          style={{
+            width: 44,
+            height: 44,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: 8,
+            border: "none",
+            background: "transparent",
+            color: n <= acesa ? t.primary : t.inputBorder,
+            cursor: "pointer",
+            transition: "color 100ms, transform 100ms",
+            transform: n <= sobre ? "scale(1.08)" : "none",
+          }}
+        >
+          <Star size={36} fill={n <= acesa ? t.primary : "none"} strokeWidth={1.75} />
+        </button>
+      ))}
+    </div>
+  )
+}
+
+const HORARIOS_DA_AGENDA = ["09:00", "10:00", "11:00", "14:00", "15:00", "16:00", "17:00"]
+
+/**
+ * Agendar reunião: dia + horário, resposta em ISO local.
+ *
+ * Os horários são uma grade fixa de horário comercial, não a agenda de
+ * ninguém — a disponibilidade real fica com a `AgendaDoFinal`, que fala
+ * com o Google Calendar. Este campo só colhe a PREFERÊNCIA; a tela diz
+ * isso para a pessoa não sair achando que a reunião está marcada.
+ */
+function Agendamento({
+  bloco,
+  valor,
+  t,
+  erro,
+  erroCor,
+  registrar,
+  onChange,
+  descrito,
+}: {
+  bloco: FormBlock
+  valor: FormAnswers[string]
+  t: ReturnType<typeof defaults>
+  erro?: boolean
+  erroCor: string
+  registrar: (ref: string, el: HTMLElement | null) => void
+  onChange: (v: FormAnswers[string]) => void
+  descrito?: string
+}) {
+  const atual = typeof valor === "string" ? valor : ""
+  const [dia, hora] = atual.includes("T") ? [atual.slice(0, 10), atual.slice(11, 16)] : [atual, ""]
+  const hoje = new Date().toISOString().slice(0, 10)
+  const compor = (d: string, h: string) => (d && h ? `${d}T${h}:00` : d)
+  return (
+    <div aria-describedby={descrito}>
+      <input
+        id={`campo-${bloco.ref}`}
+        ref={(el) => registrar(bloco.ref, el)}
+        type="date"
+        min={hoje}
+        value={dia}
+        onChange={(e) => onChange(compor(e.target.value, hora))}
+        className="cfy-campo"
+        style={{
+          width: "100%",
+          padding: "12px 2px",
+          background: "transparent",
+          border: "none",
+          borderBottom: `2px solid ${erro ? erroCor : t.inputBorder}`,
+          color: t.inputText,
+          fontSize: Math.max(t.fontSize + 6, 18),
+          fontFamily: "inherit",
+          outline: "none",
+          colorScheme: "light dark",
+        }}
+      />
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 14 }}>
+        {HORARIOS_DA_AGENDA.map((h) => {
+          const ativo = hora === h
+          return (
+            <button
+              key={h}
+              type="button"
+              aria-pressed={ativo}
+              disabled={!dia}
+              onClick={() => onChange(compor(dia, h))}
+              className="cfy-opcao"
+              style={{
+                height: 40,
+                padding: "0 14px",
+                borderRadius: Math.min(t.inputRadius, 10),
+                border: `1.5px solid ${ativo ? t.primary : t.inputBorder}`,
+                background: ativo ? tintar(t.primary) : t.inputBg,
+                color: t.inputText,
+                fontSize: t.fontSize,
+                fontFamily: "inherit",
+                fontVariantNumeric: "tabular-nums",
+                cursor: dia ? "pointer" : "not-allowed",
+                opacity: dia ? 1 : 0.5,
+              }}
+            >
+              {h}
+            </button>
+          )
+        })}
+      </div>
+      <p style={{ marginTop: 10, fontSize: t.fontSize - 2, opacity: 0.55 }}>
+        É a sua preferência de horário — a confirmação vem pelo time.
+      </p>
+    </div>
   )
 }
 

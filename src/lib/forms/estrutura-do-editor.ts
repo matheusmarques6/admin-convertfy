@@ -21,6 +21,7 @@
  */
 
 import type { FormSchema } from "@/types/forms-conversational"
+import { rotuloCurtoDoTipo } from "./tipos-de-pergunta"
 
 export type ModoDoFormulario = "classic" | "conversational"
 
@@ -218,22 +219,12 @@ export function ehSelecaoIgual(a: Selecao, b: Selecao): boolean {
   return "ref" in a && "ref" in b ? a.ref === b.ref : true
 }
 
-/** Rótulo curto do tipo, para a lista. O nome cru (`multi_select`) não é legível. */
-export const TIPO_CURTO: Record<string, string> = {
-  text: "Texto",
-  textarea: "Texto longo",
-  email: "E-mail",
-  phone: "Telefone",
-  number: "Número",
-  url: "Site",
-  date: "Data",
-  select: "Escolha",
-  radio: "Escolha",
-  multi_select: "Várias",
-  checkbox: "Sim/Não",
-  hidden: "Oculto",
-}
-
+/**
+ * Rótulo curto do tipo, para a lista. O nome cru (`multi_select`) não é
+ * legível. A fonte é `tipos-de-pergunta.ts` — esta era uma das quatro
+ * listas escritas à mão que divergiam.
+ */
 export function rotuloDoTipo(tipo: string): string {
-  return TIPO_CURTO[tipo] ?? tipo
+  if (tipo === "hidden") return "Oculto"
+  return rotuloCurtoDoTipo(tipo)
 }

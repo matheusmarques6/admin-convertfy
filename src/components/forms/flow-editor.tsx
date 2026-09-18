@@ -61,6 +61,7 @@ import {
 import { DestinoEditor } from "./destino-editor"
 import { MediaField } from "./media-field"
 import type { MidiaDaTela } from "@/lib/forms/midia"
+import { rotuloCurtoDoTipo } from "@/lib/forms/tipos-de-pergunta"
 import {
   alvosDoFluxo,
   rotuloDaTela,
@@ -490,23 +491,6 @@ function Comportamento({
 
 // ───────────────────────────── tela ─────────────────────────────────────
 
-const TIPO_CURTO: Record<string, string> = {
-  text: "texto",
-  textarea: "texto longo",
-  email: "e-mail",
-  phone: "telefone",
-  number: "número",
-  select: "escolha",
-  radio: "escolha",
-  checkbox: "sim/não",
-  multi_select: "múltipla",
-  date: "data",
-  url: "link",
-  cpf: "CPF",
-  cnpj: "CNPJ",
-  cep: "CEP",
-  statement: "só texto",
-}
 
 function TelaNoFluxo({
   tela,
@@ -641,7 +625,7 @@ function TelaNoFluxo({
                   {tituloDoBloco(b, i)}
                 </span>
                 <span className="shrink-0 text-[10px] text-slate-400 dark:text-white/35">
-                  {TIPO_CURTO[b.type] ?? b.type}
+                  {rotuloCurtoDoTipo(b.type)}
                 </span>
                 <button
                   type="button"
