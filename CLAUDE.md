@@ -10210,3 +10210,31 @@ mexer em caminho morto é risco sem retorno.
 imagem) usando `pg_net` **de dentro do Postgres**: o proxy deste
 ambiente não alcança `convertfy.me`, e o banco alcança. Foi assim que
 apareceu que o depoimento da tela 17 pesa **1 MB** sem versão WebP.
+
+## O desfecho do formulário deixou de vir do corpo do POST (18/09)
+
+`ending_ref` chegava do browser e decidia **tudo o que importa** num
+formulário conversacional: as tags e a etapa no CRM, se o
+`LeadQualificado` dispara, e — desde o funil de aplicação — se a agenda
+abre. A régua "quem decide é o schema publicado" já valia para
+`disqualified` e para quais obrigatórias cobrar; faltava para o final em
+si, e sem ela bastava um POST com `ending_ref: "fim_aprovado"` para
+comprar um horário na nossa agenda.
+
+`finalAlcancado` (`lib/forms/engine.ts`) recalcula o desfecho a partir
+das RESPOSTAS, e o submit usa o calculado quando ele existe — inclusive
+ao fechar a sessão, que é de onde `agendarDaSessao` lê. Divergência vira
+`submit.final_divergente` no log: ela tem duas causas legítimas (versão
+publicada trocada no meio do preenchimento, resposta que não viajou) e
+uma que não é.
+
+**A primeira versão da guarda estava errada, e o teste mediu**: com
+`answers` vazio nenhuma regra casa, a navegação segue os defaults e o
+funil de aplicação devolve **`fim_aprovado`** — calcular sem checar
+teria transformado um POST sem respostas em aprovação para todo mundo, o
+oposto do que a função existe para impedir. Ela só decide quando cada
+condição do caminho teve o que testar. **Cobrar o caminho INTEIRO
+respondido também não serve**: a tentativa disso devolvia `null` no
+caminho completo, porque pergunta opcional não precisa de resposta para
+o salto acontecer — e uma guarda que devolve `null` no caso normal é uma
+guarda inerte, que é como ela deixaria de valer alguma coisa.

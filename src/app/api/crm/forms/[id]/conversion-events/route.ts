@@ -95,9 +95,19 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
     }
     if (cfg.meta.enabled && !cfg.qualified_lead.enabled) {
       blockers.push('O evento de lead qualificado está desligado — só o evento "Lead" é enviado.')
-    } else if (cfg.qualified_lead.enabled && cfg.qualified_lead.rules.length === 0) {
+    } else if (
+      cfg.qualified_lead.enabled &&
+      cfg.qualified_lead.rules.length === 0 &&
+      (cfg.qualified_lead.endings ?? []).length === 0
+    ) {
+      // Sem regras E sem finais. Um formulário conversacional pode
+      // qualificar pelo DESFECHO (`endings`), que é o caso do funil de
+      // aplicação: quem chega ao final aprovado já passou por todos os
+      // cortes do fluxo. Acusar só pela falta de regra diria que nada
+      // qualifica num formulário que qualifica — e mandaria consertar o
+      // que está certo.
       blockers.push(
-        "O lead qualificado está ligado, mas sem nenhuma condição — nenhum lead será marcado como qualificado.",
+        "O lead qualificado está ligado, mas sem nenhuma condição nem final — nenhum lead será marcado como qualificado.",
       )
     }
 

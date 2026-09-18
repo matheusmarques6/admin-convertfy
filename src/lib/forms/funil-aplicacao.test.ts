@@ -17,7 +17,7 @@ import {
   schemaDoFunil,
   TAG_RISCO,
 } from "./funil-aplicacao"
-import { blocosDaTela, primeiroBloco, proximoPasso } from "./engine"
+import { blocosDaTela, finalAlcancado, primeiroBloco, proximoPasso } from "./engine"
 import { calcular, moedaDeclarada, variaveisDasRespostas } from "./calculo"
 import { aplicarRecall } from "./recall"
 import { normalizarMidia, urlDeMidiaUtil } from "./midia"
@@ -81,6 +81,25 @@ describe("caminho 1 · Brasil, marca própria, R$500 mil–1 milhão", () => {
     expect(percorrer(answers).ending).toBe(FINAL.aprovado)
   })
 
+  /**
+   * O servidor recalcula o desfecho a partir das RESPOSTAS — é isso que
+   * impede alguém de mandar `ending_ref: "fim_aprovado"` no corpo do
+   * POST e comprar as tags, o `LeadQualificado` e um horário na agenda.
+   */
+  it("o servidor chega sozinho ao mesmo final", () => {
+    expect(finalAlcancado(schema, { answers, hidden: {} })).toBe(FINAL.aprovado)
+  })
+
+  it("com o caminho incompleto o servidor NÃO afirma um final", () => {
+    // Sem esta guarda o cálculo é perigoso ao contrário: sem resposta
+    // nenhuma regra casa, a navegação segue os defaults e este funil
+    // devolve o final APROVADO — um POST vazio viraria aprovação.
+    expect(finalAlcancado(schema, { answers: {}, hidden: {} })).toBeNull()
+    const semCompromisso = { ...answers }
+    delete semCompromisso[REF.compromisso]
+    expect(finalAlcancado(schema, { answers: semCompromisso, hidden: {} })).toBeNull()
+  })
+
   it("não passa pela trilha global nem pelas telas em dólar", () => {
     const { telas } = percorrer(answers)
     for (const ref of [
@@ -131,6 +150,29 @@ describe("caminho 2 · Brasil, até R$100 mil", () => {
     expect(r.ending).toBe(FINAL.faturamento)
     expect(r.telas).not.toContain(REF.acessos)
     expect(r.telas).not.toContain(REF.preco)
+  })
+})
+
+describe("forjar o desfecho no corpo do POST não adianta", () => {
+  /**
+   * O `ending_ref` chega do browser, e ele decide as tags, a etapa no
+   * CRM, o `LeadQualificado` e se a agenda abre. O submit recalcula pela
+   * MESMA engine: as respostas de quem foi recusado continuam levando ao
+   * final de recusa, qualquer que seja o valor enviado.
+   */
+  it("as respostas de recusado calculam o final de recusa", () => {
+    const recusado: FormAnswers = {
+      ...CONTATO,
+      [REF.operacao]: "marca",
+      [REF.mercado]: "br",
+      [REF.faturamento_br]: "ate_100k",
+    }
+    expect(finalAlcancado(schema, { answers: recusado, hidden: {} })).toBe(FINAL.faturamento)
+  })
+
+  it("quem não é o público calcula o final de perfil", () => {
+    const agencia: FormAnswers = { ...CONTATO, [REF.operacao]: "agencia" }
+    expect(finalAlcancado(schema, { answers: agencia, hidden: {} })).toBe(FINAL.perfil)
   })
 })
 

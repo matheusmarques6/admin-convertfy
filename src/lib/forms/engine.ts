@@ -578,6 +578,77 @@ export function ultimoAlcancavel(schema: FormSchema, ctx: ContextoLogica): strin
 }
 
 /**
+ * O FINAL que estas respostas alcançam — calculado aqui, não aceito.
+ *
+ * O desfecho decide muita coisa: as tags e a etapa no CRM, se o evento
+ * `LeadQualificado` dispara e se a agenda abre. Até aqui ele chegava no
+ * CORPO do POST (`ending_ref`), o que deixava quem responde escolher o
+ * próprio veredicto — a régua de "quem decide é o schema publicado" já
+ * valia para `disqualified` e para o caminho das obrigatórias, e faltava
+ * para o final em si.
+ *
+ * **Só vale quando cada decisão do caminho teve o que decidir.** Sem
+ * essa guarda o cálculo é ativamente PERIGOSO: com `answers` vazio
+ * nenhuma regra casa, a navegação segue os defaults e o funil de
+ * aplicação devolve `fim_aprovado` — medido. Um POST sem respostas, ou
+ * um save que não chegou, viraria "aprovado" para todo mundo, que é o
+ * oposto do que esta função existe para impedir.
+ *
+ * O que ela cobra são os campos que as REGRAS testam, não o caminho
+ * inteiro: pergunta sem lógica e pergunta opcional não mudam o destino,
+ * e exigi-las devolveria `null` no caso normal — a função viraria
+ * inerte, que é como uma guarda destas deixa de valer alguma coisa.
+ * Condição sobre variável ou campo oculto não é cobrada: ali a resposta
+ * não é a fonte.
+ *
+ * Devolve `null` quando falta a resposta de uma decisão, quando a
+ * lógica não chega a final nenhum ou quando há laço. Nesse caso quem
+ * chama mantém o que veio do cliente: afirmar um final que não foi
+ * calculado seria trocar um palpite por outro.
+ */
+export function finalAlcancado(schema: FormSchema, ctx: ContextoLogica): string | null {
+  // `ending: null` é o final PADRÃO, e quem o resolve é `acharEnding` —
+  // a mesma função que a tela usa para decidir o que mostrar. Resolver
+  // de outro jeito aqui faria o servidor comparar contra um final que o
+  // visitante nunca viu.
+  const resolver = (ending: string | null): string | null =>
+    acharEnding(schema, ending)?.ref ?? null
+
+  /** Toda condição deste bloco tem resposta para testar? */
+  const decideCom = (ref: string): boolean => {
+    for (const b of blocosDaTela(schema, ref)) {
+      for (const regra of b.logic ?? []) {
+        for (const cond of regra.conditions ?? []) {
+          const alvo = acharBloco(schema, cond.ref)
+          if (!alvo) continue
+          if (TIPOS_SEM_RESPOSTA.has(alvo.type)) continue
+          if (!respondido(ctx, cond.ref)) return false
+        }
+      }
+    }
+    return true
+  }
+
+  const inicio = primeiroBloco(schema)
+  if (inicio.tipo === "fim") return resolver(inicio.ending)
+  if (inicio.tipo !== "bloco") return null
+  let atual = inicio.ref
+  let variables = { ...(ctx.variables ?? {}) }
+  const vistos = new Set([atual])
+  for (let i = 0; i < LIMITE_DE_SALTOS; i++) {
+    if (!decideCom(atual)) return null
+    const r = proximoPasso(schema, atual, { ...ctx, variables })
+    variables = r.variables
+    if (r.destino.tipo === "fim") return resolver(r.destino.ending)
+    if (r.destino.tipo !== "bloco") return null
+    if (vistos.has(r.destino.ref)) return null
+    vistos.add(r.destino.ref)
+    atual = r.destino.ref
+  }
+  return null
+}
+
+/**
  * A primeira pergunta do caminho que está SEM resposta.
  *
  * Diferente de `ultimoAlcancavel`, que responde "até onde a lógica chega

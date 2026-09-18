@@ -148,6 +148,27 @@ uma regra de faturamento: quem chega ao final aprovado já passou pelos
 três cortes duros do fluxo, e uma segunda régua discordaria do desfecho
 que a pessoa acabou de ler.
 
+**O token da CAPI estava AUSENTE neste formulário** (medido em 18/09).
+Sem ele só o pixel do BROWSER dispara, e some justamente a metade que
+sobrevive a bloqueador de anúncio e a iOS — a redundância pixel+CAPI com
+o mesmo `event_id` que este repositório mantém de propósito. Os outros
+dois formulários com verba (`pagina-de-vendas` e `diagnostico`) têm o
+token, e é o **mesmo pixel** (`694200440166500`), então o token foi
+copiado do `diagnostico` para cá. Para desfazer:
+`update crm_forms set meta_capi_token = null where slug = 'aplicacao'`.
+
+O efeito disso foi MEDIDO no envio de teste das 04:27 de 18/09: 18
+respostas, lead e negócio criados, sessão fechada em `fim_aprovado` — e
+**zero** linhas em `crm_conversion_events`. O `metaConfigured` do submit
+exige os três (integração ligada, pixel e token), então sem o token nem
+o "Lead" nem o "LeadQualificado" chegavam a ser enfileirados.
+
+O painel de diagnóstico do formulário já avisava disso, mas tinha um
+alarme FALSO ao lado que empurrava para o lado errado: ele acusava
+"lead qualificado ligado e sem nenhuma condição" porque olhava só as
+`rules`, e este funil qualifica pelo DESFECHO (`endings`). Agora ele só
+acusa quando não há regra **nem** final.
+
 ---
 
 ## O que cada desfecho faz no CRM
@@ -206,6 +227,25 @@ silêncio.
 **O vídeo foi removido** da tela 2, por decisão do dono em 18/09.
 
 **O preço da tela 19 é R$3.500/mês**, confirmado em 18/09.
+
+---
+
+## O que já rodou de verdade em produção (18/09)
+
+Antes de qualquer verba, o funil já foi percorrido — e o banco mostra o
+que funcionou:
+
+- **uma sessão completa**: 18 respostas, final `fim_aprovado`, **lead e
+  negócio criados**. A engine, os saltos, o desfecho e a entrada no CRM
+  estão comprovados no caminho inteiro;
+- **três sessões abertas e fechadas sem responder nada**: o cron de
+  abandono processou as três e **não criou lead nenhum** — é a regra
+  `so_visita` funcionando (visita não vira lead, senão o CRM enche de
+  linha morta);
+- **zero eventos de conversão**, pelo token ausente descrito acima. É o
+  único elo que estava frio, e é o que a cópia do token destrava;
+- **zero calls agendadas**, coerente com o `hidden_fields`: o
+  agendamento recusava toda sessão.
 
 ---
 
@@ -276,6 +316,34 @@ módulo. Corrigido com sete testes.
    conta central, Meet e convite por e-mail — e nenhuma forma de alguém
    de fora escolher um horário. Foi construída aqui (módulo puro, rota
    pública, migration 20261170).
+
+---
+
+## O desfecho deixou de vir do corpo do POST (18/09)
+
+`ending_ref` chegava do browser e decidia **tudo o que importa**: as
+tags e a etapa no CRM, se o `LeadQualificado` dispara e se a agenda
+abre. A régua "quem decide é o schema publicado" já valia para
+`disqualified` e para quais obrigatórias cobrar; faltava para o final em
+si, e sem ela bastava um POST com `ending_ref: "fim_aprovado"` para
+comprar um horário na nossa agenda.
+
+`finalAlcancado` (engine) recalcula o desfecho a partir das respostas, e
+o submit usa o calculado quando ele existe — inclusive ao fechar a
+sessão, que é de onde a agenda lê. Divergência entre o calculado e o do
+cliente vira `submit.final_divergente` no log: ela tem duas causas
+legítimas (versão publicada trocada no meio do preenchimento, resposta
+que não viajou) e uma que não é.
+
+**A primeira versão desta guarda estava errada, e o teste mediu:** com
+`answers` vazio nenhuma regra casa, a navegação segue os defaults e este
+funil devolve **`fim_aprovado`**. Calcular sem checar teria transformado
+um POST sem respostas — ou um save que não chegou — em aprovação para
+todo mundo. A função só decide quando cada condição do caminho teve o
+que testar; senão devolve `null` e o do cliente prevalece. Cobrar o
+caminho INTEIRO respondido também não serve: a primeira tentativa disso
+devolvia `null` no caminho 1 completo, porque pergunta opcional não
+precisa de resposta para o salto acontecer — a guarda viraria inerte.
 
 ---
 

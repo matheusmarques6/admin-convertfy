@@ -35,7 +35,7 @@ import {
 import { metaEventName } from "@/lib/tracking/meta-event-name"
 import { buildCrmFormUrl } from "@/lib/utils/form-url"
 import { concluirSessao } from "@/lib/services/form-session.service"
-import { caminhoAte, refsDoCaminho, ultimoAlcancavel } from "@/lib/forms/engine"
+import { caminhoAte, finalAlcancado, refsDoCaminho, ultimoAlcancavel } from "@/lib/forms/engine"
 import { normalizarSchema } from "@/lib/forms/schema"
 import { desfechoNoCrm } from "@/lib/forms/desfecho"
 import { destinoDoWebhook, enviarWebhook, respostasLegiveis } from "@/lib/forms/webhook"
@@ -174,12 +174,25 @@ export async function POST(
     //
     // No formulário clássico não existe lógica, então o caminho é a lista
     // inteira e esta validação é byte a byte a de antes.
-    const { refs: refsDoCaminho, desqualificado, schema: schemaPublicado } = await lerDoSchema(
-      admin,
-      form,
-      parsed.answers,
-      parsed.ending_ref ?? null,
-    )
+    const {
+      refs: refsDoCaminho,
+      desqualificado,
+      schema: schemaPublicado,
+      finalCalculado,
+    } = await lerDoSchema(admin, form, parsed.answers, parsed.ending_ref ?? null)
+
+    // A partir daqui, o desfecho é o CALCULADO quando existe. A
+    // divergência vai para o log porque ela tem duas causas legítimas —
+    // versão publicada trocada no meio do preenchimento e resposta que
+    // não viajou — e uma ilegítima: alguém escolhendo o próprio final.
+    const endingRef = finalCalculado ?? parsed.ending_ref ?? null
+    if (finalCalculado && parsed.ending_ref && finalCalculado !== parsed.ending_ref) {
+      log.warn("submit.final_divergente", {
+        formId: form.id,
+        doCliente: parsed.ending_ref,
+        calculado: finalCalculado,
+      })
+    }
 
     // O piso em real da faixa de faturamento, calculado AQUI e não aceito
     // do corpo: o browser manda a escolha, a conversão é nossa. É ele que
@@ -211,7 +224,7 @@ export async function POST(
     // pessoa parou.
     const desfecho = desfechoNoCrm(
       schemaPublicado,
-      parsed.ending_ref ?? null,
+      endingRef,
       parsed.answers as Record<string, never>,
       refsDoCaminho,
     )
@@ -465,7 +478,7 @@ export async function POST(
       // apareceu" é exatamente o que alguém vai investigar depois.
       log.info("[FormSubmit] Final não cria negócio", {
         form_id: form.id,
-        ending: parsed.ending_ref,
+        ending: endingRef,
       })
     }
     if (form.pipeline_id && leadId && desfecho.criaNegocio) {
@@ -626,7 +639,7 @@ export async function POST(
           leadId,
           dealId,
           submissionId,
-          endingRef: parsed.ending_ref ?? null,
+          endingRef,
           // O mesmo veredicto do schema publicado que marcou o card: o
           // status da sessão alimenta os contadores do funil, e duas
           // fontes para a mesma pergunta divergiriam na primeira edição.
@@ -646,8 +659,8 @@ export async function POST(
     // resposta dela.
     const destinoN8n = destinoDoWebhook(form.settings)
     if (destinoN8n) {
-      const finalDoSchema = parsed.ending_ref
-        ? (schemaPublicado?.endings ?? []).find((e) => e.ref === parsed.ending_ref)
+      const finalDoSchema = endingRef
+        ? (schemaPublicado?.endings ?? []).find((e) => e.ref === endingRef)
         : undefined
       const r = await enviarWebhook(destinoN8n, {
         evento: "formulario.enviado",
@@ -743,7 +756,7 @@ export async function POST(
         trackingCfg.qualified_lead,
         respostasComDerivados,
         [...(fields ?? []), ...derivados.fields],
-        parsed.ending_ref ?? null,
+        endingRef,
       )
 
       // Nome completo -> first/last pro user_data do Meta. Quando o
@@ -891,43 +904,62 @@ async function lerDoSchema(
   refs: Set<string> | null
   desqualificado: boolean
   schema: ReturnType<typeof normalizarSchema> | null
+  /** O final que as RESPOSTAS alcançam; `null` quando não dá para saber. */
+  finalCalculado: string | null
 }> {
   const versionId = form.published_version_id
-  if (!versionId) return { refs: null, desqualificado: false, schema: null }
+  if (!versionId) return { refs: null, desqualificado: false, schema: null, finalCalculado: null }
   try {
     const { data } = await admin
       .from("form_versions")
       .select("schema")
       .eq("id", versionId)
       .maybeSingle()
-    if (!data?.schema) return { refs: null, desqualificado: false, schema: null }
+    if (!data?.schema) return { refs: null, desqualificado: false, schema: null, finalCalculado: null }
     const schema = normalizarSchema(data.schema)
-    if (schema.blocks.length === 0) return { refs: null, desqualificado: false, schema: null }
+    if (schema.blocks.length === 0) {
+      return { refs: null, desqualificado: false, schema: null, finalCalculado: null }
+    }
 
     // Quem decide se o final desqualifica é o SCHEMA PUBLICADO, não o
     // corpo do POST: o cliente aponta qual final alcançou, a régua é
     // nossa. Um `disqualified: true` inventado no corpo só rebaixaria o
     // próprio cadastro, mas confiar nele seria deixar o CRM depender do
     // que o browser diz.
-    const desqualificado = endingRef
-      ? Boolean((schema.endings ?? []).find((e) => e.ref === endingRef)?.disqualified)
+    const ctxFinal = { answers: answers as Record<string, never>, hidden: {} }
+    // O FINAL sai das respostas, não do corpo. Ele decide as tags, a
+    // etapa no CRM, o `LeadQualificado` e se a agenda abre — deixá-lo
+    // chegar pronto do browser é deixar quem responde escolher o próprio
+    // veredicto. Quando a lógica não fecha num final (sem lógica,
+    // resposta faltando, laço), fica `null` e quem chama mantém o do
+    // cliente: trocar um palpite por outro não melhora nada.
+    const finalCalculado = finalAlcancado(schema, ctxFinal)
+    const finalValido = finalCalculado ?? endingRef
+
+    const desqualificado = finalValido
+      ? Boolean((schema.endings ?? []).find((e) => e.ref === finalValido)?.disqualified)
       : false
 
     // Sem lógica em bloco nenhum, o caminho é a lista inteira e não há o
     // que calcular — é o caso do formulário clássico.
     const temLogica = schema.blocks.some((b) => (b.logic ?? []).length > 0)
-    if (!temLogica) return { refs: null, desqualificado, schema }
+    if (!temLogica) return { refs: null, desqualificado, schema, finalCalculado }
 
-    const ctx = { answers: answers as Record<string, never>, hidden: {} }
+    const ctx = ctxFinal
     const fim = ultimoAlcancavel(schema, ctx)
-    if (!fim) return { refs: null, desqualificado, schema }
+    if (!fim) return { refs: null, desqualificado, schema, finalCalculado }
     const { caminho } = caminhoAte(schema, fim, ctx)
     // O caminho vem em TELAS. Sem expandir, a 2ª pergunta em diante de um
     // grupo ficaria fora do conjunto e o `required` dela deixaria de ser
     // cobrado — dá para enviar sem o email que a tela exigia.
-    return { refs: new Set(refsDoCaminho(schema, caminho)), desqualificado, schema }
+    return {
+      refs: new Set(refsDoCaminho(schema, caminho)),
+      desqualificado,
+      schema,
+      finalCalculado,
+    }
   } catch {
-    return { refs: null, desqualificado: false, schema: null }
+    return { refs: null, desqualificado: false, schema: null, finalCalculado: null }
   }
 }
 
