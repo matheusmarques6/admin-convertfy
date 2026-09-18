@@ -15,10 +15,10 @@ import {
   CopyPlus,
   MoreHorizontal,
   Shuffle,
-  Trash2,
   Trophy,
   TriangleAlert,
   X as XIcon,
+  Archive,
 } from "lucide-react"
 import { normalizePhone } from "@/lib/whatsapp/phone"
 import { BotaoToque, type RespostaDoToque } from "./botao-toque"
@@ -1084,11 +1084,13 @@ function DealActionsMenu({
                 className="h-px my-1"
                 style={{ background: "var(--crm-gray-100)" }}
               />
+              {/* Nao remove nada: e um UPDATE de status pra 'archived'.
+                  "Excluir / Remove definitivamente" com tom de perigo
+                  descrevia uma acao que o codigo nao faz. */}
               <Item
-                icon={<Trash2 className="h-3.5 w-3.5" />}
-                title="Excluir"
-                description="Remove definitivamente"
-                tone="danger"
+                icon={<Archive className="h-3.5 w-3.5" />}
+                title="Arquivar"
+                description="Sai do quadro, da pra restaurar"
                 onClick={() => onDelete(dealId)}
               />
             </>

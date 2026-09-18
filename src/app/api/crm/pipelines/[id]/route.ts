@@ -92,6 +92,14 @@ export async function GET(
       restrictToOwner = !roles.some((r) => r === "admin" || r === "dev" || r === "coo")
     }
 
+    // `?arquivados=1` inverte o filtro e devolve SO os arquivados — e nunca
+    // os dois conjuntos juntos. Arquivar tira o negocio do quadro, entao
+    // misturar faria o card reaparecer entre os ativos sem nada dizendo que
+    // ele esta fora; a tela pede a lista de propósito, para conferir e
+    // restaurar. Sem o parametro, o comportamento e o de sempre.
+    const soArquivados =
+      request.nextUrl.searchParams.get("arquivados") === "1"
+
     // Query principal SEM join com crm_leads (pra evitar issues de FK
      // em ambientes onde a migration nao rodou completa). Buscamos os
      // leads em query separada via lead_id.
@@ -107,7 +115,10 @@ export async function GET(
         store:client_stores (id, store_name, health_score, mrr_cents, next_feedback_date, last_feedback_date, additional_notes)
       `)
       .eq("pipeline_id", id)
-      .neq("status", "archived")
+
+    dealsQuery = soArquivados
+      ? dealsQuery.eq("status", "archived")
+      : dealsQuery.neq("status", "archived")
 
     if (restrictToOwner) dealsQuery = dealsQuery.eq("owner_id", user.id)
 
@@ -226,9 +237,31 @@ export async function GET(
       }
     })
 
+    // Quantos negocios estao FORA do quadro. A tela so oferece "ver
+    // arquivados" quando ha algum — e este numero e a unica pista de que
+    // eles existem, porque o quadro nao os desenha. Contagem por `head`
+    // (nao traz linha) e fail-open: erro aqui nao derruba a pipeline.
+    let arquivados = 0
+    if (!soArquivados) {
+      let contagem = admin
+        .from("deals")
+        .select("id", { count: "exact", head: true })
+        .eq("pipeline_id", id)
+        .eq("status", "archived")
+      if (restrictToOwner) contagem = contagem.eq("owner_id", user.id)
+      const { count, error: cErr } = await contagem
+      if (cErr) {
+        log.warn("Contagem de arquivados falhou", { id, error: cErr.message })
+      } else {
+        arquivados = count ?? 0
+      }
+    }
+
     return successResponse(request, {
       pipeline: { ...pipeline, stages, pipeline_stages: undefined },
       deals: enrichedDeals,
+      arquivados,
+      vendo_arquivados: soArquivados,
     })
   } catch (error) {
     log.error("Pipeline detail error:", error)

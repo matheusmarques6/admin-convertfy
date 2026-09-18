@@ -10377,3 +10377,64 @@ função falharia calada se fosse nulo).
 
 O funil segue não dependendo do push: `slotsDisponiveis` consulta o
 `freeBusy` ao vivo, e o cron é a rede de segurança declarada.
+
+## Arquivar um negócio não deixava rastro, e "sumiu" virou "foi apagado" (18/09, migration 20261173)
+
+Relato: *"na pipeline do funil de inbound sumiu bastante leads"*. Medido antes
+de tocar em código — Funil Inbound (`217c6a20`), **44 negócios: 39
+`archived`**, 3 ganhos, 2 abertos. A coluna "Lead novo" tinha **27 de 27
+arquivados** e renderizava VAZIA, porque o GET filtra
+`.neq("status","archived")`. Nada foi apagado: os leads estavam no banco o
+tempo todo.
+
+**Atribuição honesta**: não achei evidência de que código meu os arquivou. Os
+arquivamentos estão espalhados de maio a setembro (31 dos 39 mais de uma hora
+depois da criação — não é evento em lote), os dois únicos escritores
+(`DELETE /api/crm/deals/[id]` e o `bulk` com ação `archive`) são anteriores ao
+meu trabalho e ambos exigem clique com confirmação, e nenhum commit meu
+escreve esse status. **A hipótese de que a rota `move` que consertei hoje
+estivesse arquivando via `stage_type = 'archived'` foi TESTADA e morreu**:
+nenhuma etapa do Inbound tem esse tipo.
+
+**O defeito é a ausência de rastro, e ele tem três partes.** (a)
+`crm_deal_history` nunca registrou `status` — só `stage_id` e `pipeline_id`
+—, então não havia como saber quem arquivou nem quando; (b) o DELETE da rota
+também não grava atividade na timeline; (c) **não existia tela nenhuma** que
+listasse ou restaurasse arquivado. Junto, isso torna "sumiu" e "foi apagado"
+indistinguíveis para quem opera — e foi exatamente essa a pergunta.
+
+**A interface ainda mentia sobre o que o código faz.** O menu do card dizia
+"Excluir · Remove definitivamente" em vermelho e a confirmação dizia "Esta
+ação não pode ser desfeita", enquanto o código faz um `UPDATE` reversível.
+Agora diz "Arquivar · Sai do quadro, dá pra restaurar", e a confirmação
+explica que ele para de contar nos indicadores e onde encontrá-lo depois.
+
+**O conserto é no TRIGGER, não no app** (`crm_deals_track_stage_change`): o
+bloco de status já existia ali — carimbava `won_at`/`lost_at` e não gravava
+histórico. Fechar no trigger cobre TODOS os escritores por construção (o
+DELETE do card, a ação em massa, o PATCH e qualquer UPDATE por SQL direto);
+foi gravar em um lugar só que abriu o buraco. O INSERT novo roda em bloco
+`EXCEPTION`: pela regra da casa desde o 20261066, telemetria em tabela de
+ação do usuário é **fail-open** — perder a linha de histórico é barato,
+impedir o operador de arquivar não é.
+
+**Tela de arquivados** (`arquivados-panel.tsx`, `?arquivados=1` no GET da
+pipeline): é uma LISTA, não um kanban — arquivado não se arrasta, e o que
+importa ali é conferir quem é e decidir se volta. A chave do SWR muda junto
+com o modo (conjuntos diferentes não podem dividir cache), o item do menu só
+aparece com `arquivados > 0` e traz a contagem, e restaurar é um `PATCH
+{status:"open"}` que devolve o negócio à etapa em que ele estava.
+
+**Dado restaurado**: 21 leads reais voltaram a `open` (os testes ficaram
+arquivados, decisão do dono). O Inbound foi de **2 para 23 visíveis**.
+
+*Verificado renderizando*, e foi o render que pegou o que nenhum teste
+pegaria: **os tokens que usei não existiam** — `--crm-text-primary/secondary/
+tertiary` não são cores, `--crm-text-*` é a escala de TAMANHO de fonte, e o
+resultado era a tabela inteira na mesma cor, sem hierarquia (o CSS inválido
+não falha, só é ignorado). Depois disso, o cabeçalho em `gray-500` sobre o
+`gray-100` mediu **4,39:1**, abaixo do mínimo; e a tabela distribuía a largura
+por igual, deixando 334px de coluna para 190px de e-mail — o olho atravessava
+um vão de 140px entre uma informação e a seguinte (corrigido com `width:100%`
+só na primeira coluna). Dívida pré-existente registrada: **outros 12 usos dos
+mesmos tokens inexistentes** em componentes do CRM.

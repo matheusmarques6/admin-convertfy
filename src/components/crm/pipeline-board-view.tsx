@@ -15,10 +15,12 @@ import {
   MoreHorizontal,
   Rows2,
   Rows3,
+  Archive,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Icon } from "@/components/ui/icon"
 import { CrmEmptyState } from "./crm-empty-state"
+import { ArquivadosPanel } from "./arquivados-panel"
 import { KanbanBoard, type KanbanStage } from "./kanban-board"
 import { StateBoard } from "./state-board"
 import { DealDrawer } from "./deal-drawer"
@@ -114,6 +116,10 @@ interface PipelineDetailResponse {
     contact_phone?: string | null
     contact_email?: string | null
   }>
+  /** Quantos negocios estao FORA do quadro (status archived). */
+  arquivados?: number
+  /** True quando a resposta traz SO os arquivados (`?arquivados=1`). */
+  vendo_arquivados?: boolean
 }
 
 interface PipelineBoardViewProps {
@@ -132,8 +138,14 @@ export function PipelineBoardView({
   scope: _scope,
   headerExtras,
 }: PipelineBoardViewProps) {
+  // Modo "arquivados": a mesma rota com `?arquivados=1`. Entra na chave do
+  // SWR de proposito — as duas listas sao conjuntos DIFERENTES e cacheá-las
+  // sob a mesma chave faria o quadro mostrar arquivado como ativo.
+  const [vendoArquivados, setVendoArquivados] = useState(false)
   const { data, isLoading, mutate } = useSWR<PipelineDetailResponse>(
-    `/api/crm/pipelines/${pipelineId}`,
+    vendoArquivados
+      ? `/api/crm/pipelines/${pipelineId}?arquivados=1`
+      : `/api/crm/pipelines/${pipelineId}`,
     fetcher,
   )
 
@@ -665,7 +677,12 @@ export function PipelineBoardView({
 
   const handleDelete = async (dealId: string) => {
     const ok = window.confirm(
-      "Excluir este deal? Esta acao nao pode ser desfeita.",
+      // O botao se chamava "Excluir" e prometia que nao dava pra desfazer.
+      // O codigo faz outra coisa: um UPDATE de status pra 'archived'. A
+      // frase antiga ensinava o operador a tratar como perda definitiva —
+      // e, sem tela de arquivados, virava perda mesmo.
+      "Arquivar este negocio? Ele sai do quadro e para de contar nos " +
+        "indicadores. Da pra restaurar depois em ⋯ › Ver arquivados.",
     )
     if (!ok) return
     const res = await fetch(`/api/crm/deals/${dealId}`, { method: "DELETE" })
@@ -755,6 +772,32 @@ export function PipelineBoardView({
     if (v >= 1_000_000) return "R$ " + (v / 1_000_000).toFixed(1).replace(".", ",") + "M"
     if (v >= 1_000) return "R$ " + Math.round(v / 1_000) + "k"
     return "R$ " + Number(v).toLocaleString("pt-BR", { maximumFractionDigits: 0 })
+  }
+
+  // Arquivados sao uma TELA, nao uma coluna a mais: o conjunto e outro (a
+  // rota devolve so eles), nao se arrasta um arquivado, e misturar faria o
+  // card reaparecer entre os ativos sem nada dizendo que ele esta fora.
+  if (vendoArquivados) {
+    return (
+      <ArquivadosPanel
+        negocios={allDeals}
+        etapas={
+          new Map((pipeline?.stages ?? []).map((s) => [s.id, s.name]))
+        }
+        carregando={isLoading}
+        onVoltar={() => setVendoArquivados(false)}
+        onRestaurar={async (id) => {
+          const res = await fetch(`/api/crm/deals/${id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: "open" }),
+          })
+          if (!res.ok) return `Não foi possível restaurar: ${await readApiError(res)}`
+          await mutate()
+          return null
+        }}
+      />
+    )
   }
 
   return (
@@ -1198,6 +1241,19 @@ export function PipelineBoardView({
                           <Icon icon={Layers} customSize={13} />
                           Mesclar duplicados
                         </DropdownMenu.Item>
+                        {/* Só aparece quando HÁ arquivado: item morto num
+                            menu ensina a ignorar o menu, e o número é a
+                            única pista de que eles existem — o quadro não
+                            os desenha. */}
+                        {(data?.arquivados ?? 0) > 0 && (
+                          <DropdownMenu.Item
+                            onSelect={() => setVendoArquivados(true)}
+                            className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-[12.5px] text-slate-700 outline-none data-[highlighted]:bg-slate-50 dark:text-white/80 dark:data-[highlighted]:bg-white/[0.06]"
+                          >
+                            <Icon icon={Archive} customSize={13} />
+                            Ver arquivados ({data?.arquivados})
+                          </DropdownMenu.Item>
+                        )}
                       </DropdownMenu.Content>
                     </DropdownMenu.Portal>
                   </DropdownMenu.Root>
