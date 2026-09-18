@@ -59,6 +59,13 @@ import {
 } from "lucide-react"
 import type { FormAnswers, FormBlock, FormOption, FormSchema } from "@/types/forms-conversational"
 import { TIPOS_DE_ESCOLHA, TIPOS_SEM_RESPOSTA } from "@/types/forms-conversational"
+import type { MidiaDaTela } from "@/lib/forms/midia"
+import {
+  calcular,
+  moedaDeclarada,
+  moedaDoFormulario,
+  variaveisDasRespostas,
+} from "@/lib/forms/calculo"
 import {
   acharBloco,
   acharEnding,
@@ -616,9 +623,44 @@ export function ConversationalFormView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tela.tipo === "bloco" ? tela.ref : null, preview])
 
+  /**
+   * As variáveis que o texto enxerga: as da lógica de salto MAIS a conta.
+   *
+   * A conta é refeita a cada resposta, e não guardada: ela é derivada, e
+   * derivado guardado é derivado que envelhece — voltar uma tela e trocar
+   * o ticket deixaria a receita do parágrafo seguinte falando do ticket
+   * anterior.
+   *
+   * A moeda é a que a lógica declarou (a regra da pergunta de mercado
+   * grava `moeda`), senão a da região respondida numa pergunta de faixa
+   * por moeda, senão o real — que é a moeda das faixas que o formulário
+   * mostra por padrão, então a conta sai na mesma unidade que a pessoa
+   * acabou de ler.
+   */
+  const variaveisComConta = useMemo(() => {
+    const calculos = schema.settings?.calculos
+    if (!calculos || calculos.length === 0) return variables
+    const base: Record<string, number> = {}
+    for (const [k, v] of Object.entries(variables)) {
+      const n = typeof v === "number" ? v : Number(v)
+      if (Number.isFinite(n)) base[k] = n
+    }
+    const numeros = { ...base, ...variaveisDasRespostas(schema.blocks, answers) }
+    const moeda =
+      moedaDeclarada(variables) ?? moedaDoFormulario(schema.blocks, answers) ?? "BRL"
+    const { textos } = calcular(calculos, numeros, moeda)
+    return { ...variables, ...textos }
+  }, [schema, answers, variables])
+
   const recall = useCallback(
-    (txt: string | null | undefined) => aplicarRecall(txt, { answers, hidden: ocultos, variables, blocks: schema.blocks }),
-    [answers, ocultos, variables, schema.blocks],
+    (txt: string | null | undefined) =>
+      aplicarRecall(txt, {
+        answers,
+        hidden: ocultos,
+        variables: variaveisComConta,
+        blocks: schema.blocks,
+      }),
+    [answers, ocultos, variaveisComConta, schema.blocks],
   )
 
   /**
@@ -752,6 +794,7 @@ export function ConversationalFormView({
               titulo={recall(schema.settings.welcome.title)}
               descricao={recall(schema.settings.welcome.description)}
               rotulo={schema.settings.welcome.button_label ?? "Começar"}
+              midia={schema.settings.welcome.midia}
               onComecar={() => avancar()}
               t={t}
               buttonFill={buttonFill}
@@ -820,10 +863,58 @@ export function ConversationalFormView({
 
 // ───────────────────────────── telas ────────────────────────────────────
 
+/**
+ * A imagem ou o vídeo acima do título.
+ *
+ * Fica ACIMA porque é o que sustenta a frase que vem embaixo — o print
+ * do dashboard antes da conta, o rosto antes do convite. Embaixo, ela
+ * viraria ilustração de algo que a pessoa já leu e decidiu.
+ *
+ * Três decisões que só aparecem com mídia de verdade na tela:
+ *
+ * - **Altura máxima em `vh`**, não em pixels. Um print 3:4 num celular
+ *   baixo empurraria a pergunta para fora da tela, e o formulário
+ *   centraliza o bloco: a pessoa não teria como rolar até ela.
+ * - **Vídeo com `playsInline`**: sem isso o iOS abre em tela cheia ao
+ *   dar play, e quem volta perde o lugar no formulário.
+ * - **`autoplay` implica `muted`**. O navegador recusa o play automático
+ *   com som, e o vídeo ficaria parado no primeiro quadro — que é pior
+ *   que não ter autoplay, porque parece defeito.
+ */
+function MidiaDaTela({ midia, t }: { midia: MidiaDaTela; t: ReturnType<typeof defaults> }) {
+  const moldura: React.CSSProperties = {
+    display: "block",
+    width: "100%",
+    maxHeight: "34vh",
+    objectFit: "contain",
+    objectPosition: "left center",
+    borderRadius: Math.min(t.inputRadius ?? 8, 12),
+    marginBottom: 22,
+  }
+
+  if (midia.tipo === "video") {
+    return (
+      <video
+        src={midia.url}
+        poster={midia.poster ?? undefined}
+        controls
+        playsInline
+        preload="metadata"
+        autoPlay={midia.autoplay === true}
+        muted={midia.autoplay === true}
+        style={moldura}
+      />
+    )
+  }
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={midia.url} alt={midia.alt ?? ""} style={moldura} loading="lazy" />
+}
+
 function TelaDeAbertura({
   titulo,
   descricao,
   rotulo,
+  midia,
   onComecar,
   t,
   buttonFill,
@@ -831,12 +922,14 @@ function TelaDeAbertura({
   titulo: string
   descricao: string
   rotulo: string
+  midia?: MidiaDaTela | null
   onComecar: () => void
   t: ReturnType<typeof defaults>
   buttonFill: string
 }) {
   return (
     <div>
+      {midia && <MidiaDaTela midia={midia} t={t} />}
       <h1 style={{ fontSize: Math.max(t.headingSize, 30), lineHeight: 1.2, fontWeight: 600, margin: 0 }}>{titulo}</h1>
       {descricao && (
         <p
@@ -1021,9 +1114,13 @@ function TelaDePerguntas({
   const agrupada = blocos.length > 1
   const cabeca = blocos[0]
   const titulo = agrupada ? recall(cabeca?.titulo_da_tela) : ""
+  // A mídia é da TELA, e a tela é a cabeça: numa tela agrupada, uma
+  // imagem por campo empilharia quatro prints acima de quatro perguntas.
+  const midia = cabeca?.midia ?? null
 
   return (
     <div>
+      {midia && <MidiaDaTela midia={midia} t={t} />}
       {agrupada && titulo && (
         <h2
           style={{

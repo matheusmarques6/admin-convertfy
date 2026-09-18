@@ -30,6 +30,7 @@ import type {
   LogicRule,
 } from "@/types/forms-conversational"
 import type { QualifiedOperator } from "@/types/form-tracking"
+import { normalizarMidia } from "./midia"
 import { normalizarDestino } from "./destino"
 
 /** A linha de `crm_form_fields`, como as rotas a selecionam. */
@@ -44,6 +45,7 @@ export interface CampoLegado {
   options?: unknown
   validation?: unknown
   map_to_lead_field?: string | null
+  media?: unknown
 }
 
 const TIPOS: ReadonlySet<string> = new Set<FormBlockType>([
@@ -98,6 +100,7 @@ export function normalizarOpcoes(raw: unknown): FormOption[] {
       const value = typeof o.value === "string" ? o.value : label
       if (label || value) {
         const piso = typeof o.piso === "number" && Number.isFinite(o.piso) ? o.piso : undefined
+        const valor = typeof o.valor === "number" && Number.isFinite(o.valor) ? o.valor : undefined
         const moeda =
           o.moeda === "BRL" || o.moeda === "USD" || o.moeda === "EUR" ? o.moeda : undefined
         out.push({
@@ -105,6 +108,7 @@ export function normalizarOpcoes(raw: unknown): FormOption[] {
           value: value || label,
           ...(typeof o.atalho === "string" && o.atalho ? { atalho: o.atalho } : {}),
           ...(piso !== undefined ? { piso } : {}),
+          ...(valor !== undefined ? { valor } : {}),
           ...(moeda ? { moeda } : {}),
         })
       }
@@ -183,6 +187,10 @@ function normalizarBloco(raw: unknown): FormBlock | null {
   const logic = Array.isArray(b.logic)
     ? b.logic.map(normalizarRegra).filter((r): r is LogicRule => r !== null)
     : undefined
+  // `media` é o nome da coluna; `midia` é o nome no schema. Os dois são
+  // lidos porque a normalização roda tanto sobre a linha do banco quanto
+  // sobre um schema já publicado.
+  const midia = normalizarMidia(b.midia ?? b.media)
 
   return {
     ref,
@@ -203,9 +211,13 @@ function normalizarBloco(raw: unknown): FormBlock | null {
       : {}),
     ...(b.opcoes_por_moeda === true ? { opcoes_por_moeda: true } : {}),
     ...(typeof b.moeda_de === "string" && b.moeda_de ? { moeda_de: b.moeda_de } : {}),
+    ...(typeof b.variavel === "string" && b.variavel.trim()
+      ? { variavel: b.variavel.trim() }
+      : {}),
     ...(typeof b.titulo_da_tela === "string" && b.titulo_da_tela.trim()
       ? { titulo_da_tela: b.titulo_da_tela.trim() }
       : {}),
+    ...(midia ? { midia } : {}),
     ...(b.hidden === true || tipoBruto === "hidden" ? { hidden: true } : {}),
   }
 }
@@ -265,6 +277,19 @@ export function normalizarSchema(raw: unknown): FormSchema {
     : []
 
   const cfg = (s.settings && typeof s.settings === "object" ? s.settings : {}) as Record<string, unknown>
+  const calculos = Array.isArray(cfg.calculos)
+    ? cfg.calculos
+        .map((c) => {
+          const o = (c ?? {}) as Record<string, unknown>
+          const nome = typeof o.nome === "string" ? o.nome.trim() : ""
+          const expressao = typeof o.expressao === "string" ? o.expressao.trim() : ""
+          if (!nome || !expressao) return null
+          const formato = o.formato === "dinheiro" ? ("dinheiro" as const) : ("numero" as const)
+          return { nome, expressao, formato }
+        })
+        .filter((c): c is NonNullable<typeof c> => c !== null)
+    : []
+
   const welcomeBruto = (cfg.welcome && typeof cfg.welcome === "object" ? cfg.welcome : null) as
     | Record<string, unknown>
     | null
@@ -282,6 +307,7 @@ export function normalizarSchema(raw: unknown): FormSchema {
       mostrar_progresso: cfg.mostrar_progresso === undefined ? true : Boolean(cfg.mostrar_progresso),
       enter_avanca: cfg.enter_avanca === undefined ? true : Boolean(cfg.enter_avanca),
       rotulo_avancar: typeof cfg.rotulo_avancar === "string" ? cfg.rotulo_avancar : undefined,
+      ...(calculos.length > 0 ? { calculos } : {}),
       ...(welcomeBruto && typeof welcomeBruto.title === "string" && welcomeBruto.title
         ? {
             welcome: {
@@ -290,6 +316,9 @@ export function normalizarSchema(raw: unknown): FormSchema {
                 typeof welcomeBruto.description === "string" ? welcomeBruto.description : null,
               button_label:
                 typeof welcomeBruto.button_label === "string" ? welcomeBruto.button_label : undefined,
+              ...(normalizarMidia(welcomeBruto.midia)
+                ? { midia: normalizarMidia(welcomeBruto.midia) }
+                : {}),
             },
           }
         : {}),
@@ -317,6 +346,7 @@ export function schemaDeCampos(
       options: c.options,
       validation: c.validation,
       map_to_lead_field: c.map_to_lead_field,
+      midia: c.media,
     })),
   })
 }
@@ -341,5 +371,6 @@ export function camposDoSchema(schema: FormSchema): CampoLegado[] {
       options: (b.options ?? []).map((o) => (o.label === o.value ? o.value : o)),
       validation: b.validation ?? {},
       map_to_lead_field: b.map_to_lead_field ?? null,
+      media: b.midia ?? null,
     }))
 }

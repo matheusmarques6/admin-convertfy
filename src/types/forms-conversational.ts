@@ -29,6 +29,8 @@
  */
 
 import type { QualifiedOperator } from "@/types/form-tracking"
+import type { MidiaDaTela } from "@/lib/forms/midia"
+import type { Calculo } from "@/lib/forms/calculo"
 
 /** Os 13 tipos do editor clássico, mais os blocos que só o conversacional tem. */
 export type FormBlockType =
@@ -75,6 +77,17 @@ export interface FormOption {
   piso?: number
   /** Moeda em que o rótulo foi escrito. Só em opção de faixa. */
   moeda?: "BRL" | "USD" | "EUR"
+  /**
+   * O número que esta opção REPRESENTA na conta — 2.000 acessos por dia,
+   * ticket de 300.
+   *
+   * Não é o `piso`: aquele é o chão da faixa em real, e existe para a
+   * qualificação comparar número em vez de texto. Este é o valor típico
+   * que entra na aritmética, e os dois divergem de propósito (a faixa
+   * "R$100 mil a R$200 mil" tem piso 100.000 e valor de referência
+   * 150.000 — usar o piso faria toda conta sair pelo mínimo).
+   */
+  valor?: number
 }
 
 export interface FormBlock {
@@ -149,6 +162,14 @@ export interface FormBlock {
   opcoes_por_moeda?: boolean
   /** `ref` da pergunta de região que decide a moeda das opções. */
   moeda_de?: string | null
+  /**
+   * Nome da variável que recebe o `valor` da opção escolhida aqui.
+   *
+   * É o que liga a resposta à conta: a pergunta de acessos declara
+   * `variavel: "visitas"`, e a expressão `visitas * 0.10` passa a valer.
+   * Sem isso as fórmulas teriam de citar o uuid do bloco.
+   */
+  variavel?: string | null
   /** Regras de salto. A primeira que casa vence; nenhuma → `proximo`. */
   logic?: LogicRule[]
   /**
@@ -167,6 +188,14 @@ export interface FormBlock {
    * perguntas na aba Perguntas não faça o destino sumir em silêncio.
    */
   proximo?: string | null
+  /**
+   * Imagem ou vídeo acima do título. Ver `lib/forms/midia`.
+   *
+   * Mora em `crm_form_fields.media`, e não no schema do rascunho, porque
+   * é CONTEÚDO da tela — como a descrição. No rascunho ela sobreviveria
+   * só enquanto ninguém publicasse com a lista de campos de outro dia.
+   */
+  midia?: MidiaDaTela | null
   /** Oculto: não é exibido; o valor vem da URL ou do embed. */
   hidden?: boolean
 }
@@ -256,8 +285,19 @@ export interface FormSchema {
     enter_avanca?: boolean
     /** Rótulo do botão de avançar. */
     rotulo_avancar?: string
+    /**
+     * A conta que o formulário faz com as respostas. Roda na ordem, e o
+     * resultado entra no texto por recall. Ver `lib/forms/calculo`.
+     */
+    calculos?: Calculo[]
     /** Texto da tela de abertura; ausente = começa na 1ª pergunta. */
-    welcome?: { title: string; description?: string | null; button_label?: string }
+    welcome?: {
+      title: string
+      description?: string | null
+      button_label?: string
+      /** O vídeo de quem assina o formulário. Ver `lib/forms/midia`. */
+      midia?: MidiaDaTela | null
+    }
   }
 }
 

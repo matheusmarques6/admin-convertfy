@@ -7,6 +7,7 @@
 import { NextRequest } from "next/server"
 import { z } from "zod"
 import { uuid } from "@/lib/validations/uuid"
+import { normalizarMidia } from "@/lib/forms/midia"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse, AppError } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
@@ -150,6 +151,11 @@ const fieldUpsertSchema = z.object({
     "text", "email", "phone", "number", "textarea",
     "select", "multi_select", "radio", "checkbox",
     "date", "url", "cpf", "cnpj", "cep", "hidden",
+    // Tela de conteúdo: título, texto e um botão, sem coletar resposta.
+    // Ela é um CAMPO como os outros porque `montarVersao` reconstrói os
+    // blocos a partir desta tabela — fora daqui, toda publicação apagaria
+    // as telas de conteúdo do formulário, sem erro nenhum.
+    "statement",
   ]),
   label: z.string().min(1).max(200),
   placeholder: z.string().nullable().optional(),
@@ -158,6 +164,8 @@ const fieldUpsertSchema = z.object({
   position: z.number().int().min(0).optional(),
   options: z.array(z.union([z.string(), z.object({ label: z.string(), value: z.string() })])).optional(),
   validation: z.record(z.string(), z.unknown()).optional(),
+  /** Imagem ou vídeo da tela. Normalizada em `lib/forms/midia`. */
+  media: z.record(z.string(), z.unknown()).nullable().optional(),
   map_to_lead_field: z
     .string()
     .regex(
@@ -349,6 +357,7 @@ export async function PATCH(
           options: row.options ?? [],
           validation: row.validation ?? {},
           map_to_lead_field: row.map_to_lead_field ?? null,
+          media: normalizarMidia(row.media),
         }
         if (keepId) base.id = row.id
         return base
@@ -366,17 +375,34 @@ export async function PATCH(
       const { error: delErr } = await del
       if (delErr) throw delErr
 
+      /**
+       * `media` é da migration 20261167, e migration deste repo é
+       * aplicada à mão. Sem o retry, um ambiente atrasado faria o editor
+       * inteiro parar de salvar por causa de uma coluna que quase nenhum
+       * campo usa — a tela perde a mídia, não o trabalho.
+       */
+      const semColuna = (e: { code?: string; message?: string } | null) =>
+        !!e && (e.code === "42703" || e.code === "PGRST204" || /media/i.test(e.message ?? ""))
+      const gravar = async (linhas: Record<string, unknown>[], modo: "upsert" | "insert") => {
+        const enviar = (rows: Record<string, unknown>[]) =>
+          modo === "upsert"
+            ? admin.from("crm_form_fields").upsert(rows)
+            : admin.from("crm_form_fields").insert(rows)
+        const { error } = await enviar(linhas)
+        if (!error) return
+        if (!semColuna(error)) throw error
+        log.warn("[Forms] coluna media ausente — gravando sem ela", { form: id })
+        const { error: retry } = await enviar(
+          linhas.map(({ media: _media, ...resto }) => resto),
+        )
+        if (retry) throw retry
+      }
+
       if (existing.length > 0) {
-        const { error: upErr } = await admin
-          .from("crm_form_fields")
-          .upsert(existing.map((f, i) => toRow(f, i, true)))
-        if (upErr) throw upErr
+        await gravar(existing.map((f, i) => toRow(f, i, true)), "upsert")
       }
       if (novos.length > 0) {
-        const { error: insErr } = await admin
-          .from("crm_form_fields")
-          .insert(novos.map((f, i) => toRow(f, i, false)))
-        if (insErr) throw insErr
+        await gravar(novos.map((f, i) => toRow(f, i, false)), "insert")
       }
 
       /**

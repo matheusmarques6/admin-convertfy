@@ -243,6 +243,7 @@ describe("o que só existe no schema atravessa a publicação", () => {
           mesma_tela: true,
           opcoes_por_moeda: true,
           moeda_de: "regiao",
+          variavel: "fat_val",
         },
       ],
       endings: [],
@@ -255,6 +256,9 @@ describe("o que só existe no schema atravessa a publicação", () => {
     const fat = schema.blocks.find((b) => b.ref === "fat")!
     expect(fat.opcoes_por_moeda).toBe(true)
     expect(fat.moeda_de).toBe("regiao")
+    // Sem a variável, `fat_val / ticket_val` fica sem o `fat_val` e a
+    // tela de matemática cai no fallback — publicar apagaria a conta.
+    expect(fat.variavel).toBe("fat_val")
     expect(fat.mesma_tela).toBe(true)
     expect(schema.blocks[0].titulo_da_tela).toBe("Sua operação")
   })

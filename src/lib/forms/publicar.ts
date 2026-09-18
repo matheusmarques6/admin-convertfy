@@ -106,6 +106,12 @@ export function montarVersao(
       // reintroduzido por um clique em Publicar e sem nada em tela.
       ...(antigo.opcoes_por_moeda ? { opcoes_por_moeda: true } : {}),
       ...(antigo.moeda_de ? { moeda_de: antigo.moeda_de } : {}),
+      // A variável da conta tem o mesmo problema: ela liga a resposta à
+      // aritmética das telas de matemática e não tem coluna na tabela de
+      // campos. Sem transportá-la, publicar deixaria `visitas * 0.10`
+      // sem o `visitas` — as contas sumiriam do texto (cai no fallback)
+      // e o operador veria uma tela pela metade sem nada explicando.
+      ...(antigo.variavel ? { variavel: antigo.variavel } : {}),
       ...(vivas.length > 0 ? { logic: vivas } : {}),
     }
   })
