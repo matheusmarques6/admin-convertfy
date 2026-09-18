@@ -28,6 +28,30 @@ export type SortOrder =
   | "created_asc"
   | "moved_desc"
   | "moved_asc"
+  /** A ordem da LISTA: `deals.position` crescente, como a API devolve. */
+  | "position_asc"
+
+export const SORT_ORDERS: readonly SortOrder[] = [
+  "created_desc",
+  "created_asc",
+  "moved_desc",
+  "moved_asc",
+  "position_asc",
+]
+
+/**
+ * Ordenação inicial do board para uma pipeline.
+ *
+ * `pipelines.default_sort` (migration 20261173) é a escolha da PIPELINE —
+ * a de prospecção abre na ordem da lista sem ninguém configurar. Valor
+ * desconhecido (coluna nova, banco antigo, texto errado) cai em
+ * `moved_desc`, que é o comportamento de sempre.
+ */
+export function ordenacaoInicial(defaultSort: unknown): SortOrder {
+  return typeof defaultSort === "string" && (SORT_ORDERS as readonly string[]).includes(defaultSort)
+    ? (defaultSort as SortOrder)
+    : "moved_desc"
+}
 
 export interface PipelineFilters {
   tags: string[]
@@ -121,6 +145,7 @@ const SORT_OPTIONS: Array<{ id: SortOrder; label: string }> = [
   { id: "created_asc", label: "Mais antigos" },
   { id: "moved_desc", label: "Movidos recentemente" },
   { id: "moved_asc", label: "Movidos há mais tempo" },
+  { id: "position_asc", label: "Ordem da lista" },
 ]
 
 export function PipelineFiltersBar({
@@ -701,6 +726,7 @@ export function applyFiltersAndSort<
     created_at?: string | null
     lost_reason?: string | null
     custom_fields?: Record<string, unknown> | null
+    position?: number | null
   },
 >(deals: D[], filters: PipelineFilters, sort: SortOrder): D[] {
   let list = deals
@@ -805,6 +831,17 @@ export function applyFiltersAndSort<
       break
     case "moved_asc":
       sorted.sort((a, b) => getMoved(a) - getMoved(b))
+      break
+    case "position_asc":
+      // O import da lista do parceiro gravou a prioridade em `position`
+      // (passos de 10). Sem position vai para o fim; empate desempata por
+      // id, senão dois cards de mesma posição trocam de lugar a cada render.
+      sorted.sort((a, b) => {
+        const pa = a.position ?? Number.MAX_SAFE_INTEGER
+        const pb = b.position ?? Number.MAX_SAFE_INTEGER
+        if (pa !== pb) return pa - pb
+        return a.id.localeCompare(b.id)
+      })
       break
   }
   return sorted

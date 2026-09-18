@@ -35,6 +35,7 @@ import {
   type SortOrder,
   EMPTY_FILTERS,
   applyFiltersAndSort,
+  ordenacaoInicial,
 } from "./pipeline-filters-bar"
 import { sinaisDoNegocio } from "@/lib/crm/prospeccao"
 import { ETAPA_QUALIFICAR } from "@/lib/crm/regras-de-coluna"
@@ -83,6 +84,8 @@ interface PipelineDetailResponse {
     is_default?: boolean
     is_favorite?: boolean
     category?: string | null
+    /** Ordenação inicial do board (migration 20261173). NULL = moved_desc. */
+    default_sort?: string | null
     stages: Array<KanbanStage & {
       order?: number
       description?: string | null
@@ -142,7 +145,12 @@ export function PipelineBoardView({
   const [filtersPanelOpen, setFiltersPanelOpen] = useState(false)
   const [ownerFilter, setOwnerFilter] = useState<string>("")
   const [advancedFilters, setAdvancedFilters] = useState<PipelineFilters>(EMPTY_FILTERS)
-  const [sortOrder, setSortOrder] = useState<SortOrder>("moved_desc")
+  // A ordem inicial é da PIPELINE (`default_sort`); o seletor do topo e a
+  // visão salva são override da sessão. `null` = "não mexi", e aí a
+  // pipeline decide — inclusive quando ela chega depois do primeiro render.
+  const [sortOverride, setSortOrder] = useState<SortOrder | null>(null)
+  const ordemDaPipeline = ordenacaoInicial(data?.pipeline?.default_sort)
+  const sortOrder: SortOrder = sortOverride ?? ordemDaPipeline
   const [editingStage, setEditingStage] = useState<{
     id: string
     name: string
@@ -344,10 +352,10 @@ export function PipelineBoardView({
   const hasActiveFilter = useMemo(
     () =>
       JSON.stringify(advancedFilters) !== JSON.stringify(EMPTY_FILTERS) ||
-      sortOrder !== "moved_desc" ||
+      sortOrder !== ordemDaPipeline ||
       !!ownerFilter ||
       periodFilter !== "all",
-    [advancedFilters, sortOrder, ownerFilter, periodFilter],
+    [advancedFilters, sortOrder, ordemDaPipeline, ownerFilter, periodFilter],
   )
 
   const activeView = useMemo(
