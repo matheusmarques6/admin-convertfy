@@ -55,7 +55,7 @@ export async function registrarGanhoDeParceiro(
   const { data: deal, error } = await admin
     .from("deals")
     .select(
-      "id, org_id, title, value, currency, lead_id, client_id, owner_id, referrer_partner_id, tags",
+      "id, title, value, currency, lead_id, client_id, owner_id, referrer_partner_id, tags",
     )
     .eq("id", dealId)
     .maybeSingle()
@@ -72,13 +72,22 @@ export async function registrarGanhoDeParceiro(
   const resultado: ResultadoDoGanho = { ...VAZIO, avisos }
 
   // ── Negócio no pós-venda ─────────────────────────────────────────
-  const { data: pipeline } = await admin
+  // A pipeline é achada por NOME: `pipelines` não tem `org_id` neste
+  // schema (as pipelines são globais — a rota que as lista não filtra
+  // por org nenhuma). Pedir a coluna aqui devolvia 42703, o erro caía
+  // no `data: null` e o pós-venda "não existia" em toda venda ganha.
+  const { data: pipeline, error: pipeErr } = await admin
     .from("pipelines")
     .select("id, name")
-    .eq("org_id", deal.org_id)
     .eq("name", PIPELINE_POS_VENDA)
     .eq("is_archived", false)
     .maybeSingle()
+
+  if (pipeErr) {
+    log.error("ganho: pipeline do pós-venda não lida", { dealId, pipeErr })
+    avisos.push("A pipeline do pós-venda não pôde ser lida — o negócio não foi aberto.")
+    return resultado
+  }
 
   if (!pipeline) {
     // Nomeia a pipeline que falta: "não criou o pós-venda" sozinho
@@ -120,7 +129,6 @@ export async function registrarGanhoDeParceiro(
         const { data: novo, error: iErr } = await admin
           .from("deals")
           .insert({
-            org_id: deal.org_id,
             pipeline_id: pipeline.id,
             stage_id: primeira.id,
             // Mesmo título: é o mesmo cliente, e renomear faria o time

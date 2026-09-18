@@ -9904,3 +9904,66 @@ sobre outra tela). As três coisas silenciam, nenhuma dá erro.
 prévia. É o gesto que faz o Typeform parecer fácil e exigiria mexer no
 renderizador público — o que o pedido excluiu. A edição acontece no
 painel da direita, e a prévia acompanha o que se digita.
+
+## "Deal nao encontrado" era um 42703 engolido (18/09)
+
+Relatado com print: arrastar um card no funil Inbound respondia
+**"Falha ao mover: Deal nao encontrado"**. O negócio existia. O 404 saía
+de `move/route.ts`, de um select que pedia **`deals.org_id` — coluna que
+não existe**. O supabase-js devolve o erro do Postgres em `error`, não
+como throw; desestruturar só `{ data }` transforma o 42703 em `null`, e a
+linha seguinte o anuncia como "não encontrado". Um arrasto quebrava com o
+nome de um problema de dados.
+
+Varrendo o repositório, **cinco** call sites pediam a coluna, em três
+commits — o T4 da prospecção (17/09) e o painel de Instagram, mais
+antigo. Medido em 18/09: `deals`, `pipelines`, `pipeline_stages` e
+`crm_partners` **não têm `org_id`**; quem tem é `clients`,
+`client_stores`, `crm_leads`, `org_members` e `crm_lost_reasons`. Cada
+ponto falhava com um sintoma diferente e nenhum acusava a causa:
+
+| ponto | o que o usuário via |
+|---|---|
+| `deals/[id]/move` | "Deal nao encontrado" em TODO arrasto do kanban |
+| `deals/[id]/toque` | erro cru do Postgres ao enviar T1/T2/T3 |
+| `cron/crm-prospeccao-sla` | a rodada inteira estourava |
+| `crm-ganho-parceiro` | fail-open: o pós-venda do parceiro nunca abria |
+| `instagram/setup-automation` | "Pipeline não encontrada" sobre a que o diálogo listou |
+
+**A org de um negócio se DERIVA** (`lib/crm/org-do-negocio.ts`, puro +
+I/O fino). Cobertura medida nos 1.248 deals de produção, na ordem da
+cascata: cliente 272 → loja 183 → dono 396 (852 não têm dono) → lead 732
+= **1.060 resolvidos, 188 sem nenhuma ponta**. Os 188 são o motivo do
+degrau do OPERADOR, que existe só em rota autenticada e é o ÚLTIMO: ele
+não é propriedade do negócio, e arrastar um card não pode redefinir a org
+dele. String vazia não conta como org — um `coalesce` cru a aceitaria e o
+`.eq("org_id","")` seguinte devolveria lista vazia, que se lê como "esta
+org não configurou nada" (na coluna uuid, 22P02 e a requisição inteira
+cai).
+
+**Quem tem usuário e quer a org de uma LISTA que a tela ofereceu não usa
+a cascata**: usa `orgDoPerfil` do operador, a mesma régua do GET que
+preencheu aquela lista. Vale para os motivos de perda e para as respostas
+rápidas — validar contra outra lista recusaria a opção que o vendedor
+acabou de escolher. Já os jobs (o cron) não têm operador: lá a cascata
+roda em LOTE (`orgsDosNegocios`, quatro consultas no total, não quatro
+por negócio) e negócio sem nenhuma ponta é **pulado**, nunca gravado sob
+uma org chutada.
+
+`pipelines` não tem org porque as pipelines são **globais** neste schema
+— a rota que as lista não filtra por org nenhuma. Por isso a checagem de
+org do `setup-automation` saiu em vez de ser corrigida: ela era inerte
+por construção, e o que fazia era transformar a coluna ausente em 404.
+
+**O teste de contrato é o que fecha a classe**
+(`lib/crm/colunas-inexistentes.test.ts`): varre `src/` e reprova qualquer
+encadeamento que peça essas colunas. Três decisões o tornam utilizável em
+vez de ruído — ele ignora comentários (nomear a coluna para explicar por
+que ela não é pedida não é o defeito), recorta **o encadeamento** contando
+profundidade em vez de "até o próximo `.from(`" (que dava cinco falsos
+positivos em rotas corretas), e deixa passar join embutido
+(`store:client_stores!inner (id, org_id)`) e coluna qualificada
+(`.eq("store.org_id", …)`), que são de OUTRA tabela. Tem caso de
+auto-verificação: sem ele um recorte quebrado passaria em tudo por não
+achar nada — e foi ele que pegou o percurso parando na primeira letra de
+`.select`.

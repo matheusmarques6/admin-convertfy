@@ -66,15 +66,22 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       throw new AppError("Esta automação só existe para canais Instagram", 422, "unsupported-channel")
     }
 
-    // Pipeline e etapa têm de existir, ser da org e combinar entre si —
-    // automação apontando para etapa de outra pipeline criaria negócio
-    // órfão no board.
-    const { data: pipeline } = await admin
+    // Pipeline e etapa têm de existir e combinar entre si — automação
+    // apontando para etapa de outra pipeline criaria negócio órfão no
+    // board.
+    //
+    // A checagem de org saiu porque a coluna não existe: `pipelines` não
+    // tem `org_id` neste schema, e pedi-la devolvia 42703 no `error`.
+    // Como só `{ data }` era desestruturado, o erro virava `pipeline`
+    // nulo e este botão respondia "Pipeline não encontrada" sempre —
+    // sobre a pipeline que o próprio diálogo tinha acabado de listar.
+    const { data: pipeline, error: pipeErr } = await admin
       .from("pipelines")
-      .select("id, org_id, name, scope")
+      .select("id, name, scope")
       .eq("id", body.pipeline_id)
-      .maybeSingle<{ id: string; org_id: string | null; name: string; scope: string | null }>()
-    if (!pipeline || (pipeline.org_id && pipeline.org_id !== orgId)) {
+      .maybeSingle<{ id: string; name: string; scope: string | null }>()
+    if (pipeErr) throw pipeErr
+    if (!pipeline) {
       throw new AppError("Pipeline não encontrada", 404, "not-found")
     }
     const { data: stage } = await admin

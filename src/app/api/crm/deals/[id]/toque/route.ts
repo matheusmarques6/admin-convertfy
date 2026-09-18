@@ -25,6 +25,7 @@ import { z } from "zod"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, successResponse, AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
+import { orgDoPerfil } from "@/lib/crm/org-do-negocio"
 import {
   EXPLICACAO_DA_MONTAGEM,
   ETAPA_DO_TOQUE,
@@ -63,7 +64,7 @@ export async function POST(
     const { data: deal, error: dErr } = await admin
       .from("deals")
       .select(
-        `id, title, org_id, pipeline_id, stage_id, client_id, lead_id, tags, status,
+        `id, title, pipeline_id, stage_id, client_id, lead_id, tags, status,
          custom_fields,
          client:clients (id, name, phone),
          lead:crm_leads (id, name, phone)`,
@@ -105,10 +106,23 @@ export async function POST(
     const segmento =
       typeof custom.segmento_parceiro === "string" ? custom.segmento_parceiro : null
 
-    const { data: respostas } = await admin
-      .from("crm_quick_replies")
-      .select("shortcut, body")
-      .eq("org_id", deal.org_id)
+    // Os scripts são os da org do OPERADOR que está enviando — a mesma
+    // régua da tela que os lista. `deals` não tem `org_id` (nem
+    // `pipelines`): a org de um negócio se deriva, ver
+    // `lib/crm/org-do-negocio`.
+    //
+    // Org ausente NÃO vira `.eq("org_id", "")`: a coluna é uuid e o
+    // Postgres responderia 22P02, derrubando o envio inteiro por causa
+    // de uma lista que simplesmente não existe. Sem scripts,
+    // `montarToque` recusa com a mensagem certa.
+    const orgDoOperador = await orgDoPerfil(admin, user.id)
+    const { data: respostas, error: rErr } = orgDoOperador
+      ? await admin
+          .from("crm_quick_replies")
+          .select("shortcut, body")
+          .eq("org_id", orgDoOperador)
+      : { data: null, error: null }
+    if (rErr) log.error("respostas rápidas não carregaram", { id, rErr })
 
     const scripts: Record<string, string | undefined> = {}
     for (const r of respostas ?? []) scripts[r.shortcut] = r.body

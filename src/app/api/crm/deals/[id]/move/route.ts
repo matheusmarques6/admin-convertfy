@@ -38,6 +38,7 @@ import {
   registrarGanhoDeParceiro,
   type ResultadoDoGanho,
 } from "@/lib/services/crm-ganho-parceiro.service"
+import { orgDoPerfil } from "@/lib/crm/org-do-negocio"
 import {
   impedimentosDaMudanca,
   perguntasDeSaida,
@@ -168,12 +169,20 @@ export async function POST(
 
     // Estado atual do deal — precisa vir ANTES do update pra saber se
     // isto e uma transferencia entre pipelines.
-    const { data: currentDeal } = await admin
+    //
+    // O `error` e conferido junto com o `data`: o supabase-js devolve o
+    // erro do Postgres em `error`, nao como throw, entao desestruturar
+    // so `{ data }` transforma um 42703 (coluna que nao existe) em
+    // `null` — e a linha de baixo o anuncia como "Deal nao encontrado".
+    // Foi exatamente assim que todo arrasto do kanban passou a falhar
+    // quando este select ganhou um `org_id` que `deals` nao tem.
+    const { data: currentDeal, error: dealErr } = await admin
       .from("deals")
-      .select("id, pipeline_id, stage_id, org_id, tags, custom_fields")
+      .select("id, pipeline_id, stage_id, tags, custom_fields")
       .eq("id", id)
       .maybeSingle()
 
+    if (dealErr) throw dealErr
     if (!currentDeal) {
       throw new AppError("Deal nao encontrado", 404, "not-found")
     }
@@ -193,13 +202,25 @@ export async function POST(
 
     // Motivos da org so sao lidos quando a etapa destino e de perda —
     // uma consulta a mais em todo drag do kanban nao se paga.
+    //
+    // A org e a do OPERADOR, nao a cascata do negocio: a lista que o
+    // vendedor acabou de ver no dialogo veio de `GET /api/crm/lost-reasons`,
+    // que resolve assim. Validar contra outra lista recusaria o motivo
+    // que a propria tela ofereceu.
     let motivosValidos: string[] = []
-    if (targetStage.stage_type === "lost" && currentDeal.org_id) {
-      const { data: motivos } = await admin
-        .from("crm_lost_reasons")
-        .select("label")
-        .eq("org_id", currentDeal.org_id)
-      motivosValidos = (motivos ?? []).map((m) => m.label)
+    if (targetStage.stage_type === "lost") {
+      const orgDoOperador = await orgDoPerfil(admin, user.id)
+      if (orgDoOperador) {
+        const { data: motivos, error: mErr } = await admin
+          .from("crm_lost_reasons")
+          .select("label")
+          .eq("org_id", orgDoOperador)
+        // Lista que nao carregou nao pode virar "nenhum motivo e valido":
+        // a regra so cobra quando ha lista, e uma falha de leitura aqui
+        // travaria toda perda do funil.
+        if (mErr) log.error("[Deals] motivos de perda nao carregaram", { id, mErr })
+        motivosValidos = (motivos ?? []).map((m) => m.label)
+      }
     }
 
     const contextoDaRegra = {
@@ -348,14 +369,9 @@ export async function POST(
     let posVenda: ResultadoDoGanho | null = null
     if (deal?.status === "won") {
       try {
-        const { data: opMember } = await admin
-          .from("org_members")
-          .select("org_id")
-          .eq("profile_id", user.id)
-          .eq("is_active", true)
-          .limit(1)
-          .maybeSingle()
-        await ensureClientForDeal(admin, id, { fallbackOrgId: opMember?.org_id ?? null })
+        await ensureClientForDeal(admin, id, {
+          fallbackOrgId: await orgDoPerfil(admin, user.id),
+        })
       } catch (err) {
         log.error("[Deals] auto link-client falhou (move segue)", { id, err })
       }
@@ -386,15 +402,7 @@ export async function POST(
         .single()
 
       // org_id via membership do owner do deal
-      const { data: ownerOrg } = await admin
-        .from("org_members")
-        .select("org_id")
-        .eq("profile_id", deal.owner_id)
-        .eq("is_active", true)
-        .limit(1)
-        .maybeSingle()
-
-      const resolvedOrgId = ownerOrg?.org_id || null
+      const resolvedOrgId = await orgDoPerfil(admin, deal.owner_id)
 
       if (resolvedOrgId) {
         // idempotency_key inclui timestamp pra permitir multiplos

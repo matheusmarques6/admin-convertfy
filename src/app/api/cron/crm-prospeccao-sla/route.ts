@@ -28,6 +28,7 @@ import { errorResponse, successResponse } from "@/lib/api/errors"
 import { createAdminClient } from "@/lib/supabase/server"
 import { requireCronAuth } from "@/lib/api/cron-auth"
 import { logger } from "@/lib/logger"
+import { orgsDosNegocios } from "@/lib/crm/org-do-negocio"
 import {
   ETAPA_AGUARDANDO,
   ETAPA_PERDIDO_SEM_RESPOSTA,
@@ -88,7 +89,9 @@ export async function GET(request: NextRequest) {
 
     const { data: deals, error: dErr } = await admin
       .from("deals")
-      .select("id, title, stage_id, pipeline_id, org_id, tags, custom_fields, last_stage_changed_at")
+      .select(
+        "id, title, stage_id, pipeline_id, client_id, store_id, owner_id, lead_id, tags, custom_fields, last_stage_changed_at",
+      )
       .in("stage_id", [...porEtapa.keys()])
       .eq("status", "open")
     if (dErr) throw dErr
@@ -129,15 +132,23 @@ export async function GET(request: NextRequest) {
       .map((s) => s.id)
     const semanais: Array<{ orgId: string; conteudo: string; chave: string }> = []
     if (idsAguardando.length > 0) {
-      const { data: travados } = await admin
+      // `deals` não tem `org_id`: a org sai dos vínculos do negócio
+      // (cliente, loja, dono, lead), em quatro consultas no total — ver
+      // `lib/crm/org-do-negocio`. Aqui não há operador pra fechar a
+      // conta, então negócio sem nenhuma ponta fica de fora do lembrete
+      // em vez de entrar numa org chutada.
+      const { data: travados, error: tErr } = await admin
         .from("deals")
-        .select("org_id")
+        .select("id, client_id, store_id, owner_id, lead_id")
         .in("stage_id", idsAguardando)
         .eq("status", "open")
+      if (tErr) throw tErr
+      const orgs = await orgsDosNegocios(admin, travados ?? [])
       const porOrg = new Map<string, number>()
       for (const t of travados ?? []) {
-        if (!t.org_id) continue
-        porOrg.set(t.org_id, (porOrg.get(t.org_id) ?? 0) + 1)
+        const org = orgs.get(t.id)
+        if (!org) continue
+        porOrg.set(org.orgId, (porOrg.get(org.orgId) ?? 0) + 1)
       }
       for (const [orgId, n] of porOrg) {
         const t = tarefaSemanalDoParceiro(orgId, n, agora)
@@ -173,9 +184,17 @@ export async function GET(request: NextRequest) {
     const puladas: string[] = []
     const falhas: Array<{ chave: string; erro: string }> = []
 
+    // `crm_automation_runs.org_id` é NOT NULL e `deals` não tem a
+    // coluna: a org vem dos vínculos, resolvida em lote para a fila
+    // inteira. Negócio sem nenhuma ponta é PULADO — sem org não há
+    // chave de idempotência possível, e escolher uma org no chute
+    // gravaria a ação sob a organização errada.
+    const orgsDaFila = await orgsDosNegocios(admin, deals ?? [])
+
     for (const acao of acoes) {
       const deal = (deals ?? []).find((d) => d.id === acao.dealId)
-      if (!deal?.org_id) {
+      const orgDoDeal = deal ? orgsDaFila.get(deal.id) : null
+      if (!deal || !orgDoDeal) {
         puladas.push(acao.chave)
         continue
       }
@@ -183,7 +202,7 @@ export async function GET(request: NextRequest) {
       // rodada seguinte repetir a ação quando o processo morresse no
       // meio (o serverless congela depois do `return`).
       const { error: kErr } = await admin.from("crm_automation_runs").insert({
-        org_id: deal.org_id,
+        org_id: orgDoDeal.orgId,
         deal_id: deal.id,
         trigger_type: "sla_prospeccao",
         idempotency_key: acao.chave,
@@ -269,7 +288,6 @@ export async function GET(request: NextRequest) {
 type Admin = ReturnType<typeof createAdminClient>
 type DealRow = {
   id: string
-  org_id: string | null
   tags: string[] | null
   custom_fields: unknown
   pipeline_id: string
