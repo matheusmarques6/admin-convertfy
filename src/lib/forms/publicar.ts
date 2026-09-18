@@ -112,6 +112,10 @@ export function montarVersao(
       // sem o `visitas` — as contas sumiriam do texto (cai no fallback)
       // e o operador veria uma tela pela metade sem nada explicando.
       ...(antigo.variavel ? { variavel: antigo.variavel } : {}),
+      // O destaque é do schema também. Sem transportá-lo, a frase que o
+      // closer devolve na conversa deixa de ir para o card no primeiro
+      // Publicar — e o card continua parecendo completo.
+      ...(antigo.destaque ? { destaque: true } : {}),
       ...(vivas.length > 0 ? { logic: vivas } : {}),
     }
   })

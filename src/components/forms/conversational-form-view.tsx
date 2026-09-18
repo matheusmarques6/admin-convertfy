@@ -371,6 +371,11 @@ export function ConversationalFormView({
             fbclid: clickIds?.fbclid ?? contextoDaVisita.fbclid ?? null,
             gclid: clickIds?.gclid ?? contextoDaVisita.gclid ?? null,
             ending_ref: endingRef,
+            // O que a lógica acumulou — score, trilha. Vai como REGISTRO
+            // para o card: é aqui que a engine roda, então o servidor não
+            // tem como recalcular sozinho. Nada que valha dinheiro decide
+            // por ele; quem decide é o schema publicado.
+            variables,
             disqualified: Boolean(ending?.disqualified),
             event_source_url: typeof window !== "undefined" ? window.location.href : null,
           }),

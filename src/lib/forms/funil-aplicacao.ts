@@ -108,6 +108,8 @@ interface Opcao {
   piso?: number
   /** Pontos que a escolha soma no score. */
   score?: number
+  /** Marca o lead e o negócio quando esta resposta é escolhida. */
+  tag?: string
 }
 
 const OPERACAO: Opcao[] = [
@@ -200,14 +202,16 @@ const MENSAGENS_ENTREGA: Opcao[] = [
 ]
 
 /** As quatro primeiras são o sinal de risco — quem marca qualquer uma
- * ganha a tag "Risco de gateway" e vai para o topo da fila. */
+ * ganha esta tag e vai para o topo da fila. A marca mora na OPÇÃO, onde
+ * quem escreve a pergunta a enxerga, e não numa regra separada. */
+export const TAG_RISCO = "risco-de-gateway"
 export const GATEWAY_DE_RISCO = ["reserva", "time_risco", "conta_desligada", "aviso_disputa"]
 
 const GATEWAY: Opcao[] = [
-  { value: "reserva", label: "Já seguraram meu dinheiro (reserva ou aqueles 120 dias)" },
-  { value: "time_risco", label: "Já recebi e-mail do time de risco pedindo explicação" },
-  { value: "conta_desligada", label: "Já tive conta desligada e precisei migrar de gateway" },
-  { value: "aviso_disputa", label: "Já levei aviso por índice de disputa ou de reembolso" },
+  { value: "reserva", label: "Já seguraram meu dinheiro (reserva ou aqueles 120 dias)", tag: TAG_RISCO },
+  { value: "time_risco", label: "Já recebi e-mail do time de risco pedindo explicação", tag: TAG_RISCO },
+  { value: "conta_desligada", label: "Já tive conta desligada e precisei migrar de gateway", tag: TAG_RISCO },
+  { value: "aviso_disputa", label: "Já levei aviso por índice de disputa ou de reembolso", tag: TAG_RISCO },
   { value: "nunca_nao_acompanho", label: "Nunca aconteceu, mas eu não acompanho o meu índice" },
   { value: "abaixo_05", label: "Acompanho e está abaixo de 0,5%" },
 ]
@@ -573,6 +577,7 @@ export function camposDoFunil(): CampoLegado[] {
       value: o.value,
       ...(o.valor !== undefined ? { valor: o.valor } : {}),
       ...(o.piso !== undefined ? { piso: o.piso } : {}),
+      ...(o.tag ? { tag: o.tag } : {}),
     })),
     validation: d.validation ?? {},
     map_to_lead_field: d.map_to_lead_field ?? null,
@@ -722,6 +727,15 @@ const TITULO_DA_TELA: Partial<Record<ApelidoDoBloco, string>> = {
 }
 
 /** A variável da conta que cada resposta alimenta. */
+/**
+ * A resposta que vai em destaque no card.
+ *
+ * É a frase que o closer devolve na conversa — "você disse que o que
+ * muda é recuperar margem". Enterrada no meio de vinte respostas,
+ * ninguém lê antes de ligar.
+ */
+const EM_DESTAQUE: ApelidoDoBloco = "o_que_muda"
+
 const VARIAVEL: Partial<Record<ApelidoDoBloco, string>> = {
   faturamento_br: "fat_val",
   faturamento_global: "fat_val",
@@ -733,6 +747,7 @@ const VARIAVEL: Partial<Record<ApelidoDoBloco, string>> = {
 export const FINAIS: FormEnding[] = [
   {
     ref: FINAL.aprovado,
+    tags: ["qualificado"],
     title: "✔ Aplicação pré-aprovada, {{nome}}. Agora é só escolher o seu horário.",
     description: [
       "Na conversa eu abro a sua conta comigo e a gente refaz essa conta com os seus números de verdade, não com média de mercado. Se fizer sentido, a operação entra no ar em 7 dias.",
@@ -742,6 +757,11 @@ export const FINAIS: FormEnding[] = [
   },
   {
     ref: FINAL.faturamento,
+    tags: ["fora-do-corte"],
+    // Recusado na tela não vira card: o time abriria o Inbound e veria,
+    // no meio dos leads bons, gente que acabou de ler que a conta não
+    // fecha. O lead fica gravado, com a tag, fora da pipeline.
+    cria_negocio: false,
     title: "Valeu pela sinceridade, {{nome}}.",
     description: [
       "Abaixo de R$100 mil por mês a minha operação não se paga na sua loja, e eu prefiro te falar isso agora do que te vender uma conversa.",
@@ -752,6 +772,11 @@ export const FINAIS: FormEnding[] = [
   },
   {
     ref: FINAL.faturamento_global,
+    tags: ["fora-do-corte"],
+    // Recusado na tela não vira card: o time abriria o Inbound e veria,
+    // no meio dos leads bons, gente que acabou de ler que a conta não
+    // fecha. O lead fica gravado, com a tag, fora da pipeline.
+    cria_negocio: false,
     title: "Valeu pela sinceridade, {{nome}}.",
     description: [
       "Abaixo de 10 mil dólares por mês a minha operação não se paga na sua loja, e eu prefiro te falar isso agora do que te vender uma conversa.",
@@ -762,6 +787,11 @@ export const FINAIS: FormEnding[] = [
   },
   {
     ref: FINAL.perfil,
+    tags: ["perfil-fora"],
+    // Recusado na tela não vira card: o time abriria o Inbound e veria,
+    // no meio dos leads bons, gente que acabou de ler que a conta não
+    // fecha. O lead fica gravado, com a tag, fora da pipeline.
+    cria_negocio: false,
     title: "Eu só opero retenção pra loja que já vende todo dia.",
     description:
       "Não atendo agência nem prestador de serviço. Se você cuida do marketing de lojas e quer conversar sobre parceria, me chama no Instagram — mas por aqui não é o caminho.",
@@ -773,6 +803,11 @@ export const FINAIS: FormEnding[] = [
     // acabou de responder que fatura um milhão, é uma mentira na cara do
     // lead — e ele é justamente o que a gente quer de volta depois.
     ref: FINAL.sem_intencao,
+    tags: ["sem-intencao-agora"],
+    // Recusado na tela não vira card: o time abriria o Inbound e veria,
+    // no meio dos leads bons, gente que acabou de ler que a conta não
+    // fecha. O lead fica gravado, com a tag, fora da pipeline.
+    cria_negocio: false,
     title: "Fechado, {{nome}}. Sem conversa de venda então.",
     description: [
       "Te mandei por e-mail a conta que a gente fez aqui, com os seus números, mais os 4 fluxos que mais dão dinheiro numa loja do seu tamanho.",
@@ -807,6 +842,7 @@ export function rascunhoDoFunil(version = 1): FormSchema {
       ...(AGRUPADOS.includes(d.apelido) ? { mesma_tela: true } : {}),
       ...(titulo ? { titulo_da_tela: titulo } : {}),
       ...(variavel ? { variavel } : {}),
+      ...(d.apelido === EM_DESTAQUE ? { destaque: true } : {}),
       ...(proximo ? { proximo } : {}),
       ...(logica && logica.length > 0 ? { logic: logica } : {}),
     }

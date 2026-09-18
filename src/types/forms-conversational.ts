@@ -78,6 +78,15 @@ export interface FormOption {
   /** Moeda em que o rótulo foi escrito. Só em opção de faixa. */
   moeda?: "BRL" | "USD" | "EUR"
   /**
+   * Tag que esta resposta põe no lead e no negócio.
+   *
+   * É o "quem marcar qualquer uma destas vai para o topo da fila": a
+   * marca mora na OPÇÃO, onde quem escreve a pergunta a enxerga, em vez
+   * de numa regra separada que ninguém relaciona com a resposta.
+   * Normalizada na gravação (ver `lib/forms/desfecho`).
+   */
+  tag?: string
+  /**
    * O número que esta opção REPRESENTA na conta — 2.000 acessos por dia,
    * ticket de 300.
    *
@@ -196,6 +205,13 @@ export interface FormBlock {
    * só enquanto ninguém publicasse com a lista de campos de outro dia.
    */
   midia?: MidiaDaTela | null
+  /**
+   * A resposta desta pergunta vai em DESTAQUE no card.
+   *
+   * Uma só por formulário (a primeira marcada vence): é a frase que o
+   * closer devolve na conversa, e destacar cinco é não destacar nenhuma.
+   */
+  destaque?: boolean
   /** Oculto: não é exibido; o valor vem da URL ou do embed. */
   hidden?: boolean
 }
@@ -268,6 +284,17 @@ export interface FormEnding {
    * `disqualified` — o que NÃO é abandono e não pode ser cobrado como tal.
    */
   disqualified?: boolean
+  /** Tags que este desfecho põe no lead e no negócio. */
+  tags?: string[]
+  /**
+   * `false` = o cadastro vira lead e NÃO entra na pipeline.
+   *
+   * Num funil que recusa mais do que aprova, criar card para todo
+   * desfecho enche o Inbound de gente que acabou de ler "a conta não
+   * fecha para você". Ausente = cria, que é o comportamento de todo
+   * formulário no ar hoje.
+   */
+  cria_negocio?: boolean
 }
 
 export interface FormSchema {

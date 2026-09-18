@@ -37,6 +37,8 @@ import { buildCrmFormUrl } from "@/lib/utils/form-url"
 import { concluirSessao } from "@/lib/services/form-session.service"
 import { caminhoAte, refsDoCaminho, ultimoAlcancavel } from "@/lib/forms/engine"
 import { normalizarSchema } from "@/lib/forms/schema"
+import { desfechoNoCrm } from "@/lib/forms/desfecho"
+import { destinoDoWebhook, enviarWebhook, respostasLegiveis } from "@/lib/forms/webhook"
 import { camposDerivados } from "@/lib/forms/derivados"
 import { verificarTokenSessao } from "@/lib/forms/session-token"
 
@@ -66,6 +68,15 @@ const submitSchema = z.object({
   session_id: z.string().uuid().nullable().optional(),
   session_token: z.string().max(300).nullable().optional(),
   ending_ref: z.string().max(100).nullable().optional(),
+  /**
+   * As variáveis que a lógica acumulou — o score, a trilha.
+   *
+   * Vêm do cliente porque é lá que a engine roda, e por isso são
+   * REGISTRO, nunca decisão: nada que valha dinheiro (criar negócio,
+   * disparar conversão, desqualificar) olha para elas. Quem decide é o
+   * schema publicado.
+   */
+  variables: z.record(z.string().max(60), z.union([z.string().max(200), z.number()])).nullable().optional(),
   // Aceito por compatibilidade, mas quem MANDA é o schema publicado
   // (`lerDoSchema`): o cliente aponta o final, a régua é nossa.
   disqualified: z.boolean().nullable().optional(),
@@ -128,7 +139,8 @@ export async function POST(
       .select(
         `id, org_id, pipeline_id, stage_id, success_message, redirect_url,
          created_by, name, scope, published_version_id,
-         facebook_pixel_id, meta_capi_token, meta_test_event_code, tracking_config`,
+         facebook_pixel_id, meta_capi_token, meta_test_event_code, tracking_config,
+         settings`,
       )
       .eq("slug", slug)
       .eq("status", "published")
@@ -192,6 +204,17 @@ export async function POST(
         "validation-failed",
       )
     }
+
+    // O desfecho decide o que acontece no CRM: quais tags, se vira card
+    // na pipeline e qual resposta vai em destaque. A régua é do schema
+    // PUBLICADO, como a desqualificação — o corpo do POST só diz onde a
+    // pessoa parou.
+    const desfecho = desfechoNoCrm(
+      schemaPublicado,
+      parsed.ending_ref ?? null,
+      parsed.answers as Record<string, never>,
+      refsDoCaminho,
+    )
 
     // 4. Mapeia map_to_lead_field -> dados de lead/deal.
     // Suporta:
@@ -372,6 +395,7 @@ export async function POST(
           utm: utmData,
           custom_fields:
             Object.keys(customFieldsData).length > 0 ? customFieldsData : {},
+          ...(desfecho.tags.length > 0 ? { tags: desfecho.tags } : {}),
         }
 
         let leadRes = await admin
@@ -435,7 +459,16 @@ export async function POST(
     // "order") aqui — sem isso o deal nunca era criado e a submissao virava
     // "so lead", contrariando a UI que promete criar o card na 1a etapa.
     let dealId: string | null = null
-    if (form.pipeline_id && leadId) {
+    if (!desfecho.criaNegocio) {
+      // Não é falha: o final pediu que este cadastro ficasse fora da
+      // pipeline. Fica no log porque "o lead entrou e o card não
+      // apareceu" é exatamente o que alguém vai investigar depois.
+      log.info("[FormSubmit] Final não cria negócio", {
+        form_id: form.id,
+        ending: parsed.ending_ref,
+      })
+    }
+    if (form.pipeline_id && leadId && desfecho.criaNegocio) {
       let stageId = form.stage_id
       if (!stageId) {
         const { data: firstStage } = await admin
@@ -488,14 +521,19 @@ export async function POST(
             status: "open",
             source: leadData.source,
             utm: utmData,
-            tags: desqualificado ? ["fora-do-corte"] : [],
+            // As tags saem do desfecho: as do final mais as das respostas
+            // que a pessoa deu NO CAMINHO. "fora-do-corte" continua aqui
+            // como rede para o formulário que não configurou nenhuma.
+            tags:
+              desfecho.tags.length > 0
+                ? desfecho.tags
+                : desqualificado
+                  ? ["fora-do-corte"]
+                  : [],
             lead_id: leadId,
             owner_id: autoOwner ?? effectiveCreatedBy, // rodízio → fallback assignee
             position: nextPos,
-            custom_fields:
-              Object.keys(dealCustomFieldsData).length > 0
-                ? dealCustomFieldsData
-                : {},
+            custom_fields: camposDoCard(dealCustomFieldsData, parsed.variables, desfecho),
           })
           .select("id")
           .single()
@@ -507,9 +545,7 @@ export async function POST(
           await admin.from("crm_deal_activities").insert({
             deal_id: deal.id,
             type: "system",
-            content: desqualificado
-              ? `Deal criado via formulario "${form.name}" — a resposta caiu no final que DESQUALIFICA, e a pessoa leu isso na tela. Nao e lead para abordar agora.`
-              : `Deal criado automaticamente via formulario "${form.name}"`,
+            content: textoDaAtividade(form.name, desqualificado, desfecho, parsed.variables),
             created_by: effectiveCreatedBy,
             is_internal: true,
           })
@@ -599,6 +635,51 @@ export async function POST(
       }
     }
 
+    // 7c. Avisa o n8n.
+    //
+    // AWAIT pelo mesmo motivo da sessão: promise solta morre no
+    // congelamento do serverless. E fail-open pelo motivo oposto — o
+    // cadastro já está no banco quando isto roda, então um n8n fora do
+    // ar não pode fazer a pessoa ver erro numa tela que já registrou a
+    // resposta dela.
+    const destinoN8n = destinoDoWebhook(form.settings)
+    if (destinoN8n) {
+      const finalDoSchema = parsed.ending_ref
+        ? (schemaPublicado?.endings ?? []).find((e) => e.ref === parsed.ending_ref)
+        : undefined
+      const r = await enviarWebhook(destinoN8n, {
+        evento: "formulario.enviado",
+        enviado_em: new Date().toISOString(),
+        formulario: { id: form.id, slug, nome: form.name },
+        final: finalDoSchema
+          ? {
+              ref: finalDoSchema.ref,
+              titulo: finalDoSchema.title,
+              desqualifica: Boolean(finalDoSchema.disqualified),
+            }
+          : null,
+        lead_id: leadId,
+        deal_id: dealId,
+        submission_id: submissionId,
+        contato: {
+          nome: leadData.name ?? null,
+          email: leadData.email ?? null,
+          telefone: leadData.phone ?? null,
+        },
+        respostas: respostasLegiveis(schemaPublicado, parsed.answers as Record<string, never>),
+        variaveis: parsed.variables ?? {},
+        tags: desfecho.tags,
+        utm: utmData as Record<string, string | null>,
+      })
+      if (!r.ok) {
+        log.warn("[FormSubmit] webhook do formulário não entregue", {
+          form_id: form.id,
+          motivo: r.motivo,
+          detalhe: r.detalhe,
+        })
+      }
+    }
+
     // 8. Dispara triggers de automacao (lead_created e deal_created
     //    se aplicavel). Fire-and-forget.
     if (leadId) {
@@ -650,6 +731,7 @@ export async function POST(
         trackingCfg.qualified_lead,
         respostasComDerivados,
         [...(fields ?? []), ...derivados.fields],
+        parsed.ending_ref ?? null,
       )
 
       // Nome completo -> first/last pro user_data do Meta. Quando o
@@ -835,4 +917,52 @@ async function lerDoSchema(
   } catch {
     return { refs: null, desqualificado: false, schema: null }
   }
+}
+
+/**
+ * O que vai para `deals.custom_fields` além dos campos mapeados.
+ *
+ * O score é REGISTRO, não decisão — ele vem do browser, onde a engine
+ * roda. Serve para o vendedor priorizar a fila; nada que valha dinheiro
+ * olha para ele. Guardado como número quando é número, para o card
+ * poder ordenar.
+ */
+function camposDoCard(
+  mapeados: Record<string, unknown>,
+  variables: Record<string, string | number> | null | undefined,
+  desfecho: { destaque: { pergunta: string; resposta: string } | null },
+): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...mapeados }
+  const score = variables?.score
+  if (typeof score === "number" && Number.isFinite(score)) out.score = score
+  if (desfecho.destaque) out.destaque = desfecho.destaque.resposta
+  return out
+}
+
+/**
+ * A primeira atividade do card.
+ *
+ * Ela é o que o vendedor lê antes de ligar, então carrega as três coisas
+ * que mudam a abordagem: se o próprio formulário recusou a pessoa, o
+ * score, e a frase que ela usou para dizer o que muda na vida dela.
+ */
+function textoDaAtividade(
+  nomeDoForm: string,
+  desqualificado: boolean,
+  desfecho: { destaque: { pergunta: string; resposta: string } | null; tags: string[] },
+  variables: Record<string, string | number> | null | undefined,
+): string {
+  const linhas: string[] = []
+  linhas.push(
+    desqualificado
+      ? `Deal criado via formulario "${nomeDoForm}" — a resposta caiu no final que DESQUALIFICA, e a pessoa leu isso na tela. Nao e lead para abordar agora.`
+      : `Deal criado automaticamente via formulario "${nomeDoForm}"`,
+  )
+  const score = variables?.score
+  if (typeof score === "number" && Number.isFinite(score)) linhas.push(`Score: ${score}`)
+  if (desfecho.tags.length > 0) linhas.push(`Tags: ${desfecho.tags.join(", ")}`)
+  if (desfecho.destaque) {
+    linhas.push(`${desfecho.destaque.pergunta} → ${desfecho.destaque.resposta}`)
+  }
+  return linhas.join("\n")
 }

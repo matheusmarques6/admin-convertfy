@@ -53,6 +53,20 @@ export interface QualifiedLeadConfig {
   event_name: string
   logic: "and" | "or"
   rules: QualifiedRule[]
+  /**
+   * Refs de finais que qualificam por si.
+   *
+   * Num funil conversacional a régua já está no FLUXO: quem chega ao
+   * final aprovado passou por todos os cortes duros, e repetir essas
+   * condições em `rules` cria uma segunda régua que envelhece sozinha —
+   * mexer no salto e esquecer a regra desliga o evento em silêncio, que
+   * é o defeito que este produto já pagou com um mês sem conversão.
+   *
+   * Vale em OU com as `rules`: qualquer um dos dois qualifica. Exigir os
+   * dois faria uma configuração pela metade parar o evento, e evento que
+   * não sai é sempre o erro mais caro dos dois.
+   */
+  endings?: string[]
 }
 
 /**
@@ -134,6 +148,16 @@ export function normalizeTrackingConfig(raw: unknown): FormTrackingConfig {
           : "Lead qualificado",
       logic: ql.logic === "or" ? "or" : "and",
       rules,
+      // Sem esta linha a régua por desfecho some no normalizador — e o
+      // normalizador roda no submit, que é justamente onde ela decide se
+      // o evento sai.
+      ...(Array.isArray(ql.endings)
+        ? {
+            endings: (ql.endings as unknown[]).filter(
+              (e): e is string => typeof e === "string" && e.trim() !== "",
+            ),
+          }
+        : {}),
     },
   }
 }

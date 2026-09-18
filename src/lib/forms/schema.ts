@@ -110,6 +110,7 @@ export function normalizarOpcoes(raw: unknown): FormOption[] {
           ...(piso !== undefined ? { piso } : {}),
           ...(valor !== undefined ? { valor } : {}),
           ...(moeda ? { moeda } : {}),
+          ...(typeof o.tag === "string" && o.tag.trim() ? { tag: o.tag.trim() } : {}),
         })
       }
     }
@@ -218,6 +219,7 @@ function normalizarBloco(raw: unknown): FormBlock | null {
       ? { titulo_da_tela: b.titulo_da_tela.trim() }
       : {}),
     ...(midia ? { midia } : {}),
+    ...(b.destaque === true ? { destaque: true } : {}),
     ...(b.hidden === true || tipoBruto === "hidden" ? { hidden: true } : {}),
   }
 }
@@ -260,6 +262,13 @@ function normalizarEnding(raw: unknown): FormEnding | null {
     // sumiria no primeiro clique em Publicar, sem erro nenhum.
     destino: normalizarDestino(e.destino),
     ...(e.disqualified === true ? { disqualified: true } : {}),
+    // As duas também precisam sobreviver ao normalizador: elas decidem
+    // se o cadastro vira card na pipeline e com que marca. Perdidas num
+    // Publicar, o funil que recusa passaria a encher o Inbound.
+    ...(Array.isArray(e.tags)
+      ? { tags: e.tags.filter((t): t is string => typeof t === "string" && t.trim() !== "") }
+      : {}),
+    ...(e.cria_negocio === false ? { cria_negocio: false } : {}),
   }
 }
 

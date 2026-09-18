@@ -133,3 +133,43 @@ describe("diagnoseQualified — explica por que não disparou", () => {
     expect(d.reason).toBeNull()
   })
 })
+
+describe("qualificar pelo DESFECHO", () => {
+  const cfg = {
+    enabled: true,
+    event_name: "LeadQualificado",
+    logic: "and" as const,
+    rules: [],
+    endings: ["fim_aprovado"],
+  }
+
+  it("chegar ao final aprovado qualifica, sem precisar de regra nenhuma", () => {
+    // A régua já está no fluxo: quem chegou lá passou pelos três cortes
+    // duros. Repetir isso em `rules` seria uma segunda régua que
+    // envelhece quando alguém mexe num salto.
+    expect(evaluateQualified(cfg, {}, [], "fim_aprovado")).toBe(true)
+  })
+
+  it("outro final não qualifica", () => {
+    expect(evaluateQualified(cfg, {}, [], "fim_faturamento")).toBe(false)
+    expect(evaluateQualified(cfg, {}, [], null)).toBe(false)
+    expect(evaluateQualified(cfg, {}, [])).toBe(false)
+  })
+
+  it("vale em OU com as regras: qualquer um dos dois basta", () => {
+    const comRegra = {
+      ...cfg,
+      rules: [{ field_id: "f1", operator: "equals" as const, value: "sim" }],
+    }
+    // Pelo final, sem a resposta.
+    expect(evaluateQualified(comRegra, {}, [], "fim_aprovado")).toBe(true)
+    // Pela resposta, em outro final.
+    expect(evaluateQualified(comRegra, { f1: "sim" }, [], "fim_perfil")).toBe(true)
+    // Nenhum dos dois.
+    expect(evaluateQualified(comRegra, { f1: "nao" }, [], "fim_perfil")).toBe(false)
+  })
+
+  it("desligado não qualifica nem pelo final", () => {
+    expect(evaluateQualified({ ...cfg, enabled: false }, {}, [], "fim_aprovado")).toBe(false)
+  })
+})

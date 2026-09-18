@@ -15,11 +15,13 @@ import {
   camposDoFunil,
   rascunhoDoFunil,
   schemaDoFunil,
+  TAG_RISCO,
 } from "./funil-aplicacao"
 import { blocosDaTela, primeiroBloco, proximoPasso } from "./engine"
 import { calcular, moedaDeclarada, variaveisDasRespostas } from "./calculo"
 import { aplicarRecall } from "./recall"
 import { normalizarMidia, urlDeMidiaUtil } from "./midia"
+import { desfechoNoCrm } from "./desfecho"
 import { montarVersao } from "./publicar"
 import type { FormAnswers } from "@/types/forms-conversational"
 
@@ -364,5 +366,72 @@ describe("as provas na tela", () => {
       version: 1,
     })
     expect(novo.blocks.find((b) => b.ref === REF.mat1)?.midia?.url).toContain("omnisend-2")
+  })
+})
+
+describe("o que cada desfecho faz no CRM", () => {
+  const caminhoTodo = new Set(camposDoFunil().map((c) => c.id))
+
+  it("aprovado vira card com a tag de qualificado", () => {
+    const d = desfechoNoCrm(schema, FINAL.aprovado, {}, caminhoTodo)
+    expect(d.criaNegocio).toBe(true)
+    expect(d.tags).toContain("qualificado")
+  })
+
+  it("os quatro desfechos que recusam NÃO criam card", () => {
+    // Um funil de aplicação recusa mais do que aprova. Se cada recusa
+    // virasse card, o time abriria o Inbound e veria, no meio dos leads
+    // bons, gente que acabou de ler que a conta não fecha.
+    for (const ref of [
+      FINAL.faturamento,
+      FINAL.faturamento_global,
+      FINAL.perfil,
+      FINAL.sem_intencao,
+    ]) {
+      const d = desfechoNoCrm(schema, ref, {}, caminhoTodo)
+      expect(d.criaNegocio, ref).toBe(false)
+      expect(d.tags.length, ref).toBeGreaterThan(0)
+    }
+  })
+
+  it("marcar risco de gateway põe a tag uma vez só", () => {
+    const d = desfechoNoCrm(
+      schema,
+      FINAL.aprovado,
+      { [REF.gateway]: ["reserva", "conta_desligada", "abaixo_05"] },
+      caminhoTodo,
+    )
+    expect(d.tags).toEqual(["qualificado", TAG_RISCO])
+  })
+
+  it("quem vende no Brasil nunca leva a tag de risco", () => {
+    // A trilha brasileira não passa pela tela de gateway. Se a pessoa
+    // respondeu, voltou e trocou o mercado, a resposta fica em `answers`
+    // e sai do caminho — marcar ali mandaria o time abrir uma conversa
+    // sobre um problema que ela não disse ter.
+    const respostas = {
+      ...CONTATO,
+      [REF.operacao]: "marca",
+      [REF.mercado]: "br",
+      [REF.faturamento_br]: "500k_1m",
+      [REF.acessos]: "1000_3000",
+      [REF.ticket_br]: "200_400",
+      [REF.carrinho]: "nada",
+      [REF.recompra]: "quase_nenhum",
+      [REF.gateway]: ["reserva"],
+      [REF.estado_email]: "parado",
+      [REF.o_que_muda]: "margem",
+      [REF.ja_tentou]: "agencia",
+      [REF.decisao]: "sozinho",
+      [REF.compromisso]: "sim",
+    }
+    const { telas } = percorrer(respostas)
+    const d = desfechoNoCrm(schema, FINAL.aprovado, respostas, new Set(telas))
+    expect(d.tags).toEqual(["qualificado"])
+  })
+
+  it("a frase que o closer devolve vai em destaque", () => {
+    const d = desfechoNoCrm(schema, FINAL.aprovado, { [REF.o_que_muda]: "margem" }, caminhoTodo)
+    expect(d.destaque?.resposta).toContain("Recupero margem")
   })
 })

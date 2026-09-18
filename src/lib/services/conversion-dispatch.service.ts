@@ -151,8 +151,16 @@ export function evaluateQualified(
   config: QualifiedLeadConfig | undefined,
   answers: Record<string, unknown>,
   fields?: QualifiedField[],
+  /** O final alcançado, quando o formulário é conversacional. */
+  endingRef?: string | null,
 ): boolean {
   if (!config?.enabled) return false
+  // O DESFECHO qualifica sozinho: quem chegou ao final aprovado já
+  // passou por todos os cortes do fluxo, e pedir que as regras também
+  // casem faria o evento depender de uma segunda régua que ninguém
+  // atualiza quando o salto muda.
+  const finais = config.endings ?? []
+  if (endingRef && finais.includes(endingRef)) return true
   const rules = config.rules ?? []
   if (rules.length === 0) return false
   const results = rules.map((r) => evaluateRule(r, answers, fields))
