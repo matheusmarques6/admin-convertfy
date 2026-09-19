@@ -42,6 +42,8 @@ Quando <contrato_do_toque> disser \`modo: NÃO DECLARADO\`, a nota não tipou o 
 
 Modos: ${MODOS.join(" | ")}. Além do modo, a intenção pode declarar \`trabalhos_fixos\` — obrigações que convivem com a seleção (${TRABALHOS_FIXOS.join(", ")}). Cumpra todos e repita-os no output.
 
+<orientacao_do_coo> é instrução direta de quem responde pelo método: vale sobre a sua preferência e sobre a leitura que você faria do catálogo. Vazio quando não há.
+
 ## Regras de seleção
 
 1. QUANTIDADE. Respeite \`n_objecoes\` do contrato. Uma primária por padrão; varredura abre para o número pedido. Nunca decida por conta própria empilhar duas.
@@ -66,7 +68,7 @@ Modos: ${MODOS.join(" | ")}. Além do modo, a intenção pode declarar \`trabalh
 
 11. ALIVIADOR é vocabulário fechado (${ALIVIADORES.join(", ")}): \`aliviador_pedido\` é o do catálogo para aquela objeção — não troque por um "equivalente". Só \`aliviadores_admissiveis\` do contrato podem entrar; os vetados nunca.
 
-12. PROIBIÇÕES. \`proibido_neste_toque\` reúne as proibições do contrato (repita-as) mais as que a sua escolha cria (ex.: escolheu garantia → "não prometer prazo de devolução que a política não cita"). UMA proibição por regra, no idioma da loja — não repita a mesma regra em dois idiomas nem em duas redações.
+12. PROIBIÇÕES E ALERTAS — duas listas, uma voz cada. \`proibido_neste_toque\` é o que o REDATOR não pode fazer: as proibições do contrato (repita-as exatamente como estão, no idioma em que vieram — não traduza) mais as que a sua escolha cria (ex.: escolheu garantia → "não prometer prazo de devolução que a política não cita"). UMA linha por regra, começando pelo verbo negado. O que a PESQUISA não confirmou ("canal de suporte não documentado", "prazo de entrega não encontrado", "verificar antes de usar") NÃO é proibição: vai em \`alertas_de_dado\`, uma linha por dado que falta — é a lista do que a loja precisa preencher na ficha, e o sistema a entrega a quem preenche.
 
 13. INSUMOS PERMITIDOS. \`insumos_permitidos\` lista os FATOS que a copy PODE usar neste toque, cada um com a origem entre parênteses: "pagamento protegido no checkout (pesquisa: plataforma)", "fibra de bambu (produto: descrição)", "corte acima do abdômen (pesquisa: diferencial)". Só fato que está no contexto — sem origem, não entra. É o "sim" que acompanha o "não": quem escreve precisa saber o que PODE dizer, não só o que não pode. O incentivo NÃO é decidido por você — o sistema copia do catálogo.
 
@@ -83,6 +85,7 @@ Responda APENAS o JSON, sem markdown e sem texto ao redor, no formato:
  "angulo_do_tratamento":[{"ordem":1,"veiculo":"origem_da_marca","papel":"por que a marca existe","insumo_disponivel":true}],
  "suspeita_a_antecipar":"string ou null",
  "proibido_neste_toque":["..."],
+ "alertas_de_dado":["dado que a pesquisa não confirmou"],
  "insumos_permitidos":["fato (origem)"],
  "alerta_de_lastro":null,
  "razao":"uma frase",
@@ -125,6 +128,10 @@ ${CACHE_PREFIX_MARKER}
 {{correcoes}}
 </correcoes>
 
+<orientacao_do_coo>
+{{orientacao_do_coo}}
+</orientacao_do_coo>
+
 Declare o alvo deste e-mail. Responda APENAS o JSON.`
 
 export const SELETOR_ORIGINS: Record<string, SegmentOrigin> = {
@@ -137,6 +144,8 @@ export const SELETOR_ORIGINS: Record<string, SegmentOrigin> = {
   ja_atacadas: { cls: "upstream", rotulo: "O que os emails anteriores do flow já atacaram — store_email_objection_targets" },
   oferta_e_produtos: { cls: "loja", rotulo: "Top 5 produtos + incentivo — store_top_products / catálogo" },
   correcoes: { cls: "sistema", rotulo: "Correções do validador — erros da tentativa anterior (código)" },
+  // S4 (19/09): diretriz viva do COO para o Seletor — estruturador_orientacoes (agente='seletor').
+  orientacao_do_coo: { cls: "curadoria", rotulo: "Orientação do COO ao Seletor — estruturador_orientacoes (agente=seletor)" },
 }
 
 /** `<catalogo_da_loja>`: só as objeções elegíveis no flow + os outros três catálogos. */

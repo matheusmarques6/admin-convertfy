@@ -40,6 +40,7 @@ import {
 } from "@/components/email-generation/ui/eg-atoms"
 import { C, F, TNUM } from "@/components/email-generation/ui/eg-theme"
 import { buildAprendizadoDraft } from "@/lib/agents/estruturador/aprendizado-draft"
+import { buildAprendizadoSeletorDraft } from "@/lib/agents/objecoes/aprendizado-seletor"
 import { buildAprendizadoCuradorDraft } from "@/lib/agents/architect/aprendizado-curador"
 import {
   ROTULO_AGENTE,
@@ -687,7 +688,14 @@ export function AgentFeedback({
       })),
     }
     const d =
-      agente === "curador"
+      agente === "seletor"
+        ? buildAprendizadoSeletorDraft({
+            ...comum,
+            output: (output ?? {}) as Parameters<
+              typeof buildAprendizadoSeletorDraft
+            >[0]["output"],
+          })
+        : agente === "curador"
         ? buildAprendizadoCuradorDraft({
             ...comum,
             output: (output ?? {}) as Parameters<
@@ -757,7 +765,9 @@ export function AgentFeedback({
       <div style={{ ...body, color: C.g500, marginBottom: 8 }}>
         {agente === "curador"
           ? "Julga a escolha de bloco desta run e alimenta o rascunho de aprendizado do vault. Para instruir as próximas gerações, use o bloco acima."
-          : "Julga a run que está aberta e alimenta o rascunho de aprendizado do vault. Para instruir as próximas gerações, use o bloco acima."}
+          : agente === "seletor"
+            ? "Julga o ALVO escolhido nesta run (objeção, aliviador, profundidade, proibições) e alimenta o rascunho de aprendizado do vault. Para instruir as próximas gerações, use o bloco acima."
+            : "Julga a run que está aberta e alimenta o rascunho de aprendizado do vault. Para instruir as próximas gerações, use o bloco acima."}
       </div>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>

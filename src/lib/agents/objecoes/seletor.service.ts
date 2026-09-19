@@ -16,7 +16,11 @@
 import crypto from "crypto"
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
-import { montarInsumos, normalizarPoliticas, type PoliticasDaLoja } from "@/lib/stores/politicas"
+import { montarInsumos, normalizarPoliticas, precisaCapturarPoliticas, coberturaDasPoliticas, type PoliticasDaLoja } from "@/lib/stores/politicas"
+import { capturarPoliticas } from "@/lib/stores/politicas.service"
+import { gravarPendenciasDaFicha } from "@/lib/stores/pendencias-da-ficha.service"
+import { aplicaveis, montarBlocoOrientacoes, type Orientacao } from "../estruturador/orientacoes"
+import { loadOrientacoes } from "../shared/orientacoes-loader"
 import { classificarFalha, planejarRetentativa, avisoDeContaPerdida } from "../retry-teto"
 import {
   cabeNaJanela,
@@ -72,6 +76,8 @@ const MAX_ATTEMPTS = 2
  * o OpenRouter faz em voo, que é a origem dos `402 in-flight` do projeto.
  */
 const TETO_MAXIMO_SELETOR = 24000
+/** S2: a leitura das páginas de política no pré-passo não pode comer a janela da fase 1. */
+const TETO_POLITICAS_PRE_PASSO_MS = 10_000
 
 export type SeletorMode = "off" | "shadow" | "on"
 
@@ -257,6 +263,10 @@ export interface RunSeletorInput {
    * decide se a troca existe; a página decide.
    */
   politicas?: PoliticasDaLoja | null
+  /** S4 (19/09): orientações do COO ao Seletor (`estruturador_orientacoes`, agente='seletor'). */
+  orientacoes?: Orientacao[]
+  /** S2 (19/09): o pré-passo leu as páginas de política antes desta run? */
+  politicasPrePasso?: { capturadas: boolean; cobrem: string[] }
 }
 
 /** Um call do Seletor para um email. Persiste alvo (válido ou sintético) e a run. Nunca lança. */
@@ -292,6 +302,14 @@ export async function runSeletor(input: RunSeletorInput): Promise<ObjectionTarge
     ja_atacadas: renderJaAtacadas(input.jaAtacadas),
     oferta_e_produtos: renderOfertaEProdutos(input.catalogo, input.topProductsTexto),
     correcoes: "(nenhuma — primeira tentativa)",
+    orientacao_do_coo: montarBlocoOrientacoes(aplicaveis(input.orientacoes ?? [], input.flowType, input.emailNumber)),
+  }
+  // Template do banco sem a tag (S4): a orientação não pode sumir — vai
+  // colada à intenção do toque, que é o bloco que ela mais se parece.
+  // Mesmo desenho do `auditoria_anterior` no Estruturador.
+  const orientacoesAplicaveis = aplicaveis(input.orientacoes ?? [], input.flowType, input.emailNumber)
+  if (orientacoesAplicaveis.length > 0 && !config.user_template.includes("{{orientacao_do_coo}}")) {
+    baseVars.intencao_do_toque = `${baseVars.intencao_do_toque}\n\n<orientacao_do_coo>\n${baseVars.orientacao_do_coo}\n</orientacao_do_coo>`
   }
   const inputSummary: InputSummaryItem[] = [
     { rotulo: "Loja", cls: "loja", valor: input.brandName },
@@ -305,6 +323,10 @@ export async function runSeletor(input: RunSeletorInput): Promise<ObjectionTarge
     },
     { rotulo: "Catálogo da loja", cls: "loja", valor: `${input.catalogo.objecoes.length} objeções · ${candidatas.length} candidata(s) elegível(is) por código · sha8 ${input.catalogSha8}` },
     { rotulo: "Já atacadas (irmãos)", cls: "upstream", valor: input.jaAtacadas.length ? input.jaAtacadas.map((j) => `${j.id}@#${j.email_number}/${j.profundidade}`).join(", ") : "(nenhuma)" },
+    { rotulo: "Orientação do COO", cls: "curadoria", valor: orientacoesAplicaveis.length ? `${orientacoesAplicaveis.length} orientação(ões) ativa(s) para o Seletor` : "(nenhuma)" },
+    ...(input.politicasPrePasso
+      ? [{ rotulo: "Políticas públicas", cls: "loja" as const, valor: `${input.politicasPrePasso.capturadas ? "lidas das páginas neste pré-passo" : "as gravadas"} · cobrem: ${input.politicasPrePasso.cobrem.join(", ") || "nada"}` }]
+      : []),
   ]
   const segBase = buildSegmentedPrompt(config.user_template, baseVars, SELETOR_ORIGINS, { parte: "user" })
   const runId = await startGenerationRun({
@@ -403,6 +425,14 @@ export async function runSeletor(input: RunSeletorInput): Promise<ObjectionTarge
         consumido: input.mode === "on",
         runId,
       })
+      // S3 (19/09): o que faltou à loja vira pendência na ficha — contradição
+      // do código + alerta de dado do modelo. Fail-open; só grava se mudou.
+      const pendencias = await gravarPendenciasDaFicha({
+        storeId: input.storeId,
+        textos: [...(alvo.contradicoes ?? []).map((c) => c.detalhe), ...(alvo.alertas_de_dado ?? [])],
+        runId,
+        flow: input.flowType,
+      })
       await finishGenerationRun(runId, {
         storeId: input.storeId,
         flowId: ref.flowId,
@@ -439,6 +469,14 @@ export async function runSeletor(input: RunSeletorInput): Promise<ObjectionTarge
             contrato_origens: input.contrato.origens,
             tokens_cache: tokensCache,
             tokens_cache_escrita: tokensCacheEscrita,
+            // 19/09: Q6 (uma voz por saída), S3 (pendência da ficha), S4
+            // (orientação servida) e S2 (políticas no pré-passo).
+            alertas_de_dado: alvo.alertas_de_dado?.length ?? 0,
+            proibicoes: alvo.proibido_neste_toque.length,
+            pendencias_da_ficha: { gravado: pendencias.gravado, campos: pendencias.pendencias.map((p) => `${p.campo}×${p.frequencia}`) },
+            orientacoes_servidas: orientacoesAplicaveis.length,
+            politicas_capturadas_no_pre_passo: input.politicasPrePasso?.capturadas ?? false,
+            politicas_cobrem: input.politicasPrePasso?.cobrem ?? [],
           },
         },
         tokensInput: tokensIn,
@@ -561,7 +599,7 @@ export async function ensureObjectionTargets(input: EnsureTargetsInput): Promise
       .eq("id", input.storeId)
       .maybeSingle()
     const s = (store ?? {}) as { store_name?: string | null; store_url?: string | null; objection_catalog?: unknown; politicas?: unknown }
-    const politicas = normalizarPoliticas(s.politicas)
+    let politicas = normalizarPoliticas(s.politicas)
     const batchId = input.batchId ?? crypto.randomUUID()
 
     const porFlow = new Map<string, number[]>()
@@ -604,6 +642,28 @@ export async function ensureObjectionTargets(input: EnsureTargetsInput): Promise
     const sha8 = catalogoSha8(s.objection_catalog)
     const brandName = s.store_name || "Loja"
     const topProductsTexto = renderTopProducts(await loadTopProducts(admin, input.storeId, s.store_url ?? null))
+
+    // S2 (19/09) — verificar antes de negar. O Seletor proibia "prometer
+    // troca" com a página de troca a um GET de distância: se as políticas
+    // não cobrem troca E frete, lê as páginas AGORA (regex só, sem modelo —
+    // é pré-passo; o botão "Ler políticas" faz a leitura completa), com
+    // teto e UMA vez por dia por loja (carimbo `capturado_em`). Fail-open.
+    const politicasPrePasso = { capturadas: false, cobrem: coberturaDasPoliticas(politicas) }
+    if (s.store_url && precisaCapturarPoliticas(s.politicas, new Date())) {
+      const capturada = await Promise.race<Awaited<ReturnType<typeof capturarPoliticas>> | null>([
+        capturarPoliticas(admin, input.storeId, { lerComModelo: null }),
+        new Promise((resolve) => setTimeout(() => resolve(null), TETO_POLITICAS_PRE_PASSO_MS)),
+      ])
+      if (capturada && (capturada.status === "ok" || capturada.status === "nada_encontrado")) {
+        politicas = normalizarPoliticas(capturada.politicas)
+        politicasPrePasso.capturadas = true
+        politicasPrePasso.cobrem = coberturaDasPoliticas(politicas)
+      } else {
+        log.info("seletor.politicas_pre_passo_sem_resultado", { storeId: input.storeId, status: capturada?.status ?? "teto" })
+      }
+    }
+    // S4: orientações do COO ao Seletor — uma leitura para todos os e-mails.
+    const orientacoes = await loadOrientacoes("seletor")
 
     let semOrcamento = false
     for (const [flowType, nums] of porFlow) {
@@ -660,6 +720,8 @@ export async function ensureObjectionTargets(input: EnsureTargetsInput): Promise
           brandName, catalogo, catalogSha8: sha8, contrato, intencaoBody: intent?.body_md ?? "", jaAtacadas, topProductsTexto,
           incentivo,
           politicas,
+          orientacoes,
+          politicasPrePasso,
         })
         result.ran++
         if (row) {

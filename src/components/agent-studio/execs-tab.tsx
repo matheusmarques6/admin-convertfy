@@ -982,6 +982,30 @@ export function NodeRunPanel({
             />
           </>
         )}
+        {/* Seletor (migration 20261176, 19/09): o mesmo ciclo. Ele decide o
+            ALVO do toque por loja — a orientação típica é "nesta loja o
+            incentivo é X" ou "não ataque preço no welcome". */}
+        {tab === "output" && n.agent === "seletor" && run.runId && (
+          <>
+            <AgentOrientacoes
+              agente="seletor"
+              runId={run.runId}
+              flowType={exec.flow_type}
+              emailNumber={exec.email_number}
+              campos={["email", "flow", "global"]}
+              titulo="Orientações ao Seletor para as próximas gerações"
+            />
+            <AgentFeedback
+              agente="seletor"
+              runId={run.runId}
+              output={detail?.parsed_output}
+              flowType={exec.flow_type}
+              emailNumber={exec.email_number}
+              storeName={exec.store_name}
+              runIso={exec.updated_at}
+            />
+          </>
+        )}
         {/* Curador: o mesmo ciclo (migration 20261111). Ele não decide a
             sequência — decide QUAL bloco da biblioteca ocupa cada posição —,
             então a orientação e o rascunho falam de escolha de bloco. Os

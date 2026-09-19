@@ -288,3 +288,26 @@ describe("incentivo, insumos permitidos, dedupe e contradições (09/09)", () =>
     expect(alvoSintetico(w1, "seletor_falhou", null).incentivo).toEqual({ existe: false, codigo: null, valor: null })
   })
 })
+
+// Q6 (19/09): alerta de pesquisa sai das proibições; tradução colapsa.
+describe("normalizarAlvo — alertas_de_dado (Q6)", () => {
+  it("separa o alerta e colapsa a tradução da canônica do contrato", () => {
+    const { alvo, avisos } = normalizarAlvo(
+      {
+        alvos: [{ id: "obj_1", profundidade_de_prova: "afirmacao" }],
+        proibido_neste_toque: [
+          "No artificial urgency",
+          "No support channel documented in the research. Cannot claim support quality without evidence.",
+          "Do not promise delivery times",
+        ],
+        alertas_de_dado: ["Shipping SLA not found"],
+      },
+      w1,
+      catalogo,
+      [],
+    )
+    expect(alvo.proibido_neste_toque).toEqual(["urgência artificial", "Do not promise delivery times"])
+    expect(alvo.alertas_de_dado).toEqual(["Shipping SLA not found", "No support channel documented in the research. Cannot claim support quality without evidence."])
+    expect(avisos.some((a) => /tradução/.test(a))).toBe(true)
+  })
+})

@@ -86,6 +86,33 @@ export function politicasVazias(p: PoliticasDaLoja | null | undefined): boolean 
   return !p || (!p.troca && !p.frete)
 }
 
+/** O que as políticas gravadas cobrem — para a telemetria dizer o que faltou. */
+export function coberturaDasPoliticas(p: PoliticasDaLoja | null | undefined): string[] {
+  const out: string[] = []
+  if (p?.troca) out.push("troca")
+  if (p?.frete) out.push("frete")
+  return out
+}
+
+const UM_DIA_MS = 24 * 60 * 60 * 1000
+
+/**
+ * S2 (19/09): o pré-passo do Seletor lê as páginas quando falta troca OU
+ * frete, e no máximo UMA vez por dia por loja. Lê o carimbo do JSONB CRU
+ * porque `normalizarPoliticas` devolve null para uma captura que nada
+ * achou e não errou — e é justamente essa loja que não pode ser relida a
+ * cada geração. Carimbo ilegível conta como "nunca capturado".
+ */
+export function precisaCapturarPoliticas(raw: unknown, agora: Date): boolean {
+  const p = normalizarPoliticas(raw)
+  if (p?.troca && p?.frete) return false
+  const carimbo = obj(raw)?.capturado_em
+  if (typeof carimbo !== "string") return true
+  const t = Date.parse(carimbo)
+  if (!Number.isFinite(t)) return true
+  return agora.getTime() - t >= UM_DIA_MS
+}
+
 /**
  * As URLs candidatas, na ordem de tentativa. As duas primeiras são o padrão
  * do Shopify (62 das 63 lojas da carteira); as demais cobrem loja com

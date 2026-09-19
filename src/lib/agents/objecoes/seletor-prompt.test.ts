@@ -14,12 +14,23 @@ describe("DEFAULT_SELETOR_USER — prefixo estável", () => {
     for (const tag of ["{{brand_name}}", "{{catalogo_da_loja}}", "{{oferta_e_produtos}}"]) {
       expect(tpl.indexOf(tag), tag).toBeLessThan(marca)
     }
-    for (const tag of ["{{email_number}}", "{{flow_type}}", "{{contrato_do_toque}}", "{{intencao_do_toque}}", "{{ja_atacadas}}", "{{correcoes}}"]) {
+    for (const tag of ["{{email_number}}", "{{flow_type}}", "{{contrato_do_toque}}", "{{intencao_do_toque}}", "{{ja_atacadas}}", "{{correcoes}}", "{{orientacao_do_coo}}"]) {
       expect(tpl.indexOf(tag), tag).toBeGreaterThan(marca)
     }
   })
   it("toda var do template tem origem declarada", () => {
     const vars = [...tpl.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1])
     for (const v of vars) expect(SELETOR_ORIGINS[v], v).toBeDefined()
+  })
+})
+
+// S4 (19/09): a orientação do COO é bloco MUTÁVEL (depois da marca) e o
+// contrato de saída pede `alertas_de_dado` separado das proibições (Q6).
+describe("DEFAULT_SELETOR_SYSTEM — uma voz por saída", () => {
+  it("o output declara alertas_de_dado e a regra 12 manda separar", async () => {
+    const { DEFAULT_SELETOR_SYSTEM } = await import("./seletor-prompt")
+    expect(DEFAULT_SELETOR_SYSTEM).toContain('"alertas_de_dado"')
+    expect(DEFAULT_SELETOR_SYSTEM).toMatch(/NÃO é proibição/)
+    expect(DEFAULT_SELETOR_SYSTEM).toContain("<orientacao_do_coo>")
   })
 })

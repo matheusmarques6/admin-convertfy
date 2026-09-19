@@ -90,3 +90,29 @@ describe("montarInsumos / politicasParaPrompt / normalizarPoliticas", () => {
     expect(normalizarPoliticas({ erros: [{ url: "https://x.com/policies/refund-policy", status: 404, motivo: "HTTP 404" }] })?.erros[0].status).toBe(404)
   })
 })
+
+// S2 (19/09): o pré-passo do Seletor lê as páginas quando falta troca OU
+// frete, no máximo uma vez por dia — pelo carimbo do JSONB CRU.
+describe("precisaCapturarPoliticas / coberturaDasPoliticas", async () => {
+  const { precisaCapturarPoliticas, coberturaDasPoliticas } = await import("./politicas")
+  const agora = new Date("2026-09-19T12:00:00Z")
+  it("sem nada gravado: captura", () => {
+    expect(precisaCapturarPoliticas(null, agora)).toBe(true)
+  })
+  it("troca E frete cobertos: não captura", () => {
+    const p = { troca: { dias: 30, url: "https://x/policies/refund-policy" }, frete: { gratis: true, url: "https://x/policies/shipping-policy" }, capturado_em: "2026-01-01T00:00:00Z", fonte: "pagina_publica", erros: [] }
+    expect(precisaCapturarPoliticas(p, agora)).toBe(false)
+    expect(coberturaDasPoliticas(p as never)).toEqual(["troca", "frete"])
+  })
+  it("captura de HOJE que nada achou (normaliza para null) NÃO é relida", () => {
+    const p = { troca: null, frete: null, capturado_em: "2026-09-19T08:00:00Z", fonte: "pagina_publica", erros: [] }
+    expect(precisaCapturarPoliticas(p, agora)).toBe(false)
+  })
+  it("captura de ontem só com troca: relê", () => {
+    const p = { troca: { dias: 30, url: "https://x/policies/refund-policy" }, frete: null, capturado_em: "2026-09-18T08:00:00Z", fonte: "pagina_publica", erros: [] }
+    expect(precisaCapturarPoliticas(p, agora)).toBe(true)
+  })
+  it("carimbo ilegível conta como nunca capturado", () => {
+    expect(precisaCapturarPoliticas({ troca: null, frete: null, capturado_em: "ontem", erros: [] }, agora)).toBe(true)
+  })
+})

@@ -32,6 +32,7 @@ import { ROUTES } from "@/lib/routes"
 import type { CatalogoDeObjecoes } from "@/lib/agents/objecoes/vocabulario"
 import type { PoliticasDaLoja } from "@/lib/stores/politicas"
 import { fichaVazia, type FichaOperacional } from "@/lib/stores/ficha-operacional"
+import type { CampoDaFicha } from "@/lib/stores/pendencia-da-contradicao"
 import { cn } from "@/lib/utils"
 
 // ─── Pull ────────────────────────────────────────────────
@@ -1261,11 +1262,39 @@ export function FichaOperacionalCard({
         <FichaInput label="Suporte — canal" value={form.suporte_canal} onChange={set("suporte_canal")} placeholder="WhatsApp" />
         <FichaInput label="Suporte — horário" value={form.suporte_horario} onChange={set("suporte_horario")} placeholder="seg–sex, 9h–18h" />
       </div>
+      {/* S3 (19/09): o que o Seletor pediu e a ficha não tem. Escrito pelo
+          agente a cada geração (contradição + alerta de dado), apagado
+          quando o campo ganha texto. A frequência ordena o que preencher. */}
+      {(ficha?.pendencias?.length ?? 0) > 0 && (
+        <div className="mt-3 rounded-md border p-3" style={{ borderColor: "rgba(217,119,6,0.35)", background: "rgba(251,191,36,0.06)" }}>
+          <div className="text-[10.5px] font-semibold text-amber-700 uppercase tracking-wide mb-1.5">O Seletor precisa de</div>
+          <ul className="space-y-1">
+            {ficha!.pendencias!.map((p) => (
+              <li key={p.campo} className="text-[12px] text-slate-700">
+                <span className="font-semibold">{ROTULO_CAMPO_FICHA[p.campo]}</span>
+                <span className="text-slate-400"> · pedido em {p.frequencia} geração(ões){p.flows.length ? ` (${p.flows.join(", ")})` : ""}</span>
+                {p.motivo ? <div className="text-[11px] text-slate-500 truncate" title={p.motivo}>{p.motivo}</div> : null}
+              </li>
+            ))}
+          </ul>
+          <div className="text-[11px] text-slate-400 mt-1.5">Preencher o campo acima e salvar fecha a pendência.</div>
+        </div>
+      )}
       <div className="text-[11px] text-slate-400 mt-2">
         Só o que está aqui pode ser afirmado nos e-mails como fato. Depois de salvar, &ldquo;Regenerar objeções&rdquo; refaz o catálogo com a ficha.
       </div>
     </IcpBlock>
   )
+}
+
+const ROTULO_CAMPO_FICHA: Record<CampoDaFicha, string> = {
+  incentivo: "Incentivo ativo",
+  troca: "Troca / devolução",
+  envio: "Envio (prazo, frete)",
+  garantia: "Garantia",
+  prova: "Prova (avaliações, nota)",
+  pagamento: "Pagamento / checkout",
+  suporte: "Suporte",
 }
 
 // ─── PoliticasPublicasCard (Passo 16) ─────────────────────

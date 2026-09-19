@@ -280,6 +280,11 @@ export interface AlvoDoEmail {
   /** Fatos que PODEM ser usados, cada um com a origem entre parênteses. */
   insumos_permitidos?: string[]
   contradicoes?: ContradicaoDoAlvo[]
+  /**
+   * 19/09 (Q6): o que a pesquisa NÃO confirmou, separado das proibições —
+   * é matéria da ficha operacional, não do redator.
+   */
+  alertas_de_dado?: string[]
 }
 
 // ── Helpers de domínio ──────────────────────────────────────────────────

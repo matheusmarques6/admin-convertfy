@@ -13,7 +13,8 @@ import { z } from "zod"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { marcarVerificadoPorEdicao } from "@/lib/agents/objecoes/catalogo-regras"
-import { aplicarFichaAoCatalogo, normalizarFicha } from "@/lib/stores/ficha-operacional"
+import { aplicarFichaAoCatalogo, limparPendenciasResolvidas, normalizarFicha } from "@/lib/stores/ficha-operacional"
+import { normalizarPendencias } from "@/lib/stores/pendencia-da-contradicao"
 import type { CatalogoDeObjecoes } from "@/lib/agents/objecoes/vocabulario"
 import { logger } from "@/lib/logger"
 
@@ -212,15 +213,29 @@ export async function PATCH(
     // Catalogador rodar de novo. Fail-open no catálogo.
     if ("ficha_operacional" in update) {
       const ficha = normalizarFicha(update.ficha_operacional)
-      update.ficha_operacional = ficha
-        ? { ...ficha, atualizado_em: new Date().toISOString(), atualizado_por: (user as { email?: string | null; id?: string } | null)?.email ?? (user as { id?: string } | null)?.id ?? null }
-        : null
       try {
         const { data: row } = await admin
           .from("client_stores")
-          .select("objection_catalog")
+          .select("objection_catalog, ficha_operacional")
           .eq("id", storeId)
           .maybeSingle()
+        // S3 (19/09): o formulário não carrega `pendencias`; sem esta fusão,
+        // salvar a ficha apagaria a lista que o Seletor escreveu. Fica o que
+        // ainda não foi preenchido — campo com texto fecha a pendência dele.
+        const existentes = normalizarPendencias(
+          ((row as { ficha_operacional?: { pendencias?: unknown } | null } | null)?.ficha_operacional ?? null)?.pendencias,
+        )
+        const pendencias = ficha ? limparPendenciasResolvidas(ficha, existentes) : existentes
+        update.ficha_operacional = ficha
+          ? {
+              ...ficha,
+              ...(pendencias.length > 0 ? { pendencias } : {}),
+              atualizado_em: new Date().toISOString(),
+              atualizado_por: (user as { email?: string | null; id?: string } | null)?.email ?? (user as { id?: string } | null)?.id ?? null,
+            }
+          : pendencias.length > 0
+            ? { pendencias }
+            : null
         const catalogo = (row as { objection_catalog?: unknown } | null)?.objection_catalog
         if (ficha && catalogo && typeof catalogo === "object") {
           const r = aplicarFichaAoCatalogo(catalogo as CatalogoDeObjecoes, ficha)

@@ -17,6 +17,7 @@
 import { aliviadorAdmissivel, type IntentContract } from "./intent-contract"
 import { traduzirInsumo } from "./linguagem-do-comprador"
 import { objecoesElegiveisNoFlow } from "./catalogo-regras"
+import { separarAlertasDeDado } from "./alertas-de-dado"
 import { chaveDeTexto, dedupePorChave } from "./texto"
 import {
   MODOS_SEM_OBJECAO,
@@ -115,10 +116,16 @@ export function normalizarAlvo(
   // Dedupe por chave normalizada (09/09): a mesma regra em dois idiomas ou
   // com pontuação diferente passava pelo Set — 17 proibições, várias em
   // dobro. A primeira forma (a do contrato) é a que fica.
-  const proibidas = dedupePorChave([
-    ...contrato.proibicoes,
-    ...arr(o.proibido_neste_toque).map(str).filter(Boolean),
-  ])
+  // 19/09 (Q6): alerta de pesquisa ("not documented", "verify before") sai
+  // das proibições e vai para `alertas_de_dado` — alimenta a pendência da
+  // ficha; a tradução de uma canônica do contrato colapsa na forma PT.
+  const separadas = separarAlertasDeDado(
+    [...contrato.proibicoes, ...arr(o.proibido_neste_toque).map(str).filter(Boolean)],
+    arr(o.alertas_de_dado).map(str).filter(Boolean),
+  )
+  const proibidas = separadas.proibicoes
+  if (separadas.traducoes_colapsadas > 0) avisos.push(`${separadas.traducoes_colapsadas} proibição(ões) era(m) tradução de uma canônica do contrato — colapsada(s)`)
+  if (separadas.alertas_de_dado.length > 0) avisos.push(`${separadas.alertas_de_dado.length} alerta(s) de dado separado(s) das proibições`)
   // Insumos PERMITIDOS: só com origem declarada entre parênteses — fato
   // sem origem é o que o modelo inventa. Teto 12.
   //
@@ -175,6 +182,7 @@ export function normalizarAlvo(
       incentivo: incentivoDoToque(incentivo),
       insumos_permitidos: insumos,
       contradicoes: [],
+      alertas_de_dado: separadas.alertas_de_dado,
     },
     avisos,
   }

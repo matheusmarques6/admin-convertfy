@@ -21,6 +21,7 @@
  */
 
 import type { CatalogoDeObjecoes, Incentivo, ObjecaoCatalogada } from "@/lib/agents/objecoes/vocabulario"
+import { normalizarPendencias, type CampoDaFicha, type PendenciaDaFicha } from "./pendencia-da-contradicao"
 
 export interface FichaIncentivo {
   existe: boolean
@@ -40,6 +41,12 @@ export interface FichaOperacional {
   suporte?: { canal?: string | null; horario?: string | null } | null
   atualizado_em?: string | null
   atualizado_por?: string | null
+  /**
+   * 19/09 (S3): o que o Seletor pediu e a ficha não tem — escrito pelo
+   * agente, apagado pelo PATCH quando o campo ganha texto. Nunca vai ao
+   * prompt do Catalogador (`fichaParaPrompt` ignora).
+   */
+  pendencias?: PendenciaDaFicha[]
 }
 
 const str = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v.trim() : null)
@@ -73,7 +80,33 @@ export function normalizarFicha(raw: unknown): FichaOperacional | null {
     atualizado_em: str(r.atualizado_em),
     atualizado_por: str(r.atualizado_por),
   }
-  return fichaVazia(out) ? null : out
+  const pendencias = normalizarPendencias(r.pendencias)
+  if (pendencias.length > 0) out.pendencias = pendencias
+  // Ficha sem fato nenhum mas COM pendência sobrevive: a pendência é o que
+  // diz o que preencher, e ela nasce justamente quando a ficha está vazia.
+  return fichaVazia(out) && pendencias.length === 0 ? null : out
+}
+
+/** O campo da ficha tem valor? (a mesma régua de `fichaVazia`, por campo) */
+export function campoPreenchido(f: FichaOperacional, campo: CampoDaFicha): boolean {
+  switch (campo) {
+    case "incentivo": return !!f.incentivo
+    case "troca": return !!(f.troca && (f.troca.prazo_dias != null || f.troca.texto))
+    case "envio": return !!(f.envio && (f.envio.prazo || f.envio.frete_gratis_acima || f.envio.texto))
+    case "garantia": return !!f.garantia?.texto
+    case "prova": return !!(f.prova && (f.prova.n_reviews != null || f.prova.nota != null))
+    case "pagamento": return !!(f.pagamento && (f.pagamento.metodos?.length || f.pagamento.checkout))
+    case "suporte": return !!(f.suporte && (f.suporte.canal || f.suporte.horario))
+  }
+}
+
+/**
+ * Pendência cujo campo ganhou texto sai; as outras ficam. Roda no PATCH da
+ * ficha, com as pendências que ESTAVAM no banco (o formulário não as
+ * carrega — sem esta fusão, salvar a ficha apagaria a lista inteira).
+ */
+export function limparPendenciasResolvidas(f: FichaOperacional, existentes: readonly PendenciaDaFicha[]): PendenciaDaFicha[] {
+  return existentes.filter((p) => !campoPreenchido(f, p.campo))
 }
 
 /** Nenhum campo com valor. */
