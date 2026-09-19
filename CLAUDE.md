@@ -10438,3 +10438,56 @@ por igual, deixando 334px de coluna para 190px de e-mail — o olho atravessava
 um vão de 140px entre uma informação e a seguinte (corrigido com `width:100%`
 só na primeira coluna). Dívida pré-existente registrada: **outros 12 usos dos
 mesmos tokens inexistentes** em componentes do CRM.
+
+## Formulários estilo Typeform — auditoria contra o banco e as últimas lacunas (19/09)
+
+Depois dos oito PRs do handoff (`design_handoff_forms`), a revisão pedida
+foi "nada pulado, tudo funcional, integrado com o NOSSO banco". Medido em
+produção (`ppygkfeffknypfncsnlv`), não suposto: todas as colunas que as
+rotas novas selecionam existem (`crm_forms.submissions_count/
+has_unpublished_changes/draft_schema/settings/locale`, `crm_form_fields.
+media`, `form_versions`, `crm_form_submissions.utm_*`), os embeds
+`lead:crm_leads`, `deal:deals` e `stage:pipeline_stages` casam com as FKs
+reais, e as duas RPCs (`crm_forms_resumo(p_org, p_dias)`,
+`form_funnel_stats(p_form_id, p_desde, p_ate)`) existem com a assinatura
+que o código chama. O CHECK de `field_type` já tem os quatro tipos novos.
+`pnpm run build` completo passou (`EXIT=0`) — o `tsc` não vê a régua de
+exports de rota, e foi por isso que o build entrou na auditoria.
+
+**O que o handoff pedia e ainda faltava, fechado nesta rodada:**
+
+- **Recall `@`** (`lib/forms/recall-menu.ts`, puro, 9 testes +
+  `campo-com-recall.tsx`): digitar `@` na pergunta ou na descrição abre a
+  lista e insere `{{chave}} `. Só o que vem ANTES entra (recall de
+  pergunta posterior sai vazio na tela — mesma régua do
+  `recall_da_mesma_tela`); a chave é a que `blocoDoRecall` resolve
+  (alias > rótulo único > ref — rótulo repetido resolveria o PRIMEIRO
+  bloco, que pode ser outro); campo oculto vale em toda pergunta; `@` no
+  meio de `joao@loja` não abre. O filtro ignora pontuação porque "email"
+  tem de achar "E-mail".
+- **Descrição da pergunta**: `crm_form_fields.description` era desenhada
+  pelo renderer e NÃO tinha campo no inspetor — o operador só a editava
+  por SQL.
+- **Webhook**: `settings.webhook_url/secret` (coluna, não schema) era
+  lido pelo submit desde sempre e não tinha UI. Entrou como campo NOMEADO
+  no PATCH (`webhook`), com merge na coluna — a mesma razão do
+  `destino_qualificado`: a coluna guarda `abandono_stage_id`, e aceitar o
+  objeto inteiro apagaria a fila do abandono no primeiro save.
+- **Idioma**: `crm_forms.locale` existia sem consumidor nenhum. Antes de
+  expor o select ele ganhou um: o `lang` do formulário conversacional
+  (leitor de tela, corretor, teclado). Sem consumidor seria campo
+  fantasma, que a espinha do editor existe para impedir.
+- **Logo por upload**: o `MediaField` das telas, com `somenteImagem`
+  (SVG fica FORA do `accept` porque a rota de mídia só aceita PNG/JPG/
+  WebP/GIF — oferecer SVG e recusar no servidor é promessa quebrada).
+
+**Diferenças declaradas com o protótipo, e o motivo**: sem "Validar
+número no WhatsApp"/"Bloquear descartáveis" (não há serviço por trás —
+toggle que não valida nada é pior que nenhum); sem segmento Vazio/
+Preenchido/Erro no canvas (a prévia é o renderer de PRODUÇÃO, e simular
+estado exigiria um segundo renderer que divergiria); histórico de
+versões só leitura (restaurar reescreveria `crm_form_fields` por cima do
+que está no ar); agenda com horários comerciais fixos quando o final não
+usa a agenda real; embed com `data-convertfy-*` (o script já está em
+sites de cliente). Pendência de deploy: `qrcode` entrou no package.json
+e precisa de `pnpm install`.

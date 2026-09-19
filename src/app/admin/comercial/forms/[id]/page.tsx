@@ -32,6 +32,8 @@ import { ROUTES } from "@/lib/routes"
 import { useSWRConfig } from "swr"
 import { CabecalhoDoEditor, type AbaDoEditor } from "@/components/forms/cabecalho-do-editor"
 import { SeletorDeTipos } from "@/components/forms/seletor-de-tipos"
+import { CampoComRecall } from "@/components/forms/campo-com-recall"
+import { opcoesDeRecall, type OpcaoDeRecall } from "@/lib/forms/recall-menu"
 import { TipoIcone } from "@/components/forms/tipo-icone"
 import { nomeDoTipo, perguntaNova, tipoTemOpcoes } from "@/lib/forms/tipos-de-pergunta"
 import { AUTOSAVE_MS, podeSalvarSozinho, type EstadoDoSave } from "@/lib/forms/autosave"
@@ -66,7 +68,7 @@ import { normalizarDestino } from "@/lib/forms/destino"
 import type { DestinoDoFinal } from "@/types/forms-conversational"
 import { montarVersao } from "@/lib/forms/publicar"
 import { MediaField } from "@/components/forms/media-field"
-import type { MidiaDaTela } from "@/lib/forms/midia"
+import { normalizarMidia, type MidiaDaTela } from "@/lib/forms/midia"
 import { remapearRefs } from "@/lib/forms/remapear-refs"
 import { normalizarSchema } from "@/lib/forms/schema"
 import { contarProblemas, diagnosticarFluxo } from "@/lib/forms/diagnostico-fluxo"
@@ -170,6 +172,7 @@ interface FormDetail {
     success_message: string | null
     redirect_url: string | null
     settings?: Record<string, unknown> | null
+    locale?: string | null
     logo_url: string | null
     facebook_pixel_id: string | null
     google_ads_id: string | null
@@ -335,6 +338,9 @@ export default function FormEditorPage({
    * as três linhas em produção têm hoje); `theme.hideLogo` = nenhuma.
    */
   const [logoUrl, setLogoUrl] = useState("")
+  /** `settings.webhook_url/secret` da coluna — o n8n que o submit avisa. */
+  const [webhook, setWebhook] = useState<{ url: string; secret: string }>({ url: "", secret: "" })
+  const [locale, setLocale] = useState("pt-BR")
   const [fields, setFields] = useState<FormField[]>([])
   const [tracking, setTracking] = useState<TrackingState>(EMPTY_TRACKING)
 
@@ -405,6 +411,14 @@ export default function FormEditorPage({
     )
     setTheme(data.form.theme ?? {})
     setLogoUrl(data.form.logo_url ?? "")
+    {
+      const s = (data.form.settings as Record<string, unknown> | null) ?? {}
+      setWebhook({
+        url: typeof s.webhook_url === "string" ? s.webhook_url : "",
+        secret: typeof s.webhook_secret === "string" ? s.webhook_secret : "",
+      })
+    }
+    setLocale(data.form.locale || "pt-BR")
     setFields(data.fields)
     // `indisponivel` = existe versão publicada e a leitura dela falhou.
     // Hidratar com schema vazio ali faria o save seguinte apagar os
@@ -823,6 +837,8 @@ export default function FormEditorPage({
           success_message: successMessage || null,
           redirect_url: redirectUrl || null,
           destino_qualificado: destinoQualificado,
+          webhook: webhook.url.trim() ? { url: webhook.url.trim(), secret: webhook.secret.trim() || null } : null,
+          locale,
           display_mode: displayMode,
           fields: fields.map((f, i) => ({
             ...f,
@@ -856,7 +872,7 @@ export default function FormEditorPage({
             ? { meta_capi_token: tracking.meta_capi_token.trim() }
             : {}),
     }),
-    [name, slug, description, pipelineId, stageId, theme, logoUrl, successMessage, redirectUrl, destinoQualificado, displayMode, fields, fluxo, rascunho, fluxoIndisponivel, tracking],
+    [name, slug, description, pipelineId, stageId, theme, logoUrl, successMessage, redirectUrl, destinoQualificado, webhook, locale, displayMode, fields, fluxo, rascunho, fluxoIndisponivel, tracking],
   )
   const assinaturaDoSave = useMemo(() => JSON.stringify(corpoDoSave), [corpoDoSave])
   /** A assinatura do que está GRAVADO. `null` = ainda sem linha de base. */
@@ -1545,6 +1561,7 @@ export default function FormEditorPage({
                 logoUrl={logoUrl}
                 setLogoUrl={setLogoUrl}
                 modo={displayMode}
+                formId={id}
               />
             </div>
             <div className="hidden min-w-0 flex-1 flex-col bg-slate-100 dark:bg-[#0A0B12] lg:flex">
@@ -1600,6 +1617,10 @@ export default function FormEditorPage({
                   onSettings={atualizarSettings}
                   etapas={stagesForPipeline}
                   desligado={fluxoIndisponivel}
+                  webhook={webhook}
+                  onWebhook={setWebhook}
+                  locale={locale}
+                  onLocale={setLocale}
                 />
               </div>
             </div>
@@ -1923,6 +1944,7 @@ function Inspetor({
             semMoldura
             conversacional={modo === "conversational"}
             formId={formId}
+            recall={opcoesDeRecall(fluxo, ref)}
           />
           {modo === "conversational" && tela && (
             <button
@@ -2170,11 +2192,14 @@ function StyleTab({
   logoUrl,
   setLogoUrl,
   modo,
+  formId,
 }: {
   theme: FormTheme
   setTheme: (fn: FormTheme | ((t: FormTheme) => FormTheme)) => void
   logoUrl: string
   setLogoUrl: (v: string) => void
+  /** Para subir a logo pelo mesmo upload das telas. */
+  formId?: string
   /**
    * O formato muda o que cada controle SIGNIFICA: no conversacional a
    * tela é a página (não existe card), e chamar o fundo de "página
@@ -2211,7 +2236,7 @@ function StyleTab({
           )}
         </div>
         <Field
-          label="URL da logo"
+          label="Logo própria"
           hint={
             theme.hideLogo
               ? "Ignorada enquanto «Sem logo» estiver ligado."
@@ -2220,14 +2245,18 @@ function StyleTab({
                 : "Logo própria — substitui a da Convertfy."
           }
         >
-          <input
-            type="url"
-            value={logoUrl}
-            onChange={(e) => setLogoUrl(e.target.value)}
-            placeholder="https://… (em branco = logo da Convertfy)"
-            className="crm-input w-full"
-            disabled={Boolean(theme.hideLogo)}
-          />
+          {theme.hideLogo ? (
+            <input type="url" value={logoUrl} readOnly disabled className="crm-input w-full" />
+          ) : (
+            <MediaField
+              formId={formId}
+              somenteImagem
+              rotulo=""
+              valor={logoUrl ? normalizarMidia({ url: logoUrl }) : null}
+              onChange={(m) => setLogoUrl(m?.url ?? "")}
+              ajuda="PNG ou WebP com fundo transparente fica melhor sobre qualquer tema."
+            />
+          )}
         </Field>
         {!theme.hideLogo && (
           <>
@@ -3746,6 +3775,7 @@ function FieldEditor({
   semMoldura,
   conversacional,
   formId,
+  recall,
 }: {
   field: FormField
   /** O bloco do rascunho — onde moram `outro`, `embaralhar`, `pontos`, `escala`. */
@@ -3781,6 +3811,8 @@ function FieldEditor({
   conversacional?: boolean
   /** Para o upload. Ausente enquanto o formulário não tem id. */
   formId?: string
+  /** O que `@` pode puxar nesta pergunta (as anteriores + campos ocultos). */
+  recall?: OpcaoDeRecall[]
 }) {
   const totalCustomFields = leadCustomFields.length + dealCustomFields.length
   const [open, setOpen] = useState(false)
@@ -3852,18 +3884,20 @@ function FieldEditor({
           />
         </span>
         )}
-        <input
-          type="text"
-          placeholder={semMoldura ? "O que você quer perguntar?" : "Label do campo"}
-          aria-label="Pergunta"
-          value={field.label}
-          onChange={(e) => onChange({ label: e.target.value })}
-          className={
-            semMoldura
-              ? "min-w-0 flex-1 rounded-[5px] border border-black/[0.10] bg-white px-2 py-1.5 text-[13px] font-medium text-slate-900 outline-none focus-visible:border-blue-500 dark:border-white/[0.14] dark:bg-white/[0.04] dark:text-white"
-              : "flex-1 min-w-0 bg-transparent text-[13px] font-medium text-slate-900 dark:text-white outline-none"
-          }
-        />
+        <div className="min-w-0 flex-1">
+          <CampoComRecall
+            placeholder={semMoldura ? "O que você quer perguntar?" : "Label do campo"}
+            ariaLabel="Pergunta"
+            value={field.label}
+            onChange={(v) => onChange({ label: v })}
+            opcoes={recall ?? []}
+            className={
+              semMoldura
+                ? "w-full rounded-[5px] border border-black/[0.10] bg-white px-2 py-1.5 text-[13px] font-medium text-slate-900 outline-none focus-visible:border-blue-500 dark:border-white/[0.14] dark:bg-white/[0.04] dark:text-white"
+                : "w-full bg-transparent text-[13px] font-medium text-slate-900 dark:text-white outline-none"
+            }
+          />
+        </div>
         {podeJuntar && onAgrupar && (
           <button
             type="button"
@@ -3959,6 +3993,26 @@ function FieldEditor({
             de página única ela não é desenhada por ninguém, então nem
             aparece: campo que o renderizador ignora é campo fantasma.
           */}
+          {semMoldura && (
+            <Field
+              label="Descrição"
+              hint={
+                (recall?.length ?? 0) > 0
+                  ? "Aparece abaixo da pergunta. Digite @ para puxar uma resposta anterior."
+                  : "Aparece abaixo da pergunta, em texto menor."
+              }
+            >
+              <CampoComRecall
+                multiline
+                rows={2}
+                value={field.description ?? ""}
+                onChange={(v) => onChange({ description: v || null })}
+                opcoes={recall ?? []}
+                placeholder="Ex.: Pode ser o site ou o @ da loja."
+                className="crm-input w-full text-[11.5px]"
+              />
+            </Field>
+          )}
           {conversacional && (
             <>
               <MediaField

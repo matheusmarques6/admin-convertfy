@@ -33,11 +33,29 @@ const TEXTOS_ROTULOS: Array<{ chave: ChaveDeTexto; rotulo: string }> = [
   { chave: "fechado", rotulo: "Formulário fechado" },
 ]
 
+const IDIOMAS: Array<{ codigo: string; nome: string }> = [
+  { codigo: "pt-BR", nome: "Português (Brasil)" },
+  { codigo: "pt-PT", nome: "Português (Portugal)" },
+  { codigo: "en-US", nome: "English (US)" },
+  { codigo: "en-GB", nome: "English (UK)" },
+  { codigo: "es-ES", nome: "Español" },
+  { codigo: "de-DE", nome: "Deutsch" },
+  { codigo: "fr-FR", nome: "Français" },
+  { codigo: "it-IT", nome: "Italiano" },
+  { codigo: "pl-PL", nome: "Polski" },
+  { codigo: "da-DK", nome: "Dansk" },
+  { codigo: "nl-NL", nome: "Nederlands" },
+]
+
 export function ConfigurarExtras({
   fluxo,
   onSettings,
   etapas,
   desligado,
+  webhook,
+  onWebhook,
+  locale,
+  onLocale,
 }: {
   fluxo: FormSchema
   /** Merge em `settings` do rascunho. */
@@ -45,6 +63,12 @@ export function ConfigurarExtras({
   etapas: Array<{ id: string; name: string }>
   /** Fluxo indisponível: mostra, não deixa editar. */
   desligado?: boolean
+  /** O n8n avisado a cada envio — mora na COLUNA `settings`, não no schema. */
+  webhook: { url: string; secret: string }
+  onWebhook: (w: { url: string; secret: string }) => void
+  /** `crm_forms.locale` — vira o `lang` da página pública e o idioma da versão. */
+  locale: string
+  onLocale: (l: string) => void
 }) {
   const settings: Settings = fluxo.settings ?? {}
   const faixas = settings.faixas ?? []
@@ -177,6 +201,42 @@ export function ConfigurarExtras({
         </div>
       </section>
 
+      {/* ── Depois do envio ── */}
+      <section>
+        <Titulo
+          titulo="Depois do envio"
+          apoio="O lead e o negócio entram no CRM sempre. Aqui é o que MAIS acontece a cada envio."
+        />
+        <div className="mt-2 space-y-2">
+          <label className="block">
+            <span className="block text-[11px] font-medium text-slate-700 dark:text-white/75">Webhook (n8n, Zapier, Make)</span>
+            <input
+              type="url"
+              value={webhook.url}
+              onChange={(e) => onWebhook({ ...webhook, url: e.target.value })}
+              placeholder="https://n8n.suaempresa.com/webhook/formulario"
+              className="crm-input mt-1 w-full font-mono text-[11.5px]"
+            />
+            <span className="mt-0.5 block text-[10.5px] text-slate-500 dark:text-white/45">
+              Recebe um POST em JSON com as respostas legíveis, o lead, o negócio e as UTMs. Falha no
+              webhook nunca derruba o cadastro — o lead já está no CRM.
+            </span>
+          </label>
+          {webhook.url.trim() && (
+            <label className="block">
+              <span className="block text-[11px] font-medium text-slate-700 dark:text-white/75">Segredo da assinatura</span>
+              <input
+                type="text"
+                value={webhook.secret}
+                onChange={(e) => onWebhook({ ...webhook, secret: e.target.value })}
+                placeholder="opcional — assina o corpo em X-Convertfy-Signature (HMAC SHA-256)"
+                className="crm-input mt-1 w-full font-mono text-[11.5px]"
+              />
+            </label>
+          )}
+        </div>
+      </section>
+
       {/* ── Textos do sistema ── */}
       <section>
         <Titulo titulo="Textos do sistema" apoio="O que o formulário diz por conta própria. Vazio = o padrão." />
@@ -257,6 +317,26 @@ export function ConfigurarExtras({
               onChange={(e) => onSettings({ limite_envios: e.target.value ? Number(e.target.value) : undefined })}
               className="crm-input w-[96px] text-right text-[11.5px]"
             />
+          </label>
+          <label className="flex items-center justify-between gap-3 text-[12px] text-slate-800 dark:text-white/85">
+            <span>
+              Idioma
+              <span className="block text-[10.5px] font-normal text-slate-500 dark:text-white/45">
+                Declara o idioma da página pública: leitor de tela, corretor e teclado do celular
+                seguem ele. Os textos do sistema acima continuam sendo os seus.
+              </span>
+            </span>
+            <select
+              value={IDIOMAS.some((i) => i.codigo === locale) ? locale : "pt-BR"}
+              onChange={(e) => onLocale(e.target.value)}
+              className="crm-input w-[180px] text-[11.5px]"
+            >
+              {IDIOMAS.map((i) => (
+                <option key={i.codigo} value={i.codigo}>
+                  {i.nome}
+                </option>
+              ))}
+            </select>
           </label>
         </div>
       </section>

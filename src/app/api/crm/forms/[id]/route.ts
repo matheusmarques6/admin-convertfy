@@ -43,7 +43,7 @@ export async function GET(
          facebook_pixel_id, google_ads_id, google_analytics_id,
          meta_capi_token, meta_test_event_code, google_ads_conversion_label,
          tracking_config, display_mode, draft_schema, published_version_id, has_unpublished_changes,
-         settings,
+         settings, locale,
          submissions_count, views_count, created_at, updated_at,
          pipeline:pipelines(id, name, scope, color),
          stage:pipeline_stages!crm_forms_stage_id_fkey(id, name, color)`,
@@ -245,6 +245,15 @@ const patchFormSchema = z.object({
    * editor — que não conhece essa chave — apagá-la em silêncio.
    */
   destino_qualificado: z.record(z.string(), z.unknown()).nullable().optional(),
+  /**
+   * O n8n que o submit avisa (`settings.webhook_url/secret`). NOMEADO pelo
+   * mesmo motivo do destino: merge na coluna, nunca replace.
+   */
+  webhook: z
+    .object({ url: z.string().url().max(2000), secret: z.string().max(200).nullable().optional() })
+    .nullable()
+    .optional(),
+  locale: z.string().min(2).max(10).regex(/^[a-z]{2}(-[A-Z]{2})?$/).optional(),
   // Quando fields fornecido, faz replace total: deleta os antigos e
   // insere os novos. Editor envia o array completo a cada save.
   fields: z.array(fieldUpsertSchema).optional(),
@@ -263,7 +272,7 @@ export async function PATCH(
 
     const body = await request.json()
     const parsed = patchFormSchema.parse(body)
-    const { fields, redirect_url, logo_url, meta_capi_token, draft_schema, destino_qualificado, ...formData } = parsed
+    const { fields, redirect_url, logo_url, meta_capi_token, draft_schema, destino_qualificado, webhook, ...formData } = parsed
 
     // Coerce empty string -> null pra colunas URL.
     const update: Record<string, unknown> = { ...formData }
@@ -273,7 +282,7 @@ export async function PATCH(
     // Destino do qualificado: MERGE em `settings`, nunca replace — a
     // mesma coluna guarda o `abandono_stage_id`, e sobrescrevê-la
     // desligaria a fila do abandono sem nada dizer.
-    if (destino_qualificado !== undefined) {
+    if (destino_qualificado !== undefined || webhook !== undefined) {
       const { data: atual } = await admin
         .from("crm_forms")
         .select("settings")
@@ -281,9 +290,21 @@ export async function PATCH(
         .eq("org_id", orgId)
         .maybeSingle()
       const settings = { ...((atual?.settings as Record<string, unknown>) ?? {}) }
-      const limpo = normalizarDestino(destino_qualificado)
-      if (limpo) settings.destino_qualificado = limpo
-      else delete settings.destino_qualificado
+      if (destino_qualificado !== undefined) {
+        const limpo = normalizarDestino(destino_qualificado)
+        if (limpo) settings.destino_qualificado = limpo
+        else delete settings.destino_qualificado
+      }
+      if (webhook !== undefined) {
+        if (webhook) {
+          settings.webhook_url = webhook.url
+          if (webhook.secret) settings.webhook_secret = webhook.secret
+          else delete settings.webhook_secret
+        } else {
+          delete settings.webhook_url
+          delete settings.webhook_secret
+        }
+      }
       update.settings = settings
     }
 

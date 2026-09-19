@@ -786,6 +786,7 @@ export function ConversationalFormView({
   return (
     <div
       className={escopo}
+      lang={schema.locale || undefined}
       style={{
         minHeight: moldura ? "100%" : "100dvh",
         height: moldura ? "100%" : undefined,

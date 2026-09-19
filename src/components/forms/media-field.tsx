@@ -25,6 +25,7 @@ export function MediaField({
   onChange,
   rotulo = "Imagem ou vídeo da tela",
   ajuda,
+  somenteImagem,
 }: {
   /** Necessário para subir arquivo; ausente, só a colagem funciona. */
   formId?: string
@@ -32,6 +33,8 @@ export function MediaField({
   onChange: (m: MidiaDaTela | null) => void
   rotulo?: string
   ajuda?: string
+  /** Logo: vídeo não serve, e o seletor de arquivo nem o oferece. */
+  somenteImagem?: boolean
 }) {
   const [subindo, setSubindo] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
@@ -94,15 +97,22 @@ export function MediaField({
       )
       return
     }
+    const m = normalizarMidia({ url: limpo, alt: valor?.alt ?? null })
+    if (somenteImagem && m?.tipo === "video") {
+      setErro("Aqui só entra imagem.")
+      return
+    }
     setErro(null)
-    onChange(normalizarMidia({ url: limpo, alt: valor?.alt ?? null }))
+    onChange(m)
   }
 
   return (
     <div className="space-y-1.5">
-      <label className="block text-[11px] font-medium text-slate-500 dark:text-white/50">
-        {rotulo}
-      </label>
+      {rotulo && (
+        <label className="block text-[11px] font-medium text-slate-500 dark:text-white/50">
+          {rotulo}
+        </label>
+      )}
 
       {valor ? (
         <div className="space-y-1.5 rounded-[6px] border border-black/[0.10] p-2 dark:border-white/[0.14]">
@@ -172,7 +182,11 @@ export function MediaField({
           <input
             ref={inputArquivo}
             type="file"
-            accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm"
+            accept={
+              somenteImagem
+                ? "image/png,image/jpeg,image/webp,image/gif"
+                : "image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm"
+            }
             className="hidden"
             onChange={(e) => {
               const f = e.target.files?.[0]
