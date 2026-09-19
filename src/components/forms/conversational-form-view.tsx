@@ -80,6 +80,7 @@ import {
   primeiroBloco,
   progressoMonotonico,
   proximoPasso,
+  type ContextoLogica,
 } from "@/lib/forms/engine"
 import { validarResposta } from "@/lib/forms/validacao"
 import { textosDoSistema } from "@/lib/forms/pontuacao"
@@ -95,7 +96,19 @@ import {
   type SubmitTracking,
 } from "./form-pixels"
 import { contatoCapturado } from "@/lib/forms/contato-capturado"
-import { AgendaDoFinal, type CredenciaisDaSessao } from "./agenda-do-final"
+import nextDynamic from "next/dynamic"
+import type { CredenciaisDaSessao } from "./agenda-do-final"
+
+/**
+ * A agenda só existe na tela FINAL de quem foi aprovado — e é a única
+ * parte do formulário que fala com o Google Calendar. Carregada sob
+ * demanda: quem abre a primeira pergunta não baixa o seletor de
+ * horários, e quem chega ao fim o recebe enquanto lê a frase de
+ * aprovação.
+ */
+const AgendaDoFinal = nextDynamic(() => import("./agenda-do-final").then((m) => m.AgendaDoFinal), {
+  loading: () => null,
+})
 import {
   mascaraDeTelefone,
   paisSugeridoPeloNavegador,
@@ -282,6 +295,24 @@ export function ConversationalFormView({
     [sessao.retomada, hidden],
   )
   const ctx = useMemo(() => ({ answers, hidden: ocultos, variables }), [answers, ocultos, variables])
+
+  /**
+   * A imagem da PRÓXIMA tela começa a baixar enquanto esta é lida. Com
+   * uma tela por vez no DOM, o navegador só descobriria a imagem
+   * seguinte depois do clique — e a pessoa veria a pergunta chegar antes
+   * da foto que a sustenta. Uma URL por vez, sem repetir; a resposta
+   * escolhida decide o ramo, então o efeito acompanha `ctx`.
+   */
+  const jaPedidas = useRef(new Set<string>())
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const url = proximaMidia(schema, tela, ctx)
+    if (!url || jaPedidas.current.has(url)) return
+    jaPedidas.current.add(url)
+    const img = new window.Image()
+    img.decoding = "async"
+    img.src = url
+  }, [schema, tela, ctx])
   // A cor do placeholder é a do TEMA quando alguém a escolheu. Sem
   // isto, o controle existia na aba Estilo e não mexia em nada aqui —
   // o operador ajusta e nada muda, sem erro nenhum.
@@ -1040,8 +1071,35 @@ function MidiaDaTela({
       />
     )
   }
+  // `eager`, nunca `lazy`: só UMA tela existe no DOM por vez, e a mídia
+  // dela está sempre na primeira dobra — `lazy` aqui só adiava o
+  // download até o navegador medir o layout. Quem faz o papel de
+  // "carregar antes" é `proximaMidia`, que pede a imagem da tela
+  // seguinte enquanto esta é lida.
   // eslint-disable-next-line @next/next/no-img-element
-  return <img src={midia.url} alt={midia.alt ?? ""} style={moldura} loading="lazy" />
+  return <img src={midia.url} alt={midia.alt ?? ""} style={moldura} loading="eager" decoding="async" />
+}
+
+/**
+ * A imagem da tela para onde a pessoa vai em seguida, com as respostas de
+ * agora — com ramificação, "a próxima" depende do que ela acabou de
+ * marcar, e é por isso que se recalcula a cada resposta.
+ */
+function proximaMidia(schema: FormSchema, tela: Tela, ctx: ContextoLogica): string | null {
+  let ref: string | null = null
+  if (tela.tipo === "welcome") {
+    const d = primeiroBloco(schema)
+    ref = d.tipo === "bloco" ? d.ref : null
+  } else if (tela.tipo === "bloco") {
+    const r = proximoPasso(schema, tela.ref, ctx)
+    ref = r.destino.tipo === "bloco" ? r.destino.ref : null
+  }
+  if (!ref) return null
+  const m = acharBloco(schema, ref)?.midia
+  if (!m || typeof m.url !== "string" || !m.url.trim()) return null
+  if (m.tipo === "imagem") return m.url
+  if (m.tipo === "video" && m.poster) return m.poster
+  return null
 }
 
 function TelaDeAbertura({

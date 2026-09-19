@@ -20,6 +20,7 @@ import { AppError, errorResponse, successResponse } from "@/lib/api/errors"
 import { requireAuth } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 import { montarVersao } from "@/lib/forms/publicar"
+import { invalidarFormularioPublico } from "@/lib/services/public-form.service"
 import type { CampoLegado } from "@/lib/forms/schema"
 
 const log = logger.child("FormPublish")
@@ -47,7 +48,7 @@ async function publicar(
 
     const { data: form, error } = await admin
       .from("crm_forms")
-      .select("id, org_id, display_mode, locale, draft_schema, published_version_id, has_unpublished_changes")
+      .select("id, org_id, slug, display_mode, locale, draft_schema, published_version_id, has_unpublished_changes")
       .eq("id", id)
       .maybeSingle()
     if (error) throw error
@@ -161,6 +162,10 @@ async function publicar(
       .update({ published_version_id: nova.id, has_unpublished_changes: false })
       .eq("id", id)
     if (uErr) throw uErr
+
+    // Publicar é o gesto que troca o que o público vê: o payload cacheado
+    // por slug sai agora, e a visita seguinte já recebe a versão nova.
+    invalidarFormularioPublico([(form as { slug?: string | null }).slug])
 
     log.info("form.publicado", {
       formId: id,

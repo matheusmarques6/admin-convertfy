@@ -66,7 +66,7 @@ export const SETTINGS_SECTION_COMPONENTS: Record<string, ComponentType> = {
   ),
   manutencao: dynamic(
     () =>
-      import("@/app/admin/settings/manutencao/manutencao-client").then((m) => ({
+      import("@/app/(app)/admin/settings/manutencao/manutencao-client").then((m) => ({
         default: m.ManutencaoClient,
       })),
     { ssr: false, loading },

@@ -11,7 +11,7 @@
  * components.
  */
 
-import { origemDosFormularios } from "@/lib/forms/dominio"
+import { origemVigente } from "@/lib/forms/dominio"
 
 /** Host de producao — ultimo recurso quando nao ha env nem window. */
 const FALLBACK_BASE_URL = "https://admin.convertfy.com"
@@ -59,11 +59,24 @@ export function buildBriefingUrl(token: string, baseUrl?: string): string {
  * que o evento aconteceria.
  */
 export function buildCrmFormUrl(slug: string, baseUrl?: string): string {
-  // O domínio próprio dos formulários (`NEXT_PUBLIC_FORMS_ORIGIN`) vence a
-  // base do app: é para lá que anúncio, embed e `event_source_url` da Meta
-  // apontam — o host do admin nem responde a página quando ele existe.
+  // O domínio próprio dos formulários vence a base do app: é para lá que
+  // anúncio, embed e `event_source_url` da Meta apontam — o host do admin
+  // nem responde a página quando ele existe. A origem é a pinada em
+  // `NEXT_PUBLIC_FORMS_ORIGIN` ou, sem ela, a derivada do host atual pela
+  // convenção `forms.<apex>` (no browser, o host da aba; no servidor, o de
+  // `NEXT_PUBLIC_APP_URL`). Ver `lib/forms/dominio.ts`.
   const base = baseUrl
     ? stripTrailingSlash(baseUrl)
-    : (origemDosFormularios() ?? resolveAppBaseUrl())
+    : (origemVigente(hostAtual()) ?? resolveAppBaseUrl())
   return `${base}/forms/${slug}`
+}
+
+/** O host de onde este código roda: a aba no browser, a base do app no servidor. */
+function hostAtual(): string | null {
+  if (typeof window !== "undefined" && window.location?.host) return window.location.host
+  try {
+    return new URL(resolveAppBaseUrl()).host
+  } catch {
+    return null
+  }
 }

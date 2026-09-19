@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next"
 import localFont from "next/font/local"
 import { Montserrat } from "next/font/google"
-import "./globals.css"
+import "../globals.css"
 import { SpeedInsights } from "@vercel/speed-insights/next"
 import { inter, playfair } from "@/lib/fonts"
 import { SWRProvider } from "@/components/providers/swr-provider"
@@ -9,7 +9,7 @@ import { ThemeProvider } from "@/components/providers/theme-provider"
 import { Toaster } from "@/components/ui/toaster"
 
 const geistMono = localFont({
-  src: "./fonts/GeistMonoVF.woff",
+  src: "../fonts/GeistMonoVF.woff",
   variable: "--font-geist-mono",
   display: "swap",
 })

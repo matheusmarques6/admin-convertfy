@@ -4,7 +4,7 @@ import { useMemo, useState } from "react"
 import { DragDropContext, type DropResult } from "@hello-pangea/dnd"
 import { Loader2 } from "lucide-react"
 import { useToast } from "@/lib/hooks/use-toast"
-import { useBoard } from "@/app/admin/campaigns/central/use-board"
+import { useBoard } from "@/app/(app)/admin/campaigns/central/use-board"
 import {
   BOARD_COLUMNS,
   boardColumnIndex,

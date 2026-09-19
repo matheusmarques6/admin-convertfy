@@ -104,11 +104,32 @@ describe("secureToken", () => {
 })
 
 describe("buildCrmFormUrl", () => {
-  it("monta a URL pública do formulário do CRM", () => {
+  const ORIGINAL_FORMS = process.env.NEXT_PUBLIC_FORMS_ORIGIN
+  afterEach(() => {
+    if (ORIGINAL_FORMS === undefined) delete process.env.NEXT_PUBLIC_FORMS_ORIGIN
+    else process.env.NEXT_PUBLIC_FORMS_ORIGIN = ORIGINAL_FORMS
+  })
+
+  it("monta a URL pública no domínio próprio derivado do host do app (convenção forms.<apex>)", () => {
     process.env.NEXT_PUBLIC_APP_URL = "https://app.exemplo.com"
+    delete process.env.NEXT_PUBLIC_FORMS_ORIGIN
     expect(buildCrmFormUrl("pagina-de-vendas")).toBe(
-      "https://app.exemplo.com/forms/pagina-de-vendas",
+      "https://forms.exemplo.com/forms/pagina-de-vendas",
     )
+  })
+
+  it("a variável pina o domínio; `off` mantém o host do app", () => {
+    process.env.NEXT_PUBLIC_APP_URL = "https://app.exemplo.com"
+    process.env.NEXT_PUBLIC_FORMS_ORIGIN = "https://cadastro.exemplo.com/"
+    expect(buildCrmFormUrl("x")).toBe("https://cadastro.exemplo.com/forms/x")
+    process.env.NEXT_PUBLIC_FORMS_ORIGIN = "off"
+    expect(buildCrmFormUrl("x")).toBe("https://app.exemplo.com/forms/x")
+  })
+
+  it("em host sem convenção (localhost) fica no host do app", () => {
+    process.env.NEXT_PUBLIC_APP_URL = "http://localhost:3000"
+    delete process.env.NEXT_PUBLIC_FORMS_ORIGIN
+    expect(buildCrmFormUrl("x")).toBe("http://localhost:3000/forms/x")
   })
 
   it("aceita base explícita e tira a barra final", () => {

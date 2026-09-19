@@ -2,10 +2,9 @@ import { NextResponse, type NextRequest } from "next/server"
 import { updateSession } from "@/lib/supabase/middleware"
 import {
   caminhoServidoNoHostDeFormularios,
+  chegouPeloHostDeFormularios,
   destinoNoHostDeFormularios,
-  ehHostDeFormularios,
-  hostDosFormularios,
-  origemDosFormularios,
+  origemVigente,
 } from "@/lib/forms/dominio"
 
 // Routes that must be embeddable in iframes (widget preview + external stores)
@@ -18,15 +17,18 @@ function isEmbeddableRoute(pathname: string): boolean {
 export async function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl
   const host = request.headers.get("host")
-  const origemDeFormularios = origemDosFormularios()
-  const hostDeFormularios = hostDosFormularios()
 
-  // ── Domínio próprio dos formulários (`NEXT_PUBLIC_FORMS_ORIGIN`) ──────
+  // ── Domínio próprio dos formulários ───────────────────────────────────
   // Superfície FECHADA: só o formulário público, as APIs dele, o script de
   // embed e os estáticos existem neste host. Login, admin, portal e API
   // interna respondem 404 ANTES de qualquer rota rodar — a régua mora em
   // `lib/forms/dominio.ts`, com teste.
-  if (ehHostDeFormularios(host, hostDeFormularios)) {
+  //
+  // O host é reconhecido pela variável `NEXT_PUBLIC_FORMS_ORIGIN` OU pela
+  // convenção `forms.<apex>`: a variável só entra no bundle num deploy
+  // posterior a ela, e foi assim que `forms.convertfy.me` passou a servir
+  // o admin no dia em que o domínio foi conectado.
+  if (chegouPeloHostDeFormularios(host)) {
     if (!caminhoServidoNoHostDeFormularios(pathname)) {
       return new NextResponse("Not found", {
         status: 404,
@@ -41,14 +43,15 @@ export async function middleware(request: NextRequest) {
   }
 
   // Página de formulário aberta pelo host do admin com domínio próprio
-  // configurado → 308 para o domínio próprio. Só a PÁGINA: a API pública
-  // continua respondendo aqui, porque os embeds antigos em sites de
-  // clientes ainda apontam para este host e o iframe segue o redirect.
+  // (pinado ou por convenção) → 308 para o domínio próprio. Só a PÁGINA:
+  // a API pública continua respondendo aqui, porque os embeds antigos em
+  // sites de clientes ainda apontam para este host e o iframe segue o
+  // redirect.
   const destino = destinoNoHostDeFormularios({
     pathname,
     search,
     host,
-    origemConfigurada: origemDeFormularios,
+    origemConfigurada: origemVigente(host),
   })
   if (destino) {
     return NextResponse.redirect(destino, 308)

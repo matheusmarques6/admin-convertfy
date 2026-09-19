@@ -1,13 +1,30 @@
-import { cache, type ComponentProps } from "react"
+import type { ComponentProps } from "react"
 import type { Metadata } from "next"
+import nextDynamic from "next/dynamic"
 import { notFound } from "next/navigation"
-import { headers } from "next/headers"
-import { PublicFormView } from "@/components/forms/public-form-view"
-import { ConversationalFormView } from "@/components/forms/conversational-form-view"
+import { after } from "next/server"
+import { preconnect, preload } from "react-dom"
 import { metadataDoFormulario } from "@/lib/forms/metadata"
-import { normalizarSchema } from "@/lib/forms/schema"
+import { recursosDaPrimeiraTela } from "@/lib/forms/primeira-tela"
+import { carregarFormularioPublico, contarVisitaDoFormulario } from "@/lib/services/public-form.service"
 import type { FormTheme } from "@/components/forms/form-theme"
 
+/**
+ * Os dois renderizadores são client components de 1.000 e 2.400 linhas, e
+ * um formulário só usa um. Importados estaticamente, os dois iriam no
+ * mesmo chunk da página — quem abre o conversacional baixava o clássico
+ * inteiro, e vice-versa. `next/dynamic` corta cada um no seu chunk; o
+ * SSR continua (é o padrão em Server Component).
+ */
+const PublicFormView = nextDynamic(() =>
+  import("@/components/forms/public-form-view").then((m) => m.PublicFormView),
+)
+const ConversationalFormView = nextDynamic(() =>
+  import("@/components/forms/conversational-form-view").then((m) => m.ConversationalFormView),
+)
+
+// `searchParams` (UTM, ocultos, `retomar`) torna a página dinâmica por
+// definição; o DADO é que vem do cache (ver `public-form.service`).
 export const dynamic = "force-dynamic"
 export const revalidate = 0
 
@@ -16,85 +33,24 @@ interface PublicFormPageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }
 
-interface FormPayload {
-  form: {
-    id: string
-    name: string
-    slug: string
-    description: string | null
-    // Theme e um JSON column livre — o renderer aplica defaults pra
-    // qualquer campo ausente. Tipagem completa fica no PublicFormView.
-    theme: Record<string, unknown>
-    logo_url: string | null
-    success_message: string | null
-    redirect_url: string | null
-    // Descritor de tracking (pixels) — sem token/regras. Tipagem completa
-    // no PublicFormView.
-    tracking?: Record<string, unknown>
-  }
-  fields: Array<{
-    id: string
-    field_type: string
-    label: string
-    placeholder: string | null
-    description: string | null
-    required: boolean
-    position: number
-    options: Array<string | { label: string; value: string }>
-    validation: Record<string, unknown>
-    map_to_lead_field: string | null
-  }>
-  /** O schema publicado (a versão), que o conversacional consome. */
-  schema?: unknown
-  display_mode?: "classic" | "conversational"
-  /** Fechado à mão ou no limite de envios (aba Configurar → Acesso). */
-  acesso?: { aberto: true } | { aberto: false; motivo: string; mensagem: string }
-}
-
-/**
- * `cache` porque o `generateMetadata` e o componente pedem a MESMA
- * página: sem ele o destino do anúncio faria duas requisições internas
- * por visita. `no-store` não é memoizado pelo fetch do Next, então a
- * memoização tem de ser nossa.
- */
-const loadForm = cache(async function loadForm(slug: string): Promise<FormPayload | null> {
-  // Em SSR precisamos do origin completo pra fetch interno.
-  const h = await headers()
-  const host = h.get("host") ?? "localhost:3000"
-  const proto = h.get("x-forwarded-proto") ?? "http"
-  const url = `${proto}://${host}/api/public/forms/${encodeURIComponent(slug)}`
-  try {
-    const res = await fetch(url, { cache: "no-store" })
-    if (!res.ok) return null
-    const json = await res.json()
-    if (!json?.form) return null
-    return {
-      form: json.form,
-      fields: json.fields ?? [],
-      schema: json.schema ?? null,
-      display_mode: json.display_mode === "conversational" ? "conversational" : "classic",
-      acesso: json.acesso ?? { aberto: true },
-    }
-  } catch {
-    return null
-  }
-})
-
 /**
  * O título da aba e a prévia do link.
  *
  * Sem isto a página herdava o título do app — "Convertfy Admin - Sistema
  * de Gestão para Agências" — na aba e na prévia que o WhatsApp monta.
  * Num destino de anúncio, é a primeira coisa que a pessoa lê.
+ *
+ * `carregarFormularioPublico` é cacheada: o `generateMetadata` e o
+ * componente pedem o MESMO payload e o banco é lido uma vez.
  */
 export async function generateMetadata({ params }: PublicFormPageProps): Promise<Metadata> {
   const { slug } = await params
-  const data = await loadForm(slug)
+  const data = await carregarFormularioPublico(slug)
   if (!data) return { title: "Formulário não encontrado" }
 
   const { title, description } = metadataDoFormulario({
     form: data.form,
-    schema: data.schema ? normalizarSchema(data.schema) : null,
+    schema: data.schema,
     displayMode: data.display_mode,
   })
   return {
@@ -112,8 +68,29 @@ export default async function PublicFormPage({
 }: PublicFormPageProps) {
   const { slug } = await params
   const sp = await searchParams
-  const data = await loadForm(slug)
+  const data = await carregarFormularioPublico(slug)
   if (!data) notFound()
+
+  // A visita conta DEPOIS de a resposta sair (`after()`): o visitante não
+  // espera o UPDATE, e a Vercel mantém a função viva até ele terminar — a
+  // diferença para o `void`, que morria no congelamento e deixava VISITAS
+  // em 0 com 56 envios.
+  const formId = data.form.id
+  after(() => contarVisitaDoFormulario(formId))
+
+  // O que a primeira tela desenha, avisado ao navegador junto do HTML:
+  // logo, mídia da tela e a fonte do tema saem em paralelo com o JS, em
+  // vez de esperar o React descobrir cada um. Regra em `primeira-tela.ts`.
+  const tema = (data.form.theme ?? {}) as FormTheme
+  const recursos = recursosDaPrimeiraTela({
+    schema: data.schema,
+    displayMode: data.display_mode,
+    theme: tema,
+    logoUrl: data.form.logo_url,
+  })
+  for (const o of recursos.preconnect) preconnect(o)
+  for (const f of recursos.fontes) preload(f, { as: "font", type: "font/woff2", crossOrigin: "anonymous" })
+  for (const i of recursos.imagens) preload(i, { as: "image" })
 
   // Captura UTM + click IDs de ads pra repassar no submit.
   const utm = {
@@ -136,7 +113,6 @@ export default async function PublicFormPage({
   // perguntas, no tema do formulário. O submit recusa pela mesma régua,
   // então a tela não é o único guarda.
   if (data.acesso && !data.acesso.aberto) {
-    const tema = (data.form.theme ?? {}) as FormTheme
     const escuro = tema.mode === "dark"
     return (
       <main
@@ -163,7 +139,7 @@ export default async function PublicFormPage({
   // CSS: ele tem máquina de passos, sessão e teclado próprios. O clássico
   // fica intocado — é o que está no ar com verba em cima.
   if (data.display_mode === "conversational" && data.schema) {
-    const schema = normalizarSchema(data.schema)
+    const schema = data.schema
     // Ocultos: tudo que veio na URL e não é UTM conhecido vira valor de
     // campo oculto, para a lógica e o recall poderem usar. É como o
     // Typeform trata `?plano=anual`.
@@ -184,7 +160,7 @@ export default async function PublicFormPage({
           id: data.form.id,
           name: data.form.name,
           logo_url: data.form.logo_url,
-          theme: data.form.theme as FormTheme,
+          theme: tema,
           success_message: data.form.success_message,
           redirect_url: data.form.redirect_url,
           // Sem isto o conversacional não carrega pixel nenhum: nem o

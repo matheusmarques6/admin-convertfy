@@ -10531,3 +10531,78 @@ DNS em `docs/forms/dominio-proprio.md`.
   não é `http(s)`, `origemDosFormularios()` devolve `null` e o
   comportamento é o de sempre. É `NEXT_PUBLIC_`: entra no bundle, exige
   redeploy.
+
+## O domínio conectado servia o admin, e o formulário pagava a raiz do painel (19/09)
+
+Relato: *"conectei o novo domínio mas a URL publicada segue na antiga, o
+/admin e login também seguem funcionando no forms.convertfy.me"*. Os dois
+sintomas têm a MESMA causa: a régua inteira do domínio próprio dependia
+de `NEXT_PUBLIC_FORMS_ORIGIN` estar no bundle, e ela é `NEXT_PUBLIC_` —
+só entra num deploy feito DEPOIS de a variável existir. Conectar o
+domínio na Vercel roteia o tráfego no mesmo instante; a variável não
+tinha chegado ao bundle; o middleware não reconhecia o host e o servia
+como se fosse o admin. Uma régua que depende de uma variável chegar ao
+bundle falha justamente no dia em que o domínio é ligado.
+
+**O host passou a ser reconhecido por CONVENÇÃO** (`lib/forms/dominio.ts`):
+qualquer `forms.<apex>` é host de formulários sem variável nenhuma —
+`chegouPeloHostDeFormularios` fecha a superfície, `origemVigente` deriva
+`https://forms.<apex>` do host atual (`app.` / `admin.` / `www.` viram
+`forms.`, o apex ganha `forms.`) e `buildCrmFormUrl` monta o link com ela
+(no browser, do host da aba; no servidor, do `NEXT_PUBLIC_APP_URL`). A
+variável continua valendo para PINAR um host fora da convenção, e `off`
+desliga tudo. `localhost`, IP e `*.vercel.app` ficam fora: derivar ali
+mandaria o 308 para um host que não responde. Testes: 13 no módulo, 7 no
+middleware com `NextRequest` real — inclusive "sem a variável, o host
+forms.<apex> dá 404 em /admin e /login".
+
+**Velocidade, sem mexer no que a pessoa vê.** Medido no que a página do
+anúncio carregava: o `globals.css` inteiro do admin (**258 KB**), quatro
+famílias de fonte pré-carregadas (o formulário usa uma), `next-themes`,
+SWR e toaster — e, no servidor, um `fetch` HTTP para a PRÓPRIA API
+(lambda → edge → lambda → Supabase), três consultas por visita e um
+`UPDATE` de contagem de visitas AWAITED no caminho crítico. Cinco cortes:
+
+1. **Raiz separada**: `src/app/(publico)/forms/[slug]` com layout raiz
+   próprio; tudo o mais do app foi para `src/app/(app)/` (a API ficou em
+   `src/app/api/`, route handler não precisa de layout). O CSS é
+   `(publico)/formularios.css`: `@config tailwind.forms.config.ts` — o
+   MESMO tema do admin (`...base`) com `content` restrito a
+   `components/forms` — porque o renderizador de página única usa vinte
+   utilitários do Tailwind e tirá-los mudaria a peça com verba. `@tailwind
+   base` fica pelo preflight, pelo mesmo motivo. Imports `@/app/admin/…`
+   viraram `@/app/(app)/admin/…`; `outputFileTracingIncludes` e os crons
+   não mudam porque `normalizeAppPath` tira o grupo da rota.
+2. **`lib/services/public-form.service.ts`**: UMA leitura para a página e
+   para `GET /api/public/forms/[slug]`, em `unstable_cache` por slug (60 s,
+   tag `form-publico:<slug>`). Invalidada em salvar (slug antigo E novo),
+   publicar, arquivar, e no submit SÓ quando há `limite_envios` (é o único
+   caso em que um envio muda o que o público vê). Erro do banco PROPAGA —
+   servir 404 sobre falha de infra mandaria o anúncio para "não
+   encontrado" com o formulário existindo.
+3. **A visita conta em `after()`**, depois de a resposta sair: o visitante
+   não espera o `UPDATE`, e a Vercel mantém a função viva até ele terminar
+   — a diferença para o `void`, que morria no congelamento e deixou
+   VISITAS em 0 com 56 envios.
+4. **Code-split**: os dois renderizadores (1.000 e 2.400 linhas) por
+   `next/dynamic` na página — um formulário usa um; e `AgendaDoFinal` sob
+   demanda dentro do conversacional (só a tela final aprovada a usa).
+5. **Mídia**: a imagem da tela atual sai de `loading="lazy"` (só UMA tela
+   existe no DOM, ela está sempre na primeira dobra — `lazy` só adiava);
+   `proximaMidia` pede a imagem da PRÓXIMA tela enquanto esta é lida,
+   recalculada a cada resposta porque com ramificação a próxima depende
+   do que a pessoa marcou; e `lib/forms/primeira-tela.ts` (puro, 5 testes)
+   diz ao servidor o que pré-carregar junto do HTML — logo, mídia da
+   primeira tela (cartaz do vídeo, nunca o vídeo), a fonte SÓ quando é a
+   do tema, e `preconnect` para origem externa.
+
+**A Inter pelo nome literal**: o tema grava `fontFamily: "Inter"` e o
+default é "Inter, system-ui" — mas a Inter do admin vem do `next/font`,
+com nome hasheado, então o literal nunca resolvia e o formulário caía em
+`system-ui`, no ar e no preview. `styles/fontes-do-formulario.css` declara
+`@font-face "Inter"` (o `public/fonts/inter-variable.woff2` de 48 KB, já
+no repo) e é importado pelas DUAS raízes — prévia e página com a mesma
+fonte. Barlow Condensed (opção da aba Design) é declarada na raiz pública
+com os mesmos arquivos do `conteudo-slides.css`.
+
+Passo a passo e a tabela de comportamento em `docs/forms/dominio-proprio.md`.

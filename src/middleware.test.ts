@@ -47,12 +47,36 @@ describe("middleware — domínio próprio dos formulários", () => {
     expect(res.status).toBe(200)
   })
 
-  it("sem a variável nada muda: /forms serve no host do app, embutível", async () => {
+  it("SEM a variável a convenção fecha o host forms.<apex> e redireciona o do admin — o caso do domínio recém-conectado", async () => {
     process.env.NEXT_PUBLIC_FORMS_ORIGIN = ""
+    const admin = await middleware(req("https://forms.convertfy.me/admin", "forms.convertfy.me"))
+    expect(admin.status).toBe(404)
+    const login = await middleware(req("https://forms.convertfy.me/login", "forms.convertfy.me"))
+    expect(login.status).toBe(404)
+    const form = await middleware(req("https://forms.convertfy.me/forms/diagnostico", "forms.convertfy.me"))
+    expect(form.status).toBe(200)
+    expect(form.headers.get("content-security-policy")).toBe("frame-ancestors *")
+    const antigo = await middleware(req("https://app.convertfy.me/forms/diagnostico?a=1", "app.convertfy.me"))
+    expect(antigo.status).toBe(308)
+    expect(antigo.headers.get("location")).toBe("https://forms.convertfy.me/forms/diagnostico?a=1")
+  })
+
+  it("sem a variável, em localhost e em preview da Vercel nada muda: /forms serve, embutível", async () => {
+    process.env.NEXT_PUBLIC_FORMS_ORIGIN = ""
+    for (const host of ["localhost:3000", "admin-convertfy-git-x.vercel.app"]) {
+      const res = await middleware(req(`http://${host}/forms/diagnostico`, host))
+      expect(res.status, host).toBe(200)
+      expect(res.headers.get("content-security-policy")).toBe("frame-ancestors *")
+      const admin = await middleware(req(`http://${host}/admin`, host))
+      expect(admin.headers.get("x-frame-options"), host).toBe("DENY")
+    }
+  })
+
+  it("`off` desliga tudo, inclusive a convenção", async () => {
+    process.env.NEXT_PUBLIC_FORMS_ORIGIN = "off"
     const res = await middleware(req("https://app.convertfy.me/forms/diagnostico", "app.convertfy.me"))
     expect(res.status).toBe(200)
-    expect(res.headers.get("content-security-policy")).toBe("frame-ancestors *")
-    const admin = await middleware(req("https://app.convertfy.me/admin", "app.convertfy.me"))
+    const admin = await middleware(req("https://forms.convertfy.me/admin", "forms.convertfy.me"))
     expect(admin.headers.get("x-frame-options")).toBe("DENY")
   })
 })

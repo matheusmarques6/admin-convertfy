@@ -5,6 +5,9 @@
 @import "../styles/crm-tokens.css";
 @import "../styles/convertfy-ds-v3.css";
 @import "../styles/conteudo-slides.css";
+/* A Inter pelo nome literal, para o preview do formulário no editor
+   desenhar a mesma fonte que a raiz pública (`(publico)/formularios.css`). */
+@import "../styles/fontes-do-formulario.css";
 
 @layer base {
   :root {

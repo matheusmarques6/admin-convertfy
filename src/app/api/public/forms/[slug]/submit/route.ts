@@ -35,6 +35,7 @@ import {
 import { metaEventName } from "@/lib/tracking/meta-event-name"
 import { buildCrmFormUrl } from "@/lib/utils/form-url"
 import { concluirSessao } from "@/lib/services/form-session.service"
+import { invalidarFormularioPublico } from "@/lib/services/public-form.service"
 import { caminhoAte, finalAlcancado, refsDoCaminho, ultimoAlcancavel } from "@/lib/forms/engine"
 import { normalizarSchema } from "@/lib/forms/schema"
 import { acessoAoFormulario, faixaDaPontuacao, politicaDeDuplicado, pontuar } from "@/lib/forms/pontuacao"
@@ -672,6 +673,14 @@ export async function POST(
       log.error("[FormSubmit] Falha ao salvar submission (mas lead/deal foram criados)", { sErr })
     }
     const submissionId = submissionRow?.id ?? null
+
+    // O payload público é cacheado por slug e carrega o veredito de
+    // "fechado por limite": quem configurou `limite_envios` precisa ver o
+    // fechamento na visita seguinte ao último envio, não um minuto depois.
+    // Sem limite, o envio não muda nada do que o público vê.
+    if (typeof schemaPublicado?.settings?.limite_envios === "number") {
+      invalidarFormularioPublico([slug])
+    }
 
     // 7b. Fecha a sessão do conversacional.
     //

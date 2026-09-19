@@ -9,7 +9,7 @@
  * (fields, theme, publish, etc.) e identica.
  */
 
-import FormEditorPage from "@/app/admin/comercial/forms/[id]/page"
+import FormEditorPage from "@/app/(app)/admin/comercial/forms/[id]/page"
 
 export default function CsFormEditorPage({
   params,

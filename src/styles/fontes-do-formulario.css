@@ -1,0 +1,20 @@
+/*
+ * A Inter do FORMULÁRIO público, pelo nome literal.
+ *
+ * O tema do formulário grava `fontFamily: "Inter"` (aba Design) e o
+ * default é "Inter, system-ui, sans-serif". A Inter do admin vem do
+ * `next/font`, que registra a família com nome hasheado e a expõe SÓ pela
+ * variável `--font-inter` — o nome literal nunca resolvia, e o formulário
+ * caía em `system-ui` no ar e no preview, cada máquina com uma cara.
+ *
+ * Esta declaração é importada pelas DUAS raízes (o admin, onde o editor
+ * renderiza a prévia, e a raiz pública), então prévia e página mostram a
+ * mesma fonte. `font-display: swap` para o texto nunca esperar a fonte.
+ */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/fonts/inter-variable.woff2") format("woff2");
+}

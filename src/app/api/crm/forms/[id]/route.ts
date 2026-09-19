@@ -16,6 +16,7 @@ import { normalizeTrackingConfig } from "@/types/form-tracking"
 import { normalizarSchema } from "@/lib/forms/schema"
 import { normalizarDestino } from "@/lib/forms/destino"
 import { mapaPorPosicao, remapearRefs } from "@/lib/forms/remapear-refs"
+import { invalidarFormularioPublico } from "@/lib/services/public-form.service"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("CrmFormDetail")
@@ -274,6 +275,16 @@ export async function PATCH(
     const parsed = patchFormSchema.parse(body)
     const { fields, redirect_url, logo_url, meta_capi_token, draft_schema, destino_qualificado, webhook, ...formData } = parsed
 
+    // O slug de ANTES: se ele mudar, o payload cacheado do endereço antigo
+    // também tem de sair — senão quem abrir a URL velha (ainda no anúncio)
+    // vê o formulário de antes por até um minuto.
+    const { data: antes } = await admin
+      .from("crm_forms")
+      .select("slug")
+      .eq("id", id)
+      .eq("org_id", orgId)
+      .maybeSingle()
+
     // Coerce empty string -> null pra colunas URL.
     const update: Record<string, unknown> = { ...formData }
     if (redirect_url !== undefined) update.redirect_url = redirect_url || null
@@ -472,6 +483,10 @@ export async function PATCH(
       if (draftErr) throw draftErr
     }
 
+    // O público lê do cache por slug (`public-form.service`): tema, logo,
+    // textos, modo, settings e status entram na visita seguinte.
+    invalidarFormularioPublico([antes?.slug as string | undefined, parsed.slug])
+
     return successResponse(request, {
       ok: true,
       /** Ids na ordem das posições — o editor os adota nos campos novos. */
@@ -498,6 +513,13 @@ export async function DELETE(
     const orgId = await resolveOrgId(user.id)
     const admin = createAdminClient()
 
+    const { data: alvo } = await admin
+      .from("crm_forms")
+      .select("slug")
+      .eq("id", id)
+      .eq("org_id", orgId)
+      .maybeSingle()
+
     // Soft delete: status=archived. Mantem submissions ja recebidas.
     const { error } = await admin
       .from("crm_forms")
@@ -505,6 +527,9 @@ export async function DELETE(
       .eq("id", id)
       .eq("org_id", orgId)
     if (error) throw error
+
+    // Arquivado sai do ar na visita seguinte, não em até um minuto.
+    invalidarFormularioPublico([alvo?.slug as string | undefined])
 
     return successResponse(request, { ok: true })
   } catch (error) {

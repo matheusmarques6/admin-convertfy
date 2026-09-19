@@ -3,7 +3,7 @@
 import { useMemo } from "react"
 import { Loader2, History, ArrowRight, AlertTriangle, User } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
-import { useAutomations } from "@/app/admin/campaigns/central/use-automations"
+import { useAutomations } from "@/app/(app)/admin/campaigns/central/use-automations"
 import {
   BOARD_COLUMNS,
   type BoardColumnKey,
