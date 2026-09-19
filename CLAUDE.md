@@ -10491,3 +10491,43 @@ que está no ar); agenda com horários comerciais fixos quando o final não
 usa a agenda real; embed com `data-convertfy-*` (o script já está em
 sites de cliente). Pendência de deploy: `qrcode` entrou no package.json
 e precisa de `pnpm install`.
+
+## Formulários no domínio próprio, e o "2 →" que voltou (19/09)
+
+**O número da tela saiu de novo.** Tinha sido removido a pedido em 17/09
+e voltou por engano na rodada da mídia por tela (18/09, `numeroDaTela`).
+Agora não existe nem a prop: quem informa progresso é a barra do topo.
+
+**`NEXT_PUBLIC_FORMS_ORIGIN`** (ex.: `https://forms.convertfy.me`) tira o
+formulário público do host do admin. Régua em `lib/forms/dominio.ts`
+(puro, 8 testes) e execução em `src/middleware.ts` (5 testes com
+`NextRequest` real e `updateSession` mockado). Passo a passo de Vercel e
+DNS em `docs/forms/dominio-proprio.md`.
+
+- **Superfície FECHADA por host**: no domínio dos formulários só
+  `PREFIXOS_SERVIDOS` respondem (`/forms/`, `/api/public/forms/`,
+  `/api/script/`, `_next`, `images`, `fonts`) — o resto é **404 antes de
+  qualquer rota rodar**, com `noindex`. Host comparado sem porta e sem
+  caixa: `forms.convertfy.me:443` é o mesmo host, e comparar cru deixaria
+  o admin servido no domínio público por um proxy que reescreve o header.
+- **O host do admin redireciona a PÁGINA (308, query preservada) e nunca
+  a API**: os embeds antigos em sites de clientes apontam para
+  `app.convertfy.me/forms/…`, o iframe segue o redirect, e a página faz
+  `fetch` relativo para `/api/public/forms/…` no host em que abriu —
+  redirecionar a API quebraria o formulário justamente na transição.
+- **Um montador de URL só**: `buildCrmFormUrl` (que o submit já usava
+  para o `event_source_url` da Meta) passou a preferir o domínio próprio,
+  e o editor e a lista deixaram de montar `window.location.origin +
+  /forms/` à mão — com o domínio ligado, o link copiado apontaria para o
+  host que dá 308 e o QR levaria para o admin.
+- **`/forms/:path*` e `/api/:path*` entraram no matcher** para o host de
+  formulários poder RECUSAR o que não é dele — o middleware só decide
+  sobre o que casa. Em `/api/*` o `updateSession` já devolvia `next()` sem
+  tocar em auth; o custo é uma invocação de middleware sem I/O. `/form/`
+  (onboarding por token) ficou FORA de propósito: entrar no matcher
+  passaria a impor `X-Frame-Options: DENY` numa página que não foi
+  medida.
+- **Sem a variável nada muda** — em branco, com espaços ou com valor que
+  não é `http(s)`, `origemDosFormularios()` devolve `null` e o
+  comportamento é o de sempre. É `NEXT_PUBLIC_`: entra no bundle, exige
+  redeploy.

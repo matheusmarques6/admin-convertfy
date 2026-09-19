@@ -11,6 +11,8 @@
  * components.
  */
 
+import { origemDosFormularios } from "@/lib/forms/dominio"
+
 /** Host de producao — ultimo recurso quando nao ha env nem window. */
 const FALLBACK_BASE_URL = "https://admin.convertfy.com"
 
@@ -57,6 +59,11 @@ export function buildBriefingUrl(token: string, baseUrl?: string): string {
  * que o evento aconteceria.
  */
 export function buildCrmFormUrl(slug: string, baseUrl?: string): string {
-  const base = baseUrl ? stripTrailingSlash(baseUrl) : resolveAppBaseUrl()
+  // O domínio próprio dos formulários (`NEXT_PUBLIC_FORMS_ORIGIN`) vence a
+  // base do app: é para lá que anúncio, embed e `event_source_url` da Meta
+  // apontam — o host do admin nem responde a página quando ele existe.
+  const base = baseUrl
+    ? stripTrailingSlash(baseUrl)
+    : (origemDosFormularios() ?? resolveAppBaseUrl())
   return `${base}/forms/${slug}`
 }

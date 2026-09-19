@@ -310,22 +310,13 @@ export function ConversationalFormView({
   const agrupada = daTela.length > 1
 
   /**
-   * O número da tela ("3 →" acima do título) e a mídia de FUNDO.
+   * A mídia de FUNDO: com `layout: "fundo"` ela é da tela inteira (imagem
+   * cover + véu), então sai do bloco e vai para o container.
    *
-   * O número é da TELA, não do bloco — uma tela agrupada conta uma. A
-   * mídia com `layout: "fundo"` é da tela inteira (imagem cover + véu),
-   * então sai do bloco e vai para o container.
+   * O número da tela ("2 →" acima do título) NÃO é desenhado — saiu a
+   * pedido em 17/09 e voltou por engano em 18/09; quem informa o progresso
+   * é a barra do topo (`calcularProgresso`).
    */
-  const numeroDaTela = useMemo(() => {
-    if (tela.tipo !== "bloco") return null
-    let n = 0
-    for (const b of schema.blocks) {
-      if (b.hidden) continue
-      if (n === 0 || !b.mesma_tela) n += 1
-      if (b.ref === tela.ref) return n
-    }
-    return null
-  }, [tela, schema.blocks])
   const midiaDeFundo = daTela[0]?.midia?.layout === "fundo" ? daTela[0].midia : null
 
   /**
@@ -896,7 +887,6 @@ export function ConversationalFormView({
           {tela.tipo === "bloco" && blocoAtual && (
             <TelaDePerguntas
               blocos={daTela}
-              numero={numeroDaTela}
               answers={answers}
               erros={erros}
               recall={recall}
@@ -1250,7 +1240,6 @@ function TelaFinal({
  */
 function TelaDePerguntas({
   blocos,
-  numero,
   answers,
   erros,
   recall,
@@ -1265,8 +1254,6 @@ function TelaDePerguntas({
   onAvancar,
 }: {
   blocos: FormBlock[]
-  /** O número da tela — o "3 →" acima do título. */
-  numero: number | null
   answers: FormAnswers
   erros: Record<string, string>
   recall: (s: string | null | undefined) => string
@@ -1291,22 +1278,6 @@ function TelaDePerguntas({
 
   const conteudo = (
     <div>
-      {numero !== null && (
-        <p
-          aria-hidden
-          style={{
-            margin: "0 0 10px",
-            fontSize: 13,
-            fontWeight: 600,
-            color: t.primary,
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 6,
-          }}
-        >
-          {numero} <span style={{ opacity: 0.7 }}>→</span>
-        </p>
-      )}
       {midia && layout === "flutuante" && <MidiaDaTela midia={midia} t={t} flutuante />}
       {midia && layout === "acima" && <MidiaDaTela midia={midia} t={t} />}
       {agrupada && titulo && (

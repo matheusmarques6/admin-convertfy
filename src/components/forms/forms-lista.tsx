@@ -18,6 +18,7 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu"
 import { CrmPageShell } from "@/components/crm/crm-page-shell"
 import { PageSkeleton } from "@/components/ui/page-skeleton"
 import { ROUTES } from "@/lib/routes"
+import { buildCrmFormUrl } from "@/lib/utils/form-url"
 import {
   filtrarLista,
   kpisDaLista,
@@ -393,7 +394,7 @@ function Numero({ valor, rotulo, title }: { valor: string | null; rotulo: string
 }
 
 function MenuDaLinha({ f, onChange }: { f: LinhaDaLista; onChange: () => void }) {
-  const publicUrl = typeof window !== "undefined" ? `${window.location.origin}/forms/${f.slug}` : `/forms/${f.slug}`
+  const publicUrl = buildCrmFormUrl(f.slug)
 
   const patch = async (body: Record<string, unknown>) => {
     await fetch(`/api/crm/forms/${f.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })

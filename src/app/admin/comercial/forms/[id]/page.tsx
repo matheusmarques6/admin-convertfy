@@ -34,6 +34,7 @@ import { CabecalhoDoEditor, type AbaDoEditor } from "@/components/forms/cabecalh
 import { SeletorDeTipos } from "@/components/forms/seletor-de-tipos"
 import { CampoComRecall } from "@/components/forms/campo-com-recall"
 import { opcoesDeRecall, type OpcaoDeRecall } from "@/lib/forms/recall-menu"
+import { buildCrmFormUrl } from "@/lib/utils/form-url"
 import { TipoIcone } from "@/components/forms/tipo-icone"
 import { nomeDoTipo, perguntaNova, tipoTemOpcoes } from "@/lib/forms/tipos-de-pergunta"
 import { AUTOSAVE_MS, podeSalvarSozinho, type EstadoDoSave } from "@/lib/forms/autosave"
@@ -1121,10 +1122,9 @@ export default function FormEditorPage({
   const status = data.form.status
   const modoSalvo: "classic" | "conversational" =
     data.form.display_mode === "conversational" ? "conversational" : "classic"
-  const publicUrl =
-    typeof window !== "undefined"
-      ? `${window.location.origin}/forms/${slug}`
-      : `/forms/${slug}`
+  // Domínio próprio quando configurado, senão a base do app — a MESMA
+  // função que o submit usa para o `event_source_url` da Meta.
+  const publicUrl = buildCrmFormUrl(slug)
 
   /**
    * O vocabulário do arrasto da espinha traduzido para o do módulo puro.
