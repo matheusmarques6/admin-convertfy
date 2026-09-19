@@ -8,6 +8,7 @@ vi.mock("@/lib/supabase/server", () => ({
 import type { EmailComponentVariant } from "@/types/email-generation"
 import {
   causaDaLacuna,
+  causaEhRetomavel,
   lacunaEhFatal,
   parseAssemblerOutput,
   resolveChoices,
@@ -180,6 +181,20 @@ describe("causaDaLacuna (16/09)", () => {
 
   it("lista vazia não acusa relógio", () => {
     expect(causaDaLacuna([])).toBe("biblioteca")
+  })
+
+  // 19/09, batch d2bd526b: 402 in-flight nas posições 2-5 do leque. A
+  // chamada não aconteceu; a causa é o PROVEDOR, e ela é retomável como o
+  // relógio — nunca lacuna de biblioteca, nunca resgate.
+  it("chamada recusada pelo provedor é causa própria, e retomável", () => {
+    expect(causaDaLacuna([{ motivo: "sem_candidata" }, { motivo: "chamada_falhou" }])).toBe("provedor")
+    expect(causaEhRetomavel("provedor")).toBe(true)
+    expect(causaEhRetomavel("relogio")).toBe(true)
+    expect(causaEhRetomavel("biblioteca")).toBe(false)
+  })
+
+  it("provedor vence relógio quando os dois aparecem", () => {
+    expect(causaDaLacuna([{ motivo: "orcamento_esgotado" }, { motivo: "chamada_falhou" }])).toBe("provedor")
   })
 })
 

@@ -164,7 +164,7 @@ export function agregarLacunas(
       // Chamada que não aconteceu (leque) não é pauta de curadoria: ela
       // pediria um bloco novo para resolver um timeout, e o balde ficaria
       // cheio justamente no dia em que o provedor esteve instável.
-      if (p.motivo === "orcamento_esgotado") continue
+      if (p.motivo === "orcamento_esgotado" || p.motivo === "chamada_falhou") continue
       // Com dispositivo pedido a lacuna tem nome: é o que se cadastra.
       if (p.dispositivo_pedido) {
         const flow = (p.flow_type ?? "").trim().toLowerCase() || "flow"

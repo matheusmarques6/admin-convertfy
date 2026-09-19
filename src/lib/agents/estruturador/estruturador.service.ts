@@ -28,6 +28,7 @@
  * + relatório do validador.
  */
 
+import { comoDadoExternoSeHouver } from "@/lib/ai/web/dado-externo"
 import { filtrarPorToque, toqueSlug, vaultPorToqueLigado } from "@/lib/vault/toque"
 import crypto from "crypto"
 import { createAdminClient } from "@/lib/supabase/server"
@@ -627,7 +628,9 @@ export async function runEstruturador(
     material_do_toque: carga.materialDoToque ?? MATERIAL_DO_TOQUE_VAZIO,
     brand_name: input.brandName,
     top_products: renderTopProducts(input.topProducts),
-    pesquisa: input.pesquisa || "(sem pesquisa)",
+    // (19/09) dossiê raspado entra como dado, nunca como instrução
+    // (`lib/ai/web/dado-externo.ts`).
+    pesquisa: comoDadoExternoSeHouver("pesquisa (n8n: site da loja, concorrentes, anúncios)", input.pesquisa || "(sem pesquisa)"),
     flow_type: input.flowType,
     email_number: String(input.emailNumber),
     intencao_email: intencaoParaOPrompt(intencaoEmail, input.alvo ?? null),

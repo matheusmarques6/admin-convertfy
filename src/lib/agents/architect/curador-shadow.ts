@@ -107,6 +107,7 @@ import {
   type ElegiveisDaPosicao,
   type EliminacaoDaPosicao,
 } from "../shared/field-roles"
+import type { CodigoDeErroDoProvedor } from "./erro-do-provedor"
 
 const log = logger.child("CuradorShadow")
 
@@ -1284,7 +1285,7 @@ export interface CuradorVaultResultado {
    * variante" e viram `lacuna_biblioteca` — pauta falsa no vault, mandando
    * a curadoria cadastrar um bloco para resolver um timeout.
    */
-  posicoesComFalhaDeChamada?: number[]
+  posicoesComFalhaDeChamada?: Array<{ block_index: number; codigo: CodigoDeErroDoProvedor }>
 }
 
 /**
@@ -2285,7 +2286,7 @@ export async function runCuradorShadow(
       ranking,
       conformidade,
       ...(leque && leque.falhas.length > 0
-        ? { posicoesComFalhaDeChamada: leque.falhas.map((f) => f.block_index) }
+        ? { posicoesComFalhaDeChamada: leque.falhas.map((f) => ({ block_index: f.block_index, codigo: f.codigo })) }
         : {}),
     }
   } catch (err) {

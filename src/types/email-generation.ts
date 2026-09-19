@@ -756,6 +756,8 @@ export interface ReferenceSlotMapEntry {
     | "resgate_recusado"
     | "dispositivo_indisponivel"
     | "orcamento_esgotado"
+    /** (19/09) a chamada foi recusada pelo provedor — retomável, nunca lacuna. */
+    | "chamada_falhou"
   /** Dispositivo que a decisão pedia para a posição vazia. */
   dispositivo_pedido?: string | null
 }

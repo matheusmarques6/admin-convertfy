@@ -184,7 +184,9 @@ describe("escolherPorPosicao", () => {
       chamar,
     })
     expect(r.escolhas.map((e) => e.variant_id)).toEqual(["h1", null, "f1"])
-    expect(r.falhas).toEqual([{ block_index: 1, erro: "timeout" }])
+    // (19/09) a falha carrega o CÓDIGO, e o `erro` da posição também:
+    // é o que a montagem lê para não resgatar a posição.
+    expect(r.falhas).toEqual([{ block_index: 1, erro: `${ERRO_DE_CHAMADA}timeout: timeout`, codigo: "timeout" }])
     expect(r.escolhas[1].erro).toContain("timeout")
     expect(chamar).toHaveBeenCalledTimes(3)
   })

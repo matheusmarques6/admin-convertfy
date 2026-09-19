@@ -21,6 +21,7 @@
 import type { CuradorVaultOutput } from "./curador-shadow"
 import { normalizarSecao } from "./repeticao"
 import { idsBloqueadosPelaRepeticao, type DecididaAntes } from "./curador-leque-prompt"
+import { PREFIXO_CHAMADA_FALHOU, rotularChamadaFalhou, type CodigoDeErroDoProvedor } from "./erro-do-provedor"
 
 /** O que uma chamada precisa saber sobre a posição que vai decidir. */
 export interface PosicaoDoLeque {
@@ -198,14 +199,23 @@ export function conflitoComAsDecididas(
 export interface ResultadoDoLeque {
   escolhas: EscolhaDaPosicao[]
   ajustes: Array<{ block_index: number; ajuste: string }>
-  /** Posições em que a chamada LANÇOU — erro de rede, relógio, provedor. */
-  falhas: Array<{ block_index: number; erro: string }>
+  /**
+   * Posições em que a chamada LANÇOU — erro de rede, relógio, provedor.
+   * `codigo` é o de `erro-do-provedor.ts`: é ele que a montagem lê para
+   * NÃO resgatar a posição (a chamada não aconteceu; não há veredito).
+   */
+  falhas: Array<{ block_index: number; erro: string; codigo: CodigoDeErroDoProvedor }>
   /** Posições que vieram da gravação anterior e NÃO foram chamadas de novo. */
   retomadas: number[]
 }
 
-/** Prefixo do `erro` de uma escolha cuja CHAMADA não chegou a responder. */
-export const ERRO_DE_CHAMADA = "chamada_falhou: "
+/**
+ * Prefixo do `erro` de uma escolha cuja CHAMADA não chegou a responder.
+ * Formato completo desde 19/09: `chamada_falhou: <codigo>: <mensagem>`
+ * (`rotularChamadaFalhou`); o código vem primeiro para a montagem ler sem
+ * depender da mensagem do provedor.
+ */
+export const ERRO_DE_CHAMADA = PREFIXO_CHAMADA_FALHOU
 
 /**
  * O teto de saída de UMA posição, derivado do teto do e-mail inteiro.
@@ -326,13 +336,13 @@ export async function escolherPorPosicao(params: {
       const { raw } = await chamar(pos, [...jaDecididas])
       escolha = parseEscolhaDaPosicao(raw, pos)
     } catch (e) {
-      const erro = e instanceof Error ? e.message : String(e)
-      falhas.push({ block_index: pos.block_index, erro })
+      const rotulo = rotularChamadaFalhou(e)
+      falhas.push({ block_index: pos.block_index, erro: rotulo.erro, codigo: rotulo.codigo })
       escolha = {
         ...VAZIO,
         block_index: pos.block_index,
         section: pos.section,
-        erro: `${ERRO_DE_CHAMADA}${erro}`,
+        erro: rotulo.erro,
       }
     }
     const resolvida = conflitoComAsDecididas(escolha, jaDecididas)

@@ -417,9 +417,15 @@ async function invokeViaOpenRouter(
   const apiKey = process.env.OPENROUTER_API_KEY
   if (!apiKey) throw new Error("OPENROUTER_API_KEY nao configurada")
 
+  // Duas retentativas (19/09): o 402 in-flight persistiu por quatro
+  // posições seguidas do leque com uma só (3 s). A segunda espera 6 s, o
+  // que já cobre a chamada anterior liquidar. O relógio da fase 1 continua
+  // valendo: `relogioDesteInvoke` lança "sem orçamento" (não-retryable)
+  // quando a janela acabou, então insistir nunca ultrapassa a função.
   return withOpenRouterRetry(
     (attempt) => callOnceArchitect(config, userMessage, apiKey, attempt),
     {
+      retries: 2,
       onRetry: (err, n) =>
         log.warn("openrouter.retry", {
           model: config.model,

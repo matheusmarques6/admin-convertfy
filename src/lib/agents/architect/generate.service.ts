@@ -50,6 +50,7 @@ import type { EstruturadorOutput } from "../estruturador/estruturador-prompt"
 import { marcarEmailFalhoNaFase1 } from "./fase1-failure"
 import {
   assembleStoreReference,
+  causaEhRetomavel,
   type ReferenceSource,
 } from "./component-assembler.service"
 import type { EstruturadorStatus } from "./blueprint-generator.service"
@@ -794,8 +795,9 @@ export async function generateBlueprintAndReference(
     // próxima passada retoma dali. Marcar `failed` aqui enterraria uma
     // peça a uma retomada de distância, e o rótulo mandaria a curadoria
     // cadastrar bloco que já existe.
-    if (lacuna.causa === "relogio") {
-      log.warn("architect.lacuna_por_relogio", {
+    if (causaEhRetomavel(lacuna.causa)) {
+      log.warn(lacuna.causa === "provedor" ? "architect.lacuna_por_provedor" : "architect.lacuna_por_relogio", {
+        causa: lacuna.causa,
         storeId: input.storeId,
         flowType: input.flowType,
         emailNumber: input.emailNumber,

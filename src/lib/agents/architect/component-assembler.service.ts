@@ -27,6 +27,7 @@
  *     template global.
  */
 
+import { comoDadoExternoSeHouver } from "@/lib/ai/web/dado-externo"
 import {
   SAIDA_TELEMETRIA_MAX,
   novoOrcamentoDeTexto,
@@ -591,6 +592,15 @@ export type MotivoDePosicaoSemVariante =
   | "resgate_recusado"
   | "dispositivo_indisponivel"
   | "orcamento_esgotado"
+  /**
+   * (19/09) A chamada daquela posição foi RECUSADA pelo provedor — 402
+   * in-flight, 429, 5xx, timeout, corpo vazio. Como `orcamento_esgotado`,
+   * não há veredito sobre a biblioteca; a diferença é a causa (`provedor`
+   * × `relogio`), que a telemetria separa. Nenhum dos dois passa pelo
+   * resgate: resgatar uma posição cuja chamada não aconteceu substitui a
+   * decisão do Curador pela "menos incompatível" e enterra a retomada.
+   */
+  | "chamada_falhou"
 
 export interface PosicaoSemVariante {
   block_index: number
@@ -617,7 +627,12 @@ export function lacunaEhFatal(posicoes: ReadonlyArray<Pick<PosicaoSemVariante, "
 }
 
 /** De quem é a culpa pela peça não ter fechado. */
-export type CausaDaLacuna = "biblioteca" | "relogio"
+export type CausaDaLacuna = "biblioteca" | "relogio" | "provedor"
+
+/** Causas em que a chamada NÃO aconteceu — a peça é retomável, não settled. */
+export function causaEhRetomavel(causa: CausaDaLacuna): boolean {
+  return causa === "relogio" || causa === "provedor"
+}
 
 /**
  * Fatal, sim — mas por quê?
@@ -644,6 +659,9 @@ export type CausaDaLacuna = "biblioteca" | "relogio"
 export function causaDaLacuna(
   posicoes: ReadonlyArray<Pick<PosicaoSemVariante, "motivo">>,
 ): CausaDaLacuna {
+  // Provedor antes do relógio: um 402 no meio do leque é o caso medido
+  // (18/09) e é o que precisa aparecer nomeado na telemetria.
+  if (posicoes.some((p) => p.motivo === "chamada_falhou")) return "provedor"
   return posicoes.some((p) => p.motivo === "orcamento_esgotado") ? "relogio" : "biblioteca"
 }
 
@@ -1329,7 +1347,9 @@ export async function assembleStoreReference(
       "(sem decisão do Estruturador nesta geração — siga o outline)",
     // Perfil da marca — ancora a escolha na identidade, não só no objetivo
     // do email.
-    briefing_marca: input.perfilMarca,
+    // (19/09) dossiê raspado entra como dado, nunca como instrução
+    // (`lib/ai/web/dado-externo.ts`).
+    briefing_marca: comoDadoExternoSeHouver("pesquisa (n8n: site da loja, concorrentes, anúncios)", input.perfilMarca),
     // Objeções e vocabulário em blocos PRÓPRIOS (27/08). Os dois já viajavam
     // dentro do perfil, enterrados em "O que a faz hesitar" e "Vocabulário ·
     // Usar/Evitar" — dado presente que ninguém usava como critério.
@@ -1974,7 +1994,9 @@ export async function assembleStoreReference(
     // FINAL é onde marca e objeção se decidem de verdade: o Curador rankeia
     // posição a posição, isolada; só o Montador vê se o email INTEIRO
     // responde à objeção e se a composição soa como esta marca.
-    briefing_marca: input.perfilMarca,
+    // (19/09) dossiê raspado entra como dado, nunca como instrução
+    // (`lib/ai/web/dado-externo.ts`).
+    briefing_marca: comoDadoExternoSeHouver("pesquisa (n8n: site da loja, concorrentes, anúncios)", input.perfilMarca),
     alvo: input.alvo ?? ALVO_AUSENTE_CURADOR,
     objecoes: input.objecoes,
     vocabulario: input.vocabulario,
@@ -2218,7 +2240,9 @@ export async function assembleStoreReference(
   // antes da montagem: `coberturaSuficiente` só sabe contar buracos, e o
   // desfecho `hero_failed` três minutos depois não diz o que faltou.
   const posicoesSemVariante: PosicaoSemVariante[] = []
-  const posicoesComFalhaDeChamada = new Set(vaultResultado?.posicoesComFalhaDeChamada ?? [])
+  const posicoesComFalhaDeChamada = new Map(
+    (vaultResultado?.posicoesComFalhaDeChamada ?? []).map((f) => [f.block_index, f.codigo]),
+  )
   const descartesDaDecisao = decisao?.descartes ?? []
   let resgatesTentados = 0
   let descartadasPorDispositivo = 0
@@ -2245,10 +2269,19 @@ export async function assembleStoreReference(
     // Chamada que não aconteceu NÃO é lacuna de biblioteca: o resgate
     // ainda pode salvar a posição, mas se não salvar o motivo é o relógio,
     // e é ele que tem de aparecer no vault e na tela.
-    let motivoDaLacuna: MotivoDePosicaoSemVariante = posicoesComFalhaDeChamada.has(i)
-      ? "orcamento_esgotado"
+    const codigoDaFalha = posicoesComFalhaDeChamada.get(i)
+    let motivoDaLacuna: MotivoDePosicaoSemVariante = codigoDaFalha
+      ? codigoDaFalha === "orcamento_esgotado"
+        ? "orcamento_esgotado"
+        : "chamada_falhou"
       : "sem_candidata"
-    if (!variant) {
+    // Chamada que não aconteceu NÃO passa pelo resgate (19/09, batch
+    // d2bd526b): o resgate preenchia as quatro posições que tomaram 402
+    // com a "menos incompatível", a peça seguia como `reference_source:
+    // code` e a retomada nunca acontecia. A posição fica vazia com o
+    // motivo certo, `causaDaLacuna` a lê como provedor/relógio e a
+    // geração volta a `pending` em vez de pagar a fase 2.
+    if (!variant && !codigoDaFalha) {
       // Pool = elegíveis por contrato (fail-open: seção zerada devolve
       // todas). Sem o filtro o resgate podia pôr uma eliminada na posição.
       const elegiveisIds = elegiveisDaPosicao.get(i)?.ids
@@ -2445,14 +2478,14 @@ export async function assembleStoreReference(
   const cobertura = lacunaFatal
     ? {
         ok: false,
-        motivo: `${lacunaCausa === "relogio" ? "posições não decididas (relógio)" : "lacuna de biblioteca"}: ${posicoesSemVariante.map((p) => `${p.section}${p.dispositivo_pedido ? ` (${p.dispositivo_pedido})` : ""}`).join(", ")}`,
+        motivo: `${lacunaCausa === "relogio" ? "posições não decididas (relógio)" : lacunaCausa === "provedor" ? "posições não decididas (provedor recusou a chamada)" : "lacuna de biblioteca"}: ${posicoesSemVariante.map((p) => `${p.section}${p.dispositivo_pedido ? ` (${p.dispositivo_pedido})` : ""}`).join(", ")}`,
       }
     : coberturaSuficiente(assembled.stats)
   // O descarte da referência é o mesmo nos dois casos (peça com buraco não
   // representa a decisão); o que muda é o desfecho na fila e o rótulo —
   // ver `causaDaLacuna`.
   const source: ReferenceSource = lacunaFatal
-    ? lacunaCausa === "relogio"
+    ? causaEhRetomavel(lacunaCausa)
       ? "retomavel"
       : "lacuna"
     : cobertura.ok
@@ -2592,6 +2625,7 @@ export async function assembleStoreReference(
         fora_do_dispositivo: foraDoDispositivo,
         sem_candidata: posicoesSemVariante.filter((p) => p.motivo === "sem_candidata").length,
         dispositivo_indisponivel: posicoesSemVariante.filter((p) => p.motivo === "dispositivo_indisponivel").length,
+        chamada_falhou: posicoesSemVariante.filter((p) => p.motivo === "chamada_falhou").length,
       },
       posicoes_sem_variante: posicoesSemVariante,
       // Só é lacuna de BIBLIOTECA quando a causa é a biblioteca. Peça que

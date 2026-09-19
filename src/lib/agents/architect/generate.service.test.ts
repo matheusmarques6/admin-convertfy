@@ -17,7 +17,7 @@ const h = vi.hoisted(() => ({
   estruturadorMode: "off" as "off" | "shadow" | "on",
   estruturadorSpy: vi.fn(),
   // Passo 11: lacuna devolvida pelo Montador e os UPDATEs em email_flow_emails.
-  lacuna: null as null | { posicoes: unknown[]; fatal: boolean },
+  lacuna: null as null | { posicoes: unknown[]; fatal: boolean; causa?: "biblioteca" | "relogio" | "provedor" },
   updateSpy: vi.fn(),
 }))
 
@@ -83,12 +83,18 @@ vi.mock("../estruturador/estruturador.service", () => ({
   runEstruturador: (...a: unknown[]) => h.estruturadorSpy(...a),
 }))
 
-vi.mock("./component-assembler.service", () => ({
-  assembleStoreReference: (...a: unknown[]) => {
-    h.assembleSpy(...a)
-    return Promise.resolve({ html: "<html></html>", source: h.lacuna?.fatal ? "lacuna" : "llm", variantIds: [], lacuna: h.lacuna })
-  },
-}))
+vi.mock("./component-assembler.service", async (importOriginal) => {
+  // `causaEhRetomavel` é a régua REAL: mockar aqui faria o teste de
+  // retomada passar sem medir a função que decide.
+  const actual = await importOriginal<typeof import("./component-assembler.service")>()
+  return {
+    causaEhRetomavel: actual.causaEhRetomavel,
+    assembleStoreReference: (...a: unknown[]) => {
+      h.assembleSpy(...a)
+      return Promise.resolve({ html: "<html></html>", source: h.lacuna?.fatal ? (h.lacuna.causa && h.lacuna.causa !== "biblioteca" ? "retomavel" : "lacuna") : "llm", variantIds: [], lacuna: h.lacuna })
+    },
+  }
+})
 
 vi.mock("./blueprint-generator.service", () => ({
   generateStoreBlueprint: (...a: unknown[]) => {
@@ -171,6 +177,22 @@ describe("generateBlueprintAndReference — lacuna de biblioteca (Passo 11)", ()
       expect.objectContaining({ status: "failed", failure_reason: "lacuna_biblioteca" }),
       expect.anything(),
     )
+  })
+
+  it("lacuna FATAL por PROVEDOR (402 no leque): devolve 'retomavel', NÃO marca failed e NÃO roda blueprint", async () => {
+    // Batch d2bd526b (18/09): a chamada não aconteceu, então não há veredito
+    // sobre a biblioteca — o e-mail volta a pending e a passada seguinte retoma.
+    h.lacuna = {
+      fatal: true,
+      causa: "provedor",
+      posicoes: [
+        { block_index: 0, section: "hero", label: "Hero", dispositivo_pedido: null, motivo: "chamada_falhou", flow_type: "welcome", email_number: 1 },
+      ],
+    }
+    const res = await generateBlueprintAndReference(input)
+    expect(res.referenceSource).toBe("retomavel")
+    expect(h.blueprintSpy).not.toHaveBeenCalled()
+    expect(h.updateSpy).not.toHaveBeenCalledWith("email_flow_emails", expect.objectContaining({ status: "failed" }), expect.anything())
   })
 
   it("lacuna NÃO fatal (uma posição não-hero): segue com blueprint e não marca failed", async () => {

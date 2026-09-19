@@ -13,6 +13,7 @@
  * `error` e o catálogo anterior fica intocado. Nunca lança.
  */
 
+import { comoDadoExternoSeHouver } from "@/lib/ai/web/dado-externo"
 import crypto from "crypto"
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
@@ -144,8 +145,13 @@ export async function runCatalogador(input: RunCatalogadorInput): Promise<RunCat
     ficha_operacional: fichaParaPrompt(ficha),
     // Passo 16: troca/frete lidos das páginas públicas, com URL. Contexto
     // abaixo da ficha — a ficha vence; isto NÃO é verificado pelo time.
-    politicas_publicas: politicasParaPrompt(normalizarPoliticas(s.politicas)),
-    pesquisa: pesquisa || "(sem pesquisa)",
+    // (19/09) Texto de FORA entra como dado, nunca como instrução — mesmo
+    // envelope do conector Internet da ConvertIA. A pesquisa é raspada do
+    // site, dos concorrentes e dos anúncios; as políticas, das páginas
+    // públicas. Embrulhado no VALOR porque o template do banco vence o
+    // in-code e pode não ter a marca.
+    politicas_publicas: comoDadoExternoSeHouver("páginas de política da loja", politicasParaPrompt(normalizarPoliticas(s.politicas))),
+    pesquisa: comoDadoExternoSeHouver("pesquisa (n8n: site da loja, concorrentes, anúncios)", pesquisa || "(sem pesquisa)"),
     top_products: renderTopProducts(topProducts),
     objecoes_anteriores: renderObjecoesAnteriores(objecoesAnteriores),
     vocabulario_da_cliente: renderVocabularioDaCliente(
